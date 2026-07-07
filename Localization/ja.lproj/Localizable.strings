@@ -63,6 +63,7 @@
 "Theme" = "テーマ";
 "Scanning" = "スキャン";
 "Show hidden files while scanning" = "スキャン中に隠しファイルを表示";
+"Mounted volume scans always include hidden files automatically." = "マウントされたボリュームのスキャンでは、常に隠しファイルが自動的に含まれます。";
 "Automatically summarize folders with many small files" = "小さいファイルが多いフォルダを自動的にまとめる";
 "Scan cloud storage folders" = "クラウドストレージのフォルダをスキャン";
 "Summarizing folders with thousands of tiny files (like node_modules or caches) dramatically improves scan speed. When cloud scanning is off, ~/Library/CloudStorage (Google Drive, Dropbox, OneDrive) and iCloud Drive are skipped. Changes apply to the next scan." = "node_modulesやキャッシュなど、数千もの小さいファイルを含むフォルダをまとめると、スキャン速度が大幅に向上します。クラウドスキャンをオフにすると、~/Library/CloudStorage（Google Drive、Dropbox、OneDrive）とiCloud Driveはスキップされます。変更は次回のスキャンから適用されます。";

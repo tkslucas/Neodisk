@@ -196,8 +196,19 @@ final class NeodiskViewModel {
 
     // MARK: - Scanning
 
+    /// Volume totals are wrong without hidden system metadata
+    /// (.Spotlight-V100, .fseventsd, .Trashes, …), so volume scans always
+    /// include hidden files regardless of the preference.
+    private func scanOptions(for target: ScanTarget) -> ScanOptions {
+        var options = preferences?.scanOptions ?? ScanOptions()
+        if target.kind == .volume {
+            options.includeHiddenFiles = true
+        }
+        return options
+    }
+
     func startScan(_ target: ScanTarget, forcesRescan: Bool = false) {
-        let options = preferences?.scanOptions ?? ScanOptions()
+        let options = scanOptions(for: target)
         let displaysTargetAlready = coordinator.snapshot?.isComplete == true
             && coordinator.snapshot?.target.id == target.id
         if displaysTargetAlready {
@@ -286,10 +297,7 @@ final class NeodiskViewModel {
             } else {
                 // Corrupt or vanished: forget the cache entry and scan live.
                 self.cachedScanInfo.removeValue(forKey: target.id)
-                self.coordinator.startScan(
-                    target,
-                    options: self.preferences?.scanOptions ?? ScanOptions()
-                )
+                self.coordinator.startScan(target, options: self.scanOptions(for: target))
             }
         }
     }
@@ -626,7 +634,10 @@ final class NeodiskViewModel {
     /// the context menu's "Expand Contents".
     func expandSummarizedNode(_ node: FileNodeRecord) {
         guard canRefreshSubtree else { return }
-        var options = preferences?.scanOptions ?? ScanOptions()
+        // Match the on-screen scan's options (a volume scan forces hidden
+        // files on) so the spliced subtree isn't missing entries it had.
+        var options = coordinator.snapshot.map { scanOptions(for: $0.target) }
+            ?? preferences?.scanOptions ?? ScanOptions()
         // The user explicitly asked for this folder's contents;
         // re-summarizing it would make the action a no-op.
         options.autoSummarizeDirectories = false

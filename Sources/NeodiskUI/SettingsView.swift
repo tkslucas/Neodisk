@@ -47,6 +47,9 @@ private struct GeneralSettingsTab: View {
 
             Section("Scanning") {
                 Toggle("Show hidden files while scanning", isOn: $preferences.includeHiddenFiles)
+                Text("Mounted volume scans always include hidden files automatically.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
                 Text("Summarizing folders with thousands of tiny files (like node_modules or caches) dramatically improves scan speed. When cloud scanning is off, ~/Library/CloudStorage (Google Drive, Dropbox, OneDrive) and iCloud Drive are skipped. Changes apply to the next scan.")
                     .font(.callout)
                     .foregroundStyle(.secondary)

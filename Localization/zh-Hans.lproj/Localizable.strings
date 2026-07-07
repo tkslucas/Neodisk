@@ -63,6 +63,7 @@
 "Theme" = "主题";
 "Scanning" = "扫描";
 "Show hidden files while scanning" = "扫描时显示隐藏文件";
+"Mounted volume scans always include hidden files automatically." = "扫描已装载的宗卷时始终自动包含隐藏文件。";
 "Automatically summarize folders with many small files" = "自动汇总包含大量小文件的文件夹";
 "Scan cloud storage folders" = "扫描云存储文件夹";
 "Summarizing folders with thousands of tiny files (like node_modules or caches) dramatically improves scan speed. When cloud scanning is off, ~/Library/CloudStorage (Google Drive, Dropbox, OneDrive) and iCloud Drive are skipped. Changes apply to the next scan." = "汇总包含数千个微小文件的文件夹（例如 node_modules 或缓存）可以显著提升扫描速度。关闭云存储扫描后，将跳过 ~/Library/CloudStorage（Google Drive、Dropbox、OneDrive）和 iCloud Drive。更改将在下次扫描时生效。";

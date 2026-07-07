@@ -64,6 +64,7 @@
 "Theme" = "Tema";
 "Scanning" = "Análise";
 "Show hidden files while scanning" = "Mostrar arquivos ocultos durante a análise";
+"Mounted volume scans always include hidden files automatically." = "Escaneamentos de volumes montados sempre incluem arquivos ocultos automaticamente.";
 "Automatically summarize folders with many small files" = "Resumir automaticamente pastas com muitos arquivos pequenos";
 "Scan cloud storage folders" = "Analisar pastas de armazenamento na nuvem";
 "Summarizing folders with thousands of tiny files (like node_modules or caches) dramatically improves scan speed. When cloud scanning is off, ~/Library/CloudStorage (Google Drive, Dropbox, OneDrive) and iCloud Drive are skipped. Changes apply to the next scan." = "Resumir pastas com milhares de arquivos minúsculos (como node_modules ou caches) melhora muito a velocidade da análise. Quando a análise na nuvem está desativada, ~/Library/CloudStorage (Google Drive, Dropbox, OneDrive) e o iCloud Drive são ignorados. As alterações se aplicam à próxima análise.";

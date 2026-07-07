@@ -8,6 +8,21 @@
   Treemap on the <code>NeodiskKit</code> scan engine.
 </p>
 
+<p align="center">
+  <img src="https://img.shields.io/badge/platform-macOS%2014%2B-blue" alt="Platform: macOS 14+">
+  <img src="https://img.shields.io/github/v/release/tkslucas/Neodisk?label=version" alt="Latest version">
+  <img src="https://img.shields.io/badge/license-GPLv3-lightgrey" alt="License: GPLv3">
+</p>
+
+## Download
+
+[**Download Neodisk.dmg**](https://github.com/tkslucas/Neodisk/releases/latest/download/Neodisk.dmg)
+— the latest signed, notarized build. Open it and drag **Neodisk** onto the
+Applications folder. Versioned builds and a `.zip` fallback are on the
+[Releases](https://github.com/tkslucas/Neodisk/releases) page.
+
+Requires macOS 14 (Sonoma) or later. No installer — it's a self-contained app.
+
 ## About
 
 **Read-only by design.** Neodisk never modifies or deletes your files. 

@@ -120,7 +120,7 @@
 "Neodisk can read protected locations. You can start a complete scan now." = "Neodiskは保護された場所を読み取れます。今すぐ完全なスキャンを開始できます。";
 "Without it, protected locations (Mail, Safari, Messages, parts of Library) are skipped and totals are underreported. To enable:" = "これがない場合、保護された場所（Mail、Safari、Messages、Libraryの一部）はスキップされ、合計が実際より少なく表示されます。有効にするには:";
 "1. Open Privacy & Security → Full Disk Access.\n2. Turn it on for the app that launches Neodisk.\n3. Relaunch Neodisk." = "1. 「プライバシーとセキュリティ」→「フルディスクアクセス」を開きます。\n2. Neodiskを起動するアプリでオンにします。\n3. Neodiskを再起動します。";
-"1. Open Privacy & Security → Full Disk Access.\n2. Turn it on for Neodisk.\n3. Relaunch Neodisk." = "1. 「プライバシーとセキュリティ」→「フルディスクアクセス」を開きます。\n2. Neodiskでオンにします。\n3. Neodiskを再起動します。";
+"1. Open Privacy & Security → Full Disk Access.\n2. Turn it on for Neodisk.\n3. Choose Quit & Reopen when macOS asks." = "1. 「プライバシーとセキュリティ」→「フルディスクアクセス」を開きます。\n2. Neodiskでオンにします。\n3. macOSに確認されたら「終了して再度開く」を選択します。";
 "Continue" = "続ける";
 
 /* MARK: - Outline pane */

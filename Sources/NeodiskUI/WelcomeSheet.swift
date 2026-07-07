@@ -6,6 +6,7 @@
 //  Full Disk Access status with instructions.
 //
 
+import AppKit
 import SwiftUI
 
 struct WelcomeSheet: View {
@@ -19,7 +20,7 @@ struct WelcomeSheet: View {
     private var enableAccessSteps: String {
         Bundle.main.bundleIdentifier == nil
             ? "1. Open Privacy & Security → Full Disk Access.\n2. Turn it on for the app that launches Neodisk.\n3. Relaunch Neodisk."
-            : "1. Open Privacy & Security → Full Disk Access.\n2. Turn it on for Neodisk.\n3. Relaunch Neodisk."
+            : "1. Open Privacy & Security → Full Disk Access.\n2. Turn it on for Neodisk.\n3. Choose Quit & Reopen when macOS asks."
     }
 
     var body: some View {
@@ -106,6 +107,7 @@ struct WelcomeSheet: View {
         }
         .padding(24)
         .frame(width: 460)
+        .background(ModalTerminationBehavior())
         .task { recheck() }
     }
 
@@ -116,6 +118,28 @@ struct WelcomeSheet: View {
                 SystemIntegration.fullDiskAccessStatus()
             }.value
             accessStatus = status
+        }
+    }
+}
+
+// Granting Full Disk Access makes macOS offer "Quit & Reopen", which sends a
+// polite terminate. A sheet window blocks that by default
+// (preventsApplicationTerminationWhenModal), so the app silently refuses to
+// quit while this welcome sheet is up. Opt the sheet out so the relaunch works.
+private struct ModalTerminationBehavior: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView(frame: .zero)
+        updateWindow(for: view)
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        updateWindow(for: nsView)
+    }
+
+    private func updateWindow(for view: NSView) {
+        DispatchQueue.main.async {
+            view.window?.preventsApplicationTerminationWhenModal = false
         }
     }
 }

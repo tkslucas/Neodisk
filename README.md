@@ -6,6 +6,8 @@
 <p align="center">
   Read-only MacOS disk space visualizer.
   Treemap on the <code>NeodiskKit</code> scan engine.
+  <br>
+  <a href="https://github.com/tkslucas/Neodisk/releases/latest/download/Neodisk.dmg">Download</a>
 </p>
 
 <p align="center">
@@ -17,11 +19,11 @@
 ## Download
 
 [**Download Neodisk.dmg**](https://github.com/tkslucas/Neodisk/releases/latest/download/Neodisk.dmg)
-— the latest signed, notarized build. Open it and drag **Neodisk** onto the
-Applications folder. Versioned builds and a `.zip` fallback are on the
+and drag **Neodisk** onto the Applications folder.
+Versioned builds and a `.zip` fallback are on the
 [Releases](https://github.com/tkslucas/Neodisk/releases) page.
 
-Requires macOS 14 (Sonoma) or later. No installer — it's a self-contained app.
+Requires macOS 14 (Sonoma) or later.
 
 ## About
 

@@ -49,12 +49,12 @@ struct KindStatsPane: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                .controlSize(.mini)
+                .controlSize(.small)
                 .labelsHidden()
                 .fixedSize()
             }
             .padding(.horizontal, 10)
-            .padding(.vertical, 5)
+            .padding(.vertical, 4)
 
             Divider()
 

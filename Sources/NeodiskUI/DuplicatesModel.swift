@@ -35,6 +35,9 @@ final class DuplicatesModel {
     /// results list is showing. Cached because the union set is derived
     /// per render otherwise.
     @ObservationIgnored private var allDuplicateIDs: Set<String> = []
+    /// Which group each duplicate belongs to, so clicking a copy on the
+    /// treemap can open its group.
+    @ObservationIgnored private var groupIndexByNodeID: [String: Int] = [:]
     @ObservationIgnored private let coordinator: ScanCoordinator
     @ObservationIgnored private var scanTask: Task<Void, Never>?
     /// The snapshot the current phase belongs to; a scan finishing after
@@ -78,6 +81,7 @@ final class DuplicatesModel {
         progress = 0
         openGroup = nil
         allDuplicateIDs = []
+        groupIndexByNodeID = [:]
         scanTask?.cancel()
         // Built in method scope, not inside the detached work, so the
         // sendable hashing closure never touches the model directly.
@@ -96,6 +100,13 @@ final class DuplicatesModel {
                 guard let self, !Task.isCancelled,
                       self.scannedSnapshotID == snapshotID else { return }
                 self.allDuplicateIDs = Set(results.groups.flatMap(\.nodeIDs))
+                var indexByNodeID: [String: Int] = [:]
+                for (index, group) in results.groups.enumerated() {
+                    for nodeID in group.nodeIDs {
+                        indexByNodeID[nodeID] = index
+                    }
+                }
+                self.groupIndexByNodeID = indexByNodeID
                 self.phase = .finished(results)
             } catch is CancellationError {
                 // cancelScan / snapshotDidChange already reset the phase.
@@ -118,6 +129,16 @@ final class DuplicatesModel {
         openGroup = group
     }
 
+    /// Drills into the group a selected node belongs to, if any — clicking
+    /// a duplicate on the treemap behaves like clicking its group row:
+    /// the copies light up and list in the panel. No-op for non-duplicates,
+    /// so plain map navigation never yanks the panel around.
+    func revealGroup(containing nodeID: String) {
+        guard case .finished(let results) = phase,
+              let index = groupIndexByNodeID[nodeID] else { return }
+        openGroup = results.groups[index]
+    }
+
     func closeGroup() {
         openGroup = nil
     }
@@ -133,5 +154,6 @@ final class DuplicatesModel {
         progress = 0
         openGroup = nil
         allDuplicateIDs = []
+        groupIndexByNodeID = [:]
     }
 }

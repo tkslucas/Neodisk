@@ -641,6 +641,12 @@ final class NeodiskViewModel {
         selectedNodeID = nodeID
         if let nodeID {
             revealInOutline(nodeID)
+            // With duplicate results on screen, selecting a copy anywhere
+            // (treemap, outline) drills into its group — same as clicking
+            // the group row.
+            if analysisTab == .duplicates {
+                duplicates.revealGroup(containing: nodeID)
+            }
         }
     }
 

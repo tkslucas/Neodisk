@@ -2,8 +2,9 @@
 //  KindStatsPane.swift
 //  Neodisk
 //
-//  Disk Inventory X-style file kind statistics: one row per kind with its
-//  treemap color, total size, and file count, largest first.
+//  The statistics panel's Kinds tab, Disk Inventory X-style: one row per
+//  file kind with its treemap color, total size, and file count, largest
+//  first.
 //
 
 import SwiftUI
@@ -14,7 +15,21 @@ struct KindStatsPane: View {
 
     var body: some View {
         if model.kinds.fileList != nil || model.kinds.isFileListLoading {
-            KindFileListView(model: model)
+            @Bindable var kinds = model.kinds
+            StatsFileListView(
+                model: model,
+                title: model.kinds.fileList?.kind.displayName,
+                swatch: model.kinds.fileList.map { list in
+                    let rgb = model.kinds.catalog.rgb(forKindID: list.kind.id)
+                    return Color(red: Double(rgb.x), green: Double(rgb.y), blue: Double(rgb.z))
+                },
+                backHelp: "Back to file kinds",
+                isLoading: model.kinds.isFileListLoading,
+                visibleIDs: model.kinds.fileListVisibleIDs,
+                totalMatches: model.kinds.fileListTotalMatches,
+                filterText: $kinds.fileListFilterText,
+                onClose: { model.kinds.closeFileList() }
+            )
         } else {
             kindStatsList
         }
@@ -24,7 +39,7 @@ struct KindStatsPane: View {
         @Bindable var kinds = model.kinds
         return VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("File Kinds")
+                Text("Group by")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -68,106 +83,6 @@ struct KindStatsPane: View {
 
     private var totalSize: Int64 {
         model.coordinator.snapshot?.aggregateStats.totalAllocatedSize ?? 0
-    }
-}
-
-/// Drill-in from a kind row: every file of that kind, largest first,
-/// searchable. Read-only — clicking a row selects the file in the outline
-/// and treemap.
-private struct KindFileListView: View {
-    let model: NeodiskViewModel
-
-    var body: some View {
-        @Bindable var kinds = model.kinds
-        return VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 6) {
-                Button {
-                    model.kinds.closeFileList()
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 10, weight: .semibold))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .help("Back to file kinds")
-
-                if let list = model.kinds.fileList {
-                    let rgb = model.kinds.catalog.rgb(forKindID: list.kind.id)
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(Color(red: Double(rgb.x), green: Double(rgb.y), blue: Double(rgb.z)))
-                        .frame(width: 12, height: 12)
-                    Text(LocalizedStringKey(list.kind.displayName))
-                        .font(.system(size: 11, weight: .semibold))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                } else {
-                    Text("Loading…")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-
-            HStack(spacing: 4) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-                TextField("Filter by name", text: $kinds.fileListFilterText)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 11))
-            }
-            .padding(.horizontal, 10)
-            .padding(.bottom, 6)
-
-            Divider()
-
-            if model.kinds.isFileListLoading {
-                Spacer()
-                ProgressView().controlSize(.small)
-                    .frame(maxWidth: .infinity)
-                Spacer()
-            } else {
-                let selection = Binding<String?>(
-                    get: { model.selectedNodeID },
-                    set: { if let id = $0 { model.select(id) } }
-                )
-                List(model.kinds.fileListVisibleIDs, id: \.self, selection: selection) { nodeID in
-                    if let node = model.store?.node(id: nodeID) {
-                        FileResultRow(node: node)
-                            .listRowSeparator(.hidden)
-                            .contextMenu {
-                                if node.supportsFileActions {
-                                    Button("Reveal in Finder") { model.reveal(node) }
-                                    Button("Open") { model.open(node) }
-                                    Button("Copy Path") { model.copyPath(node) }
-                                }
-                            }
-                    }
-                }
-                .environment(\.defaultMinListRowHeight, 20)
-                .quickLookOnSpace(model: model)
-
-                if model.kinds.fileListVisibleIDs.count < model.kinds.fileListTotalMatches {
-                    Divider()
-                    Text(footerText)
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                }
-            }
-        }
-    }
-
-    private var footerText: String {
-        let shown = model.kinds.fileListVisibleIDs.count.formatted()
-        let total = model.kinds.fileListTotalMatches.formatted()
-        let format = model.kinds.fileListFilterText.trimmingCharacters(in: .whitespaces).isEmpty
-            ? NSLocalizedString("Largest %@ of %@ — search to narrow", comment: "File list footer, no filter")
-            : NSLocalizedString("Top %@ of %@ matches — refine to narrow", comment: "File list footer, filtered")
-        return String(format: format, shown, total)
     }
 }
 

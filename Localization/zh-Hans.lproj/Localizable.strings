@@ -16,9 +16,9 @@
 "Loading the previous scan…" = "正在加载上次扫描…";
 "Hide changes since the previous scan" = "隐藏自上次扫描以来的变化";
 "Show what grew since the previous scan" = "显示自上次扫描以来增长的内容";
-"File Kinds" = "文件类型";
-"Hide file kind statistics" = "隐藏文件类型统计";
-"Show file kind statistics" = "显示文件类型统计";
+"Statistics" = "统计";
+"Hide the statistics panel" = "隐藏统计面板";
+"Show the statistics panel" = "显示统计面板";
 "Settings" = "设置";
 "Open Neodisk settings" = "打开 Neodisk 设置";
 
@@ -142,6 +142,21 @@
 "%@ files" = "%@ 个文件";
 "Largest %@ of %@ — search to narrow" = "%2$@ 个文件中最大的 %1$@ 个，可搜索以缩小范围";
 
+/* MARK: - Statistics panel tabs & age buckets */
+"Kinds" = "类型";
+"Age" = "修改时间";
+"Group by" = "分组方式";
+"Last Modified" = "最后修改";
+"Today" = "今天";
+"Past Week" = "过去一周";
+"Past Month" = "过去一个月";
+"Past 3 Months" = "过去三个月";
+"Past Year" = "过去一年";
+"Older" = "更早";
+"No Date" = "无日期";
+"Show every file modified in this period" = "显示此时间段内修改的所有文件";
+"Back to age groups" = "返回时间分组";
+
 /* MARK: - 文件类型分类名称 */
 "Videos" = "视频";
 "Images" = "图片";
@@ -184,8 +199,8 @@
 "Find" = "查找";
 "Show Locations Sidebar" = "显示位置边栏";
 "Hide Locations Sidebar" = "隐藏位置边栏";
-"Show File Kinds" = "显示文件类型";
-"Hide File Kinds" = "隐藏文件类型";
+"Show Statistics" = "显示统计";
+"Hide Statistics" = "隐藏统计";
 
 /* MARK: - 系统对话框与矩形树图 */
 "Scan" = "扫描";

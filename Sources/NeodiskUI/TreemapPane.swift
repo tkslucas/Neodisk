@@ -33,7 +33,8 @@ struct TreemapPane: NSViewRepresentable {
             snapshot: model.coordinator.snapshot,
             rootID: model.effectiveRootID,
             catalog: model.kinds.catalog,
-            highlightedKindID: model.kinds.highlightedKindID,
+            colorMode: model.treemapColorMode,
+            highlight: model.treemapHighlight,
             expandedAggregateIDs: model.expandedAggregateIDs,
             // Free space belongs to the volume as a whole; hide it once the
             // user zooms into a subfolder.

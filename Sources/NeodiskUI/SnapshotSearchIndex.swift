@@ -31,7 +31,8 @@ struct SnapshotSearchIndex: Sendable {
                 allocatedSize: node.allocatedSize,
                 categoryKindID: FileKindClassifier.kindID(for: node, mode: .categories),
                 typeKindID: FileKindClassifier.kindID(for: node, mode: .types),
-                isKindCountable: FileKindClassifier.isKindCountable(node)
+                isKindCountable: FileKindClassifier.isKindCountable(node),
+                lastModified: node.lastModified
             ))
         }
         entries.sort { $0.allocatedSize > $1.allocatedSize }

@@ -27,6 +27,9 @@ struct FileSearchEntry: Sendable {
     /// Whether the node participates in kind statistics (files, packages,
     /// auto-summarized folders).
     let isKindCountable: Bool
+    /// Modification date, so the age drill-in can bucket the index without
+    /// re-touching nodes.
+    let lastModified: Date?
 
     init(
         id: String,
@@ -34,7 +37,8 @@ struct FileSearchEntry: Sendable {
         allocatedSize: Int64,
         categoryKindID: String = "",
         typeKindID: String = "",
-        isKindCountable: Bool = false
+        isKindCountable: Bool = false,
+        lastModified: Date? = nil
     ) {
         self.id = id
         self.lowercasedName = lowercasedName
@@ -42,6 +46,7 @@ struct FileSearchEntry: Sendable {
         self.categoryKindID = categoryKindID
         self.typeKindID = typeKindID
         self.isKindCountable = isKindCountable
+        self.lastModified = lastModified
     }
 
     func kindID(for mode: FileKindDisplayMode) -> String {

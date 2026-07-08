@@ -39,6 +39,12 @@ final class NeodiskViewModel {
     /// children render individually even when tiny.
     var expandedAggregateIDs: Set<String> = []
     var showKindStats = true
+    /// Which statistics-panel tab is active. Also decides what treemap color
+    /// means (Age colors by modification date; the others keep kind colors)
+    /// and which drill-in highlight reaches the map — see treemapColorMode /
+    /// treemapHighlight. Deliberately not reset per scan: the chosen lens
+    /// carries across locations.
+    var analysisTab: AnalysisTab = .kinds
     /// Locations sidebar visibility; lives here so the View menu can toggle
     /// it. Always starts visible.
     var sidebarVisibility = NavigationSplitViewVisibility.all
@@ -48,6 +54,11 @@ final class NeodiskViewModel {
     /// Kind catalog, display mode, and drill-in file list; see
     /// KindStatsModel.
     let kinds: KindStatsModel
+
+    // MARK: Age statistics
+
+    /// Modification-age buckets and drill-in file list; see AgeStatsModel.
+    let ages: AgeStatsModel
 
     // MARK: Entire-scan search
 
@@ -148,6 +159,7 @@ final class NeodiskViewModel {
         self.pinnedFolderStore = pinnedFolderStore
         self.search = SearchModel(coordinator: coordinator, indexService: searchIndexService)
         self.kinds = KindStatsModel(coordinator: coordinator, indexService: searchIndexService)
+        self.ages = AgeStatsModel(coordinator: coordinator, indexService: searchIndexService)
         self.diff = DiffModel(coordinator: coordinator, snapshotCache: snapshotCache)
         pinnedFolders = pinnedFolderStore.load()
         diff.model = self
@@ -192,6 +204,46 @@ final class NeodiskViewModel {
 
     var hoveredNode: FileNodeRecord? {
         store?.node(id: hoveredNodeID)
+    }
+
+    // MARK: - Treemap coloring
+
+    /// What treemap color means, driven by the statistics-panel tab: the Age
+    /// tab colors by modification date (bucketed against the scan date, so
+    /// the map matches the tab's legend), every other tab colors by kind.
+    /// The mode survives hiding the panel — the panel is the legend, not the
+    /// owner of the state.
+    var treemapColorMode: TreemapColorMode {
+        guard analysisTab == .age else { return .kind }
+        let referenceDate = ages.catalog.stats.isEmpty
+            ? coordinator.snapshot.map { $0.finishedAt ?? $0.startedAt }
+            : ages.catalog.referenceDate
+        guard let referenceDate else { return .kind }
+        return .age(referenceDate: referenceDate)
+    }
+
+    /// The active tab's drill-in highlight, if any — only the visible tab's
+    /// selection reaches the map, so switching tabs never leaves a stale dim.
+    var treemapHighlight: TreemapHighlight? {
+        switch analysisTab {
+        case .kinds:
+            return kinds.highlightedKindID.map { .kind($0) }
+        case .age:
+            return ages.highlightedBucket.map { .ageBucket($0) }
+        }
+    }
+
+    /// The swatch color a node renders with on the map right now — the
+    /// status bar's swatch must agree with the active color mode.
+    func displayColor(for node: FileNodeRecord) -> Color {
+        if case .age(let referenceDate) = treemapColorMode {
+            guard FileKindClassifier.isKindCountable(node) else {
+                let rgb = FileKindCatalog.directoryRGB
+                return Color(red: Double(rgb.x), green: Double(rgb.y), blue: Double(rgb.z))
+            }
+            return AgeBucket.bucket(for: node.lastModified, reference: referenceDate).color
+        }
+        return kinds.catalog.color(for: node)
     }
 
     // MARK: - Scanning
@@ -269,6 +321,7 @@ final class NeodiskViewModel {
         expandedNodeIDs = []
         expandedAggregateIDs = []
         kinds.reset()
+        ages.reset()
         scanWasStopped = false
         dismissedWarningIDs = []
     }
@@ -560,10 +613,11 @@ final class NeodiskViewModel {
 
         diff.snapshotDidChange(snapshot)
 
-        // The kind catalog, the drilled-in kind list, and the shared
+        // The kind and age catalogs, the drilled-in lists, and the shared
         // search index are all keyed to the replaced tree.
         searchIndexService.invalidate()
         kinds.snapshotDidChange(snapshot)
+        ages.snapshotDidChange(snapshot)
         search.snapshotDidChange()
 
         guard let snapshot else { return }

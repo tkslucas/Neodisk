@@ -16,9 +16,9 @@
 "Loading the previous scan…" = "前回のスキャンを読み込み中…";
 "Hide changes since the previous scan" = "前回のスキャン以降の変更を隠す";
 "Show what grew since the previous scan" = "前回のスキャン以降に増えた項目を表示";
-"File Kinds" = "ファイルの種類";
-"Hide file kind statistics" = "ファイルの種類の統計を隠す";
-"Show file kind statistics" = "ファイルの種類の統計を表示";
+"Statistics" = "統計";
+"Hide the statistics panel" = "統計パネルを隠す";
+"Show the statistics panel" = "統計パネルを表示";
 "Settings" = "設定";
 "Open Neodisk settings" = "Neodiskの設定を開く";
 
@@ -142,6 +142,21 @@
 "%@ files" = "%@個のファイル";
 "Largest %@ of %@ — search to narrow" = "%2$@件中サイズの大きい上位%1$@件 — 絞り込むには検索";
 
+/* MARK: - Statistics panel tabs & age buckets */
+"Kinds" = "種類";
+"Age" = "更新日";
+"Group by" = "グループ化";
+"Last Modified" = "最終更新日";
+"Today" = "今日";
+"Past Week" = "過去1週間";
+"Past Month" = "過去1か月";
+"Past 3 Months" = "過去3か月";
+"Past Year" = "過去1年";
+"Older" = "それ以前";
+"No Date" = "日付なし";
+"Show every file modified in this period" = "この期間に変更されたすべてのファイルを表示";
+"Back to age groups" = "期間の一覧に戻る";
+
 /* MARK: - File kind category names */
 "Videos" = "動画";
 "Images" = "画像";
@@ -184,8 +199,8 @@
 "Find" = "検索";
 "Show Locations Sidebar" = "ロケーションサイドバーを表示";
 "Hide Locations Sidebar" = "ロケーションサイドバーを隠す";
-"Show File Kinds" = "ファイルの種類を表示";
-"Hide File Kinds" = "ファイルの種類を隠す";
+"Show Statistics" = "統計を表示";
+"Hide Statistics" = "統計を隠す";
 
 /* MARK: - System dialogs & treemap */
 "Scan" = "スキャン";

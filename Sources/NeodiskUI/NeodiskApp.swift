@@ -87,7 +87,7 @@ public struct NeodiskApp: App {
                     model.showKindStats.toggle()
                 } label: {
                     Label(
-                        model.showKindStats ? "Hide File Kinds" : "Show File Kinds",
+                        model.showKindStats ? "Hide Statistics" : "Show Statistics",
                         systemImage: "sidebar.right"
                     )
                 }

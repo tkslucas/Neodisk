@@ -16,9 +16,9 @@
 "Loading the previous scan…" = "Vorheriger Scan wird geladen …";
 "Hide changes since the previous scan" = "Änderungen seit dem letzten Scan ausblenden";
 "Show what grew since the previous scan" = "Zeigen, was seit dem letzten Scan gewachsen ist";
-"File Kinds" = "Dateiarten";
-"Hide file kind statistics" = "Statistik der Dateiarten ausblenden";
-"Show file kind statistics" = "Statistik der Dateiarten anzeigen";
+"Statistics" = "Statistiken";
+"Hide the statistics panel" = "Statistikbereich ausblenden";
+"Show the statistics panel" = "Statistikbereich anzeigen";
 "Settings" = "Einstellungen";
 "Open Neodisk settings" = "Neodisk-Einstellungen öffnen";
 
@@ -142,6 +142,21 @@
 "%@ files" = "%@ Dateien";
 "Largest %@ of %@ — search to narrow" = "Größte %@ von %@ — suche, um einzugrenzen";
 
+/* MARK: - Statistics panel tabs & age buckets */
+"Kinds" = "Arten";
+"Age" = "Alter";
+"Group by" = "Gruppieren nach";
+"Last Modified" = "Zuletzt geändert";
+"Today" = "Heute";
+"Past Week" = "Letzte Woche";
+"Past Month" = "Letzter Monat";
+"Past 3 Months" = "Letzte 3 Monate";
+"Past Year" = "Letztes Jahr";
+"Older" = "Älter";
+"No Date" = "Kein Datum";
+"Show every file modified in this period" = "Alle in diesem Zeitraum geänderten Dateien anzeigen";
+"Back to age groups" = "Zurück zu den Zeiträumen";
+
 /* MARK: - File kind category names */
 "Videos" = "Videos";
 "Images" = "Bilder";
@@ -184,8 +199,8 @@
 "Find" = "Suchen";
 "Show Locations Sidebar" = "Seitenleiste mit Orten anzeigen";
 "Hide Locations Sidebar" = "Seitenleiste mit Orten ausblenden";
-"Show File Kinds" = "Dateiarten anzeigen";
-"Hide File Kinds" = "Dateiarten ausblenden";
+"Show Statistics" = "Statistiken anzeigen";
+"Hide Statistics" = "Statistiken ausblenden";
 
 /* MARK: - System dialogs & treemap */
 "Scan" = "Scan";

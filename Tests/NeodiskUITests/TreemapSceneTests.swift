@@ -288,7 +288,7 @@ import NeodiskKit
         )
         let highlighted = TreemapScene.build(
             store: store, rootID: "/scan", size: size, catalog: catalog,
-            highlightedKindID: "mov"
+            highlight: .kind("mov")
         )
 
         func rgb(_ scene: TreemapScene, _ id: String) throws -> SIMD3<Float> {
@@ -340,7 +340,7 @@ import NeodiskKit
         func aggregateRGB(highlight: String?) throws -> SIMD3<Float> {
             let scene = TreemapScene.build(
                 store: store, rootID: "/agg", size: size, catalog: catalog,
-                highlightedKindID: highlight
+                highlight: highlight.map { .kind($0) }
             )
             return try #require(scene.cells.first { $0.aggregate != nil }).rgb
         }

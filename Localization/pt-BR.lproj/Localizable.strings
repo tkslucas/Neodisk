@@ -17,9 +17,9 @@
 "Loading the previous scan…" = "Carregando a análise anterior…";
 "Hide changes since the previous scan" = "Ocultar alterações desde a análise anterior";
 "Show what grew since the previous scan" = "Mostrar o que cresceu desde a análise anterior";
-"File Kinds" = "Tipos de Arquivo";
-"Hide file kind statistics" = "Ocultar estatísticas de tipos de arquivo";
-"Show file kind statistics" = "Mostrar estatísticas de tipos de arquivo";
+"Statistics" = "Estatísticas";
+"Hide the statistics panel" = "Ocultar o painel de estatísticas";
+"Show the statistics panel" = "Mostrar o painel de estatísticas";
 "Settings" = "Ajustes";
 "Open Neodisk settings" = "Abrir os ajustes do Neodisk";
 
@@ -143,6 +143,21 @@
 "%@ files" = "%@ arquivos";
 "Largest %@ of %@ — search to narrow" = "Maiores %@ de %@ — busque para reduzir";
 
+/* MARK: - Statistics panel tabs & age buckets */
+"Kinds" = "Tipos";
+"Age" = "Idade";
+"Group by" = "Agrupar por";
+"Last Modified" = "Última modificação";
+"Today" = "Hoje";
+"Past Week" = "Última semana";
+"Past Month" = "Último mês";
+"Past 3 Months" = "Últimos 3 meses";
+"Past Year" = "Último ano";
+"Older" = "Mais antigos";
+"No Date" = "Sem data";
+"Show every file modified in this period" = "Mostrar todos os arquivos modificados neste período";
+"Back to age groups" = "Voltar aos períodos";
+
 /* MARK: - File kind category names */
 "Videos" = "Vídeos";
 "Images" = "Imagens";
@@ -185,8 +200,8 @@
 "Find" = "Buscar";
 "Show Locations Sidebar" = "Mostrar Barra Lateral de Locais";
 "Hide Locations Sidebar" = "Ocultar Barra Lateral de Locais";
-"Show File Kinds" = "Mostrar Tipos de Arquivo";
-"Hide File Kinds" = "Ocultar Tipos de Arquivo";
+"Show Statistics" = "Mostrar Estatísticas";
+"Hide Statistics" = "Ocultar Estatísticas";
 
 /* MARK: - System dialogs & treemap */
 "Scan" = "Analisar";

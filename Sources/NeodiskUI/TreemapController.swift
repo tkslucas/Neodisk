@@ -26,7 +26,8 @@ final class TreemapController {
         var snapshotID: UUID?
         var rootID: String?
         var catalogID: UUID?
-        var highlightedKindID: String?
+        var colorMode: TreemapColorMode = .kind
+        var highlight: TreemapHighlight?
         var expandedAggregateIDs: Set<String> = []
         var freeSpaceBytes: Int64?
     }
@@ -56,7 +57,8 @@ final class TreemapController {
         snapshot: ScanSnapshot?,
         rootID: String?,
         catalog: FileKindCatalog,
-        highlightedKindID: String? = nil,
+        colorMode: TreemapColorMode = .kind,
+        highlight: TreemapHighlight? = nil,
         expandedAggregateIDs: Set<String>,
         freeSpaceBytes: Int64? = nil
     ) {
@@ -64,7 +66,8 @@ final class TreemapController {
             snapshotID: snapshot?.id,
             rootID: rootID,
             catalogID: catalog.buildID,
-            highlightedKindID: highlightedKindID,
+            colorMode: colorMode,
+            highlight: highlight,
             expandedAggregateIDs: expandedAggregateIDs,
             freeSpaceBytes: freeSpaceBytes
         )
@@ -284,7 +287,8 @@ final class TreemapController {
         let size = viewSize
         let viewport = viewport
         let catalog = catalog
-        let highlightedKindID = inputs.highlightedKindID
+        let colorMode = inputs.colorMode
+        let highlight = inputs.highlight
         let expandedAggregateIDs = inputs.expandedAggregateIDs
         let freeSpaceBytes = inputs.freeSpaceBytes
         let scale = view?.window?.backingScaleFactor ?? 2
@@ -293,7 +297,8 @@ final class TreemapController {
                 () -> (TreemapScene, CGImage?) in
                 let scene = TreemapScene.build(
                     store: store, rootID: rootID, size: size, catalog: catalog,
-                    highlightedKindID: highlightedKindID,
+                    colorMode: colorMode,
+                    highlight: highlight,
                     expandedAggregateIDs: expandedAggregateIDs,
                     viewport: viewport,
                     freeSpaceBytes: freeSpaceBytes

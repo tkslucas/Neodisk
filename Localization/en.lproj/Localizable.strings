@@ -16,9 +16,9 @@
 "Loading the previous scan…" = "Loading the previous scan…";
 "Hide changes since the previous scan" = "Hide changes since the previous scan";
 "Show what grew since the previous scan" = "Show what grew since the previous scan";
-"File Kinds" = "File Kinds";
-"Hide file kind statistics" = "Hide file kind statistics";
-"Show file kind statistics" = "Show file kind statistics";
+"Statistics" = "Statistics";
+"Hide the statistics panel" = "Hide the statistics panel";
+"Show the statistics panel" = "Show the statistics panel";
 "Settings" = "Settings";
 "Open Neodisk settings" = "Open Neodisk settings";
 
@@ -142,6 +142,21 @@
 "%@ files" = "%@ files";
 "Largest %@ of %@ — search to narrow" = "Largest %@ of %@ — search to narrow";
 
+/* MARK: - Statistics panel tabs & age buckets */
+"Kinds" = "Kinds";
+"Age" = "Age";
+"Group by" = "Group by";
+"Last Modified" = "Last Modified";
+"Today" = "Today";
+"Past Week" = "Past Week";
+"Past Month" = "Past Month";
+"Past 3 Months" = "Past 3 Months";
+"Past Year" = "Past Year";
+"Older" = "Older";
+"No Date" = "No Date";
+"Show every file modified in this period" = "Show every file modified in this period";
+"Back to age groups" = "Back to age groups";
+
 /* MARK: - File kind category names */
 "Videos" = "Videos";
 "Images" = "Images";
@@ -184,8 +199,8 @@
 "Find" = "Find";
 "Show Locations Sidebar" = "Show Locations Sidebar";
 "Hide Locations Sidebar" = "Hide Locations Sidebar";
-"Show File Kinds" = "Show File Kinds";
-"Hide File Kinds" = "Hide File Kinds";
+"Show Statistics" = "Show Statistics";
+"Hide Statistics" = "Hide Statistics";
 
 /* MARK: - System dialogs & treemap */
 "Scan" = "Scan";

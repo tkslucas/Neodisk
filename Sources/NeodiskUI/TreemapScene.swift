@@ -12,6 +12,23 @@ import Foundation
 import TreemapKit
 import NeodiskKit
 
+/// What a treemap cell's color means: the node's file kind (the default) or
+/// its modification-age bucket, measured against the snapshot's scan date.
+enum TreemapColorMode: Equatable, Sendable {
+    case kind
+    case age(referenceDate: Date)
+}
+
+/// A subset of the map lit at full color while everything else dims: one
+/// kind (the kind drill-in), one age bucket (the Age tab drill-in, valid
+/// only with the matching `.age` color mode), or an explicit set of node
+/// IDs (duplicate groups).
+enum TreemapHighlight: Equatable, Sendable {
+    case kind(String)
+    case ageBucket(AgeBucket)
+    case nodes(Set<String>)
+}
+
 struct TreemapScene: Sendable {
     /// A name drawn on top of a cell large enough to carry one.
     struct CellLabel: Sendable, Identifiable {
@@ -105,7 +122,8 @@ struct TreemapScene: Sendable {
         rootID: String,
         size: CGSize,
         catalog: FileKindCatalog,
-        highlightedKindID: String? = nil,
+        colorMode: TreemapColorMode = .kind,
+        highlight: TreemapHighlight? = nil,
         expandedAggregateIDs: Set<String> = [],
         viewport: TreemapViewport = .identity,
         freeSpaceBytes: Int64? = nil
@@ -179,17 +197,17 @@ struct TreemapScene: Sendable {
                         let itemCount = tail.reduce(0) {
                             $0 + ($1.isDirectory ? max($1.descendantFileCount, 1) : 1)
                         }
-                        // With a kind highlight active, an aggregate stays lit
+                        // With a highlight active, an aggregate stays lit
                         // only when a directly merged node matches — the tail
                         // is already in hand, so this check is cheap. Matches
                         // hidden deeper inside merged subdirectories are not
                         // searched for; those aggregates dim.
                         var aggregateRGB = FileKindCatalog.otherRGB
-                        if let highlightedKindID {
-                            let matches = tail.contains {
-                                FileKindClassifier.kindID(for: $0, mode: catalog.mode) == highlightedKindID
+                        if let highlight {
+                            let lit = tail.contains {
+                                matches($0, highlight: highlight, colorMode: colorMode, catalog: catalog)
                             }
-                            if !matches { aggregateRGB = dimmedRGB(aggregateRGB) }
+                            if !lit { aggregateRGB = dimmedRGB(aggregateRGB) }
                         }
                         cells.append(TreemapCell(
                             nodeID: node.id,
@@ -208,14 +226,15 @@ struct TreemapScene: Sendable {
             }
 
             let isFreeSpace = node.id == freeSpaceNode?.id
-            var rgb = isFreeSpace ? Self.freeSpaceRGB : catalog.rgb(for: node)
-            if let highlightedKindID {
-                // Plain directories classify as "folder" (never a stats
-                // kind), so undivided-directory cells always dim — even if
-                // they contain matching files too deep to lay out.
-                if FileKindClassifier.kindID(for: node, mode: catalog.mode) != highlightedKindID {
-                    rgb = dimmedRGB(rgb)
-                }
+            var rgb = isFreeSpace
+                ? Self.freeSpaceRGB
+                : baseRGB(for: node, colorMode: colorMode, catalog: catalog)
+            // Plain directories never match a highlight (they are neither a
+            // stats kind nor a countable age node), so undivided-directory
+            // cells always dim — even when they contain matching files too
+            // deep to lay out.
+            if let highlight, !matches(node, highlight: highlight, colorMode: colorMode, catalog: catalog) {
+                rgb = dimmedRGB(rgb)
             }
             cells.append(TreemapCell(
                 nodeID: node.id,
@@ -243,6 +262,47 @@ struct TreemapScene: Sendable {
             expandedAggregateIDs: expandedAggregateIDs,
             freeSpaceNode: freeSpaceNode
         )
+    }
+
+    /// A node's full-color cell fill under a color mode: kind palette color,
+    /// or its age bucket's ramp color. Plain directories keep their neutral
+    /// fill in both modes (a folder's own mtime says little about its
+    /// contents).
+    private nonisolated static func baseRGB(
+        for node: FileNodeRecord,
+        colorMode: TreemapColorMode,
+        catalog: FileKindCatalog
+    ) -> SIMD3<Float> {
+        switch colorMode {
+        case .kind:
+            return catalog.rgb(for: node)
+        case .age(let referenceDate):
+            guard FileKindClassifier.isKindCountable(node) else {
+                return FileKindCatalog.directoryRGB
+            }
+            return AgeBucket.bucket(for: node.lastModified, reference: referenceDate).rgb
+        }
+    }
+
+    /// Whether a node stays at full color under an active highlight. An age
+    /// bucket highlight needs the `.age` color mode's reference date; with
+    /// any other mode it matches nothing.
+    private nonisolated static func matches(
+        _ node: FileNodeRecord,
+        highlight: TreemapHighlight,
+        colorMode: TreemapColorMode,
+        catalog: FileKindCatalog
+    ) -> Bool {
+        switch highlight {
+        case .kind(let kindID):
+            return FileKindClassifier.kindID(for: node, mode: catalog.mode) == kindID
+        case .ageBucket(let bucket):
+            guard case .age(let referenceDate) = colorMode,
+                  FileKindClassifier.isKindCountable(node) else { return false }
+            return AgeBucket.bucket(for: node.lastModified, reference: referenceDate) == bucket
+        case .nodes(let ids):
+            return ids.contains(node.id)
+        }
     }
 
     private nonisolated static func makeFreeSpaceNode(

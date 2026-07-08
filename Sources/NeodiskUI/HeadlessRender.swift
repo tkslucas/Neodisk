@@ -75,11 +75,17 @@ public enum HeadlessRender {
 
                 let store = snapshot.treeStore
                 let catalog = FileKindCatalog.build(from: store)
+                let environment = ProcessInfo.processInfo.environment
+                // NEODISK_RENDER_COLOR_MODE=age renders the modification-age
+                // heatmap instead of kind colors.
+                let colorMode: TreemapColorMode = environment["NEODISK_RENDER_COLOR_MODE"] == "age"
+                    ? .age(referenceDate: snapshot.finishedAt ?? snapshot.startedAt)
+                    : .kind
                 // NEODISK_RENDER_HIGHLIGHT_KIND=<kindID> (types mode: an
                 // extension like "swift") exercises the kind-highlight
                 // dimming in headless renders.
-                let highlightedKindID = ProcessInfo.processInfo
-                    .environment["NEODISK_RENDER_HIGHLIGHT_KIND"]
+                let highlight = environment["NEODISK_RENDER_HIGHLIGHT_KIND"]
+                    .map { TreemapHighlight.kind($0) }
                 let viewport = TreemapViewport(
                     scale: zoomScale,
                     origin: CGPoint(
@@ -89,7 +95,8 @@ public enum HeadlessRender {
                 )
                 let scene = TreemapScene.build(
                     store: store, rootID: store.root.id, size: size, catalog: catalog,
-                    highlightedKindID: highlightedKindID,
+                    colorMode: colorMode,
+                    highlight: highlight,
                     viewport: viewport
                 )
                 guard let image = CushionTreemapRenderer.render(cells: scene.cells, bounds: scene.renderBounds, scale: 2) else {

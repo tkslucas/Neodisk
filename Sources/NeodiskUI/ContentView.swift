@@ -145,10 +145,10 @@ public struct ContentView: View {
             Button {
                 model.showKindStats.toggle()
             } label: {
-                Label("File Kinds", systemImage: "sidebar.right")
+                Label("Statistics", systemImage: "sidebar.right")
             }
             .disabled(model.coordinator.snapshot == nil)
-            .help(model.showKindStats ? "Hide file kind statistics" : "Show file kind statistics")
+            .help(model.showKindStats ? "Hide the statistics panel" : "Show the statistics panel")
 
             SettingsLink {
                 Label("Settings", systemImage: "gearshape")
@@ -332,7 +332,7 @@ private struct WorkspaceView: View {
 
                     if model.showKindStats {
                         PaneSplitter(width: $kindStatsPaneWidth, range: 200...340, edge: .trailing)
-                        KindStatsPane(model: model)
+                        AnalysisPane(model: model)
                             .frame(width: kindStatsPaneWidth)
                             .transition(.move(edge: .trailing))
                     }
@@ -542,7 +542,7 @@ private struct StatusBar: View {
                     .monospacedDigit()
             } else if let node = model.hoveredNode ?? model.selectedNode {
                 RoundedRectangle(cornerRadius: 2)
-                    .fill(model.kinds.catalog.color(for: node))
+                    .fill(model.displayColor(for: node))
                     .frame(width: 10, height: 10)
                 Text(node.url.path)
                     .lineLimit(1)

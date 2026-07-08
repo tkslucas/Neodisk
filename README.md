@@ -16,6 +16,12 @@
   <img src="https://img.shields.io/badge/license-GPLv3-lightgrey" alt="License: GPLv3">
 </p>
 
+<p align="center">
+  <img src="screenshots/diff-sonoma.jpeg" width="32%" alt="Changes view: files that grew, shrank, appeared, or were deleted since the last scan">
+  <img src="screenshots/hero-tahoe.jpeg" width="32%" alt="Cushion treemap of a full volume with the outline list and file kinds">
+  <img src="screenshots/kind-sequoia.jpeg" width="32%" alt="Filtering by file kind highlights just those files in the treemap">
+</p>
+
 ## Download
 
 [**Download Neodisk.dmg**](https://github.com/tkslucas/Neodisk/releases/latest/download/Neodisk.dmg)

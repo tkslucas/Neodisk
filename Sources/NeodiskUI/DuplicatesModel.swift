@@ -129,14 +129,18 @@ final class DuplicatesModel {
         openGroup = group
     }
 
-    /// Drills into the group a selected node belongs to, if any — clicking
-    /// a duplicate on the treemap behaves like clicking its group row:
-    /// the copies light up and list in the panel. No-op for non-duplicates,
-    /// so plain map navigation never yanks the panel around.
-    func revealGroup(containing nodeID: String) {
-        guard case .finished(let results) = phase,
-              let index = groupIndexByNodeID[nodeID] else { return }
-        openGroup = results.groups[index]
+    /// Routes a selection (treemap or outline click) into the drill-in:
+    /// selecting a duplicate opens its group — same as clicking the group
+    /// row; selecting anything else while a group is open steps back out to
+    /// the all-duplicates view, so clicking a dimmed cell is the intuitive
+    /// "back". With no group open, non-duplicate selections change nothing.
+    func handleSelection(of nodeID: String) {
+        guard case .finished(let results) = phase else { return }
+        if let index = groupIndexByNodeID[nodeID] {
+            openGroup = results.groups[index]
+        } else if openGroup != nil {
+            openGroup = nil
+        }
     }
 
     func closeGroup() {

@@ -118,12 +118,13 @@ enum FuzzyMatcher {
     }
 
     /// The `limit` best-scoring entries for a query, plus how many matched
-    /// in total. Ties break to shorter names, then larger files (between
-    /// two identically-named items, the disk analyzer cares about the fat
-    /// one), then stable by ID. An empty query returns the first `limit`
-    /// entries in their given order. `isIncluded` scopes the match to a
-    /// slice of a shared index (outline search skips the root; the kind
-    /// drill-in matches one kind) without copying entries.
+    /// in total — the outline search's ranking, where the best name match
+    /// belongs on top. Ties break to shorter names, then larger files
+    /// (between two identically-named items, the disk analyzer cares about
+    /// the fat one), then stable by ID. An empty query returns the first
+    /// `limit` entries in their given order. `isIncluded` scopes the match
+    /// to a slice of a shared index (outline search skips the root) without
+    /// copying entries.
     ///
     /// Whole-scan scoring of a million names finishes in a few hundred
     /// milliseconds; callers run it off the main actor behind a debounce
@@ -171,6 +172,32 @@ enum FuzzyMatcher {
         }
 
         return (matches.prefix(limit).map { entries[$0.index].id }, matches.count)
+    }
+
+    /// The first `limit` entries matching the query, in the entries' given
+    /// order, plus how many matched in total — the statistics file lists'
+    /// filter. Their browse order is allocated-size descending, and typing
+    /// must narrow that ranking, not replace it with match-quality order
+    /// (filtering a size list for "mov" should keep the biggest movie
+    /// first). An empty query matches everything.
+    static func matchesInEntryOrder(
+        query: String,
+        entries: [FileSearchEntry],
+        limit: Int
+    ) -> (ids: [String], totalMatches: Int) {
+        let queryBytes = Array(query.lowercased().utf8)
+        var ids: [String] = []
+        var total = 0
+        for entry in entries {
+            guard Self.score(queryBytes: queryBytes, lowercasedName: entry.lowercasedName) != nil else {
+                continue
+            }
+            total += 1
+            if ids.count < limit {
+                ids.append(entry.id)
+            }
+        }
+        return (ids, total)
     }
 }
 

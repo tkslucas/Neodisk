@@ -195,11 +195,13 @@ final class KindStatsModel {
             fileListTotalMatches = list.entries.count
             return
         }
-        let limit = SearchModel.resultLimit
+        let limit = Self.fileBrowseLimit
         fileListFilterDebouncer.schedule { [weak self] in
             let entries = list.entries
             let results = await Task.detached(priority: .userInitiated) {
-                FuzzyMatcher.topMatches(query: query, entries: entries, limit: limit)
+                // Order-preserving on purpose: this list ranks by size, and
+                // the filter narrows that ranking.
+                FuzzyMatcher.matchesInEntryOrder(query: query, entries: entries, limit: limit)
             }.value
             guard let self, !Task.isCancelled,
                   self.fileListFilterText.trimmingCharacters(in: .whitespaces) == query else {

@@ -13,8 +13,9 @@ import NeodiskKit
 
 /// Every node of a displayed snapshot in searchable form, classified for
 /// both kind display modes and sorted by allocated size descending — the
-/// kind drill-in's browse order comes straight from a filter over it, and
-/// fuzzy matching doesn't care about entry order.
+/// statistics file lists' browse order comes straight from a filter over
+/// it, and their name filters preserve that order (see
+/// FuzzyMatcher.matchesInEntryOrder).
 struct SnapshotSearchIndex: Sendable {
     let snapshotID: UUID
     /// The tree root, which the outline search excludes from results.

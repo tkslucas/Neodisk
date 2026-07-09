@@ -109,11 +109,13 @@ final class LargestFilesModel {
             totalMatches = entries.count
             return
         }
-        let limit = SearchModel.resultLimit
+        let limit = Self.browseLimit
         let entries = entries
         filterDebouncer.schedule { [weak self] in
             let results = await Task.detached(priority: .userInitiated) {
-                FuzzyMatcher.topMatches(query: query, entries: entries, limit: limit)
+                // Order-preserving on purpose: this list ranks by size, and
+                // the filter narrows that ranking.
+                FuzzyMatcher.matchesInEntryOrder(query: query, entries: entries, limit: limit)
             }.value
             guard let self, !Task.isCancelled,
                   self.filterText.trimmingCharacters(in: .whitespaces) == query else {

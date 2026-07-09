@@ -55,6 +55,27 @@ import Testing
         #expect(ids == ["/b/notes.txt", "/a/notes.txt"])
     }
 
+    @Test func testMatchesInEntryOrderKeepsGivenOrderAndCounts() {
+        // Size-descending, like the statistics file lists' entries.
+        let entries = [
+            FileSearchEntry(id: "/huge-movie.mov", lowercasedName: "huge-movie.mov", allocatedSize: 900),
+            FileSearchEntry(id: "/notes.txt", lowercasedName: "notes.txt", allocatedSize: 500),
+            FileSearchEntry(id: "/movie.mov", lowercasedName: "movie.mov", allocatedSize: 100),
+            FileSearchEntry(id: "/mov-tiny.mov", lowercasedName: "mov-tiny.mov", allocatedSize: 1),
+        ]
+
+        let (ids, total) = FuzzyMatcher.matchesInEntryOrder(query: "mov", entries: entries, limit: 2)
+
+        // "movie.mov" out-scores "huge-movie.mov" on match quality, but the
+        // size order must survive filtering; the limit trims the tail only.
+        #expect(total == 3)
+        #expect(ids == ["/huge-movie.mov", "/movie.mov"])
+
+        let (allIDs, allTotal) = FuzzyMatcher.matchesInEntryOrder(query: "", entries: entries, limit: 10)
+        #expect(allTotal == 4)
+        #expect(allIDs.first == "/huge-movie.mov")
+    }
+
     @Test func testEmptyQueryPreservesEntryOrder() {
         let entries = [
             FileSearchEntry(id: "/big", lowercasedName: "big", allocatedSize: 100),

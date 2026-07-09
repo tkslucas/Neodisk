@@ -71,7 +71,7 @@ import NeodiskKit
         let defaultsSuiteName = "NeodiskKeyboardNavTests-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: defaultsSuiteName))
         let model = NeodiskViewModel(
-            coordinator: ScanCoordinator(),
+            coordinator: ScanCoordinator(scanService: HeldScanService()),
             snapshotCache: cache,
             pinnedFolderStore: PinnedFolderStore(defaults: defaults)
         )
@@ -220,16 +220,24 @@ import NeodiskKit
         #expect(model.zoomRootID == fixture.area.id)
     }
 
-    @Test func testDrillIntoSummarizedFolderIsRejected() throws {
+    @Test func testDrillIntoSummarizedFolderTriggersExpand() async throws {
         let fixture = try makeFixture()
         defer { fixture.tearDown() }
         let model = fixture.model
 
-        // Re-rooting into a folder with no children in the store would render
-        // a blank map — reject it instead of drilling into a dead end.
+        // ⌘↓ on a summarized folder can't drill into a blank subtree, so it
+        // expands the folder's real contents instead. The map root is left
+        // alone; the folder populates in place for a follow-up drill.
         model.select(fixture.summarized.id)
-        #expect(!model.drillIntoSelection())
+        #expect(model.drillIntoSelection())
         #expect(model.zoomRootID == nil)
+
+        var waited = 0
+        while model.coordinator.expandingNodeID != fixture.summarized.id, waited < 200 {
+            try await Task.sleep(for: .milliseconds(5))
+            waited += 1
+        }
+        #expect(model.coordinator.expandingNodeID == fixture.summarized.id)
     }
 
     @Test func testDrillOutReRootsUpThenRejectsAtRoot() throws {
@@ -241,5 +249,20 @@ import NeodiskKit
         #expect(model.drillOut())
         #expect(model.zoomRootID == nil)          // parent of `sub` is the scan root
         #expect(!model.drillOut())                // already at the root
+    }
+}
+
+/// A scan service that accepts a scan and holds its stream open forever, so a
+/// triggered expansion stays observably in-flight without touching the disk.
+private final class HeldScanService: ScanEventStreaming, @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuations: [AsyncThrowingStream<ScanProgressEvent, Error>.Continuation] = []
+
+    func scan(target: ScanTarget, options: ScanOptions) -> AsyncThrowingStream<ScanProgressEvent, Error> {
+        AsyncThrowingStream { continuation in
+            lock.lock()
+            continuations.append(continuation)
+            lock.unlock()
+        }
     }
 }

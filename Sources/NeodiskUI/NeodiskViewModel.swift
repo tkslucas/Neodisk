@@ -723,11 +723,20 @@ final class NeodiskViewModel {
         // A selected directory is drilled into; a selected file drills into
         // its containing folder.
         let targetDir = node.isDirectory ? node : store.parent(of: node.id)
-        guard let dir = targetDir, dir.isDirectory, dir.id != effectiveRootID,
-              // Auto-summarized folders and packages have a size but no
-              // children in the store; re-rooting there renders a blank map.
-              // Only drill into a folder that has something to show.
-              store.children(of: dir.id).contains(where: { $0.allocatedSize > 0 }) else {
+        guard let dir = targetDir, dir.isDirectory, dir.id != effectiveRootID else {
+            return false
+        }
+        // A summarized folder has no children in the store yet: expand its
+        // real contents (async scan + splice) instead of drilling into a blank
+        // subtree. It populates in place; a second ⌘↓ then drills in normally.
+        if dir.isAutoSummarized {
+            guard canRefreshSubtree else { return false }
+            expandSummarizedNode(dir)
+            return true
+        }
+        // Other childless folders (empty dirs, opaque packages) have nothing
+        // to render — don't re-root into a blank map.
+        guard store.children(of: dir.id).contains(where: { $0.allocatedSize > 0 }) else {
             return false
         }
         zoomRootID = dir.id == store.root.id ? nil : dir.id

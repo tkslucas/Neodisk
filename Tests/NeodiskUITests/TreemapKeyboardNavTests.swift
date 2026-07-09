@@ -166,6 +166,85 @@ import NeodiskKit
         #expect(model.zoomRootID == fixture.sub.id)
     }
 
+    @Test func testBreadcrumbDrillInToDescendantKeepingSelection() throws {
+        let fixture = try makeFixture()
+        defer { fixture.tearDown() }
+        let model = fixture.model
+
+        // At the full map with a file selected, clicking the `sub` crumb (an
+        // ancestor of the selection, below the root) drills IN to it and leaves
+        // the deeper selection alone — it's still inside the new root.
+        model.select(fixture.big.id)
+        #expect(model.drillIn(to: fixture.sub.id))
+        #expect(model.zoomRootID == fixture.sub.id)
+        #expect(model.selectedNodeID == fixture.big.id)
+    }
+
+    @Test func testBreadcrumbDrillInToSelectedFolderLandsOnLargestChild() throws {
+        let fixture = try makeFixture()
+        defer { fixture.tearDown() }
+        let model = fixture.model
+
+        // Clicking the crumb that IS the selection (the deepest crumb, a folder)
+        // re-roots into it; the selection would otherwise equal the root, so it
+        // lands on the largest child — matching ⌘↓.
+        model.select(fixture.sub.id)
+        #expect(model.drillIn(to: fixture.sub.id))
+        #expect(model.zoomRootID == fixture.sub.id)
+        #expect(model.selectedNodeID == fixture.big.id)
+    }
+
+    @Test func testBreadcrumbDrillInFromDeeperRootKeepingSelection() throws {
+        let fixture = try makeFixture()
+        defer { fixture.tearDown() }
+        let model = fixture.model
+
+        // Already drilled into `area` with a file selected; clicking the `left`
+        // crumb narrows further to it and keeps the selection.
+        model.zoomRootID = fixture.area.id
+        model.select(fixture.leftFile.id)
+        #expect(model.drillIn(to: fixture.left.id))
+        #expect(model.zoomRootID == fixture.left.id)
+        #expect(model.selectedNodeID == fixture.leftFile.id)
+    }
+
+    @Test func testBreadcrumbDrillInRejectsAncestorSelfAndFiles() throws {
+        let fixture = try makeFixture()
+        defer { fixture.tearDown() }
+        let model = fixture.model
+
+        // Only descendant folders are in targets. The root itself, an ancestor
+        // of the current root, a file, and the current root are all rejected so
+        // the caller falls back to selecting.
+        #expect(!model.drillIn(to: fixture.root.id))   // the current root
+        #expect(model.zoomRootID == nil)
+        #expect(!model.drillIn(to: fixture.big.id))    // a file
+        #expect(model.zoomRootID == nil)
+
+        model.zoomRootID = fixture.sub.id
+        #expect(!model.drillIn(to: fixture.sub.id))    // already the root
+        #expect(!model.drillIn(to: fixture.root.id))   // above the root (drill OUT)
+        #expect(model.zoomRootID == fixture.sub.id)
+    }
+
+    @Test func testBreadcrumbDrillInToSummarizedFolderTriggersExpand() async throws {
+        let fixture = try makeFixture()
+        defer { fixture.tearDown() }
+        let model = fixture.model
+
+        // A summarized folder crumb can't re-root into a blank subtree, so the
+        // click expands its real contents instead — same as ⌘↓.
+        #expect(model.drillIn(to: fixture.summarized.id))
+        #expect(model.zoomRootID == nil)
+
+        var waited = 0
+        while model.coordinator.expandingNodeID != fixture.summarized.id, waited < 200 {
+            try await Task.sleep(for: .milliseconds(5))
+            waited += 1
+        }
+        #expect(model.coordinator.expandingNodeID == fixture.summarized.id)
+    }
+
     @Test func testSelectingOutsideDrillWidensToCommonAncestor() throws {
         let fixture = try makeFixture()
         defer { fixture.tearDown() }

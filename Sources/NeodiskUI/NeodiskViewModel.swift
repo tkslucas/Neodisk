@@ -798,6 +798,44 @@ final class NeodiskViewModel {
         return true
     }
 
+    /// Breadcrumb navigation: re-root the treemap IN to a descendant folder —
+    /// the symmetric partner of `reRoot`. The target must sit strictly below
+    /// the current map root (a crumb between the root and the selection). The
+    /// selection is preserved when it stays inside the new root; otherwise it
+    /// lands on the folder's largest child, matching ⌘↓. Returns false when the
+    /// crumb isn't an in target, so the caller can fall back to selecting.
+    @discardableResult
+    func drillIn(to nodeID: String) -> Bool {
+        guard let store, let node = store.node(id: nodeID), node.isDirectory,
+              let effectiveRootID, node.id != effectiveRootID,
+              store.isAncestor(effectiveRootID, of: node.id) else { return false }
+        // A summarized folder has no children in the store yet: expand its real
+        // contents instead of re-rooting into a blank subtree (mirrors ⌘↓).
+        if node.isAutoSummarized {
+            guard canRefreshSubtree else { return false }
+            expandSummarizedNode(node)
+            return true
+        }
+        // Childless folders (empty dirs, opaque packages) have nothing to render.
+        guard store.children(of: node.id).contains(where: { $0.allocatedSize > 0 }) else {
+            return false
+        }
+        zoomRootID = node.id == store.root.id ? nil : node.id
+        // Keep the selection if it stays a descendant of the new root; otherwise
+        // (the crumb was the selection itself, or nothing is selected) land on
+        // the largest child so the outline and arrow keys stay oriented.
+        let selectionStaysInside = selectedNodeID.map {
+            $0 != node.id && store.isAncestor(node.id, of: $0)
+        } ?? false
+        if !selectionStaysInside {
+            let children = store.children(of: node.id).filter { $0.allocatedSize > 0 }
+            if let largest = children.max(by: { $0.allocatedSize < $1.allocatedSize }) {
+                select(largest.id)
+            }
+        }
+        return true
+    }
+
     /// Keyboard drill-out (⌘↑): re-root the treemap one level up. Returns
     /// false (caller beeps) when already at the scan root.
     @discardableResult

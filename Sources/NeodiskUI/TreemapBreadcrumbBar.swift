@@ -3,11 +3,11 @@
 //  Neodisk
 //
 //  Finder-style path bar above the treemap. Shows the ancestry of the current
-//  selection (scan root → selected node). Clicking a crumb selects that
-//  ancestor, which highlights it on the map and expands it in the outline via
-//  model.select(_:). With nothing selected it shows just the scan root, so the
-//  bar is a persistent orientation strip rather than one that appears and
-//  disappears.
+//  selection (scan root → selected node). Clicking a crumb re-roots the treemap
+//  to that folder — out to an ancestor above the current root, or in to a folder
+//  below it — falling back to selecting the node when it isn't a drill target.
+//  With nothing selected it shows just the scan root, so the bar is a persistent
+//  orientation strip rather than one that appears and disappears.
 //
 
 import SwiftUI
@@ -49,11 +49,11 @@ struct TreemapBreadcrumbBar: View {
                             // the drill depth is legible (only when drilled in).
                             isDrillRoot: model.zoomRootID != nil && node.id == model.effectiveRootID
                         ) {
-                            // Clicking a folder above the current map root
-                            // drills back out to it (drilling in stays ⌘↓).
-                            // Otherwise: the root crumb clears the selection,
-                            // any other crumb selects that node.
-                            if !model.reRoot(to: node.id) {
+                            // A crumb above the current map root drills back out
+                            // to it; a folder below the root drills in to it
+                            // (⌘↓ still works too). Otherwise: the root crumb
+                            // clears the selection, any other crumb selects it.
+                            if !model.reRoot(to: node.id) && !model.drillIn(to: node.id) {
                                 model.select(index == 0 ? nil : node.id)
                             }
                         }

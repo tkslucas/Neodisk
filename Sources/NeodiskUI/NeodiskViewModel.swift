@@ -689,6 +689,42 @@ final class NeodiskViewModel {
         zoomRootID = parent.id == store.root.id ? nil : parent.id
     }
 
+    /// Keyboard drill-in (⌘↓): re-root the treemap into the selected folder,
+    /// or into the folder containing the selected file, so "zoom into where I
+    /// am" always makes progress. Returns false (caller beeps) when there is
+    /// nowhere deeper to go — no selection, or already rooted at the target.
+    @discardableResult
+    func drillIntoSelection() -> Bool {
+        guard let store, let node = selectedNode else { return false }
+        // A selected directory is drilled into; a selected file drills into
+        // its containing folder.
+        let targetDir = node.isDirectory ? node : store.parent(of: node.id)
+        guard let dir = targetDir, dir.isDirectory, dir.id != effectiveRootID else {
+            return false
+        }
+        zoomRootID = dir.id == store.root.id ? nil : dir.id
+        // When the user explicitly drilled into a folder, land the selection
+        // on its largest child so arrow keys keep working inside.
+        if node.isDirectory {
+            let children = store.children(of: dir.id).filter { $0.allocatedSize > 0 }
+            if let largest = children.max(by: { $0.allocatedSize < $1.allocatedSize }) {
+                select(largest.id)
+            }
+        }
+        return true
+    }
+
+    /// Keyboard drill-out (⌘↑): re-root the treemap one level up. Returns
+    /// false (caller beeps) when already at the scan root.
+    @discardableResult
+    func drillOut() -> Bool {
+        guard let store, let effectiveRootID, effectiveRootID != store.root.id else {
+            return false
+        }
+        zoomOut()
+        return true
+    }
+
     // MARK: - File actions
 
     func reveal(_ node: FileNodeRecord) {

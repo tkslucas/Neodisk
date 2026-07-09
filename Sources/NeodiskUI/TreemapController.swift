@@ -240,6 +240,83 @@ final class TreemapController {
         QuickLookPresenter.shared.togglePreview(for: node)
     }
 
+    // MARK: - Keyboard navigation
+
+    enum MoveDirection { case up, down, left, right }
+
+    /// Routes a key event to a navigation action. Returns true when handled so
+    /// the view stops it from propagating. Arrow keys move the selection
+    /// spatially; ⌘↓/⌘↑ drill the map in/out; Return reveals in Finder.
+    func handleKey(_ event: NSEvent) -> Bool {
+        guard let key = event.specialKey else { return false }
+        let command = event.modifierFlags.contains(.command)
+        switch key {
+        case .upArrow:
+            if command { beepUnless(model?.drillOut() == true) } else { moveSelection(.up) }
+        case .downArrow:
+            if command { beepUnless(model?.drillIntoSelection() == true) } else { moveSelection(.down) }
+        case .leftArrow:
+            moveSelection(.left)
+        case .rightArrow:
+            moveSelection(.right)
+        case .carriageReturn, .enter, .newline:
+            revealSelectionInFinder()
+        default:
+            return false
+        }
+        return true
+    }
+
+    /// Moves the selection to the nearest visible tile in `direction`. With no
+    /// current selection, selects the largest tile so the keyboard has an
+    /// anchor to move from.
+    private func moveSelection(_ direction: MoveDirection) {
+        guard let model, let scene else { return }
+        // Free-space and "smaller items" aggregate tiles aren't real files;
+        // navigate only among concrete file/folder tiles.
+        let tiles = scene.cells.filter { !$0.isFreeSpace && $0.aggregate == nil }
+        guard !tiles.isEmpty else { return }
+
+        guard let from = selectionRect.map({ CGPoint(x: $0.midX, y: $0.midY) }) else {
+            if let largest = tiles.max(by: { $0.rect.area < $1.rect.area }) {
+                model.select(largest.nodeID)
+            }
+            return
+        }
+
+        // Nearest tile whose center lies in `direction`, biased toward small
+        // perpendicular offset so movement tracks the visual row/column. The
+        // view is flipped, so up = smaller y, down = larger y.
+        var best: (nodeID: String, score: CGFloat)?
+        for tile in tiles where tile.nodeID != selectedNodeID {
+            let to = CGPoint(x: tile.rect.midX, y: tile.rect.midY)
+            let dx = to.x - from.x, dy = to.y - from.y
+            let primary: CGFloat
+            let perpendicular: CGFloat
+            switch direction {
+            case .left: guard dx < -0.5 else { continue }; primary = -dx; perpendicular = abs(dy)
+            case .right: guard dx > 0.5 else { continue }; primary = dx; perpendicular = abs(dy)
+            case .up: guard dy < -0.5 else { continue }; primary = -dy; perpendicular = abs(dx)
+            case .down: guard dy > 0.5 else { continue }; primary = dy; perpendicular = abs(dx)
+            }
+            let score = primary + 2 * perpendicular
+            if best == nil || score < best!.score { best = (tile.nodeID, score) }
+        }
+        if let best { model.select(best.nodeID) } else { NSSound.beep() }
+    }
+
+    private func revealSelectionInFinder() {
+        guard let model, let node = model.selectedNode, node.supportsFileActions else {
+            NSSound.beep()
+            return
+        }
+        model.reveal(node)
+    }
+
+    private func beepUnless(_ handled: Bool) {
+        if !handled { NSSound.beep() }
+    }
+
     /// The cell under a live view point, mapped back into the rendered
     /// scene's coordinates so hit-testing stays correct while the display
     /// transform is active.
@@ -343,4 +420,8 @@ private final class ClosureMenuItem: NSMenuItem {
     @objc private func invoke() {
         handler()
     }
+}
+
+private extension CGRect {
+    var area: CGFloat { width * height }
 }

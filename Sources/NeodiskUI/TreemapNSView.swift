@@ -171,6 +171,9 @@ final class TreemapNSView: NSView {
             controller.quickLookSelection()
             return
         }
+        if controller.handleKey(event) {
+            return
+        }
         super.keyDown(with: event)
     }
 
@@ -198,7 +201,8 @@ final class TreemapNSView: NSView {
         let point = convert(event.locationInWindow, from: nil)
         if event.clickCount == 2 {
             // Double-click reveals in Finder (never re-roots the view —
-            // navigation stays pinch/scroll only).
+            // mouse navigation stays pinch/scroll; re-rooting is keyboard
+            // drill, ⌘↓/⌘↑, see TreemapController.handleKey).
             controller.revealInFinder(at: point)
         } else {
             controller.click(at: point)

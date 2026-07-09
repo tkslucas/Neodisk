@@ -71,11 +71,11 @@
 "Changes apply to the next scan." = "Änderungen gelten ab dem nächsten Scan.";
 "When opening a scanned location" = "Beim Öffnen eines gescannten Orts";
 "Rescan automatically always refreshes behind the saved results; Smart skips the refresh when the last scan took a while; Show snapshot only always waits for Rescan Now." = "„Automatisch erneut scannen“ aktualisiert immer im Hintergrund der gespeicherten Ergebnisse; „Intelligent“ überspringt die Aktualisierung, wenn der letzte Scan lange dauerte; „Nur Snapshot anzeigen“ wartet immer auf „Jetzt erneut scannen“.";
-"After a Scan" = "Nach einem Scan";
+"When Results Appear" = "Wenn Ergebnisse erscheinen";
 "Prepare the Changes comparison in the background" = "Vergleich der Änderungen im Hintergrund vorbereiten";
-"Loads the previous scan as soon as a scan finishes, so the Changes button responds instantly. Takes effect once a location has been scanned twice." = "Lädt den vorherigen Scan, sobald ein Scan abgeschlossen ist, damit die Taste „Änderungen“ sofort reagiert. Wirkt, sobald ein Ort zweimal gescannt wurde.";
+"Loads the previous scan whenever results appear — after a scan or when opening a saved snapshot — so the Changes button responds instantly. Takes effect once a location has been scanned twice." = "Lädt den vorherigen Scan, sobald Ergebnisse erscheinen – nach einem Scan oder beim Öffnen eines gespeicherten Snapshots –, damit die Taste „Änderungen“ sofort reagiert. Wirkt, sobald ein Ort zweimal gescannt wurde.";
 "Find duplicate files automatically" = "Doppelte Dateien automatisch suchen";
-"Starts the duplicate scan right after every scan. Comparing file contents reads a lot of data, which can take time and energy on large locations." = "Startet die Duplikatsuche direkt nach jedem Scan. Der Vergleich von Dateiinhalten liest große Datenmengen, was bei großen Orten Zeit und Energie kosten kann.";
+"Starts the duplicate scan whenever results appear — after a scan or when opening a saved snapshot. Comparing file contents reads a lot of data, which can take time and energy on large locations." = "Startet die Duplikatsuche, sobald Ergebnisse erscheinen – nach einem Scan oder beim Öffnen eines gespeicherten Snapshots. Der Vergleich von Dateiinhalten liest große Datenmengen, was bei großen Orten Zeit und Energie kosten kann.";
 "Exclusions" = "Ausschlüsse";
 "Use scan exclusions" = "Scan-Ausschlüsse verwenden";
 "One pattern per line. Trailing “/” matches folders; “*” is a wildcard." = "Ein Muster pro Zeile. Ein abschließendes „/“ steht für Ordner; „*“ ist ein Platzhalter.";

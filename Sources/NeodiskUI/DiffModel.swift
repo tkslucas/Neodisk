@@ -6,9 +6,10 @@
 //  the previous snapshot, plus the toggle/loading choreography. Owned by
 //  NeodiskViewModel as `model.diff`.
 //
-//  The baseline usually loads before the toggle is pressed: right after a
-//  scan finishes (and its predecessor rotates into the previous slot), the
-//  "prepare Changes after each scan" preference prefetches the baseline in
+//  The baseline usually loads before the toggle is pressed: whenever a
+//  complete tree lands on screen — a scan finishing (its predecessor
+//  rotating into the previous slot) or a saved snapshot opening without a
+//  rescan — the "prepare Changes" preference prefetches the baseline in
 //  the background so the toggle responds instantly.
 //
 
@@ -109,6 +110,19 @@ final class DiffModel {
         } else if canShow, model?.preferences?.prepareChangesAfterScan ?? true {
             load(for: target, showsOnCompletion: false)
         }
+    }
+
+    /// A saved snapshot was put on screen without a rescan, so no scan
+    /// finish will prefetch for it. Same convenience as after a rotation:
+    /// with the preference on, load the baseline so the toggle answers
+    /// instantly. `snapshotDidChange` already ran for the restored snapshot,
+    /// so there is no stale prefetch or in-flight load to worry about.
+    func snapshotWasRestored(for target: ScanTarget) {
+        guard coordinator.snapshot?.target.id == target.id,
+              baseline == nil, !isLoading,
+              prefetchedBaseline?.targetID != target.id,
+              canShow, model?.preferences?.prepareChangesAfterScan ?? true else { return }
+        load(for: target, showsOnCompletion: false)
     }
 
     private func load(for target: ScanTarget, showsOnCompletion: Bool) {

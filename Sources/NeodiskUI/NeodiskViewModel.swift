@@ -362,11 +362,24 @@ final class NeodiskViewModel {
                     scanDate: cached.finishedAt ?? cached.startedAt,
                     lastScanDuration: info.lastScanDuration
                 )
+                self.snapshotWasRestoredWithoutRescan()
             } else {
                 // Corrupt or vanished: forget the cache entry and scan live.
                 self.cachedScanInfo.removeValue(forKey: target.id)
                 self.coordinator.startScan(target, options: self.scanOptions(for: target))
             }
+        }
+    }
+
+    /// A saved snapshot landed on screen with no refresh scan behind it, so
+    /// no scan finish will run the usual conveniences — prefetch the Changes
+    /// baseline and optionally start the duplicate scan here instead. (When
+    /// a refresh runs behind the snapshot, its finish triggers both anyway.)
+    private func snapshotWasRestoredWithoutRescan() {
+        guard let snapshot = coordinator.snapshot, snapshot.isComplete else { return }
+        diff.snapshotWasRestored(for: snapshot.target)
+        if preferences?.autoScanDuplicates == true {
+            duplicates.startScan()
         }
     }
 
@@ -411,6 +424,7 @@ final class NeodiskViewModel {
                         scanDate: cached.finishedAt ?? cached.startedAt,
                         lastScanDuration: lastDuration
                     )
+                    self.snapshotWasRestoredWithoutRescan()
                 } else if self.coordinator.isScanning, self.coordinator.snapshot?.id == cached.id {
                     FileHandle.standardError.write(
                         Data("Neodisk: showing cached scan of \(target.id) while the refresh runs\n".utf8)

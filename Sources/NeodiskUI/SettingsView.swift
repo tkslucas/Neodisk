@@ -77,16 +77,16 @@ private struct GeneralSettingsTab: View {
                     .foregroundStyle(.secondary)
             }
 
-            Section("After a Scan") {
+            Section("When Results Appear") {
                 Toggle(
                     "Prepare the Changes comparison in the background",
                     isOn: $preferences.prepareChangesAfterScan
                 )
-                Text("Loads the previous scan as soon as a scan finishes, so the Changes button responds instantly. Takes effect once a location has been scanned twice.")
+                Text("Loads the previous scan whenever results appear — after a scan or when opening a saved snapshot — so the Changes button responds instantly. Takes effect once a location has been scanned twice.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 Toggle("Find duplicate files automatically", isOn: $preferences.autoScanDuplicates)
-                Text("Starts the duplicate scan right after every scan. Comparing file contents reads a lot of data, which can take time and energy on large locations.")
+                Text("Starts the duplicate scan whenever results appear — after a scan or when opening a saved snapshot. Comparing file contents reads a lot of data, which can take time and energy on large locations.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }

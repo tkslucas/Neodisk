@@ -71,11 +71,11 @@
 "Changes apply to the next scan." = "Le modifiche si applicano alla prossima scansione.";
 "When opening a scanned location" = "Quando si apre una posizione già analizzata";
 "Rescan automatically always refreshes behind the saved results; Smart skips the refresh when the last scan took a while; Show snapshot only always waits for Rescan Now." = "Ripeti scansione automaticamente aggiorna sempre i risultati salvati in background; Smart salta l'aggiornamento se l'ultima scansione ha richiesto molto tempo; Mostra solo istantanea attende sempre Ripeti scansione ora.";
-"After a Scan" = "Dopo una scansione";
+"When Results Appear" = "Quando compaiono i risultati";
 "Prepare the Changes comparison in the background" = "Prepara il confronto delle modifiche in background";
-"Loads the previous scan as soon as a scan finishes, so the Changes button responds instantly. Takes effect once a location has been scanned twice." = "Carica la scansione precedente non appena una scansione termina, così il pulsante Modifiche risponde all’istante. Ha effetto quando una posizione è stata scansionata due volte.";
+"Loads the previous scan whenever results appear — after a scan or when opening a saved snapshot — so the Changes button responds instantly. Takes effect once a location has been scanned twice." = "Carica la scansione precedente quando compaiono i risultati — dopo una scansione o all’apertura di un’istantanea salvata — così il pulsante Modifiche risponde all’istante. Ha effetto quando una posizione è stata scansionata due volte.";
 "Find duplicate files automatically" = "Trova automaticamente i file duplicati";
-"Starts the duplicate scan right after every scan. Comparing file contents reads a lot of data, which can take time and energy on large locations." = "Avvia la ricerca dei duplicati subito dopo ogni scansione. Il confronto dei contenuti dei file legge molti dati e può richiedere tempo ed energia su posizioni grandi.";
+"Starts the duplicate scan whenever results appear — after a scan or when opening a saved snapshot. Comparing file contents reads a lot of data, which can take time and energy on large locations." = "Avvia la ricerca dei duplicati quando compaiono i risultati — dopo una scansione o all’apertura di un’istantanea salvata. Il confronto dei contenuti dei file legge molti dati e può richiedere tempo ed energia su posizioni grandi.";
 "Exclusions" = "Esclusioni";
 "Use scan exclusions" = "Usa esclusioni di scansione";
 "One pattern per line. Trailing “/” matches folders; “*” is a wildcard." = "Un pattern per riga. La “/” finale corrisponde alle cartelle; “*” è un carattere jolly.";

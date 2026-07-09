@@ -316,6 +316,92 @@ import NeodiskKit
         }
     }
 
+    @Test func testSnapshotOnlyRestorePrefetchesDiffBaseline() async throws {
+        let environment = try TestEnvironment()
+        defer { environment.tearDown() }
+        let target = makeTestTarget("/cache-vm/restore-prefetch")
+        environment.pinnedFolderStore.add(target)
+        // Two generations on disk: opening the snapshot without a rescan
+        // must still prefetch the baseline from the rotated previous scan.
+        try await environment.cache.save(makeSizedSnapshot(target: target, fileSize: 10))
+        try await environment.cache.save(makeSizedSnapshot(target: target, fileSize: 25))
+
+        let model = environment.makeModel(policy: .snapshotOnly)
+        try await waitUntilAsync("prune indexes the snapshot with a previous") {
+            model.cachedScanInfo[target.id]?.hasPreviousSnapshot == true
+        }
+
+        model.startScan(target)
+        try await waitUntilAsync("snapshot displayed without scanning") {
+            model.coordinator.phase == .displaying
+        }
+        #expect(environment.scanService.scanCount == 0)
+
+        try await waitUntilAsync("baseline prefetched after restore") {
+            model.diff.prefetchedBaseline != nil
+        }
+        #expect(!model.diff.isShowing)
+
+        // The toggle must not need another load: the baseline shows
+        // synchronously and carries the previous scan's sizes.
+        model.diff.toggle()
+        let baseline = try #require(model.diff.baseline)
+        #expect(baseline.allocatedSize(forNodeID: target.id + "/file.txt") == 10)
+    }
+
+    @Test func testSnapshotOnlyRestoreStartsAutoDuplicateScan() async throws {
+        let environment = try TestEnvironment()
+        defer { environment.tearDown() }
+        let target = makeTestTarget("/cache-vm/restore-duplicates")
+        environment.pinnedFolderStore.add(target)
+        try await environment.cache.save(makeSimpleSnapshot(target: target))
+
+        let model = environment.makeModel(policy: .snapshotOnly)
+        model.preferences?.autoScanDuplicates = true
+        try await waitUntilAsync("prune indexes the snapshot") {
+            model.cachedScanInfo[target.id] != nil
+        }
+
+        model.startScan(target)
+
+        // The single-file snapshot has no duplicate candidates, so the
+        // auto-started scan finishes immediately with empty results — the
+        // point is that opening the snapshot ran it without a click.
+        try await waitUntilAsync("duplicate scan auto-started and finished") {
+            model.duplicates.results != nil
+        }
+        #expect(environment.scanService.scanCount == 0)
+        #expect(model.duplicates.results?.groups.isEmpty == true)
+    }
+
+    @Test func testRestoreRunsNoConveniencesWithPreferencesOff() async throws {
+        let environment = try TestEnvironment()
+        defer { environment.tearDown() }
+        let target = makeTestTarget("/cache-vm/restore-opted-out")
+        environment.pinnedFolderStore.add(target)
+        try await environment.cache.save(makeSizedSnapshot(target: target, fileSize: 10))
+        try await environment.cache.save(makeSizedSnapshot(target: target, fileSize: 25))
+
+        let model = environment.makeModel(policy: .snapshotOnly)
+        model.preferences?.prepareChangesAfterScan = false
+        try await waitUntilAsync("prune indexes the snapshot with a previous") {
+            model.cachedScanInfo[target.id]?.hasPreviousSnapshot == true
+        }
+
+        model.startScan(target)
+        try await waitUntilAsync("snapshot displayed without scanning") {
+            model.coordinator.phase == .displaying
+        }
+
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(model.diff.prefetchedBaseline == nil)
+        #expect(!model.diff.isLoading)
+        guard case .idle = model.duplicates.phase else {
+            Issue.record("Duplicate scan ran without the opt-in preference.")
+            return
+        }
+    }
+
     // MARK: - Fixtures
 
     private struct TestEnvironment {

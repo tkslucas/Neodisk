@@ -69,11 +69,14 @@ final class AppPreferences: ObservableObject {
     @AppStorage("exclusionPatternsText") var exclusionPatternsText =
         ScanExclusionMatcher.commonPresetPatterns.joined(separator: "\n")
     @AppStorage("autoRescanPolicy") var autoRescanPolicyRaw = AutoRescanPolicy.smart.rawValue
-    /// Decode the previous snapshot right after a scan finishes, so the
-    /// Changes toggle shows instantly instead of loading on click.
+    /// Decode the previous snapshot whenever a complete tree lands on screen
+    /// — a scan finishing, or a saved snapshot opening without a rescan — so
+    /// the Changes toggle shows instantly instead of loading on click. The
+    /// storage key predates the restore trigger.
     @AppStorage("prepareChangesAfterScan") var prepareChangesAfterScan = true
-    /// Start the duplicate content scan as soon as a scan finishes. Off by
-    /// default: hashing reads file contents, which costs real I/O and energy.
+    /// Start the duplicate content scan whenever a complete tree lands on
+    /// screen (scan finish or snapshot restore). Off by default: hashing
+    /// reads file contents, which costs real I/O and energy.
     @AppStorage("autoScanDuplicates") var autoScanDuplicates = false
     @AppStorage("hasSeenWelcome") var hasSeenWelcome = false
 

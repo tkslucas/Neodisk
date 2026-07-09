@@ -71,11 +71,11 @@
 "Changes apply to the next scan." = "変更は次回のスキャンから適用されます。";
 "When opening a scanned location" = "スキャン済みの場所を開くとき";
 "Rescan automatically always refreshes behind the saved results; Smart skips the refresh when the last scan took a while; Show snapshot only always waits for Rescan Now." = "「自動的に再スキャン」は保存済みの結果の裏で常に更新します。「スマート」は前回のスキャンに時間がかかった場合は更新をスキップします。「スナップショットのみ表示」は常に「今すぐ再スキャン」を待ちます。";
-"After a Scan" = "スキャン後";
+"When Results Appear" = "結果の表示時";
 "Prepare the Changes comparison in the background" = "変更の比較をバックグラウンドで準備";
-"Loads the previous scan as soon as a scan finishes, so the Changes button responds instantly. Takes effect once a location has been scanned twice." = "スキャンが完了するとすぐに前回のスキャンを読み込み、「変更」ボタンがすぐに反応するようにします。同じ場所を2回スキャンすると有効になります。";
+"Loads the previous scan whenever results appear — after a scan or when opening a saved snapshot — so the Changes button responds instantly. Takes effect once a location has been scanned twice." = "スキャン後や保存済みスナップショットを開いたときなど、結果が表示されるとすぐに前回のスキャンを読み込み、「変更」ボタンがすぐに反応するようにします。同じ場所を2回スキャンすると有効になります。";
 "Find duplicate files automatically" = "重複ファイルを自動的に検索";
-"Starts the duplicate scan right after every scan. Comparing file contents reads a lot of data, which can take time and energy on large locations." = "毎回のスキャン直後に重複スキャンを開始します。ファイル内容の比較は大量のデータを読み込むため、大きな場所では時間と電力を消費することがあります。";
+"Starts the duplicate scan whenever results appear — after a scan or when opening a saved snapshot. Comparing file contents reads a lot of data, which can take time and energy on large locations." = "スキャン後や保存済みスナップショットを開いたときなど、結果が表示されるとすぐに重複スキャンを開始します。ファイル内容の比較は大量のデータを読み込むため、大きな場所では時間と電力を消費することがあります。";
 "Exclusions" = "除外設定";
 "Use scan exclusions" = "スキャン除外を使用";
 "One pattern per line. Trailing “/” matches folders; “*” is a wildcard." = "1行につき1つのパターン。末尾の「/」はフォルダに一致し、「*」はワイルドカードです。";

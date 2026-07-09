@@ -71,11 +71,11 @@
 "Changes apply to the next scan." = "Changes apply to the next scan.";
 "When opening a scanned location" = "When opening a scanned location";
 "Rescan automatically always refreshes behind the saved results; Smart skips the refresh when the last scan took a while; Show snapshot only always waits for Rescan Now." = "Rescan automatically always refreshes behind the saved results; Smart skips the refresh when the last scan took a while; Show snapshot only always waits for Rescan Now.";
-"After a Scan" = "After a Scan";
+"When Results Appear" = "When Results Appear";
 "Prepare the Changes comparison in the background" = "Prepare the Changes comparison in the background";
-"Loads the previous scan as soon as a scan finishes, so the Changes button responds instantly. Takes effect once a location has been scanned twice." = "Loads the previous scan as soon as a scan finishes, so the Changes button responds instantly. Takes effect once a location has been scanned twice.";
+"Loads the previous scan whenever results appear — after a scan or when opening a saved snapshot — so the Changes button responds instantly. Takes effect once a location has been scanned twice." = "Loads the previous scan whenever results appear — after a scan or when opening a saved snapshot — so the Changes button responds instantly. Takes effect once a location has been scanned twice.";
 "Find duplicate files automatically" = "Find duplicate files automatically";
-"Starts the duplicate scan right after every scan. Comparing file contents reads a lot of data, which can take time and energy on large locations." = "Starts the duplicate scan right after every scan. Comparing file contents reads a lot of data, which can take time and energy on large locations.";
+"Starts the duplicate scan whenever results appear — after a scan or when opening a saved snapshot. Comparing file contents reads a lot of data, which can take time and energy on large locations." = "Starts the duplicate scan whenever results appear — after a scan or when opening a saved snapshot. Comparing file contents reads a lot of data, which can take time and energy on large locations.";
 "Exclusions" = "Exclusions";
 "Use scan exclusions" = "Use scan exclusions";
 "One pattern per line. Trailing “/” matches folders; “*” is a wildcard." = "One pattern per line. Trailing “/” matches folders; “*” is a wildcard.";

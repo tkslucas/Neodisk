@@ -42,7 +42,13 @@ struct TreemapBreadcrumbBar: View {
                                 .font(.caption2)
                                 .foregroundStyle(.tertiary)
                         }
-                        Crumb(node: node, isLast: index == crumbs.count - 1) {
+                        Crumb(
+                            node: node,
+                            isLast: index == crumbs.count - 1,
+                            // Underline the crumb the treemap is rooted at, so
+                            // the drill depth is legible (only when drilled in).
+                            isDrillRoot: model.zoomRootID != nil && node.id == model.effectiveRootID
+                        ) {
                             // Clicking a folder above the current map root
                             // drills back out to it (drilling in stays ⌘↓).
                             // Otherwise: the root crumb clears the selection,
@@ -76,6 +82,7 @@ struct TreemapBreadcrumbBar: View {
 private struct Crumb: View {
     let node: FileNodeRecord
     let isLast: Bool
+    let isDrillRoot: Bool
     let action: () -> Void
 
     @State private var hovering = false
@@ -85,6 +92,7 @@ private struct Crumb: View {
             Text(node.name.isEmpty ? "/" : node.name)
                 .font(.caption)
                 .fontWeight(isLast ? .semibold : .regular)
+                .underline(isDrillRoot)
                 .lineLimit(1)
                 .foregroundStyle(isLast ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
                 .padding(.horizontal, 5)

@@ -417,25 +417,37 @@ final class NeodiskViewModel {
                     lastScanDuration: info.lastScanDuration
                 )
                 self.snapshotWasRestoredWithoutRescan()
-                // Snapshots cached before sidecars existed (or whose sidecar
-                // went stale) get one now, so their next restore is seeded.
-                // No rescan is coming to write it via the save path.
-                let seedWasUsable = sidecarData
-                    .flatMap(KindStatsSidecar.decoding)?
-                    .matches(cached) == true
-                if !seedWasUsable {
-                    let backfill = await Task.detached(priority: .utility) {
-                        try? KindStatsSidecar.make(for: cached).encoded()
-                    }.value
-                    if let backfill {
-                        await snapshotCache.saveAuxiliaryData(backfill, forTargetID: target.id)
-                    }
-                }
+                await Self.backfillKindStatsSidecarIfStale(
+                    sidecarData,
+                    for: cached,
+                    in: snapshotCache
+                )
             } else {
                 // Corrupt or vanished: forget the cache entry and scan live.
                 self.cachedScanInfo.removeValue(forKey: target.id)
                 self.coordinator.startScan(target, options: self.scanOptions(for: target))
             }
+        }
+    }
+
+    /// Snapshots cached before sidecars existed (or whose sidecar went
+    /// stale) get one after display, so their next restore is seeded. Only
+    /// the no-rescan endings need this — when a refresh scan keeps running,
+    /// its finish writes a fresh sidecar through the save path.
+    private static func backfillKindStatsSidecarIfStale(
+        _ sidecarData: Data?,
+        for cached: ScanSnapshot,
+        in snapshotCache: ScanSnapshotCache
+    ) async {
+        let seedWasUsable = sidecarData
+            .flatMap(KindStatsSidecar.decoding)?
+            .matches(cached) == true
+        guard !seedWasUsable else { return }
+        let backfill = await Task.detached(priority: .utility) {
+            try? KindStatsSidecar.make(for: cached).encoded()
+        }.value
+        if let backfill {
+            await snapshotCache.saveAuxiliaryData(backfill, forTargetID: cached.target.id)
         }
     }
 
@@ -496,6 +508,13 @@ final class NeodiskViewModel {
                         lastScanDuration: lastDuration
                     )
                     self.snapshotWasRestoredWithoutRescan()
+                    // The refresh was cancelled, so no scan finish will
+                    // write the sidecar this snapshot is missing.
+                    await Self.backfillKindStatsSidecarIfStale(
+                        sidecarData,
+                        for: cached,
+                        in: snapshotCache
+                    )
                 } else if self.coordinator.isScanning, self.coordinator.snapshot?.id == cached.id {
                     FileHandle.standardError.write(
                         Data("Neodisk: showing cached scan of \(target.id) while the refresh runs\n".utf8)

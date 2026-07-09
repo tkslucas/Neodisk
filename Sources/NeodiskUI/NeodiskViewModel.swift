@@ -21,6 +21,11 @@ final class NeodiskViewModel {
     var selectedNodeID: String? {
         didSet {
             guard selectedNodeID != oldValue else { return }
+            // Any selection — from the treemap, outline, sidebar lists, or
+            // search — keeps itself on screen: if it lands outside a
+            // drilled-in map, widen the root out to reveal it. Done here, not
+            // in select(), because the outline sets selectedNodeID directly.
+            if let selectedNodeID { widenRootToShow(selectedNodeID) }
             // Live-update an open Quick Look panel as the selection moves
             // (arrow-keying through the outline). No-op when it's closed.
             QuickLookPresenter.shared.selectionDidChange(to: selectedNode)
@@ -660,7 +665,7 @@ final class NeodiskViewModel {
     // MARK: - Selection & zoom
 
     func select(_ nodeID: String?) {
-        selectedNodeID = nodeID
+        selectedNodeID = nodeID  // its didSet widens the map if the node is off-screen
         if let nodeID {
             revealInOutline(nodeID)
             // With duplicate results on screen, selecting a copy anywhere
@@ -670,6 +675,25 @@ final class NeodiskViewModel {
                 duplicates.handleSelection(of: nodeID)
             }
         }
+    }
+
+    /// Keeps a selection visible when the map is drilled in: if the node lands
+    /// outside the current root, widen the root OUT to the lowest common
+    /// ancestor of the current root and the node. Only ever drills out —
+    /// selecting something on the far side of the tree never narrows the view
+    /// (drilling in stays ⌘↓). No-op at the full map, or when the node is
+    /// already inside the drilled subtree.
+    private func widenRootToShow(_ nodeID: String) {
+        guard let store, let currentRootID = effectiveRootID,
+              currentRootID != store.root.id,
+              !store.isAncestor(currentRootID, of: nodeID) else { return }
+        // Both paths start at the scan root; the last shared node is the LCA.
+        var lca = store.root.id
+        for (a, b) in zip(store.path(to: currentRootID), store.path(to: nodeID)) {
+            if a.id != b.id { break }
+            lca = a.id
+        }
+        zoomRootID = lca == store.root.id ? nil : lca
     }
 
     /// Expands every ancestor so the outline shows the selected row.

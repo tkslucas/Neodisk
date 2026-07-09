@@ -15,6 +15,11 @@ import NeodiskKit
         let big: FileNodeRecord
         let small: FileNodeRecord
         let loose: FileNodeRecord
+        let area: FileNodeRecord
+        let left: FileNodeRecord
+        let right: FileNodeRecord
+        let leftFile: FileNodeRecord
+        let rightFile: FileNodeRecord
         let cacheDirectory: URL
         let defaults: UserDefaults
         let defaultsSuiteName: String
@@ -25,18 +30,28 @@ import NeodiskKit
         }
     }
 
-    /// root ─┬─ sub ─┬─ big.bin (100)
-    ///       │       └─ small.bin (10)
-    ///       └─ loose.txt (5)
+    /// root ─┬─ sub ──┬─ big.bin (100)
+    ///       │        └─ small.bin (10)
+    ///       ├─ loose.txt (5)
+    ///       └─ area ─┬─ left ── lfile.bin (50)
+    ///                └─ right ─ rfile.bin (50)
     private func makeFixture() throws -> Fixture {
         let big = makeTestFileNode(id: "/root/sub/big.bin", name: "big.bin", size: 100)
         let small = makeTestFileNode(id: "/root/sub/small.bin", name: "small.bin", size: 10)
         let sub = makeTestDirectoryNode(id: "/root/sub", name: "sub", children: [big, small])
         let loose = makeTestFileNode(id: "/root/loose.txt", name: "loose.txt", size: 5)
-        let root = makeTestDirectoryNode(id: "/root", name: "root", children: [sub, loose])
+        let leftFile = makeTestFileNode(id: "/root/area/left/lfile.bin", name: "lfile.bin", size: 50)
+        let rightFile = makeTestFileNode(id: "/root/area/right/rfile.bin", name: "rfile.bin", size: 50)
+        let left = makeTestDirectoryNode(id: "/root/area/left", name: "left", children: [leftFile])
+        let right = makeTestDirectoryNode(id: "/root/area/right", name: "right", children: [rightFile])
+        let area = makeTestDirectoryNode(id: "/root/area", name: "area", children: [left, right])
+        let root = makeTestDirectoryNode(id: "/root", name: "root", children: [sub, loose, area])
         let store = FileTreeStore(
             root: root,
-            childrenByID: [root.id: [sub, loose], sub.id: [big, small]]
+            childrenByID: [
+                root.id: [sub, loose, area], sub.id: [big, small],
+                area.id: [left, right], left.id: [leftFile], right.id: [rightFile],
+            ]
         )
 
         let cacheDirectory = FileManager.default.temporaryDirectory
@@ -53,6 +68,7 @@ import NeodiskKit
 
         return Fixture(
             model: model, root: root, sub: sub, big: big, small: small, loose: loose,
+            area: area, left: left, right: right, leftFile: leftFile, rightFile: rightFile,
             cacheDirectory: cacheDirectory, defaults: defaults, defaultsSuiteName: defaultsSuiteName
         )
     }
@@ -136,6 +152,60 @@ import NeodiskKit
         #expect(model.zoomRootID == fixture.sub.id)
         #expect(!model.reRoot(to: fixture.big.id))     // a file, and below root
         #expect(model.zoomRootID == fixture.sub.id)
+    }
+
+    @Test func testSelectingOutsideDrillWidensToCommonAncestor() throws {
+        let fixture = try makeFixture()
+        defer { fixture.tearDown() }
+        let model = fixture.model
+
+        // Drilled into area/left; selecting a file over in area/right widens
+        // the map OUT only as far as `area`, their lowest common ancestor.
+        model.zoomRootID = fixture.left.id
+        model.select(fixture.rightFile.id)
+        #expect(model.zoomRootID == fixture.area.id)
+        #expect(model.selectedNodeID == fixture.rightFile.id)
+    }
+
+    @Test func testSelectingFarOutsideWidensToFullMap() throws {
+        let fixture = try makeFixture()
+        defer { fixture.tearDown() }
+        let model = fixture.model
+
+        // Drilled into area/left; selecting something under `sub` shares only
+        // the scan root, so the map widens all the way out.
+        model.zoomRootID = fixture.left.id
+        model.select(fixture.big.id)
+        #expect(model.zoomRootID == nil)
+        #expect(model.selectedNodeID == fixture.big.id)
+    }
+
+    @Test func testSelectingInsideDrillDoesNotWiden() throws {
+        let fixture = try makeFixture()
+        defer { fixture.tearDown() }
+        let model = fixture.model
+
+        // A selection already inside the drilled subtree leaves the root put.
+        model.zoomRootID = fixture.area.id
+        model.select(fixture.leftFile.id)
+        #expect(model.zoomRootID == fixture.area.id)
+
+        // And at the full map, selecting anything never changes the root.
+        model.zoomRootID = nil
+        model.select(fixture.rightFile.id)
+        #expect(model.zoomRootID == nil)
+    }
+
+    @Test func testDirectSelectionAssignmentWidensLikeTheOutline() throws {
+        let fixture = try makeFixture()
+        defer { fixture.tearDown() }
+        let model = fixture.model
+
+        // The outline and search set selectedNodeID directly, bypassing
+        // select(); the widen must still happen (it lives in the didSet).
+        model.zoomRootID = fixture.left.id
+        model.selectedNodeID = fixture.rightFile.id
+        #expect(model.zoomRootID == fixture.area.id)
     }
 
     @Test func testDrillOutReRootsUpThenRejectsAtRoot() throws {

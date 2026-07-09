@@ -125,10 +125,13 @@ struct AgeCatalog: Sendable {
     }
 }
 
-/// Modification-age statistics state: the bucket catalog (rebuilt per
-/// snapshot with the same adaptive throttle as the kind catalog) and the
-/// drill-in file list for one bucket. Owned by NeodiskViewModel as
-/// `model.ages` — the Age tab's counterpart to KindStatsModel.
+/// Modification-age statistics state: the bucket catalog (rebuilt lazily
+/// when the Age pane is on screen, with the same adaptive throttle as the
+/// kind catalog) and the drill-in file list for one bucket. Owned by
+/// NeodiskViewModel as `model.ages` — the Age tab's counterpart to
+/// KindStatsModel. Building only from the pane (via `loadIfNeeded`, like
+/// LargestFilesModel) keeps a hidden Age tab from forcing the O(N) build
+/// during a scan or snapshot restore.
 @MainActor
 @Observable
 final class AgeStatsModel {
@@ -164,6 +167,9 @@ final class AgeStatsModel {
     @ObservationIgnored private var fileListBuildTask: Task<Void, Never>?
     @ObservationIgnored private let fileListFilterDebouncer = SearchDebouncer()
     @ObservationIgnored private var catalogBuildTask: Task<Void, Never>?
+    /// The snapshot the catalog was last built (or is being built) for, so
+    /// `loadIfNeeded` is a no-op once the catalog matches what's on screen.
+    @ObservationIgnored private var loadedSnapshotID: UUID?
     @ObservationIgnored private var lastCatalogBuildTime: ContinuousClock.Instant?
     /// Same rebuild throttle as KindStatsModel while partials stream in.
     @ObservationIgnored private var catalogRebuildInterval: Duration = AgeStatsModel.catalogRebuildBaseInterval
@@ -177,27 +183,47 @@ final class AgeStatsModel {
     /// Clears the displayed catalog before a new scan or snapshot takes the
     /// screen (part of the model's per-scan state reset).
     func reset() {
+        catalogBuildTask?.cancel()
         catalog = .empty
+        loadedSnapshotID = nil
+        lastCatalogBuildTime = nil
     }
 
-    /// The displayed tree changed: rebuild the bucket totals — throttled
-    /// while partial snapshots stream in; the final snapshot always rebuilds.
+    /// The displayed tree changed. Drops the drill-in list (its node IDs
+    /// belong to the replaced tree) and the loaded-snapshot marker so the
+    /// pane rebuilds when next visible; the catalog itself is rebuilt lazily
+    /// by `loadIfNeeded`, not here — a hidden Age tab never pays the O(N)
+    /// build. The catalog stays on screen across a live scan's partials (so
+    /// the pane doesn't flash empty while the throttle skips a rebuild);
+    /// only a nil snapshot — nothing displayed — clears it outright.
     func snapshotDidChange(_ snapshot: ScanSnapshot?) {
         // The drilled-in bucket list holds node IDs of the replaced tree.
         closeFileList()
-
-        guard let snapshot else {
-            catalogBuildTask?.cancel()
+        catalogBuildTask?.cancel()
+        loadedSnapshotID = nil
+        if snapshot == nil {
             catalog = .empty
             lastCatalogBuildTime = nil
-            return
         }
+    }
+
+    /// Called from the Age pane whenever it is on screen with a snapshot (tab
+    /// switches and partial-snapshot updates alike). Rebuilds the bucket
+    /// totals for the displayed snapshot; no-op once the catalog matches it.
+    /// While a scan streams partials the rebuild is throttled by the same
+    /// adaptive interval as KindStatsModel, so a fast-changing tree doesn't
+    /// rebuild the O(N) catalog on every partial; the final complete snapshot
+    /// always rebuilds.
+    func loadIfNeeded() {
+        guard let snapshot = coordinator.snapshot else { return }
+        guard loadedSnapshotID != snapshot.id else { return }
 
         if !snapshot.isComplete,
            let lastCatalogBuildTime,
            ContinuousClock.now - lastCatalogBuildTime < catalogRebuildInterval {
             return
         }
+        loadedSnapshotID = snapshot.id
         lastCatalogBuildTime = ContinuousClock.now
         rebuildCatalog(from: snapshot)
     }

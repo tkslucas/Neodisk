@@ -15,6 +15,18 @@ struct AgeStatsPane: View {
     let model: NeodiskViewModel
 
     var body: some View {
+        content
+            // Covers both ways the catalog goes stale while the tab is on
+            // screen: switching to the tab (appear) and a new snapshot
+            // landing (id). Building only from here keeps the O(N) catalog
+            // off the critical path while the tab is hidden.
+            .task(id: model.coordinator.snapshot?.id) {
+                model.ages.loadIfNeeded()
+            }
+    }
+
+    @ViewBuilder
+    private var content: some View {
         if model.ages.fileList != nil || model.ages.isFileListLoading {
             @Bindable var ages = model.ages
             StatsFileListView(

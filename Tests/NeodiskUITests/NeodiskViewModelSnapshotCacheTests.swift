@@ -236,6 +236,9 @@ import NeodiskKit
         let target = makeTestTarget("/cache-vm/prefetched")
         environment.pinnedFolderStore.add(target)
         let model = environment.makeModel()
+        // Collapse the restore/rotate prefetch delay: this test asserts on
+        // the prefetch result, not the first-paint deferral.
+        model.diff.prefetchDelay = .zero
 
         // First scan: only one snapshot exists, so there is nothing to
         // prefetch a baseline from.
@@ -327,6 +330,9 @@ import NeodiskKit
         try await environment.cache.save(makeSizedSnapshot(target: target, fileSize: 25))
 
         let model = environment.makeModel(policy: .snapshotOnly)
+        // Collapse the restore prefetch delay: this test asserts on the
+        // prefetch result, not the first-paint deferral.
+        model.diff.prefetchDelay = .zero
         try await waitUntilAsync("prune indexes the snapshot with a previous") {
             model.cachedScanInfo[target.id]?.hasPreviousSnapshot == true
         }

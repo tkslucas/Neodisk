@@ -677,7 +677,7 @@ Public License instead of this License.  But first, please read
 
                          Third-party notice
 
-Neodisk's scan engine and core data model derive from Radix
+Neodisk's scan engine, core data model, and sunburst visualization derive from Radix
 (https://github.com/colinvkim/Radix), used under the following license:
 
 MIT License

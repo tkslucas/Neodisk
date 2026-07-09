@@ -5,7 +5,7 @@
 
 <p align="center">
   Read-only MacOS disk space visualizer.
-  Treemap on the <code>NeodiskKit</code> scan engine.
+  Treemap and sunburst views on the <code>NeodiskKit</code> scan engine.
   <br>
   <a href="https://github.com/tkslucas/Neodisk/releases/latest/download/Neodisk.dmg">Download</a>
 </p>
@@ -26,6 +26,7 @@
 
 [**Download Neodisk.dmg**](https://github.com/tkslucas/Neodisk/releases/latest/download/Neodisk.dmg)
 and drag **Neodisk** onto the Applications folder.
+
 Versioned builds and a `.zip` fallback are on the
 [Releases](https://github.com/tkslucas/Neodisk/releases) page.
 
@@ -39,7 +40,8 @@ Delete and clean up safely in Finder instead.
 
 ## Features
 
-- Pinch to zoom treemap, scroll to pan
+- Treemap & Sunburst view
+- Pinch to zoom, scroll to pan
 - Outline selected files
 - Find largest files
 - File type statistics
@@ -70,7 +72,7 @@ One package, strictly layered targets:
 ```
 Sources/
 ├── NeodiskKit/   # UI-free scanning core (derived from Radix)
-├── NeodiskCLI/   # `diskscan` — the core's reference CLI
+├── NeodiskCLI/   # `diskscan`, the core's reference CLI
 ├── TreemapKit/   # Pure treemap geometry, viewport, rasterizer
 ├── NeodiskUI/    # SwiftUI/AppKit views, view model, scan lifecycle
 └── Neodisk/      # Thin executable entry point
@@ -85,12 +87,15 @@ Localization/     # .lproj string catalogs, one per language
 
 ## Credits
 
-- [Radix](https://github.com/colinvkim/Radix) by Colin Kim (MIT) — the scan
-  engine, core data model NeodiskKit is derived from, huge inspiration.
+- [Radix](https://github.com/colinvkim/Radix) by Colin Kim (MIT), the scan
+  engine and core data model NeodiskKit is derived from, and the sunburst
+  visualization is ported from. Huge inspiration.
 - [Disk Inventory X](http://www.derlien.com/) by Tjark Derlien and
   [GrandPerspective](https://grandperspectiv.sourceforge.net/) by Erwin
-  Bonsma — the cushion-treemap disk viewers this UI follows. No code from
+  Bonsma, the cushion-treemap disk viewers this UI follows. No code from
   either is used.
+- [DaisyDisk](https://daisydiskapp.com/) by Software Ambience, the
+  sunburst-with-folder-legend layout that view follows. No code is used.
 - Cushion treemaps: van Wijk & van de Wetering, INFOVIS 1999. Squarified
   treemaps: Bruls, Huizing & van Wijk, 2000.
 

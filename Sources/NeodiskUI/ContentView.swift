@@ -390,7 +390,10 @@ private struct WorkspaceView: View {
                     }
 
                     VStack(spacing: 0) {
-                        TreemapBreadcrumbBar(model: model)
+                        TreemapBreadcrumbBar(
+                            model: model,
+                            isProminent: model.vizViewMode == .sunburst
+                        )
                         if model.vizViewMode == .sunburst {
                             SunburstPane(model: model)
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)

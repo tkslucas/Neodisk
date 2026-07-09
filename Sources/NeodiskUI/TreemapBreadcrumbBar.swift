@@ -15,6 +15,9 @@ import NeodiskKit
 
 struct TreemapBreadcrumbBar: View {
     let model: NeodiskViewModel
+    /// The sunburst's simplified layout leans on the bar for navigation, so
+    /// it renders larger there; the treemap keeps the compact strip.
+    var isProminent = false
 
     /// Root → selected node. `path(to:)` returns `[root]` when the selection
     /// is nil, so the bar always has at least the scan root to show.
@@ -39,11 +42,12 @@ struct TreemapBreadcrumbBar: View {
                     ForEach(Array(crumbs.enumerated()), id: \.element.id) { index, node in
                         if index > 0 {
                             Image(systemName: "chevron.compact.right")
-                                .font(.caption2)
+                                .font(isProminent ? .caption : .caption2)
                                 .foregroundStyle(.tertiary)
                         }
                         Crumb(
                             node: node,
+                            isProminent: isProminent,
                             isLast: index == crumbs.count - 1,
                             // Underline the crumb the treemap is rooted at, so
                             // the drill depth is legible (only when drilled in).
@@ -71,7 +75,7 @@ struct TreemapBreadcrumbBar: View {
                 }
             }
         }
-        .frame(height: 26)
+        .frame(height: isProminent ? 34 : 26)
         .background(.bar)
         .overlay(alignment: .bottom) { Divider() }
     }
@@ -81,6 +85,7 @@ struct TreemapBreadcrumbBar: View {
 /// segment (the selection itself) is emphasized.
 private struct Crumb: View {
     let node: FileNodeRecord
+    let isProminent: Bool
     let isLast: Bool
     let isDrillRoot: Bool
     let action: () -> Void
@@ -90,13 +95,13 @@ private struct Crumb: View {
     var body: some View {
         Button(action: action) {
             Text(node.name.isEmpty ? "/" : node.name)
-                .font(.caption)
+                .font(isProminent ? .body : .caption)
                 .fontWeight(isLast ? .semibold : .regular)
                 .underline(isDrillRoot)
                 .lineLimit(1)
                 .foregroundStyle(isLast ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
-                .padding(.horizontal, 5)
-                .padding(.vertical, 2)
+                .padding(.horizontal, isProminent ? 7 : 5)
+                .padding(.vertical, isProminent ? 4 : 2)
                 .background(
                     RoundedRectangle(cornerRadius: 4)
                         .fill(hovering ? Color.primary.opacity(0.08) : Color.clear)

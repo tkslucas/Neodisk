@@ -14,7 +14,7 @@ import SwiftUI
 import NeodiskKit
 
 struct SunburstLegendList: View {
-    static let width: CGFloat = 280
+    static let width: CGFloat = 340
 
     let model: NeodiskViewModel
     @ObservedObject var chartModel: SunburstChartModel
@@ -62,11 +62,12 @@ struct SunburstLegendList: View {
                     }
                     .padding(.vertical, 6)
                 }
-                // Replacing the content (hover preview, drill) restarts the
-                // scroll at the top instead of keeping a stale offset.
-                .id(displayedFolder.id)
             }
         }
+        // Swapping the identity when the displayed folder changes (hover
+        // preview, drill) restarts the scroll at the top instead of keeping
+        // a stale offset.
+        .id(displayedFolder.id)
         .frame(width: Self.width)
     }
 
@@ -166,7 +167,7 @@ private struct LegendRowView: View {
     let isHighlighted: Bool
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 9) {
             Circle()
                 .fill(row.dotColor)
                 .frame(width: dotSize, height: dotSize)
@@ -181,8 +182,8 @@ private struct LegendRowView: View {
                 .monospacedDigit()
                 .foregroundStyle(isHeader ? .primary : .secondary)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, isHeader ? 5 : 3)
+        .padding(.horizontal, 12)
+        .padding(.vertical, isHeader ? 6 : 4)
         .background(
             RoundedRectangle(cornerRadius: 5)
                 .fill(backgroundColor)
@@ -191,15 +192,15 @@ private struct LegendRowView: View {
     }
 
     private var dotSize: CGFloat {
-        isHeader ? 11 : 9
+        isHeader ? 14 : 12
     }
 
     private var labelFont: Font {
-        isHeader ? .system(size: 13, weight: .semibold) : .system(size: 12)
+        isHeader ? .system(size: 16, weight: .semibold) : .system(size: 14)
     }
 
     private var sizeFont: Font {
-        isHeader ? .system(size: 12, weight: .semibold) : .system(size: 11)
+        isHeader ? .system(size: 14, weight: .semibold) : .system(size: 13)
     }
 
     private var backgroundColor: Color {

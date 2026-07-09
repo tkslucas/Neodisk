@@ -201,7 +201,7 @@ enum SunburstLegend {
             siblingIndex: 0,
             siblingCount: 1,
             depth: depth,
-            role: .normal
+            role: node.isDirectory ? .normal : .file
         )
         let synthetic = SunburstSegment(
             id: "legend-\(node.id)",
@@ -213,7 +213,7 @@ enum SunburstLegend {
             outerRadius: 0,
             depth: depth,
             colorToken: token,
-            fillRGB: SunburstLayout.resolvedFillRGB(for: node, style: style),
+            fillRGB: SunburstLayout.resolvedFillRGB(for: node, token: token, style: style),
             totalSize: node.allocatedSize,
             isAggregate: false
         )

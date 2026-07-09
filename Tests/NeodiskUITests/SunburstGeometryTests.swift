@@ -163,16 +163,24 @@ import NeodiskKit
     }
 
     @Test func childColorTokensKeepBranchFamilyButVaryBySibling() {
+        // Directory siblings: files are uniformly gray in branch mode, so
+        // per-sibling hue variation only applies to folders.
+        let fileOne = makeTestFileNode(id: "/root/a/one/f", name: "f", size: 3)
+        let fileTwo = makeTestFileNode(id: "/root/a/two/f", name: "f", size: 2)
+        let fileThree = makeTestFileNode(id: "/root/a/three/f", name: "f", size: 1)
         let children = [
-            makeTestFileNode(id: "/root/a/one", name: "one", size: 3),
-            makeTestFileNode(id: "/root/a/two", name: "two", size: 2),
-            makeTestFileNode(id: "/root/a/three", name: "three", size: 1),
+            makeTestDirectoryNode(id: "/root/a/one", name: "one", children: [fileOne]),
+            makeTestDirectoryNode(id: "/root/a/two", name: "two", children: [fileTwo]),
+            makeTestDirectoryNode(id: "/root/a/three", name: "three", children: [fileThree]),
         ]
         let branch = makeTestDirectoryNode(id: "/root/a", name: "a", children: children)
         let root = makeTestDirectoryNode(id: "/root", name: "root", children: [branch])
         let store = FileTreeStore(root: root, childrenByID: [
             "/root": [branch],
             "/root/a": children,
+            "/root/a/one": [fileOne],
+            "/root/a/two": [fileTwo],
+            "/root/a/three": [fileThree],
         ])
 
         let segments = SunburstLayout.segments(in: store, rootID: "/root", depthLimit: 2)
@@ -266,16 +274,103 @@ import NeodiskKit
 
     // MARK: - Layout-time coloring (Neodisk-specific)
 
-    @Test func branchModeLeavesFillUnresolved() {
-        let children = [makeTestFileNode(id: "/root/a.mov", name: "a.mov", size: 10)]
-        let store = makeGeometryStore(children: children)
+    @Test func branchModeResolvesTokenFillsAtLayoutTime() throws {
+        let file = makeTestFileNode(id: "/root/a.mov", name: "a.mov", size: 10)
+        let nested = makeTestFileNode(id: "/root/sub/b.mov", name: "b.mov", size: 20)
+        let sub = makeTestDirectoryNode(id: "/root/sub", name: "sub", children: [nested])
+        let root = makeTestDirectoryNode(id: "/root", name: "root", children: [file, sub])
+        let store = FileTreeStore(root: root, childrenByID: [
+            "/root": [file, sub],
+            "/root/sub": [nested],
+        ])
 
         let segments = SunburstLayout.segments(
-            in: store, rootID: "/root", depthLimit: 1,
+            in: store, rootID: "/root", depthLimit: 2,
             style: SunburstColorStyle(mode: .branch)
         )
 
-        #expect(segments.allSatisfy { $0.fillRGB == nil })
+        let dirSegment = try #require(segments.first { $0.nodeID == sub.id })
+        let fileSegment = try #require(segments.first { $0.nodeID == file.id })
+        #expect(dirSegment.fillRGB == SunburstColorResolver.rgb(for: dirSegment.colorToken))
+        #expect(fileSegment.fillRGB == SunburstColorResolver.rgb(for: fileSegment.colorToken))
+    }
+
+    @Test func branchModeDrawsFilesGrayAndFoldersColored() throws {
+        let file = makeTestFileNode(id: "/root/a.mov", name: "a.mov", size: 10)
+        let nested = makeTestFileNode(id: "/root/sub/b.mov", name: "b.mov", size: 20)
+        let sub = makeTestDirectoryNode(id: "/root/sub", name: "sub", children: [nested])
+        let root = makeTestDirectoryNode(id: "/root", name: "root", children: [file, sub])
+        let store = FileTreeStore(root: root, childrenByID: [
+            "/root": [file, sub],
+            "/root/sub": [nested],
+        ])
+
+        let segments = SunburstLayout.segments(
+            in: store, rootID: "/root", depthLimit: 2,
+            style: SunburstColorStyle(mode: .branch)
+        )
+
+        let fileSegment = try #require(segments.first { $0.nodeID == file.id })
+        let nestedSegment = try #require(segments.first { $0.nodeID == nested.id })
+        let dirSegment = try #require(segments.first { $0.nodeID == sub.id })
+        let fileFill = try #require(fileSegment.fillRGB)
+        let nestedFill = try #require(nestedSegment.fillRGB)
+        let dirFill = try #require(dirSegment.fillRGB)
+        // Files are gray (r == g == b); folders keep a saturated branch hue.
+        #expect(fileFill.x == fileFill.y && fileFill.y == fileFill.z)
+        #expect(nestedFill.x == nestedFill.y && nestedFill.y == nestedFill.z)
+        #expect(!(dirFill.x == dirFill.y && dirFill.y == dirFill.z))
+        #expect(segments.first { $0.nodeID == file.id }?.colorToken.role == .file)
+        #expect(segments.first { $0.nodeID == sub.id }?.colorToken.role == .normal)
+    }
+
+    @Test func colorblindPaletteRestrictsBranchHues() throws {
+        let nested = makeTestFileNode(id: "/root/sub/b.mov", name: "b.mov", size: 20)
+        let sub = makeTestDirectoryNode(id: "/root/sub", name: "sub", children: [nested])
+        let root = makeTestDirectoryNode(id: "/root", name: "root", children: [sub])
+        let store = FileTreeStore(root: root, childrenByID: [
+            "/root": [sub],
+            "/root/sub": [nested],
+        ])
+
+        let standard = SunburstLayout.segments(
+            in: store, rootID: "/root", depthLimit: 1,
+            style: SunburstColorStyle(mode: .branch, palette: .standard)
+        )
+        let colorblind = SunburstLayout.segments(
+            in: store, rootID: "/root", depthLimit: 1,
+            style: SunburstColorStyle(mode: .branch, palette: .colorblind)
+        )
+
+        let standardSegment = try #require(standard.first { $0.nodeID == sub.id })
+        let colorblindSegment = try #require(colorblind.first { $0.nodeID == sub.id })
+        let standardFill = try #require(standardSegment.fillRGB)
+        let colorblindFill = try #require(colorblindSegment.fillRGB)
+        // The toggle must change the sunburst's default (branch) colors.
+        #expect(standardFill != colorblindFill)
+        // Colorblind fills keep the exact hue of an Okabe-Ito palette entry —
+        // variation moves brightness only, so the hue must match one entry.
+        let components = SunburstColorResolver.components(
+            for: colorblindSegment.colorToken,
+            palette: .colorblind
+        )
+        let paletteHues = VizPalette.colorblind.kindPalette.map { rgb -> Double in
+            let r = Double(rgb.x), g = Double(rgb.y), b = Double(rgb.z)
+            let maxC = Swift.max(r, g, b), minC = Swift.min(r, g, b)
+            let delta = maxC - minC
+            guard delta > 0 else { return 0 }
+            var hue: Double
+            if maxC == r {
+                hue = ((g - b) / delta).truncatingRemainder(dividingBy: 6)
+            } else if maxC == g {
+                hue = (b - r) / delta + 2
+            } else {
+                hue = (r - g) / delta + 4
+            }
+            hue /= 6
+            return hue < 0 ? hue + 1 : hue
+        }
+        #expect(paletteHues.contains { abs($0 - components.hue) < 0.001 })
     }
 
     @Test func kindModeResolvesCatalogFillsAtLayoutTime() throws {

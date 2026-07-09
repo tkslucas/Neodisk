@@ -286,7 +286,8 @@ final class NeodiskViewModel {
             return SunburstColorResolver.branchColor(
                 forNodeID: node.id,
                 in: store,
-                effectiveRootID: effectiveRootID ?? store.root.id
+                effectiveRootID: effectiveRootID ?? store.root.id,
+                palette: vizPalette
             )
         }
         if case .age(let referenceDate) = treemapColorMode {

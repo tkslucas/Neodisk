@@ -13,10 +13,11 @@ import SwiftUI
 import NeodiskKit
 
 /// How sunburst segments are colored, derived from the active analysis tab:
-/// Radix's branch-hue algorithm on Largest, the treemap's kind/age semantics
-/// on the other tabs. Kind and age fills (including highlight dimming) are
-/// resolved at layout time into `SunburstSegment.fillRGB`; branch mode leaves
-/// `fillRGB` nil and the styler asks `SunburstColorResolver` instead.
+/// Radix's branch-hue algorithm on Largest (folders colored, files gray,
+/// colorblind palette honored), the treemap's kind/age semantics on the
+/// other tabs. Every mode resolves its final fill (including highlight
+/// dimming) at layout time into `SunburstSegment.fillRGB`; the styler's
+/// token fallback only covers segments without a node.
 struct SunburstColorStyle: Equatable, Sendable {
     enum Mode: Equatable, Sendable {
         /// Radix branch hues — stable per scan-root branch (Largest tab).
@@ -252,7 +253,9 @@ enum SunburstLayout {
                 siblingIndex: siblingIndex,
                 siblingCount: siblingCount,
                 depth: depth,
-                role: entry.isAggregate ? .aggregate : .normal
+                role: entry.isAggregate
+                    ? .aggregate
+                    : ((entry.node?.isDirectory ?? true) ? .normal : .file)
             )
             let segment = SunburstSegment(
                 id: entry.id,
@@ -264,7 +267,7 @@ enum SunburstLayout {
                 outerRadius: ringStart + CGFloat(depth + 1) * ringWidth - 0.015,
                 depth: depth,
                 colorToken: colorToken,
-                fillRGB: entry.node.flatMap { resolvedFillRGB(for: $0, style: style) },
+                fillRGB: entry.node.flatMap { resolvedFillRGB(for: $0, token: colorToken, style: style) },
                 totalSize: entry.totalSize,
                 isAggregate: entry.isAggregate,
                 parentFolderID: entry.isAggregate ? parentID : nil,
@@ -356,22 +359,24 @@ enum SunburstLayout {
         return visible
     }
 
-    // MARK: - Fill resolution (kind/age modes)
+    // MARK: - Fill resolution
 
-    /// A node's final fill for the kind/age color modes, mirroring the
-    /// treemap: kind catalog colors (directories neutral), the age ramp, and
-    /// `TreemapScene.dimmedRGB` for segments a highlight doesn't match.
-    /// Branch mode returns nil — the resolver colors from the token.
+    /// A node's final fill, resolved at layout time. Kind/age modes mirror
+    /// the treemap: kind catalog colors (directories neutral), the age ramp,
+    /// and `TreemapScene.dimmedRGB` for segments a highlight doesn't match.
+    /// Branch mode resolves the token (branch hues honoring the palette —
+    /// colorblind branches restrict to Okabe-Ito hues — and gray files).
     /// Internal (not private) so the legend list can resolve the same fill
     /// for nodes without a rendered segment (children of a max-depth folder).
     nonisolated static func resolvedFillRGB(
         for node: FileNodeRecord,
+        token: SunburstColorToken,
         style: SunburstColorStyle
     ) -> SIMD3<Float>? {
         var rgb: SIMD3<Float>
         switch style.mode {
         case .branch:
-            return nil
+            return SunburstColorResolver.rgb(for: token, palette: style.palette)
         case .kind:
             rgb = style.catalog.rgb(for: node)
         case .age(let referenceDate):

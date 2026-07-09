@@ -20,6 +20,7 @@ import NeodiskKit
         let right: FileNodeRecord
         let leftFile: FileNodeRecord
         let rightFile: FileNodeRecord
+        let summarized: FileNodeRecord
         let cacheDirectory: URL
         let defaults: UserDefaults
         let defaultsSuiteName: String
@@ -45,11 +46,21 @@ import NeodiskKit
         let left = makeTestDirectoryNode(id: "/root/area/left", name: "left", children: [leftFile])
         let right = makeTestDirectoryNode(id: "/root/area/right", name: "right", children: [rightFile])
         let area = makeTestDirectoryNode(id: "/root/area", name: "area", children: [left, right])
-        let root = makeTestDirectoryNode(id: "/root", name: "root", children: [sub, loose, area])
+        // An auto-summarized folder: a directory with a size but no children
+        // in the store (nothing under it to render).
+        let summarized = FileNodeRecord(
+            id: "/root/pkg.app", url: URL(filePath: "/root/pkg.app"), name: "pkg.app",
+            isDirectory: true, isSymbolicLink: false, allocatedSize: 200,
+            unduplicatedAllocatedSize: nil, logicalSize: 200, descendantFileCount: 12,
+            lastModified: nil, fileIdentity: nil, linkCount: 1, isPackage: true,
+            isAccessible: true, isSelfAccessible: true, isSynthetic: false,
+            isAutoSummarized: true
+        )
+        let root = makeTestDirectoryNode(id: "/root", name: "root", children: [sub, loose, area, summarized])
         let store = FileTreeStore(
             root: root,
             childrenByID: [
-                root.id: [sub, loose, area], sub.id: [big, small],
+                root.id: [sub, loose, area, summarized], sub.id: [big, small],
                 area.id: [left, right], left.id: [leftFile], right.id: [rightFile],
             ]
         )
@@ -69,6 +80,7 @@ import NeodiskKit
         return Fixture(
             model: model, root: root, sub: sub, big: big, small: small, loose: loose,
             area: area, left: left, right: right, leftFile: leftFile, rightFile: rightFile,
+            summarized: summarized,
             cacheDirectory: cacheDirectory, defaults: defaults, defaultsSuiteName: defaultsSuiteName
         )
     }
@@ -206,6 +218,18 @@ import NeodiskKit
         model.zoomRootID = fixture.left.id
         model.selectedNodeID = fixture.rightFile.id
         #expect(model.zoomRootID == fixture.area.id)
+    }
+
+    @Test func testDrillIntoSummarizedFolderIsRejected() throws {
+        let fixture = try makeFixture()
+        defer { fixture.tearDown() }
+        let model = fixture.model
+
+        // Re-rooting into a folder with no children in the store would render
+        // a blank map — reject it instead of drilling into a dead end.
+        model.select(fixture.summarized.id)
+        #expect(!model.drillIntoSelection())
+        #expect(model.zoomRootID == nil)
     }
 
     @Test func testDrillOutReRootsUpThenRejectsAtRoot() throws {

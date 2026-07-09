@@ -723,7 +723,11 @@ final class NeodiskViewModel {
         // A selected directory is drilled into; a selected file drills into
         // its containing folder.
         let targetDir = node.isDirectory ? node : store.parent(of: node.id)
-        guard let dir = targetDir, dir.isDirectory, dir.id != effectiveRootID else {
+        guard let dir = targetDir, dir.isDirectory, dir.id != effectiveRootID,
+              // Auto-summarized folders and packages have a size but no
+              // children in the store; re-rooting there renders a blank map.
+              // Only drill into a folder that has something to show.
+              store.children(of: dir.id).contains(where: { $0.allocatedSize > 0 }) else {
             return false
         }
         zoomRootID = dir.id == store.root.id ? nil : dir.id

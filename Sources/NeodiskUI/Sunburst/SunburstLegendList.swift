@@ -34,40 +34,45 @@ struct SunburstLegendList: View {
         let rows = legendRows
         let highlightedRowID = highlightedRowID(in: rows)
 
-        VStack(spacing: 0) {
-            if let store = model.store {
-                LegendRowView(
-                    row: SunburstLegend.headerRow(
-                        forFolder: displayedFolder,
-                        chartRootID: chartRootID,
-                        in: store,
-                        segments: chartModel.renderedSegments,
-                        style: style
-                    ),
-                    isHeader: true,
-                    isSelected: false,
-                    isHighlighted: false
-                )
-                .padding(.top, 10)
-                .padding(.bottom, 4)
+        ZStack {
+            VStack(spacing: 0) {
+                if let store = model.store {
+                    LegendRowView(
+                        row: SunburstLegend.headerRow(
+                            forFolder: displayedFolder,
+                            chartRootID: chartRootID,
+                            in: store,
+                            segments: chartModel.renderedSegments,
+                            style: style
+                        ),
+                        isHeader: true,
+                        isSelected: false,
+                        isHighlighted: false
+                    )
+                    .padding(.top, 10)
+                    .padding(.bottom, 4)
 
-                Divider()
-                    .padding(.horizontal, 10)
+                    Divider()
+                        .padding(.horizontal, 10)
 
-                ScrollView {
-                    LazyVStack(spacing: 1) {
-                        ForEach(rows) { row in
-                            interactiveRow(row, isHighlighted: row.id == highlightedRowID)
+                    ScrollView {
+                        LazyVStack(spacing: 1) {
+                            ForEach(rows) { row in
+                                interactiveRow(row, isHighlighted: row.id == highlightedRowID)
+                            }
                         }
+                        .padding(.vertical, 6)
                     }
-                    .padding(.vertical, 6)
                 }
             }
+            // Swapping the identity when the displayed folder changes (hover
+            // preview, drill) restarts the scroll at the top instead of
+            // keeping a stale offset — and gives the transition an
+            // insertion/removal to animate, so the legend cross-fades (the
+            // pane wraps preview changes in withAnimation).
+            .id(displayedFolder.id)
+            .transition(.opacity)
         }
-        // Swapping the identity when the displayed folder changes (hover
-        // preview, drill) restarts the scroll at the top instead of keeping
-        // a stale offset.
-        .id(displayedFolder.id)
         .frame(width: Self.width)
     }
 

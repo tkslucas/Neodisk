@@ -74,13 +74,13 @@ struct SunburstPane: View {
             }
             // A new root (drill, breadcrumb, rescan) invalidates the preview.
             .onChange(of: model.effectiveRootID) { _, _ in
-                previewFolderID = nil
+                setPreviewFolder(nil)
             }
             // Switching back to the treemap must not leave the status bar
             // holding the last-hovered sunburst item.
             .onDisappear {
                 clearHover()
-                previewFolderID = nil
+                setPreviewFolder(nil)
             }
         } else {
             Color.clear
@@ -198,7 +198,7 @@ struct SunburstPane: View {
     private func handleHover(_ segment: SunburstSegment?) {
         guard let segment else {
             clearHover()
-            previewFolderID = nil
+            setPreviewFolder(nil)
             return
         }
 
@@ -206,7 +206,7 @@ struct SunburstPane: View {
             model.hoveredNodeID = nil
             model.hoveredAggregate = nil
             model.hoveredCellIsFreeSpace = true
-            previewFolderID = nil
+            setPreviewFolder(nil)
             return
         }
 
@@ -217,7 +217,7 @@ struct SunburstPane: View {
                 totalSize: segment.totalSize
             )
             model.hoveredCellIsFreeSpace = false
-            previewFolderID = nil
+            setPreviewFolder(nil)
             return
         }
 
@@ -231,9 +231,19 @@ struct SunburstPane: View {
            let node = model.store?.node(id: nodeID),
            node.isDirectory,
            model.store?.children(of: nodeID).isEmpty == false {
-            previewFolderID = nodeID
+            setPreviewFolder(nodeID)
         } else {
-            previewFolderID = nil
+            setPreviewFolder(nil)
+        }
+    }
+
+    /// Every preview change funnels through here so the legend's identity
+    /// swap happens inside an animated transaction and cross-fades (see the
+    /// `.transition(.opacity)` in SunburstLegendList).
+    private func setPreviewFolder(_ id: String?) {
+        guard previewFolderID != id else { return }
+        withAnimation(.easeInOut(duration: 0.18)) {
+            previewFolderID = id
         }
     }
 

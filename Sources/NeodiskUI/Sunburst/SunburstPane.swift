@@ -219,7 +219,10 @@ struct SunburstPane: View {
                 totalSize: segment.totalSize
             )
             model.hoveredCellIsFreeSpace = false
-            setPreviewFolder(nil)
+            // Preview the containing folder — its list holds the Smaller
+            // Items row this segment pools, which highlights through the
+            // hover state above.
+            setPreviewFolder(segment.parentFolderID)
             return
         }
 
@@ -227,13 +230,16 @@ struct SunburstPane: View {
         model.hoveredAggregate = nil
         model.hoveredCellIsFreeSpace = false
         // Hovering a directory previews its contents in the legend; files
-        // (and childless folders, which have nothing to list) keep the list
-        // on the current root and highlight their containing row instead.
+        // (and childless folders, which have nothing to list) preview their
+        // parent folder instead, so the legend shows the hovered item
+        // highlighted among its siblings rather than snapping to the root.
         if let nodeID = segment.nodeID,
-           let node = model.store?.node(id: nodeID),
-           node.isDirectory,
-           model.store?.children(of: nodeID).isEmpty == false {
-            setPreviewFolder(nodeID)
+           let node = model.store?.node(id: nodeID) {
+            if node.isDirectory, model.store?.children(of: nodeID).isEmpty == false {
+                setPreviewFolder(nodeID)
+            } else {
+                setPreviewFolder(model.store?.parent(of: nodeID)?.id)
+            }
         } else {
             setPreviewFolder(nil)
         }

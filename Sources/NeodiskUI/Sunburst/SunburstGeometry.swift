@@ -3,10 +3,11 @@
 //  Neodisk
 //
 //  Sunburst ring layout, arc path construction, and hit testing. Ported from
-//  Radix (Lucas's other disk analyzer); adapted to resolve each segment's
-//  final fill color at layout time from the active analysis tab's color mode
-//  (branch hues on Largest, kind/age colors elsewhere) and to represent
-//  volume free space as one synthetic top-ring segment.
+//  Radix (MIT, attributed in LICENSE); adapted to represent volume free
+//  space as one synthetic top-ring segment. Layout emits geometry only —
+//  fills resolve in a separate `styled` pass over the finished segments, so
+//  color changes (tab, palette, highlight, catalog rebuilds) never re-lay
+//  the chart out.
 //
 
 import SwiftUI
@@ -25,8 +26,8 @@ extension FileNodeRecord {
 /// Radix's branch-hue algorithm on Largest (folders colored, files gray,
 /// colorblind palette honored), the treemap's kind/age semantics on the
 /// other tabs. Every mode resolves its final fill (including highlight
-/// dimming) at layout time into `SunburstSegment.fillRGB`; the styler's
-/// token fallback only covers segments without a node.
+/// dimming) into `SunburstSegment.fillRGB` via the `styled` pass; the
+/// styler's token fallback only covers segments without a node.
 struct SunburstColorStyle: Equatable, Sendable {
     enum Mode: Equatable, Sendable {
         /// Radix branch hues — stable per scan-root branch (Largest tab).
@@ -61,10 +62,10 @@ struct SunburstSegment: Identifiable, Hashable, Sendable {
     let outerRadius: CGFloat
     let depth: Int
     let colorToken: SunburstColorToken
-    /// Fill resolved at layout time (kind/age modes, highlight dimming
-    /// applied); nil in branch mode, where the color resolver derives the
-    /// fill from `colorToken`.
-    let fillRGB: SIMD3<Float>?
+    /// Fill resolved by the `styled` pass (kind/age colors, branch hues,
+    /// highlight dimming); nil for segments without a node, where the
+    /// drawing styler derives a fallback from `colorToken`.
+    var fillRGB: SIMD3<Float>?
     let totalSize: Int64
     let isAggregate: Bool
     /// For aggregate segments: the folder whose small children pooled here,
@@ -123,6 +124,9 @@ enum SunburstLayout {
 
     typealias CancellationCheck = () throws -> Void
 
+    /// Layout and fills in one call — the convenience for tests and callers
+    /// that don't restyle; the chart itself lays out once and restyles via
+    /// `styled` as colors change.
     nonisolated static func segments(
         in treeStore: FileTreeStore,
         rootID: String,
@@ -131,15 +135,32 @@ enum SunburstLayout {
         style: SunburstColorStyle = SunburstColorStyle(),
         freeSpaceBytes: Int64? = nil
     ) -> [SunburstSegment] {
-        (try? segments(
+        let unstyled = (try? segments(
             in: treeStore,
             rootID: rootID,
             depthLimit: depthLimit,
             minimumAngle: minimumAngle,
-            style: style,
             freeSpaceBytes: freeSpaceBytes,
             cancellationCheck: {}
         )) ?? []
+        return styled(unstyled, style: style, in: treeStore)
+    }
+
+    /// Re-resolves every segment's fill for a color style — O(segments), so
+    /// tab, palette, highlight, and catalog changes recolor the finished
+    /// layout instead of recomputing it.
+    nonisolated static func styled(
+        _ segments: [SunburstSegment],
+        style: SunburstColorStyle,
+        in treeStore: FileTreeStore
+    ) -> [SunburstSegment] {
+        segments.map { segment in
+            var segment = segment
+            segment.fillRGB = segment.nodeID
+                .flatMap { treeStore.node(id: $0) }
+                .flatMap { resolvedFillRGB(for: $0, token: segment.colorToken, style: style) }
+            return segment
+        }
     }
 
     nonisolated static func segments(
@@ -147,7 +168,6 @@ enum SunburstLayout {
         rootID: String,
         depthLimit: Int,
         minimumAngle: Double = .pi / 90,
-        style: SunburstColorStyle = SunburstColorStyle(),
         freeSpaceBytes: Int64? = nil,
         cancellationCheck: CancellationCheck
     ) throws -> [SunburstSegment] {
@@ -182,7 +202,6 @@ enum SunburstLayout {
             ringWidth: ringWidth,
             branchContext: nil,
             colorBranchContext: colorBranchContext,
-            style: style,
             minimumAngle: minimumAngle,
             cancellationCheck: cancellationCheck,
             into: &result
@@ -222,7 +241,6 @@ enum SunburstLayout {
         ringWidth: CGFloat,
         branchContext: ColorBranch?,
         colorBranchContext: ColorBranchContext,
-        style: SunburstColorStyle,
         minimumAngle: Double,
         cancellationCheck: CancellationCheck,
         into segments: inout [SunburstSegment]
@@ -281,7 +299,6 @@ enum SunburstLayout {
                 outerRadius: ringStart + CGFloat(depth + 1) * ringWidth - SunburstLayout.ringGap,
                 depth: depth,
                 colorToken: colorToken,
-                fillRGB: entry.node.flatMap { resolvedFillRGB(for: $0, token: colorToken, style: style) },
                 totalSize: entry.totalSize,
                 isAggregate: entry.isAggregate,
                 parentFolderID: entry.isAggregate ? parentID : nil,
@@ -312,7 +329,6 @@ enum SunburstLayout {
                     ringWidth: ringWidth,
                     branchContext: branch,
                     colorBranchContext: colorBranchContext,
-                    style: style,
                     minimumAngle: minimumAngle,
                     cancellationCheck: cancellationCheck,
                     into: &segments
@@ -375,9 +391,10 @@ enum SunburstLayout {
 
     // MARK: - Fill resolution
 
-    /// A node's final fill, resolved at layout time. Kind/age modes mirror
-    /// the treemap: kind catalog colors (directories neutral), the age ramp,
-    /// and `TreemapScene.dimmedRGB` for segments a highlight doesn't match.
+    /// A node's final fill, resolved by the `styled` pass. Kind/age modes
+    /// mirror the treemap: kind catalog colors (directories neutral), the
+    /// age ramp, and `TreemapScene.dimmedRGB` for segments a highlight
+    /// doesn't match.
     /// Branch mode resolves the token (branch hues honoring the palette —
     /// colorblind branches restrict to Okabe-Ito hues — and gray files).
     /// Internal (not private) so the legend list can resolve the same fill

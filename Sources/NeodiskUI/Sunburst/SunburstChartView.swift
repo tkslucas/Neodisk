@@ -24,8 +24,9 @@ struct SunburstChartView: View {
     let selectedNodeID: String?
     let selectedAncestorIDs: Set<String>
     let depthLimit: Int
-    /// Identity of every layout input (snapshot, root, colors, free space);
-    /// changes reload the layout.
+    /// Identity of the layout's geometry inputs (snapshot, root, depth,
+    /// free space); changes reload the layout. Color changes restyle the
+    /// rendered segments instead (see the `style` onChange).
     let layoutID: String
     /// Identity of the displayed root only; changes reset the viewport, so
     /// tab/palette switches keep the user's zoom.
@@ -82,6 +83,11 @@ struct SunburstChartView: View {
                         freeSpaceBytes: freeSpaceBytes,
                         layoutID: layoutID
                     ))
+                }
+                // Tab, palette, highlight, and catalog changes recolor the
+                // finished layout — O(segments), never a re-layout.
+                .onChange(of: style) { _, nextStyle in
+                    chartModel.applyStyle(nextStyle, in: treeStore)
                 }
         }
     }

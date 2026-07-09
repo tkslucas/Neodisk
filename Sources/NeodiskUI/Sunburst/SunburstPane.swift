@@ -47,7 +47,6 @@ struct SunburstPane: View {
                     layoutID: Self.layoutID(
                         snapshotID: snapshot.id,
                         rootID: rootID,
-                        style: style,
                         freeSpaceBytes: freeSpaceBytes
                     ),
                     viewportResetID: "\(snapshot.id)|\(rootID)",
@@ -133,74 +132,21 @@ struct SunburstPane: View {
         return Set(store.path(to: selectedNodeID).map(\.id))
     }
 
-    /// One string capturing every layout input, so `.task(id:)` reloads on
-    /// any change: snapshot, root, color mode, highlight, palette, free space.
+    /// One string capturing every GEOMETRY input, so `.task(id:)` reloads on
+    /// any change: snapshot, root, depth, free space. Colors (tab mode,
+    /// highlight, palette, catalog) are deliberately absent — they restyle
+    /// the rendered layout in place (see SunburstChartModel.applyStyle).
     private static func layoutID(
         snapshotID: UUID,
         rootID: String,
-        style: SunburstColorStyle,
         freeSpaceBytes: Int64?
     ) -> String {
-        let modeKey: String
-        switch style.mode {
-        case .branch:
-            modeKey = "branch"
-        case .kind:
-            modeKey = "kind"
-        case .age(let referenceDate):
-            modeKey = "age:\(referenceDate.timeIntervalSinceReferenceDate)"
-        }
-
-        let highlightKey: String
-        switch style.highlight {
-        case nil:
-            highlightKey = "none"
-        case .kind(let kindID):
-            highlightKey = "kind:\(kindID)"
-        case .ageBucket(let bucket):
-            highlightKey = "age:\(bucket.rawValue)"
-        case .nodes(let ids):
-            // Duplicate groups can hold thousands of ids; a stable FNV-1a
-            // digest keeps the layout id cheap while still changing whenever
-            // the set does.
-            highlightKey = "nodes:\(ids.count):\(stableDigest(of: ids))"
-        }
-
-        let paletteKey = style.palette == .colorblind ? "cb" : "std"
-        // Branch coloring never reads the kind catalog, so its rebuilds must
-        // not force a re-layout: on restore the catalog goes empty → built,
-        // and folding its buildID in here made every restore lay the chart
-        // out twice for byte-identical segments.
-        let catalogKey: String
-        if case .branch = style.mode {
-            catalogKey = "-"
-        } else {
-            catalogKey = style.catalog.buildID.uuidString
-        }
-        return [
+        [
             snapshotID.uuidString,
             rootID,
             "\(depthLimit)",
-            modeKey,
-            highlightKey,
-            paletteKey,
-            catalogKey,
             "\(freeSpaceBytes ?? 0)"
         ].joined(separator: "|")
-    }
-
-    private static func stableDigest(of ids: Set<String>) -> UInt64 {
-        // Order-independent: combine per-id FNV-1a hashes commutatively.
-        var combined: UInt64 = 0
-        for id in ids {
-            var hash: UInt64 = 14_695_981_039_346_656_037
-            for byte in id.utf8 {
-                hash ^= UInt64(byte)
-                hash &*= 1_099_511_628_211
-            }
-            combined &+= hash
-        }
-        return combined
     }
 
     // MARK: - Interaction

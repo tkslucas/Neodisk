@@ -149,6 +149,53 @@ import NeodiskKit
         #expect(overlaySegments.map(\.segment.id) == [ancestor.id, selected.id])
         #expect(overlaySegments.map(\.role) == [.ancestor, .selected])
     }
+
+    @Test func applyStyleRecolorsWithoutReLayoutAndKeepsHover() async throws {
+        let file = makeTestFileNode(id: "/root/file.mov", name: "file.mov", size: 10)
+        let root = makeTestDirectoryNode(id: "/root", name: "root", children: [file])
+        let store = FileTreeStore(root: root, childrenByID: [root.id: [file]])
+        let segment = makeSegment(id: "/root/file.mov")
+        let service = CountingSunburstLayoutService(segments: [segment])
+        let model = SunburstChartModel(layoutService: service)
+
+        let didApplyLayout = await model.loadLayout(SunburstLayoutRequest(
+            treeStore: store,
+            rootID: root.id,
+            depthLimit: 1,
+            style: SunburstColorStyle(mode: .branch),
+            freeSpaceBytes: nil,
+            layoutID: "layout"
+        ))
+        #expect(didApplyLayout)
+        let versionAfterLoad = model.renderedLayoutVersion
+        model.setHoveredSegmentID(segment.id)
+        let branchFill = try #require(model.renderedSegments.first?.fillRGB)
+
+        let catalog = FileKindCatalog.build(from: store, mode: .categories)
+        model.applyStyle(SunburstColorStyle(mode: .kind, catalog: catalog), in: store)
+
+        // Recolored in place: no second layout request, redrawn segments,
+        // surviving hover, and a fill that reflects the new mode.
+        #expect(await service.requestCount == 1)
+        #expect(model.renderedLayoutVersion == versionAfterLoad + 1)
+        #expect(model.hoveredSegmentID == segment.id)
+        let kindFill = try #require(model.renderedSegments.first?.fillRGB)
+        #expect(kindFill != branchFill)
+    }
+}
+
+private actor CountingSunburstLayoutService: SunburstLayouting {
+    private let renderedSegments: [SunburstSegment]
+    private(set) var requestCount = 0
+
+    init(segments: [SunburstSegment]) {
+        renderedSegments = segments
+    }
+
+    func segments(for request: SunburstLayoutRequest) async throws -> [SunburstSegment] {
+        requestCount += 1
+        return renderedSegments
+    }
 }
 
 private actor ImmediateSunburstLayoutService: SunburstLayouting {

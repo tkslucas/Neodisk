@@ -13,14 +13,17 @@ import Foundation
 import NeodiskKit
 
 /// Everything one sunburst layout needs, bundled Sendable so the layout can
-/// run detached from the main actor.
+/// run detached from the main actor. `style` colors the finished layout —
+/// it is deliberately not part of `layoutID`, so color changes restyle the
+/// rendered segments (`applyStyle`) instead of re-laying the chart out.
 struct SunburstLayoutRequest: Sendable {
     let treeStore: FileTreeStore
     let rootID: String
     let depthLimit: Int
     let style: SunburstColorStyle
     let freeSpaceBytes: Int64?
-    /// Identity of this layout's inputs; a changed id supersedes older loads.
+    /// Identity of this layout's geometry inputs; a changed id supersedes
+    /// older loads.
     let layoutID: String
 }
 
@@ -29,12 +32,12 @@ protocol SunburstLayouting: Sendable {
 }
 
 actor SunburstLayoutService: SunburstLayouting {
+    /// Returns unstyled segments; the chart model applies the fill pass.
     func segments(for request: SunburstLayoutRequest) async throws -> [SunburstSegment] {
         try SunburstLayout.segments(
             in: request.treeStore,
             rootID: request.rootID,
             depthLimit: request.depthLimit,
-            style: request.style,
             freeSpaceBytes: request.freeSpaceBytes,
             cancellationCheck: Task.checkCancellation
         )
@@ -51,6 +54,11 @@ final class SunburstChartModel: ObservableObject {
     private var activeLayoutID: String?
     private var layoutTask: Task<[SunburstSegment], Error>?
     private var selectionOverlayCache = SunburstSelectionOverlayCache(capacity: 8)
+    /// The rendered layout before fills, kept so a style change re-resolves
+    /// colors over the finished geometry instead of re-laying out.
+    private var unstyledSegments: [SunburstSegment] = []
+    private var currentStyle = SunburstColorStyle()
+    private var styleStore: FileTreeStore?
 
     init(layoutService: any SunburstLayouting = SunburstLayoutService()) {
         self.layoutService = layoutService
@@ -112,6 +120,21 @@ final class SunburstChartModel: ObservableObject {
         }
     }
 
+    /// Recolors the rendered layout for a new style — O(segments), never a
+    /// re-layout. No-op until a layout has landed; a load in flight picks
+    /// the latest style up when it completes. Hover survives (the segment
+    /// ids are unchanged).
+    func applyStyle(_ style: SunburstColorStyle, in treeStore: FileTreeStore) {
+        styleStore = treeStore
+        guard style != currentStyle else { return }
+        currentStyle = style
+        guard !unstyledSegments.isEmpty else { return }
+        apply(
+            SunburstLayout.styled(unstyledSegments, style: style, in: treeStore),
+            preservingHover: true
+        )
+    }
+
     @discardableResult
     func loadLayout(_ request: SunburstLayoutRequest) async -> Bool {
         layoutGeneration += 1
@@ -120,6 +143,8 @@ final class SunburstChartModel: ObservableObject {
         layoutTask?.cancel()
         clearHover()
         setIsLayoutPending(true)
+        currentStyle = request.style
+        styleStore = request.treeStore
 
         let task = Task(priority: .userInitiated) { [layoutService] in
             try await layoutService.segments(for: request)
@@ -138,7 +163,10 @@ final class SunburstChartModel: ObservableObject {
             }
 
             layoutTask = nil
-            apply(segments)
+            unstyledSegments = segments
+            // Styled with the latest style — it may have moved on (via
+            // applyStyle) while the layout ran.
+            apply(SunburstLayout.styled(segments, style: currentStyle, in: request.treeStore))
             setIsLayoutPending(false)
             return true
         } catch is CancellationError {
@@ -153,6 +181,7 @@ final class SunburstChartModel: ObservableObject {
                 return false
             }
             layoutTask = nil
+            unstyledSegments = []
             apply([])
             setIsLayoutPending(false)
             return true
@@ -163,10 +192,11 @@ final class SunburstChartModel: ObservableObject {
         layoutGeneration == generation && activeLayoutID == layoutID
     }
 
-    private func apply(_ segments: [SunburstSegment]) {
+    private func apply(_ segments: [SunburstSegment], preservingHover: Bool = false) {
         selectionOverlayCache.removeAll()
         renderState = SunburstChartRenderState(
             segments: segments,
+            hoveredSegmentID: preservingHover ? renderState.hoveredSegmentID : nil,
             version: renderState.version + 1
         )
     }

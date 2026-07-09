@@ -330,6 +330,26 @@ enum FileKindClassifier {
         return table
     }()
 
+    /// SF Symbol per category, for the tinted type icons in the file lists.
+    /// Keyed by category ID plus the pseudo-IDs kindID can produce
+    /// ("folder"); symbols reuse the app's existing metaphors (Applications
+    /// matches the sidebar, folders match the outline).
+    nonisolated static func categorySymbol(forID id: String) -> String {
+        switch id {
+        case "cat-video": return "film.fill"
+        case "cat-image": return "photo.fill"
+        case "cat-audio": return "music.note"
+        case "cat-docs": return "doc.text.fill"
+        case "cat-archive": return "archivebox.fill"
+        case "cat-code": return "chevron.left.forwardslash.chevron.right"
+        case "cat-data": return "cylinder.split.1x2.fill"
+        case "cat-apps": return "square.grid.2x2.fill"
+        case "cat-system": return "gearshape.fill"
+        case "cat-summarized", "folder": return "folder.fill"
+        default: return "doc.fill"
+        }
+    }
+
     nonisolated static let categoryKindsByID: [String: FileKind] = {
         var kinds = [
             videoCategory, imageCategory, audioCategory, documentCategory,

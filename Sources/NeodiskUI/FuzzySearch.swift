@@ -202,12 +202,18 @@ enum FuzzyMatcher {
 }
 
 /// Search-result row shared by the outline's entire-scan results and the
-/// kind drill-in list: name, dimmed containing folder, size.
+/// statistics file lists: category icon tinted with the category's fixed
+/// color (the treemap's Categories palette, so lists and map speak the same
+/// color language), name, dimmed containing folder, size.
 struct FileResultRow: View {
     let node: FileNodeRecord
+    /// The active palette, so tints follow the colorblind Settings toggle.
+    var palette: VizPalette = .standard
 
     var body: some View {
         HStack(spacing: 6) {
+            FileCategoryIcon(node: node, palette: palette)
+
             VStack(alignment: .leading, spacing: 1) {
                 Text(node.name)
                     .lineLimit(1)
@@ -233,5 +239,34 @@ struct FileResultRow: View {
 
     private var containingFolder: String {
         (node.path as NSString).deletingLastPathComponent
+    }
+}
+
+/// A node's category icon tinted with the category's fixed color — the
+/// treemap's Categories palette, so the file lists and the map speak the
+/// same color language.
+struct FileCategoryIcon: View {
+    let node: FileNodeRecord
+    /// The active palette, so tints follow the colorblind Settings toggle.
+    let palette: VizPalette
+
+    var body: some View {
+        Image(systemName: FileKindClassifier.categorySymbol(forID: categoryID))
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(iconColor)
+            .frame(width: 16)
+    }
+
+    private var categoryID: String {
+        FileKindClassifier.kindID(for: node, mode: .categories)
+    }
+
+    /// Folders share the neutral "other" grey — the directory treemap grey
+    /// is tuned for cushion shading and all but vanishes as a glyph.
+    private var iconColor: Color {
+        let rgb = categoryID == "folder"
+            ? FileKindCatalog.otherRGB
+            : palette.categoryRGB[categoryID] ?? FileKindCatalog.otherRGB
+        return Color(red: Double(rgb.x), green: Double(rgb.y), blue: Double(rgb.z))
     }
 }

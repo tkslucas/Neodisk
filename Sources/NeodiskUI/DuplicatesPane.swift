@@ -194,6 +194,10 @@ private struct DuplicateGroupRow: View {
 
     var body: some View {
         HStack(spacing: 6) {
+            if let node = representativeNode {
+                FileCategoryIcon(node: node, palette: model.vizPalette)
+            }
+
             VStack(alignment: .leading, spacing: 1) {
                 Text(displayName)
                     .lineLimit(1)
@@ -213,9 +217,16 @@ private struct DuplicateGroupRow: View {
         .font(.system(size: 12))
     }
 
+    /// Every copy in a group has identical content, so the first resolvable
+    /// node stands in for the group's type icon.
+    private var representativeNode: FileNodeRecord? {
+        guard let id = group.nodeIDs.first else { return nil }
+        return model.store?.node(id: id)
+    }
+
     private var displayName: String {
         guard let id = group.nodeIDs.first else { return "" }
-        return model.store?.node(id: id)?.name ?? (id as NSString).lastPathComponent
+        return representativeNode?.name ?? (id as NSString).lastPathComponent
     }
 
     private var copiesText: String {
@@ -271,7 +282,7 @@ private struct DuplicateGroupDetailView: View {
             )
             List(group.nodeIDs, id: \.self, selection: selection) { nodeID in
                 if let node = model.store?.node(id: nodeID) {
-                    FileResultRow(node: node)
+                    FileResultRow(node: node, palette: model.vizPalette)
                         .listRowSeparator(.hidden)
                 }
             }

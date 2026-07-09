@@ -233,7 +233,7 @@ struct SunburstPane: View {
         // highlighted among its siblings rather than snapping to the root.
         if let nodeID = segment.nodeID,
            let node = model.store?.node(id: nodeID) {
-            if node.isDirectory, model.store?.children(of: nodeID).isEmpty == false {
+            if node.isSunburstFolder, model.store?.children(of: nodeID).isEmpty == false {
                 setPreviewFolder(nodeID)
             } else {
                 setPreviewFolder(model.store?.parent(of: nodeID)?.id)
@@ -301,14 +301,15 @@ struct SunburstPane: View {
         }
 
         guard let nodeID = segment.nodeID else { return }
-        if model.store?.node(id: nodeID)?.isDirectory == true {
+        if model.store?.node(id: nodeID)?.isSunburstFolder == true {
             // A single click on a folder segment drills in. drillIn guards
             // summarized/childless folders; refusals degrade to a plain
             // select.
             drillOrSelect(nodeID)
         } else {
-            // A single click on a file selects it and opens Quick Look
-            // (selection changes then live-update the open panel).
+            // A single click on a file (or package — opaque to the scan)
+            // selects it and opens Quick Look (selection changes then
+            // live-update the open panel).
             model.select(nodeID)
             if let node = model.store?.node(id: nodeID) {
                 QuickLookPresenter.shared.openPreview(for: node)

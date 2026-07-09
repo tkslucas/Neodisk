@@ -12,6 +12,15 @@
 import SwiftUI
 import NeodiskKit
 
+extension FileNodeRecord {
+    /// Whether the sunburst treats this node as a drillable folder. Packages
+    /// (.app, .imovielibrary, …) are directories on disk, but the scan never
+    /// descends into them (`.skipsPackageDescendants`), so the sunburst
+    /// treats them as files: gray in branch mode, Quick Look on click,
+    /// never a drill target.
+    nonisolated var isSunburstFolder: Bool { isDirectory && !isPackage }
+}
+
 /// How sunburst segments are colored, derived from the active analysis tab:
 /// Radix's branch-hue algorithm on Largest (folders colored, files gray,
 /// colorblind palette honored), the treemap's kind/age semantics on the
@@ -260,7 +269,7 @@ enum SunburstLayout {
                 depth: depth,
                 role: entry.isAggregate
                     ? .aggregate
-                    : ((entry.node?.isDirectory ?? true) ? .normal : .file)
+                    : ((entry.node?.isSunburstFolder ?? true) ? .normal : .file)
             )
             let segment = SunburstSegment(
                 id: entry.id,

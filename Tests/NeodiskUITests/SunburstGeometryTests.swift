@@ -350,6 +350,50 @@ import NeodiskKit
         #expect(segments.first { $0.nodeID == sub.id }?.colorToken.role == .normal)
     }
 
+    @Test func packagesAreFilesToTheSunburst() throws {
+        // Packages (.app, .imovielibrary, …) are directories the scan never
+        // descends into — the sunburst treats them as files: gray in branch
+        // mode, not a drill target.
+        let package = FileNodeRecord(
+            id: "/root/iMovie Library.imovielibrary",
+            url: URL(filePath: "/root/iMovie Library.imovielibrary", directoryHint: .isDirectory),
+            name: "iMovie Library.imovielibrary",
+            isDirectory: true,
+            isSymbolicLink: false,
+            allocatedSize: 500,
+            unduplicatedAllocatedSize: nil,
+            logicalSize: 500,
+            descendantFileCount: 1,
+            lastModified: nil,
+            fileIdentity: nil,
+            linkCount: 1,
+            isPackage: true,
+            isAccessible: true,
+            isSelfAccessible: true,
+            isSynthetic: false,
+            isAutoSummarized: false
+        )
+        let nested = makeTestFileNode(id: "/root/sub/f", name: "f", size: 100)
+        let sub = makeTestDirectoryNode(id: "/root/sub", name: "sub", children: [nested])
+        let root = makeTestDirectoryNode(id: "/root", name: "root", children: [package, sub])
+        let store = FileTreeStore(root: root, childrenByID: [
+            "/root": [package, sub],
+            "/root/sub": [nested],
+        ])
+
+        #expect(!package.isSunburstFolder)
+        #expect(sub.isSunburstFolder)
+
+        let segments = SunburstLayout.segments(
+            in: store, rootID: "/root", depthLimit: 2,
+            style: SunburstColorStyle(mode: .branch)
+        )
+        let packageSegment = try #require(segments.first { $0.nodeID == package.id })
+        let packageFill = try #require(packageSegment.fillRGB)
+        #expect(packageSegment.colorToken.role == .file)
+        #expect(packageFill.x == packageFill.y && packageFill.y == packageFill.z)
+    }
+
     @Test func colorblindPaletteRestrictsBranchHues() throws {
         let nested = makeTestFileNode(id: "/root/sub/b.mov", name: "b.mov", size: 20)
         let sub = makeTestDirectoryNode(id: "/root/sub", name: "sub", children: [nested])

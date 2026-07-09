@@ -751,7 +751,7 @@ nonisolated final class ScanTraversal {
         // one id → index insert per node.
         var nodes: [FileNodeRecord] = []
         var parentIndices: [Int32] = []
-        var indexByID = [String: Int32](minimumCapacity: resolvedNodeByKey.count)
+        var indexByID = NodeIDIndex(minimumCapacity: resolvedNodeByKey.count)
         nodes.reserveCapacity(resolvedNodeByKey.count)
         parentIndices.reserveCapacity(resolvedNodeByKey.count)
         var aggregateStats = AggregateStatsAccumulator()

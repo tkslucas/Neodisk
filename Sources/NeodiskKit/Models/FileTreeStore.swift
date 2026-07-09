@@ -677,7 +677,7 @@ public struct FileTreeStore: Sendable {
 
         var scopedNodes: [FileNodeRecord] = []
         var scopedParents: [Int32] = []
-        var scopedIndexByID: [String: Int32] = [:]
+        var scopedIndexByID = NodeIDIndex()
         var stack: [(index: Int32, parent: Int32)] = [(targetIndex, -1)]
 
         while let (index, parent) = stack.popLast() {

@@ -35,7 +35,7 @@ nonisolated struct HardLinkDeduplicator {
         parentIndices: [Int32],
         childStarts: [Int32],
         childSlots: inout [Int32],
-        indexByID: [String: Int32],
+        indexByID: NodeIDIndex,
         hardLinkClaims: [HardLinkClaim],
         minimumAllocatedSizeByNodeID: [String: Int64]
     ) {

@@ -447,31 +447,15 @@ nonisolated enum ScanSnapshotCodec {
         let (version, metadataLength) = try validatedHeader(from: &headerReader)
         let metadata = try decodeMetadata(try headerReader.readBytes(count: metadataLength))
 
-        var reader: ByteReader
+        let payload: Data
         if version >= 2 {
             let compressed = try headerReader.readBytes(count: headerReader.remainingByteCount)
-            guard let payload = try? (compressed as NSData).decompressed(using: .lzfse) as Data else {
+            guard let decompressed = try? (compressed as NSData).decompressed(using: .lzfse) as Data else {
                 throw ScanSnapshotCacheError.corruptData("payload decompression failed")
             }
-            reader = ByteReader(data: payload)
+            payload = decompressed
         } else {
-            reader = headerReader
-        }
-
-        let warningCount = Int(try reader.readUInt32())
-        guard warningCount <= reader.data.count else {
-            throw ScanSnapshotCacheError.corruptData("implausible warning count \(warningCount)")
-        }
-        var warnings: [ScanWarning] = []
-        warnings.reserveCapacity(warningCount)
-        for _ in 0..<warningCount {
-            let path = try reader.readString()
-            let message = try reader.readString()
-            let categoryRaw = try reader.readString()
-            guard let category = ScanWarningCategory(rawValue: categoryRaw) else {
-                throw ScanSnapshotCacheError.corruptData("unknown warning category \(categoryRaw)")
-            }
-            warnings.append(ScanWarning(path: path, message: message, category: category))
+            payload = try headerReader.readBytes(count: headerReader.remainingByteCount)
         }
 
         let stats = ScanAggregateStats(
@@ -482,9 +466,38 @@ nonisolated enum ScanSnapshotCodec {
             accessibleItemCount: metadata.accessibleItemCount,
             inaccessibleItemCount: metadata.inaccessibleItemCount
         )
-        let store = try readTreeStore(nodeCount: metadata.nodeCount, aggregateStats: stats, from: &reader)
-        guard reader.isAtEnd else {
-            throw ScanSnapshotCacheError.corruptData("trailing bytes after node records")
+
+        // The payload is decoded through raw-pointer reads: per-node Data
+        // subscripting and subdata copies were a measurable share of loading
+        // a millions-of-nodes snapshot.
+        let (warnings, store) = try payload.withUnsafeBytes { bytes in
+            var reader = PayloadReader(buffer: bytes)
+
+            let warningCount = Int(try reader.readUInt32())
+            guard warningCount <= bytes.count else {
+                throw ScanSnapshotCacheError.corruptData("implausible warning count \(warningCount)")
+            }
+            var warnings: [ScanWarning] = []
+            warnings.reserveCapacity(warningCount)
+            for _ in 0..<warningCount {
+                let path = try reader.readString()
+                let message = try reader.readString()
+                let categoryRaw = try reader.readString()
+                guard let category = ScanWarningCategory(rawValue: categoryRaw) else {
+                    throw ScanSnapshotCacheError.corruptData("unknown warning category \(categoryRaw)")
+                }
+                warnings.append(ScanWarning(path: path, message: message, category: category))
+            }
+
+            let store = try readTreeStore(
+                nodeCount: metadata.nodeCount,
+                aggregateStats: stats,
+                from: &reader
+            )
+            guard reader.isAtEnd else {
+                throw ScanSnapshotCacheError.corruptData("trailing bytes after node records")
+            }
+            return (warnings, store)
         }
         guard store.nodeCount == metadata.nodeCount else {
             throw ScanSnapshotCacheError.corruptData(
@@ -568,7 +581,7 @@ nonisolated enum ScanSnapshotCodec {
     private static func readTreeStore(
         nodeCount: Int,
         aggregateStats: ScanAggregateStats,
-        from reader: inout ByteReader
+        from reader: inout PayloadReader
     ) throws -> FileTreeStore {
         guard nodeCount <= reader.remainingByteCount else {
             throw ScanSnapshotCacheError.corruptData("implausible node count \(nodeCount)")
@@ -576,11 +589,11 @@ nonisolated enum ScanSnapshotCodec {
 
         // Records arrive in preorder with per-node child counts, which is
         // exactly the contiguous TreeStorage layout — decode fills the
-        // arrays directly; the only per-node dictionary work is the
-        // id → index insert (doubling as duplicate detection).
+        // arrays directly. The id → index map is built afterwards in one
+        // parallel pass (NodeIDIndex.building), which also detects
+        // duplicate IDs; keeping it out of this loop roughly halves decode.
         var nodes: [FileNodeRecord] = []
         var parentIndices: [Int32] = []
-        var indexByID = [String: Int32](minimumCapacity: nodeCount)
         var childStarts: [Int32] = [0]
         var childSlots = [Int32](repeating: 0, count: max(0, nodeCount - 1))
         nodes.reserveCapacity(nodeCount)
@@ -595,9 +608,6 @@ nonisolated enum ScanSnapshotCodec {
             let parentID = openDirectories.last.map { nodes[Int($0.index)].id }
             let (node, childCount) = try readNode(parentID: parentID, from: &reader)
             let index = Int32(nodes.count)
-            guard indexByID.updateValue(index, forKey: node.id) == nil else {
-                throw ScanSnapshotCacheError.corruptData("duplicate node ID \(node.id)")
-            }
 
             if let openIndex = openDirectories.indices.last {
                 openDirectories[openIndex].remainingChildren -= 1
@@ -638,6 +648,9 @@ nonisolated enum ScanSnapshotCodec {
         guard let rootNode = nodes.first else {
             throw ScanSnapshotCacheError.corruptData("no root node")
         }
+        guard let indexByID = NodeIDIndex.building(from: nodes) else {
+            throw ScanSnapshotCacheError.corruptData("duplicate node IDs")
+        }
 
         return FileTreeStore(
             trustedStorage: TreeStorage(
@@ -654,7 +667,7 @@ nonisolated enum ScanSnapshotCodec {
 
     private static func readNode(
         parentID: String?,
-        from reader: inout ByteReader
+        from reader: inout PayloadReader
     ) throws -> (node: FileNodeRecord, childCount: Int) {
         let flags = NodeFlags(rawValue: try reader.readUInt16())
         let name = try reader.readString()
@@ -730,8 +743,106 @@ nonisolated enum ScanSnapshotCodec {
         return (node, childCount)
     }
 
+    /// One-allocation join of parent path and child name — the plain `+`
+    /// concatenation showed up in decode profiles at millions of nodes.
     private static func joinedChildID(parentID: String, name: String) -> String {
-        parentID == "/" ? "/" + name : parentID + "/" + name
+        var parentID = parentID
+        var name = name
+        return parentID.withUTF8 { parentBytes in
+            name.withUTF8 { nameBytes in
+                let parentCount = parentBytes.count == 1 && parentBytes[0] == UInt8(ascii: "/")
+                    ? 0
+                    : parentBytes.count
+                let total = parentCount + 1 + nameBytes.count
+                return String(unsafeUninitializedCapacity: total) { output in
+                    if parentCount > 0 {
+                        _ = output.initialize(fromContentsOf: parentBytes)
+                    }
+                    output[parentCount] = UInt8(ascii: "/")
+                    _ = UnsafeMutableBufferPointer(
+                        rebasing: output[(parentCount + 1)...]
+                    ).initialize(fromContentsOf: nameBytes)
+                    return total
+                }
+            }
+        }
+    }
+}
+
+/// Raw-pointer counterpart of ByteReader for the (possibly decompressed)
+/// node payload: no per-read Data subscripting, and strings decode straight
+/// from the buffer. Only valid inside the payload's withUnsafeBytes scope.
+private nonisolated struct PayloadReader {
+    let buffer: UnsafeRawBufferPointer
+    private var offset = 0
+
+    init(buffer: UnsafeRawBufferPointer) {
+        self.buffer = buffer
+    }
+
+    var isAtEnd: Bool {
+        offset == buffer.count
+    }
+
+    var remainingByteCount: Int {
+        buffer.count - offset
+    }
+
+    mutating func readUInt8() throws -> UInt8 {
+        guard remainingByteCount >= 1 else {
+            throw ScanSnapshotCacheError.corruptData("unexpected end of data")
+        }
+        defer { offset += 1 }
+        return buffer[offset]
+    }
+
+    mutating func readUInt16() throws -> UInt16 {
+        UInt16(littleEndian: try load(UInt16.self))
+    }
+
+    mutating func readUInt32() throws -> UInt32 {
+        UInt32(littleEndian: try load(UInt32.self))
+    }
+
+    mutating func readUInt64() throws -> UInt64 {
+        UInt64(littleEndian: try load(UInt64.self))
+    }
+
+    mutating func readInt64() throws -> Int64 {
+        Int64(bitPattern: try readUInt64())
+    }
+
+    mutating func readDouble() throws -> Double {
+        Double(bitPattern: try readUInt64())
+    }
+
+    mutating func readString() throws -> String {
+        let count = Int(try readUInt32())
+        guard remainingByteCount >= count else {
+            throw ScanSnapshotCacheError.corruptData("unexpected end of data")
+        }
+        defer { offset += count }
+        return String(
+            decoding: UnsafeRawBufferPointer(rebasing: buffer[offset..<(offset + count)]),
+            as: UTF8.self
+        )
+    }
+
+    mutating func readBytes(count: Int) throws -> Data {
+        guard count >= 0, remainingByteCount >= count else {
+            throw ScanSnapshotCacheError.corruptData("unexpected end of data")
+        }
+        defer { offset += count }
+        return Data(buffer[offset..<(offset + count)])
+    }
+
+    private mutating func load<T>(_ type: T.Type) throws -> T {
+        let size = MemoryLayout<T>.size
+        guard remainingByteCount >= size else {
+            throw ScanSnapshotCacheError.corruptData("unexpected end of data")
+        }
+        defer { offset += size }
+        return buffer.loadUnaligned(fromByteOffset: offset, as: type)
     }
 }
 

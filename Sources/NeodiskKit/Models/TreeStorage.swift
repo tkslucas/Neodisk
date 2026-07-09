@@ -27,14 +27,14 @@ nonisolated final class TreeStorage: Sendable {
     let childSlots: [Int32]
     /// Node ID (absolute path) → index. Keys alias the node records' `id`
     /// strings.
-    let indexByID: [String: Int32]
+    let indexByID: NodeIDIndex
 
     static let empty = TreeStorage(
         nodes: [],
         parentIndices: [],
         childStarts: [0],
         childSlots: [],
-        indexByID: [:]
+        indexByID: NodeIDIndex()
     )
 
     init(
@@ -42,7 +42,7 @@ nonisolated final class TreeStorage: Sendable {
         parentIndices: [Int32],
         childStarts: [Int32],
         childSlots: [Int32],
-        indexByID: [String: Int32]
+        indexByID: NodeIDIndex
     ) {
         self.nodes = nodes
         self.parentIndices = parentIndices
@@ -85,7 +85,7 @@ nonisolated final class TreeStorage: Sendable {
 
         var nodes: [FileNodeRecord] = []
         var parentIndices: [Int32] = []
-        var indexByID = [String: Int32](minimumCapacity: nodesByID.count)
+        var indexByID = NodeIDIndex(minimumCapacity: nodesByID.count)
         nodes.reserveCapacity(nodesByID.count)
         parentIndices.reserveCapacity(nodesByID.count)
 

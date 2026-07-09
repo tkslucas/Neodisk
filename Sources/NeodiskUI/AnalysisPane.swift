@@ -12,6 +12,7 @@ import SwiftUI
 import NeodiskKit
 
 enum AnalysisTab: String, CaseIterable, Identifiable, Sendable {
+    case largest
     case kinds
     case age
     case duplicates
@@ -20,6 +21,7 @@ enum AnalysisTab: String, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
+        case .largest: return "Largest"
         case .kinds: return "Kinds"
         case .age: return "Age"
         case .duplicates: return "Duplicates"
@@ -29,24 +31,35 @@ enum AnalysisTab: String, CaseIterable, Identifiable, Sendable {
 
 struct AnalysisPane: View {
     let model: NeodiskViewModel
+    @Namespace private var underlineNamespace
 
     var body: some View {
-        @Bindable var model = model
         VStack(spacing: 0) {
-            Picker("", selection: $model.analysisTab) {
+            // Flat text tabs instead of a segmented picker: four localized
+            // segment titles don't fit the pane's width range (the bezel
+            // padding truncates them even in English at the default width),
+            // while bare text does.
+            HStack(spacing: 12) {
                 ForEach(AnalysisTab.allCases) { tab in
-                    Text(LocalizedStringKey(tab.title)).tag(tab)
+                    AnalysisTabButton(
+                        tab: tab,
+                        isActive: model.analysisTab == tab,
+                        namespace: underlineNamespace
+                    ) {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            model.analysisTab = tab
+                        }
+                    }
                 }
+                Spacer(minLength: 0)
             }
-            .pickerStyle(.segmented)
-            .controlSize(.small)
-            .labelsHidden()
             .padding(.horizontal, 10)
-            .padding(.vertical, 6)
 
             Divider()
 
             switch model.analysisTab {
+            case .largest:
+                LargestPane(model: model)
             case .kinds:
                 KindStatsPane(model: model)
             case .age:
@@ -58,34 +71,76 @@ struct AnalysisPane: View {
     }
 }
 
-/// Drill-in file list shared by the statistics tabs (every file of one kind,
-/// every file modified in one period): back header with a color swatch,
-/// fuzzy filter field, and the size-descending file list. Read-only
-/// navigation — clicking a row selects the node in the outline and treemap.
+/// One flat text tab: fixed .medium weight so the active state (accent
+/// color + sliding underline) never shifts the row's layout, and a small
+/// scale floor so long localized titles compress a touch at the pane's
+/// minimum width instead of truncating.
+private struct AnalysisTabButton: View {
+    let tab: AnalysisTab
+    let isActive: Bool
+    let namespace: Namespace.ID
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Text(LocalizedStringKey(tab.title))
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(
+                    isActive ? Color.accentColor : isHovering ? Color.primary : Color.secondary
+                )
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .padding(.vertical, 7)
+                .overlay(alignment: .bottom) {
+                    if isActive {
+                        RoundedRectangle(cornerRadius: 1)
+                            .fill(Color.accentColor)
+                            .frame(height: 2)
+                            .matchedGeometryEffect(id: "analysisTabUnderline", in: namespace)
+                    }
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .accessibilityAddTraits(isActive ? .isSelected : [])
+    }
+}
+
+/// Size-descending file list shared by the statistics tabs — the drill-ins
+/// (every file of one kind, every file modified in one period) and the
+/// Largest tab's whole-scan list: header with a color swatch, fuzzy filter
+/// field, and the file list. Drill-ins pass onClose for the back button;
+/// top-level lists omit it. Read-only navigation — clicking a row selects
+/// the node in the outline and treemap.
 struct StatsFileListView: View {
     let model: NeodiskViewModel
     /// Header title (localized key); nil while the list is still loading.
     let title: String?
     let swatch: Color?
-    let backHelp: LocalizedStringKey
+    var backHelp: LocalizedStringKey = ""
     let isLoading: Bool
     let visibleIDs: [String]
     let totalMatches: Int
     @Binding var filterText: String
-    let onClose: () -> Void
+    var onClose: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
-                Button {
-                    onClose()
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 10, weight: .semibold))
+                if let onClose {
+                    Button {
+                        onClose()
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 10, weight: .semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .help(backHelp)
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .help(backHelp)
 
                 if let title {
                     if let swatch {

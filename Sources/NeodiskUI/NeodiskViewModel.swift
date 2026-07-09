@@ -48,8 +48,9 @@ final class NeodiskViewModel {
     /// means (Age colors by modification date; the others keep kind colors)
     /// and which drill-in highlight reaches the map — see treemapColorMode /
     /// treemapHighlight. Deliberately not reset per scan: the chosen lens
-    /// carries across locations.
-    var analysisTab: AnalysisTab = .kinds
+    /// carries across locations. Starts on Largest — the first tab, and the
+    /// first question a disk tool gets asked.
+    var analysisTab: AnalysisTab = .largest
     /// Locations sidebar visibility; lives here so the View menu can toggle
     /// it. Always starts visible.
     var sidebarVisibility = NavigationSplitViewVisibility.all
@@ -59,6 +60,12 @@ final class NeodiskViewModel {
     /// Kind catalog, display mode, and drill-in file list; see
     /// KindStatsModel.
     let kinds: KindStatsModel
+
+    // MARK: Largest files
+
+    /// The whole scan's biggest files, flat and size-descending; see
+    /// LargestFilesModel.
+    let largest: LargestFilesModel
 
     // MARK: Age statistics
 
@@ -169,6 +176,7 @@ final class NeodiskViewModel {
         self.pinnedFolderStore = pinnedFolderStore
         self.search = SearchModel(coordinator: coordinator, indexService: searchIndexService)
         self.kinds = KindStatsModel(coordinator: coordinator, indexService: searchIndexService)
+        self.largest = LargestFilesModel(coordinator: coordinator, indexService: searchIndexService)
         self.ages = AgeStatsModel(coordinator: coordinator, indexService: searchIndexService)
         self.duplicates = DuplicatesModel(coordinator: coordinator)
         self.diff = DiffModel(coordinator: coordinator, snapshotCache: snapshotCache)
@@ -246,6 +254,10 @@ final class NeodiskViewModel {
         switch analysisTab {
         case .kinds:
             return kinds.highlightedKindID.map { .kind($0) }
+        case .largest:
+            // No dim: the plain selection ring already ties a clicked row to
+            // its cell, and the map keeps kind colors.
+            return nil
         case .age:
             return ages.highlightedBucket.map { .ageBucket($0) }
         case .duplicates:
@@ -348,6 +360,7 @@ final class NeodiskViewModel {
         expandedNodeIDs = []
         expandedAggregateIDs = []
         kinds.reset()
+        largest.reset()
         ages.reset()
         scanWasStopped = false
         dismissedWarningIDs = []
@@ -671,6 +684,7 @@ final class NeodiskViewModel {
         // search index are all keyed to the replaced tree.
         searchIndexService.invalidate()
         kinds.snapshotDidChange(snapshot)
+        largest.snapshotDidChange()
         ages.snapshotDidChange(snapshot)
         duplicates.snapshotDidChange()
         search.snapshotDidChange()

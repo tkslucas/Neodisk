@@ -151,6 +151,8 @@
 
 /* MARK: - Statistics panel tabs & age buckets */
 "Kinds" = "Types";
+"Largest" = "Volumineux";
+"Largest Files" = "Fichiers les plus volumineux";
 "Age" = "Âge";
 "Group by" = "Grouper par";
 "Last Modified" = "Dernière modification";

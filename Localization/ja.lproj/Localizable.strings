@@ -151,6 +151,8 @@
 
 /* MARK: - Statistics panel tabs & age buckets */
 "Kinds" = "種類";
+"Largest" = "最大";
+"Largest Files" = "最大のファイル";
 "Age" = "更新日";
 "Group by" = "グループ化";
 "Last Modified" = "最終更新日";

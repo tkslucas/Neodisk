@@ -152,6 +152,8 @@
 
 /* MARK: - Statistics panel tabs & age buckets */
 "Kinds" = "Tipos";
+"Largest" = "Mayores";
+"Largest Files" = "Archivos más grandes";
 "Age" = "Antigüedad";
 "Group by" = "Agrupar por";
 "Last Modified" = "Última modificación";

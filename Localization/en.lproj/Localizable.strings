@@ -151,6 +151,8 @@
 
 /* MARK: - Statistics panel tabs & age buckets */
 "Kinds" = "Kinds";
+"Largest" = "Largest";
+"Largest Files" = "Largest Files";
 "Age" = "Age";
 "Group by" = "Group by";
 "Last Modified" = "Last Modified";

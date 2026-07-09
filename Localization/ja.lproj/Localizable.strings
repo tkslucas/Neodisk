@@ -236,3 +236,18 @@
 "just now" = "たった今";
 "Use colorblind-safe colors" = "色覚に配慮した配色を使用";
 "Swaps the file-kind and age colors for a palette that stays distinct with common color vision differences. Applies immediately." = "ファイル種類と経過時間の色を、一般的な色覚特性でも区別しやすいパレットに切り替えます。すぐに適用されます。";
+
+/* MARK: - Sunburst & view switcher */
+"View" = "表示";
+"Treemap" = "ツリーマップ";
+"Sunburst" = "サンバースト";
+"Switch between treemap and sunburst views" = "ツリーマップとサンバーストの表示を切り替えます";
+"Smaller Items" = "小さい項目";
+"Loading Disk Map…" = "ディスクマップを読み込み中…";
+"Go up to %@" = "上の階層（%@）へ移動";
+"Disk usage chart" = "ディスク使用状況のチャート";
+"Click a folder segment to open it. Click a file segment to select it." = "フォルダのセグメントをクリックすると開きます。ファイルのセグメントをクリックすると選択します。";
+"Click a folder segment to open it. Click a file segment to select it. Click the center to go up." = "フォルダのセグメントをクリックすると開きます。ファイルのセグメントをクリックすると選択します。中心をクリックすると上の階層に移動します。";
+"Zoom In" = "拡大";
+"Zoom Out" = "縮小";
+"Reset Zoom" = "ズームをリセット";

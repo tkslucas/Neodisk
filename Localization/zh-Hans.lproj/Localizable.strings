@@ -236,3 +236,18 @@
 "just now" = "刚刚";
 "Use colorblind-safe colors" = "使用色盲友好配色";
 "Swaps the file-kind and age colors for a palette that stays distinct with common color vision differences. Applies immediately." = "将文件类型和文件时间的颜色替换为在常见色觉障碍下仍可区分的配色。立即生效。";
+
+/* MARK: - Sunburst & view switcher */
+"View" = "视图";
+"Treemap" = "矩形树图";
+"Sunburst" = "旭日图";
+"Switch between treemap and sunburst views" = "在矩形树图和旭日图视图之间切换";
+"Smaller Items" = "较小的项目";
+"Loading Disk Map…" = "正在载入磁盘图…";
+"Go up to %@" = "上移到 %@";
+"Disk usage chart" = "磁盘使用情况图表";
+"Click a folder segment to open it. Click a file segment to select it." = "点按文件夹扇区以打开它。点按文件扇区以选择它。";
+"Click a folder segment to open it. Click a file segment to select it. Click the center to go up." = "点按文件夹扇区以打开它。点按文件扇区以选择它。点按中心以返回上层。";
+"Zoom In" = "放大";
+"Zoom Out" = "缩小";
+"Reset Zoom" = "还原缩放";

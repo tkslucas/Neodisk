@@ -39,6 +39,8 @@ Swift/SwiftUI practices and keep the scanning core UI-free.
   - `NEODISK_UI_SNAPSHOT=<out.png>` — offscreen window capture with zoom.
   - `NEODISK_ANALYSIS_TAB=<kinds|largest|age|duplicates>` — open that
     statistics tab on launch, so captures can show any tab.
+  - `NEODISK_VIZ_MODE=<treemap|sunburst>` — show that center visualization
+    on launch without persisting the preference.
 
 ## Project Structure
 

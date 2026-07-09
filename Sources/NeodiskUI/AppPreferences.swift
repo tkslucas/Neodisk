@@ -72,6 +72,8 @@ final class AppPreferences: ObservableObject {
     @AppStorage("exclusionPatternsText") var exclusionPatternsText =
         ScanExclusionMatcher.commonPresetPatterns.joined(separator: "\n")
     @AppStorage("autoRescanPolicy") var autoRescanPolicyRaw = AutoRescanPolicy.smart.rawValue
+    /// Which visualization fills the center pane (treemap or sunburst).
+    @AppStorage("vizViewMode") var vizViewModeRaw = VizViewMode.treemap.rawValue
     /// Decode the previous snapshot whenever a complete tree lands on screen
     /// — a scan finishing, or a saved snapshot opening without a rescan — so
     /// the Changes toggle shows instantly instead of loading on click. The
@@ -106,6 +108,9 @@ final class AppPreferences: ObservableObject {
         _autoRescanPolicyRaw = AppStorage(
             wrappedValue: AutoRescanPolicy.smart.rawValue, "autoRescanPolicy", store: defaults
         )
+        _vizViewModeRaw = AppStorage(
+            wrappedValue: VizViewMode.treemap.rawValue, "vizViewMode", store: defaults
+        )
         _prepareChangesAfterScan = AppStorage(
             wrappedValue: true, "prepareChangesAfterScan", store: defaults
         )
@@ -121,6 +126,11 @@ final class AppPreferences: ObservableObject {
     var autoRescanPolicy: AutoRescanPolicy {
         get { AutoRescanPolicy(rawValue: autoRescanPolicyRaw) ?? .smart }
         set { autoRescanPolicyRaw = newValue.rawValue }
+    }
+
+    var vizViewMode: VizViewMode {
+        get { VizViewMode(rawValue: vizViewModeRaw) ?? .treemap }
+        set { vizViewModeRaw = newValue.rawValue }
     }
 
     /// Patterns parsed from the exclusions text, empty when disabled.
@@ -156,6 +166,7 @@ final class AppPreferences: ObservableObject {
         useScanExclusions = false
         exclusionPatternsText = ScanExclusionMatcher.commonPresetPatterns.joined(separator: "\n")
         autoRescanPolicyRaw = AutoRescanPolicy.smart.rawValue
+        vizViewModeRaw = VizViewMode.treemap.rawValue
         prepareChangesAfterScan = true
         autoScanDuplicates = false
     }

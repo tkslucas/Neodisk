@@ -50,6 +50,13 @@ public struct ContentView: View {
                let tab = AnalysisTab(rawValue: rawTab) {
                 model.analysisTab = tab
             }
+            // Dev/testing hook: NEODISK_VIZ_MODE=<treemap|sunburst> picks the
+            // center visualization without persisting a preference, so
+            // headless snapshots can capture either view.
+            if let rawMode = ProcessInfo.processInfo.environment["NEODISK_VIZ_MODE"],
+               let mode = VizViewMode(rawValue: rawMode) {
+                model.vizViewMode = mode
+            }
             // Dev/testing hook: NEODISK_AUTOREVEAL=<path> selects that node
             // once it is scanned, expanding its ancestors in the outline —
             // lets headless snapshots exercise deep trees and the
@@ -132,6 +139,18 @@ public struct ContentView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .principal) {
+            Picker("View", selection: $preferences.vizViewMode) {
+                Label("Treemap", systemImage: "square.split.bottomrightquarter")
+                    .tag(VizViewMode.treemap)
+                Label("Sunburst", systemImage: "chart.pie")
+                    .tag(VizViewMode.sunburst)
+            }
+            .pickerStyle(.segmented)
+            .disabled(model.coordinator.snapshot == nil)
+            .help("Switch between treemap and sunburst views")
+        }
+
         ToolbarItemGroup {
             // One fixed slot: Stop while a scan runs, Rescan otherwise
             // (grayed out until there is something to rescan).
@@ -367,8 +386,13 @@ private struct WorkspaceView: View {
 
                     VStack(spacing: 0) {
                         TreemapBreadcrumbBar(model: model)
-                        TreemapPane(model: model)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        if model.vizViewMode == .sunburst {
+                            SunburstPane(model: model)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        } else {
+                            TreemapPane(model: model)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .layoutPriority(1)

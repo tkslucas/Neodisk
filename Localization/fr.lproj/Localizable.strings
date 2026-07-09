@@ -237,3 +237,18 @@
 </content>
 "Use colorblind-safe colors" = "Utiliser des couleurs adaptées au daltonisme";
 "Swaps the file-kind and age colors for a palette that stays distinct with common color vision differences. Applies immediately." = "Remplace les couleurs de type de fichier et d'ancienneté par une palette qui reste distincte pour les déficiences courantes de la vision des couleurs. Application immédiate.";
+
+/* MARK: - Sunburst & view switcher */
+"View" = "Présentation";
+"Treemap" = "Carte proportionnelle";
+"Sunburst" = "Sunburst";
+"Switch between treemap and sunburst views" = "Basculer entre les vues carte proportionnelle et sunburst";
+"Smaller Items" = "Éléments plus petits";
+"Loading Disk Map…" = "Chargement de la carte du disque…";
+"Go up to %@" = "Remonter vers %@";
+"Disk usage chart" = "Graphique d'utilisation du disque";
+"Click a folder segment to open it. Click a file segment to select it." = "Cliquez sur un segment de dossier pour l'ouvrir. Cliquez sur un segment de fichier pour le sélectionner.";
+"Click a folder segment to open it. Click a file segment to select it. Click the center to go up." = "Cliquez sur un segment de dossier pour l'ouvrir. Cliquez sur un segment de fichier pour le sélectionner. Cliquez au centre pour remonter.";
+"Zoom In" = "Zoom avant";
+"Zoom Out" = "Zoom arrière";
+"Reset Zoom" = "Réinitialiser le zoom";

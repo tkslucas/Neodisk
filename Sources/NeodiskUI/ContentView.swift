@@ -43,6 +43,13 @@ public struct ContentView: View {
                model.coordinator.phase == .idle {
                 model.startScan(ScanTarget(url: URL(filePath: path, directoryHint: .isDirectory)))
             }
+            // Dev/testing hook: NEODISK_ANALYSIS_TAB=<kinds|largest|age|duplicates>
+            // opens that statistics tab, so headless snapshots can capture
+            // any tab.
+            if let rawTab = ProcessInfo.processInfo.environment["NEODISK_ANALYSIS_TAB"],
+               let tab = AnalysisTab(rawValue: rawTab) {
+                model.analysisTab = tab
+            }
             // Dev/testing hook: NEODISK_AUTOREVEAL=<path> selects that node
             // once it is scanned, expanding its ancestors in the outline —
             // lets headless snapshots exercise deep trees and the

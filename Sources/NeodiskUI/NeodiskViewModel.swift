@@ -277,10 +277,12 @@ final class NeodiskViewModel {
 
     /// The swatch color a node renders with on the map right now — the
     /// status bar's swatch must agree with the active view and color mode.
-    /// On the sunburst's Largest tab that is the Radix branch hue; every
-    /// other combination keeps the treemap's kind/age semantics.
+    /// On the sunburst's Largest tab — or whenever the statistics panel is
+    /// hidden, which reverts the sunburst to its default coloring — that is
+    /// the Radix branch hue; every other combination keeps the treemap's
+    /// kind/age semantics.
     func displayColor(for node: FileNodeRecord) -> Color {
-        if vizViewMode == .sunburst, analysisTab == .largest, let store {
+        if vizViewMode == .sunburst, analysisTab == .largest || !showKindStats, let store {
             return SunburstColorResolver.branchColor(
                 forNodeID: node.id,
                 in: store,

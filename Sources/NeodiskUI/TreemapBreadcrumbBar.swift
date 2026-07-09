@@ -19,11 +19,14 @@ struct TreemapBreadcrumbBar: View {
     /// it renders larger there; the treemap keeps the compact strip.
     var isProminent = false
 
-    /// Root → selected node. `path(to:)` returns `[root]` when the selection
-    /// is nil, so the bar always has at least the scan root to show.
+    /// Root → selected node, falling back to the drill root with nothing
+    /// selected: deselecting (e.g. clicking empty space in the sunburst)
+    /// must not collapse the bar to the scan root while the map stays
+    /// drilled into a subfolder. `path(to:)` returns `[root]` when both
+    /// are nil, so the bar always has at least the scan root to show.
     private var crumbs: [FileNodeRecord] {
         guard let store = model.store else { return [] }
-        return store.path(to: model.selectedNodeID)
+        return store.path(to: model.selectedNodeID ?? model.effectiveRootID)
     }
 
     var body: some View {

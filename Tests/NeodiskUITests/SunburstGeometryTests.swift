@@ -110,6 +110,32 @@ import NeodiskKit
         #expect(index.segment(at: pointInRing(radius: 0.38, in: size), in: size) == nil)
     }
 
+    @Test func ringGapBelongsToTheArcItHangsOff() throws {
+        // Real layout radii: ring 0 arc ends ringGap short of ring 1's inner
+        // edge. The gap is cosmetic — hovering it must hit the ring 0 arc,
+        // not report a dead zone (which would flicker the legend preview
+        // when sliding from a folder into its subfolder).
+        let nested = makeTestFileNode(id: "/root/a/child", name: "child", size: 5)
+        let branch = makeTestDirectoryNode(id: "/root/a", name: "a", children: [nested])
+        let root = makeTestDirectoryNode(id: "/root", name: "root", children: [branch])
+        let store = FileTreeStore(root: root, childrenByID: [
+            "/root": [branch],
+            "/root/a": [nested],
+        ])
+        let size = CGSize(width: 300, height: 300)
+
+        let segments = SunburstLayout.segments(in: store, rootID: "/root", depthLimit: 2)
+        let parent = try #require(segments.first { $0.nodeID == "/root/a" })
+        let gapRadius = parent.outerRadius + (SunburstLayout.ringGap / 2)
+
+        let hit = SunburstHitTester.segment(
+            at: pointInRing(radius: gapRadius, in: size),
+            in: size,
+            segments: segments
+        )
+        #expect(hit?.id == parent.id)
+    }
+
     @Test func hitTestIndexFindsAngleInUnsortedRing() {
         let size = CGSize(width: 300, height: 300)
         let first = makeSegment(id: "first", startAngle: 0, endAngle: .pi, innerRadius: 0.1, outerRadius: 0.8, depth: 0)

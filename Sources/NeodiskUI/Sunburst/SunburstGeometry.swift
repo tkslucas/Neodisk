@@ -104,6 +104,11 @@ struct SunburstSegment: Identifiable, Hashable, Sendable {
 
 enum SunburstLayout {
     nonisolated static let centerRadius: CGFloat = 0.22
+    /// Visual breathing room between rings: each arc is drawn this much
+    /// short of its full ring band. Purely cosmetic — hit-testing treats
+    /// the bands as glued (see SunburstHitTestIndex) so hovering the gap
+    /// still lands on the arc it hangs off, never a dead zone.
+    nonisolated static let ringGap: CGFloat = 0.015
     /// The synthetic free-space segment's id; exists in no tree store.
     nonisolated static let freeSpaceSegmentID = "__sunburst-free-space__"
 
@@ -183,7 +188,7 @@ enum SunburstLayout {
                 startAngle: .radians(.pi * 2 - freeAngle),
                 endAngle: .radians(.pi * 2),
                 innerRadius: ringStart,
-                outerRadius: ringStart + ringWidth - 0.015,
+                outerRadius: ringStart + ringWidth - ringGap,
                 depth: 0,
                 colorToken: .single(id: freeSpaceSegmentID, role: .freeSpace),
                 totalSize: freeBytes,
@@ -264,7 +269,7 @@ enum SunburstLayout {
                 startAngle: .radians(cursor),
                 endAngle: .radians(segmentEnd),
                 innerRadius: ringStart + CGFloat(depth) * ringWidth,
-                outerRadius: ringStart + CGFloat(depth + 1) * ringWidth - 0.015,
+                outerRadius: ringStart + CGFloat(depth + 1) * ringWidth - SunburstLayout.ringGap,
                 depth: depth,
                 colorToken: colorToken,
                 fillRGB: entry.node.flatMap { resolvedFillRGB(for: $0, token: colorToken, style: style) },
@@ -665,7 +670,12 @@ struct SunburstHitTestIndex: Sendable {
         }
 
         nonisolated func contains(_ normalizedDistance: CGFloat) -> Bool {
-            normalizedDistance >= minInnerRadius && normalizedDistance <= maxOuterRadius
+            // The band extends across the cosmetic ring gap so the space
+            // between an arc and its children's ring belongs to the arc —
+            // hovering it never drops the hover (the gaps are drawn, not
+            // hit-tested).
+            normalizedDistance >= minInnerRadius
+                && normalizedDistance <= maxOuterRadius + SunburstLayout.ringGap
         }
 
         nonisolated func segment(containing radians: Double) -> SunburstSegment? {

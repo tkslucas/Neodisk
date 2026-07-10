@@ -3,16 +3,24 @@ import Testing
 import NeodiskKit
 @testable import NeodiskUI
 
+/// The benches load a real cached snapshot; `NEODISK_KIND_BENCH` holds the
+/// scanned path to bench (e.g. `NEODISK_KIND_BENCH=$HOME`).
+private func benchTarget() -> ScanTarget? {
+    guard let path = ProcessInfo.processInfo.environment["NEODISK_KIND_BENCH"],
+          path.hasPrefix("/") else { return nil }
+    return ScanTarget(
+        id: path,
+        url: URL(filePath: path, directoryHint: .isDirectory),
+        displayName: URL(filePath: path).lastPathComponent,
+        kind: .folder
+    )
+}
+
 @Suite struct KindCatalogBenchTests {
-    @Test(.enabled(if: ProcessInfo.processInfo.environment["NEODISK_KIND_BENCH"] != nil))
+    @Test(.enabled(if: benchTarget() != nil))
     func benchKindCatalogBuild() async throws {
         let cache = ScanSnapshotCache(isLoggingEnabled: false)
-        let target = ScanTarget(
-            id: "/Users/lucas",
-            url: URL(filePath: "/Users/lucas", directoryHint: .isDirectory),
-            displayName: "lucas",
-            kind: .folder
-        )
+        let target = try #require(benchTarget())
         let snapshot = try #require(await cache.loadSnapshot(for: target))
         let clock = ContinuousClock()
         for mode in [FileKindDisplayMode.categories, .types] {
@@ -26,15 +34,10 @@ import NeodiskKit
 }
 
 @Suite struct SearchBenchTests {
-    @Test(.enabled(if: ProcessInfo.processInfo.environment["NEODISK_KIND_BENCH"] != nil))
+    @Test(.enabled(if: benchTarget() != nil))
     func benchEntireScanFuzzySearch() async throws {
         let cache = ScanSnapshotCache(isLoggingEnabled: false)
-        let target = ScanTarget(
-            id: "/Users/lucas",
-            url: URL(filePath: "/Users/lucas", directoryHint: .isDirectory),
-            displayName: "lucas",
-            kind: .folder
-        )
+        let target = try #require(benchTarget())
         let snapshot = try #require(await cache.loadSnapshot(for: target))
         let clock = ContinuousClock()
 

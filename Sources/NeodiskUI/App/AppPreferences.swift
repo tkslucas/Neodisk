@@ -61,7 +61,7 @@ final class AppPreferences: ObservableObject {
     }
     @AppStorage("includeHiddenFiles") var includeHiddenFiles = true
     @AppStorage("autoSummarizeDirectories") var autoSummarizeDirectories = true
-    @AppStorage("includeCloudStorage") var includeCloudStorage = false
+    @AppStorage("includeCloudStorage") var includeCloudStorage = true
     @AppStorage("showFreeSpace") var showFreeSpace = false
     /// Swap the visualization's kind/age colors for a colorblind-safe palette
     /// (Okabe-Ito + viridis). Applies immediately; see VizPalette.
@@ -96,7 +96,7 @@ final class AppPreferences: ObservableObject {
         _autoSummarizeDirectories = AppStorage(
             wrappedValue: true, "autoSummarizeDirectories", store: defaults
         )
-        _includeCloudStorage = AppStorage(wrappedValue: false, "includeCloudStorage", store: defaults)
+        _includeCloudStorage = AppStorage(wrappedValue: true, "includeCloudStorage", store: defaults)
         _showFreeSpace = AppStorage(wrappedValue: false, "showFreeSpace", store: defaults)
         _useColorblindPalette = AppStorage(wrappedValue: false, "useColorblindPalette", store: defaults)
         _useScanExclusions = AppStorage(wrappedValue: false, "useScanExclusions", store: defaults)
@@ -160,7 +160,7 @@ final class AppPreferences: ObservableObject {
         themeRaw = ThemePreference.system.rawValue
         includeHiddenFiles = true
         autoSummarizeDirectories = true
-        includeCloudStorage = false
+        includeCloudStorage = true
         showFreeSpace = false
         useColorblindPalette = false
         useScanExclusions = false

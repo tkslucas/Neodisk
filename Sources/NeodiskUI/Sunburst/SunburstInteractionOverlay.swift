@@ -56,7 +56,7 @@ struct SunburstInteractionOverlay: NSViewRepresentable {
         /// Accumulated |magnification| that commits a drill; a full
         /// deliberate pinch sums to ~1, so this triggers well before the
         /// fingers finish without firing on trackpad noise.
-        private static let pinchDrillThreshold: CGFloat = 0.15
+        private static let pinchDrillThreshold: CGFloat = 0.1
         private var trackingArea: NSTrackingArea?
         private var mouseDownLocation: CGPoint?
         private var didDrag = false

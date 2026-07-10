@@ -91,6 +91,8 @@ enum SystemIntegration {
             }
         }
 
+        targets.append(contentsOf: CloudLocationDetector.detectedTargets(fileManager: fileManager))
+
         let mountedVolumes = fileManager.mountedVolumeURLs(
             includingResourceValuesForKeys: [.volumeNameKey],
             options: [.skipHiddenVolumes]

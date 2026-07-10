@@ -220,6 +220,9 @@ private struct SidebarTargetRow: View {
         if target.kind == .volume {
             return "internaldrive.fill"
         }
+        if CloudLocationDetector.isCloudPath(target.id) || target.displayName == "Dropbox" {
+            return target.displayName.hasPrefix("iCloud") ? "icloud.fill" : "cloud.fill"
+        }
         switch target.displayName {
         case "Home", NSUserName():
             return "house.fill"

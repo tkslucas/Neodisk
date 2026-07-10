@@ -249,7 +249,4 @@
 "Disk usage chart" = "Gráfico de uso del disco";
 "Click a folder segment to open it. Click a file segment to select it." = "Haz clic en un segmento de carpeta para abrirla. Haz clic en un segmento de archivo para seleccionarlo.";
 "Click a folder segment to open it. Click a file segment to select it. Click the center to go up." = "Haz clic en un segmento de carpeta para abrirla. Haz clic en un segmento de archivo para seleccionarlo. Haz clic en el centro para subir.";
-"Zoom In" = "Acercar";
-"Zoom Out" = "Alejar";
-"Reset Zoom" = "Restablecer zoom";
 "Changes are shown in the treemap view" = "Los cambios se muestran en la vista de mapa de árbol";

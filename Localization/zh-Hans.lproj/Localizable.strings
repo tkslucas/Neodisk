@@ -248,7 +248,4 @@
 "Disk usage chart" = "磁盘使用情况图表";
 "Click a folder segment to open it. Click a file segment to select it." = "点按文件夹扇区以打开它。点按文件扇区以选择它。";
 "Click a folder segment to open it. Click a file segment to select it. Click the center to go up." = "点按文件夹扇区以打开它。点按文件扇区以选择它。点按中心以返回上层。";
-"Zoom In" = "放大";
-"Zoom Out" = "缩小";
-"Reset Zoom" = "还原缩放";
 "Changes are shown in the treemap view" = "更改会显示在矩形树图视图中";

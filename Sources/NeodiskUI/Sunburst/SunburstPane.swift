@@ -49,12 +49,12 @@ struct SunburstPane: View {
                         rootID: rootID,
                         freeSpaceBytes: freeSpaceBytes
                     ),
-                    viewportResetID: "\(snapshot.id)|\(rootID)",
                     style: style,
                     freeSpaceBytes: freeSpaceBytes,
                     centerSizeText: NeodiskFormatters.size(displayedFolder.allocatedSize),
                     onHoverSegment: { handleHover($0) },
                     onClickSegment: { handleClick($0) },
+                    onPinchDrillSegment: { handlePinchDrill($0) },
                     onNavigateToParent: { model.zoomOut() },
                     contextMenu: { contextMenu(for: $0) },
                     chartModel: chartModel
@@ -271,6 +271,21 @@ struct SunburstPane: View {
                 QuickLookPresenter.shared.openPreview(for: node)
             }
         }
+    }
+
+    /// Pinch-spread over a segment is pure navigation: drill into the
+    /// folder (the aggregate's containing folder for pooled segments) and
+    /// clear the selection like every sunburst drill. Unlike a click there
+    /// is no select fallback — a refused or file-segment pinch does nothing,
+    /// so an accidental pinch never moves the selection or opens Quick Look.
+    private func handlePinchDrill(_ segment: SunburstSegment) {
+        guard !segment.isFreeSpace else { return }
+
+        let targetID = segment.isAggregate ? segment.parentFolderID : segment.nodeID
+        guard let targetID,
+              model.store?.node(id: targetID)?.isSunburstFolder == true,
+              model.drillIn(to: targetID) else { return }
+        model.select(nil)
     }
 
     // MARK: - Legend list interaction

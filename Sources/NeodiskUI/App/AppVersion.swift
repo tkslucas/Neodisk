@@ -6,5 +6,5 @@
 /// Bumped on every user-visible change so a running build is identifiable
 /// (shown bottom-left in the status bar).
 enum AppVersion {
-    static let string = "2.3.7"
+    static let string = "2.4.0"
 }

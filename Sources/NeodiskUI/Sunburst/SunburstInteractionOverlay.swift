@@ -2,24 +2,30 @@
 //  SunburstInteractionOverlay.swift
 //  Neodisk
 //
-//  AppKit event layer over the sunburst: tracking-area hover, click vs pan
-//  disambiguation (3 pt threshold), pinch and ⌘/⌥-scroll zoom, two-finger
-//  pan while zoomed, tooltips, and the right-click context menu. Ported
-//  from Radix minus its drag-to-discard support (Neodisk is read-only).
+//  AppKit event layer over the sunburst: tracking-area hover, click vs drag
+//  disambiguation (3 pt threshold), pinch-to-drill (spread over an arc opens
+//  that folder, squeeze goes up one level — DaisyDisk style), tooltips, and
+//  the right-click context menu. Ported from Radix minus its drag-to-discard
+//  support (Neodisk is read-only) and viewport zoom/pan (drilling replaced
+//  it).
 //
 
 import AppKit
 import SwiftUI
 
+enum SunburstPinchDirection {
+    /// Fingers spreading apart — drill into the arc under the cursor.
+    case drillIn
+    /// Fingers pinching together — go up to the parent folder.
+    case drillOut
+}
+
 struct SunburstInteractionOverlay: NSViewRepresentable {
     let onHover: (CGPoint?) -> Void
     let onClick: (CGPoint, Int) -> Void
-    let onPan: (CGSize) -> Void
-    let onMagnify: (CGPoint, CGFloat) -> Void
-    let canStartPan: (CGPoint) -> Bool
+    let onPinchDrill: (CGPoint, SunburstPinchDirection) -> Void
     let contextMenu: (CGPoint) -> NSMenu?
     let help: (CGPoint) -> String?
-    let isPanEnabled: Bool
 
     func makeNSView(context: Context) -> InteractionView {
         let view = InteractionView()
@@ -34,32 +40,28 @@ struct SunburstInteractionOverlay: NSViewRepresentable {
     private func apply(to view: InteractionView) {
         view.onHover = onHover
         view.onClick = onClick
-        view.onPan = onPan
-        view.onMagnify = onMagnify
-        view.canStartPan = canStartPan
+        view.onPinchDrill = onPinchDrill
         view.contextMenu = contextMenu
         view.help = help
-        view.isPanEnabled = isPanEnabled
     }
 
     final class InteractionView: NSView {
         var onHover: (CGPoint?) -> Void = { _ in }
         var onClick: (CGPoint, Int) -> Void = { _, _ in }
-        var onPan: (CGSize) -> Void = { _ in }
-        var onMagnify: (CGPoint, CGFloat) -> Void = { _, _ in }
-        var canStartPan: (CGPoint) -> Bool = { _ in false }
+        var onPinchDrill: (CGPoint, SunburstPinchDirection) -> Void = { _, _ in }
         var contextMenu: (CGPoint) -> NSMenu? = { _ in nil }
         var help: (CGPoint) -> String? = { _ in nil }
-        var isPanEnabled = false
 
         private static let dragThreshold: CGFloat = 3
-        private static let lineScrollScale: CGFloat = 10
-        fileprivate nonisolated static let maximumScrollPanDelta: CGFloat = 80
+        /// Accumulated |magnification| that commits a drill; a full
+        /// deliberate pinch sums to ~1, so this triggers well before the
+        /// fingers finish without firing on trackpad noise.
+        private static let pinchDrillThreshold: CGFloat = 0.25
         private var trackingArea: NSTrackingArea?
         private var mouseDownLocation: CGPoint?
-        private var lastDragLocation: CGPoint?
-        private var shouldPanFromMouseDownLocation = false
-        private var didPan = false
+        private var didDrag = false
+        private var pinchMagnification: CGFloat = 0
+        private var didPinchDrill = false
 
         override var isFlipped: Bool {
             true
@@ -96,77 +98,53 @@ struct SunburstInteractionOverlay: NSViewRepresentable {
         }
 
         override func mouseDown(with event: NSEvent) {
-            let location = eventLocation(event)
-            mouseDownLocation = location
-            lastDragLocation = location
-            shouldPanFromMouseDownLocation = isPanEnabled && canStartPan(location)
-            didPan = false
+            mouseDownLocation = eventLocation(event)
+            didDrag = false
         }
 
         override func mouseDragged(with event: NSEvent) {
-            guard let mouseDownLocation,
-                  let lastDragLocation else { return }
-
-            let location = eventLocation(event)
-            if !didPan {
-                guard didExceedDragThreshold(from: mouseDownLocation, to: location) else {
-                    return
-                }
-                didPan = true
-            }
-
-            defer { self.lastDragLocation = location }
-            guard shouldPanFromMouseDownLocation, isPanEnabled else { return }
-
-            onPan(CGSize(
-                width: location.x - lastDragLocation.x,
-                height: location.y - lastDragLocation.y
-            ))
-            updatePointerFeedback(at: location)
+            guard let mouseDownLocation, !didDrag else { return }
+            didDrag = didExceedDragThreshold(from: mouseDownLocation, to: eventLocation(event))
         }
 
         override func mouseUp(with event: NSEvent) {
-            let location = eventLocation(event)
-            if !didPan {
-                onClick(location, event.clickCount)
+            if !didDrag {
+                onClick(eventLocation(event), event.clickCount)
             }
             mouseDownLocation = nil
-            lastDragLocation = nil
-            shouldPanFromMouseDownLocation = false
-            didPan = false
+            didDrag = false
         }
 
         override func menu(for event: NSEvent) -> NSMenu? {
             contextMenu(eventLocation(event))
         }
 
+        /// One drill per pinch gesture: magnification accumulates from the
+        /// gesture's start and the first threshold crossing commits (latched
+        /// until the fingers lift), so a long pinch cannot tunnel through
+        /// several levels at once.
         override func magnify(with event: NSEvent) {
-            let location = eventLocation(event)
-            onMagnify(location, max(0.75, 1 + event.magnification))
-            updatePointerFeedback(at: location)
-        }
+            if event.phase == .began {
+                pinchMagnification = 0
+                didPinchDrill = false
+            }
 
-        override func scrollWheel(with event: NSEvent) {
-            let location = eventLocation(event)
-            let zoomModifiers: NSEvent.ModifierFlags = [.command, .option]
+            pinchMagnification += event.magnification
 
-            if !event.modifierFlags.intersection(zoomModifiers).isEmpty {
-                let scrollDelta = event.scrollingDeltaY != 0 ? event.scrollingDeltaY : -event.scrollingDeltaX
-                guard scrollDelta != 0 else { return }
-
-                onMagnify(location, pow(1.0025, scrollDelta))
-                updatePointerFeedback(at: location)
+            if event.phase == .ended || event.phase == .cancelled {
+                pinchMagnification = 0
+                didPinchDrill = false
                 return
             }
 
-            if isPanEnabled {
-                guard let panDelta = panDelta(for: event) else { return }
-                onPan(panDelta)
-                updatePointerFeedback(at: location)
-                return
-            }
+            guard !didPinchDrill,
+                  abs(pinchMagnification) >= Self.pinchDrillThreshold else { return }
 
-            super.scrollWheel(with: event)
+            didPinchDrill = true
+            onPinchDrill(
+                eventLocation(event),
+                pinchMagnification > 0 ? .drillIn : .drillOut
+            )
         }
 
         private func updateHelp(at location: CGPoint) {
@@ -187,38 +165,5 @@ struct SunburstInteractionOverlay: NSViewRepresentable {
             let dy = end.y - start.y
             return ((dx * dx) + (dy * dy)) >= (Self.dragThreshold * Self.dragThreshold)
         }
-
-        private func panDelta(for event: NSEvent) -> CGSize? {
-            var delta = CGSize(
-                width: event.scrollingDeltaX,
-                height: event.scrollingDeltaY
-            )
-
-            guard delta != .zero else { return nil }
-
-            if !event.isDirectionInvertedFromDevice {
-                delta.width *= -1
-                delta.height *= -1
-            }
-
-            if !event.hasPreciseScrollingDeltas {
-                delta.width *= Self.lineScrollScale
-                delta.height *= Self.lineScrollScale
-            }
-
-            return CGSize(
-                width: delta.width.clampedScrollPanDelta,
-                height: delta.height.clampedScrollPanDelta
-            )
-        }
-    }
-}
-
-private extension CGFloat {
-    var clampedScrollPanDelta: CGFloat {
-        Swift.min(
-            Swift.max(self, -SunburstInteractionOverlay.InteractionView.maximumScrollPanDelta),
-            SunburstInteractionOverlay.InteractionView.maximumScrollPanDelta
-        )
     }
 }

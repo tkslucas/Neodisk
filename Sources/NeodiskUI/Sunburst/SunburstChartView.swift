@@ -2,8 +2,8 @@
 //  SunburstChartView.swift
 //  Neodisk
 //
-//  The composed sunburst chart: canvases under an interaction overlay, a
-//  viewport transform for pinch/scroll zoom and pan, the center "go up"
+//  The composed sunburst chart: canvases under an interaction overlay,
+//  pinch-to-drill navigation (DaisyDisk style), the center "go up"
 //  affordance, and a delayed loading indicator. Ported from Radix; click
 //  semantics (single-click drill) and model wiring live in SunburstPane.
 //
@@ -28,9 +28,6 @@ struct SunburstChartView: View {
     /// free space); changes reload the layout. Color changes restyle the
     /// rendered segments instead (see the `style` onChange).
     let layoutID: String
-    /// Identity of the displayed root only; changes reset the viewport, so
-    /// tab/palette switches keep the user's zoom.
-    let viewportResetID: String
     let style: SunburstColorStyle
     let freeSpaceBytes: Int64?
     /// Formatted total size of the displayed folder, shown in the center
@@ -38,6 +35,9 @@ struct SunburstChartView: View {
     let centerSizeText: String
     let onHoverSegment: (SunburstSegment?) -> Void
     let onClickSegment: (SunburstSegment?) -> Void
+    /// A pinch-spread landed on this segment — drill into it (navigation
+    /// only; no selection fallback, unlike a click).
+    let onPinchDrillSegment: (SunburstSegment) -> Void
     let onNavigateToParent: () -> Void
     let contextMenu: (SunburstSegment) -> NSMenu?
 
@@ -47,15 +47,9 @@ struct SunburstChartView: View {
     @ObservedObject var chartModel: SunburstChartModel
     @State private var isHoveringCenter = false
     @State private var showsLoadingDiskMapProgress = false
-    @State private var viewportTransform = SunburstViewportTransform.identity
     /// The in-flight drill zoom (DaisyDisk-style); nil outside transitions.
     /// Rendering derives from this plus the TimelineView frame date.
     @State private var zoomTransition: SunburstZoomTransitionState?
-
-    private var canAdjustViewport: Bool {
-        !chartModel.isLayoutPending && !chartModel.renderedSegments.isEmpty
-            && zoomTransition == nil
-    }
 
     private var loadingDiskMapProgressTaskID: String {
         "\(layoutID)|\(chartModel.isLayoutPending)"
@@ -71,12 +65,6 @@ struct SunburstChartView: View {
                 .animation(chartTransitionAnimation, value: chartModel.renderedLayoutVersion)
                 .animation(centerHoverAnimation, value: isHoveringCenter)
                 .animation(loadingIndicatorAnimation, value: showsLoadingDiskMapProgress)
-                .onChange(of: baseChartFrame) { _, nextFrame in
-                    viewportTransform = viewportTransform.constrained(to: nextFrame)
-                }
-                .onChange(of: viewportResetID) { _, _ in
-                    resetViewport(animated: false)
-                }
                 // Fires before the layout task below replaces the rendered
                 // segments, so the outgoing layout can still be captured.
                 .onChange(of: layoutID) { previousLayoutID, nextLayoutID in
@@ -110,31 +98,28 @@ struct SunburstChartView: View {
         }
     }
 
+    @ViewBuilder
     private func accessibleChart(baseChartFrame: CGRect, now: Date) -> some View {
-        interactiveChart(baseChartFrame: baseChartFrame, now: now)
+        let chart = interactiveChart(baseChartFrame: baseChartFrame, now: now)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Disk usage chart")
             .accessibilityValue(Text(verbatim: accessibilityValue))
             .accessibilityHint(accessibilityHint)
-            .accessibilityAction(named: "Zoom In") {
-                zoomViewport(by: 1.25, anchor: nil, in: baseChartFrame, animated: true)
+
+        if let parentNode {
+            chart.accessibilityAction(named: Text(verbatim: goUpText(to: parentNode))) {
+                onNavigateToParent()
             }
-            .accessibilityAction(named: "Zoom Out") {
-                zoomViewport(by: 0.8, anchor: nil, in: baseChartFrame, animated: true)
-            }
-            .accessibilityAction(named: "Reset Zoom") {
-                resetViewport(animated: true)
-            }
+        } else {
+            chart
+        }
     }
 
     private func interactiveChart(baseChartFrame: CGRect, now: Date) -> some View {
-        chartLayers(chartFrame: viewportTransform.frame(for: baseChartFrame), now: now)
+        chartLayers(chartFrame: baseChartFrame, now: now)
             .contentShape(Rectangle())
             .overlay {
-                interactionOverlay(
-                    baseChartFrame: baseChartFrame,
-                    canAdjustViewport: canAdjustViewport
-                )
+                interactionOverlay(baseChartFrame: baseChartFrame)
             }
             .clipped()
     }
@@ -237,10 +222,7 @@ struct SunburstChartView: View {
     // MARK: - Interaction overlay
 
     @ViewBuilder
-    private func interactionOverlay(
-        baseChartFrame: CGRect,
-        canAdjustViewport: Bool
-    ) -> some View {
+    private func interactionOverlay(baseChartFrame: CGRect) -> some View {
         let onHover: (CGPoint?) -> Void = { location in
             guard !chartModel.isLayoutPending, zoomTransition == nil else { return }
             updateHover(at: location, in: baseChartFrame)
@@ -249,14 +231,9 @@ struct SunburstChartView: View {
             guard !chartModel.isLayoutPending, zoomTransition == nil else { return }
             handleClick(at: location, in: baseChartFrame, clickCount: clickCount)
         }
-        let onPan: (CGSize) -> Void = { delta in
-            panViewport(by: delta, in: baseChartFrame)
-        }
-        let onMagnify: (CGPoint, CGFloat) -> Void = { location, factor in
-            zoomViewport(by: factor, anchor: location, in: baseChartFrame, animated: false)
-        }
-        let canStartPanProvider: (CGPoint) -> Bool = { location in
-            canStartPan(at: location, in: baseChartFrame)
+        let onPinchDrill: (CGPoint, SunburstPinchDirection) -> Void = { location, direction in
+            guard !chartModel.isLayoutPending, zoomTransition == nil else { return }
+            handlePinchDrill(at: location, in: baseChartFrame, direction: direction)
         }
         let menuProvider: (CGPoint) -> NSMenu? = { location in
             guard !chartModel.isLayoutPending, zoomTransition == nil,
@@ -273,12 +250,9 @@ struct SunburstChartView: View {
         SunburstInteractionOverlay(
             onHover: onHover,
             onClick: onClick,
-            onPan: onPan,
-            onMagnify: onMagnify,
-            canStartPan: canStartPanProvider,
+            onPinchDrill: onPinchDrill,
             contextMenu: menuProvider,
-            help: helpProvider,
-            isPanEnabled: canAdjustViewport && viewportTransform.isZoomed
+            help: helpProvider
         )
         .accessibilityHidden(true)
         .allowsHitTesting(!chartModel.isLayoutPending)
@@ -301,10 +275,6 @@ struct SunburstChartView: View {
 
     private var loadingIndicatorAnimation: Animation {
         reduceMotion ? .linear(duration: 0.01) : .easeOut(duration: 0.12)
-    }
-
-    private var viewportAnimation: Animation {
-        reduceMotion ? .linear(duration: 0.01) : .easeOut(duration: 0.16)
     }
 
     // MARK: - Zoom transition
@@ -456,6 +426,25 @@ struct SunburstChartView: View {
         onClickSegment(hitTest(at: location, in: frame))
     }
 
+    /// Pinch-to-drill (DaisyDisk style): a spread over an arc opens that
+    /// folder, a squeeze anywhere goes up one level. The center hole is not
+    /// a drill target — spreading there would re-open the current root.
+    private func handlePinchDrill(
+        at location: CGPoint,
+        in frame: CGRect,
+        direction: SunburstPinchDirection
+    ) {
+        switch direction {
+        case .drillIn:
+            guard !isCenterHit(at: location, in: frame),
+                  let segment = hitTest(at: location, in: frame) else { return }
+            onPinchDrillSegment(segment)
+        case .drillOut:
+            guard parentNode != nil else { return }
+            onNavigateToParent()
+        }
+    }
+
     // MARK: - Accessibility
 
     private var accessibilityValue: String {
@@ -490,20 +479,27 @@ struct SunburstChartView: View {
         min(frame.width, frame.height) * SunburstLayout.centerRadius
     }
 
+    private func localChartPoint(
+        for location: CGPoint,
+        in frame: CGRect
+    ) -> (point: CGPoint, size: CGSize)? {
+        guard frame.contains(location) else { return nil }
+        return (
+            CGPoint(x: location.x - frame.minX, y: location.y - frame.minY),
+            frame.size
+        )
+    }
+
     private func hitTest(at location: CGPoint, in frame: CGRect) -> SunburstSegment? {
-        guard let chartPoint = viewportTransform.localChartPoint(for: location, in: frame) else {
+        guard let chartPoint = localChartPoint(for: location, in: frame) else {
             return nil
         }
 
         return chartModel.segment(at: chartPoint.point, in: chartPoint.size)
     }
 
-    private func canStartPan(at location: CGPoint, in frame: CGRect) -> Bool {
-        !isCenterHit(at: location, in: frame) && hitTest(at: location, in: frame) == nil
-    }
-
     private func isCenterHit(at location: CGPoint, in frame: CGRect) -> Bool {
-        guard let chartPoint = viewportTransform.localChartPoint(for: location, in: frame) else {
+        guard let chartPoint = localChartPoint(for: location, in: frame) else {
             return false
         }
 
@@ -515,60 +511,14 @@ struct SunburstChartView: View {
 
     private func help(at location: CGPoint, in frame: CGRect) -> String? {
         guard let parentNode, isCenterHit(at: location, in: frame) else { return nil }
-        return String(
+        return goUpText(to: parentNode)
+    }
+
+    private func goUpText(to parentNode: FileNodeRecord) -> String {
+        String(
             format: NSLocalizedString("Go up to %@", comment: "Sunburst center tooltip"),
             parentNode.name
         )
-    }
-
-    // MARK: - Viewport
-
-    private func zoomViewport(
-        by factor: CGFloat,
-        anchor: CGPoint?,
-        in baseFrame: CGRect,
-        animated: Bool
-    ) {
-        guard canAdjustViewport else { return }
-
-        setViewportTransform(
-            viewportTransform.zoomed(
-                by: factor,
-                anchor: anchor,
-                in: baseFrame
-            ),
-            animated: animated
-        )
-    }
-
-    private func panViewport(by delta: CGSize, in baseFrame: CGRect) {
-        guard canAdjustViewport else { return }
-
-        setViewportTransform(
-            viewportTransform.panned(by: delta, in: baseFrame),
-            animated: false
-        )
-    }
-
-    private func resetViewport(animated: Bool) {
-        setViewportTransform(.identity, animated: animated)
-    }
-
-    private func setViewportTransform(
-        _ nextTransform: SunburstViewportTransform,
-        animated: Bool
-    ) {
-        guard viewportTransform != nextTransform else { return }
-
-        let update = {
-            viewportTransform = nextTransform
-        }
-
-        if animated {
-            withAnimation(viewportAnimation, update)
-        } else {
-            update()
-        }
     }
 
     private func updateLoadingDiskMapProgress(isPending: Bool) async {

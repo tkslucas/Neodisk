@@ -248,7 +248,4 @@
 "Disk usage chart" = "ディスク使用状況のチャート";
 "Click a folder segment to open it. Click a file segment to select it." = "フォルダのセグメントをクリックすると開きます。ファイルのセグメントをクリックすると選択します。";
 "Click a folder segment to open it. Click a file segment to select it. Click the center to go up." = "フォルダのセグメントをクリックすると開きます。ファイルのセグメントをクリックすると選択します。中心をクリックすると上の階層に移動します。";
-"Zoom In" = "拡大";
-"Zoom Out" = "縮小";
-"Reset Zoom" = "ズームをリセット";
 "Changes are shown in the treemap view" = "変更はツリーマップ表示に表示されます";

@@ -40,8 +40,8 @@ Delete and clean up safely in Finder instead.
 
 ## Features
 
-- Treemap & Sunburst view
-- Pinch to zoom, scroll to pan
+- Treemap: pinch to zoom, scroll to pan
+- Sunburst: pinch to drill in and out
 - Outline selected files
 - Find largest files
 - File type statistics

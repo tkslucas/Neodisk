@@ -17,9 +17,9 @@
 </p>
 
 <p align="center">
-  <img src="screenshots/diff-sonoma.jpeg" width="32%" alt="Changes view: files that grew, shrank, appeared, or were deleted since the last scan">
-  <img src="screenshots/hero-tahoe.jpeg" width="32%" alt="Cushion treemap of a full volume with the outline list and file kinds">
-  <img src="screenshots/kind-sequoia.jpeg" width="32%" alt="Filtering by file kind highlights just those files in the treemap">
+  <img src="screenshots/diff.webp" width="32%" alt="Changes view: files that grew, shrank, appeared, or were deleted since the last scan">
+  <img src="screenshots/duplicates.webp" width="32%" alt="Duplicates view: files with identical content grouped by reclaimable space">
+  <img src="screenshots/sunburst.webp" width="32%" alt="Sunburst view of a folder, sized by disk usage from the center out">
 </p>
 
 ## Download

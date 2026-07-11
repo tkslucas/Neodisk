@@ -3,7 +3,7 @@ import Testing
 @testable import NeodiskUI
 
 @Suite struct UpdateSupportTests {
-    private let feed = "https://github.com/tkslucas/Neodisk/releases/latest/download/appcast.xml"
+    private let feed = "https://neodisk.lucastakayasu.com/appcast.xml"
 
     @Test func packagedAppWithFeedIsSupported() {
         #expect(UpdateSupport.isSupported(

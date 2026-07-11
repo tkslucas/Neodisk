@@ -140,6 +140,7 @@
 "Open" = "Öffnen";
 "Copy Path" = "Pfad kopieren";
 "Expand Contents" = "Inhalt einblenden";
+"Show Package Contents" = "Paketinhalt zeigen";
 "No matches" = "Keine Treffer";
 "Top %@ of %@ matches — refine to narrow" = "Top %@ von %@ Treffern — verfeinere die Suche, um einzugrenzen";
 

@@ -229,7 +229,7 @@ nonisolated final class ScanTraversal {
         metrics.recalculateProgress()
 
         // If the root itself shouldn't be traversed, return a leaf node.
-        guard shouldTraverseDirectory(metadata: rootMetadata) else {
+        guard shouldTraverseDirectory(metadata: rootMetadata, isRoot: true) else {
             return try await makeRootLeafStore(rootMetadata: rootMetadata)
         }
 
@@ -346,7 +346,7 @@ nonisolated final class ScanTraversal {
                     }
                     metrics.currentPath = item.url.path
 
-                    if shouldTraverseDirectory(metadata: meta) {
+                    if shouldTraverseDirectory(metadata: meta, isRoot: item.depth == 0) {
                         metrics.directoriesVisited += 1
                         metrics.recalculateProgress()
                         maybeEmitProgress()
@@ -1053,10 +1053,12 @@ nonisolated final class ScanTraversal {
         continuation.yield(.progress(metrics))
     }
 
-    private func shouldTraverseDirectory(metadata: NodeMetadata) -> Bool {
+    private func shouldTraverseDirectory(metadata: NodeMetadata, isRoot: Bool = false) -> Bool {
         guard metadata.isDirectory else { return false }
         guard !metadata.isSymbolicLink else { return false }
-        return !metadata.isPackage || options.treatPackagesAsDirectories
+        guard metadata.isPackage else { return true }
+        return options.treatPackagesAsDirectories
+            || (isRoot && options.treatRootPackageAsDirectory)
     }
 
     /// Capacity reconciliation is useful on non-APFS volumes where per-file allocated

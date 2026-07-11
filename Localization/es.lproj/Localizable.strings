@@ -141,6 +141,7 @@
 "Open" = "Abrir";
 "Copy Path" = "Copiar ruta";
 "Expand Contents" = "Expandir contenido";
+"Show Package Contents" = "Mostrar contenido del paquete";
 "No matches" = "Sin coincidencias";
 "Top %@ of %@ matches — refine to narrow" = "Las %@ primeras de %@ coincidencias — afina para acotar";
 

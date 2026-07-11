@@ -3,9 +3,10 @@ import Testing
 import NeodiskKit
 @testable import NeodiskUI
 
-/// The context-menu subtree action on the view model: "Expand Contents"
-/// splices a fresh scan of an auto-summarized folder into the displayed
-/// tree and persists the spliced snapshot back to the cache.
+/// The context-menu subtree actions on the view model: "Expand Contents" /
+/// "Show Package Contents" splice a fresh scan of an auto-summarized folder
+/// or an opaque package into the displayed tree and persist the spliced
+/// snapshot back to the cache.
 @MainActor
 @Suite(.serialized) struct SubtreeRefreshTests {
     @Test func testExpandSkipsPlainDirectoriesWithoutScanning() async throws {
@@ -15,13 +16,57 @@ import NeodiskKit
         let fixture = makeSubtreeFixture(rootPath: "/subtree/skips")
         model.coordinator.replaceCurrentSnapshot(fixture.snapshot)
 
-        // Neither a plain directory nor a file is auto-summarized, so
-        // expansion never starts a scan.
-        model.expandSummarizedNode(fixture.directory)
-        model.expandSummarizedNode(fixture.file)
+        // Neither a plain directory nor a file is auto-summarized or a
+        // package, so no context menu offers expansion and the model never
+        // starts a scan.
+        #expect(model.contentsExpansion(for: fixture.directory) == nil)
+        #expect(model.contentsExpansion(for: fixture.file) == nil)
+        model.expandNodeContents(fixture.directory)
+        model.expandNodeContents(fixture.file)
 
         #expect(environment.scanService.scanCount == 0)
         #expect(model.coordinator.expandingNodeID == nil)
+    }
+
+    @Test func testShowPackageContentsSplicesChildrenInPlace() async throws {
+        let environment = try TestEnvironment()
+        defer { environment.tearDown() }
+        let model = environment.makeModel()
+        let fixture = makePackageFixture(rootPath: "/subtree/package")
+        model.coordinator.replaceCurrentSnapshot(fixture.snapshot)
+
+        // An opaque package offers Finder's menu wording.
+        #expect(model.contentsExpansion(for: fixture.package) == .package)
+        #expect(model.contentsExpansion(for: fixture.package)?.menuTitleKey == "Show Package Contents")
+
+        model.expandNodeContents(fixture.package)
+        try await waitUntilAsync("expansion scan started") {
+            environment.scanService.scanCount == 1
+        }
+        let request = try #require(environment.scanService.requests.first)
+        #expect(request.target == ScanTarget(url: fixture.package.url))
+        // Only the package being shown opens up; bundles nested inside stay
+        // opaque, and interior folders may still auto-summarize.
+        #expect(request.options.treatRootPackageAsDirectory == true)
+        #expect(request.options.treatPackagesAsDirectories == false)
+        #expect(request.options.autoSummarizeDirectories == true)
+
+        let refreshed = makeExpandedPackageSnapshot(packageID: fixture.package.id)
+        environment.scanService.yield(.finished(refreshed), scanIndex: 0)
+        environment.scanService.finish(scanIndex: 0)
+
+        try await waitUntilAsync("package contents spliced") {
+            model.store?.containsChildren(id: fixture.package.id) == true
+        }
+        let spliced = try #require(model.store?.node(id: fixture.package.id))
+        // The node keeps its package identity — icon, kind, and Quick Look
+        // still see a bundle — but now behaves like a folder with children.
+        #expect(spliced.isPackage)
+        #expect(model.store?.children(of: spliced.id).map(\.name) == ["Contents"])
+        // The menu item disappears once the contents are in the store.
+        #expect(model.contentsExpansion(for: spliced) == nil)
+        #expect(model.expandedNodeIDs.contains(fixture.package.id))
+        #expect(model.actionErrorMessage == nil)
     }
 
     @Test func testExpandSummarizedNodeSplicesAndRevealsContents() async throws {
@@ -32,7 +77,7 @@ import NeodiskKit
         model.coordinator.replaceCurrentSnapshot(fixture.snapshot)
 
         #expect(model.canRefreshSubtree)
-        model.expandSummarizedNode(fixture.summarized)
+        model.expandNodeContents(fixture.summarized)
 
         // The expansion starts in a task; wait for the scan to register.
         try await waitUntilAsync("expansion scan started") {
@@ -48,7 +93,7 @@ import NeodiskKit
         #expect(request.options.autoSummarizeDirectories == false)
 
         // A second request while the first is in flight is ignored.
-        model.expandSummarizedNode(fixture.summarized)
+        model.expandNodeContents(fixture.summarized)
         #expect(environment.scanService.scanCount == 1)
 
         let refreshed = makeRefreshedSubtreeSnapshot(directoryID: fixture.summarized.id)
@@ -76,7 +121,7 @@ import NeodiskKit
         let fixture = makeSummarizedFixture(rootPath: "/subtree/failing")
         model.coordinator.replaceCurrentSnapshot(fixture.snapshot)
 
-        model.expandSummarizedNode(fixture.summarized)
+        model.expandNodeContents(fixture.summarized)
         try await waitUntilAsync("expansion scan started") {
             environment.scanService.scanCount == 1
         }
@@ -111,7 +156,7 @@ import NeodiskKit
 
         // Expand one folder; the spliced snapshot must reach the cache.
         let summarized = try #require(model.store?.node(id: fixture.summarized.id))
-        model.expandSummarizedNode(summarized)
+        model.expandNodeContents(summarized)
         try await waitUntilAsync("expansion scan started") {
             environment.scanService.scanCount == 2
         }
@@ -234,6 +279,49 @@ import NeodiskKit
         let new2 = makeTestFileNode(id: directoryID + "/new2.bin", name: "new2.bin", size: 30)
         let root = makeTestDirectoryNode(id: directoryID, name: "stuff", children: [new1, new2])
         let store = FileTreeStore(root: root, childrenByID: [root.id: [new1, new2]])
+        return makeTestSnapshot(root: root, store: store)
+    }
+
+    private struct PackageFixture {
+        let snapshot: ScanSnapshot
+        let package: FileNodeRecord
+    }
+
+    /// Root with one opaque package leaf, the way the scanner records
+    /// bundles: `isPackage`, aggregate size, no children in the store.
+    private func makePackageFixture(rootPath: String, target: ScanTarget? = nil) -> PackageFixture {
+        let package = FileNodeRecord(
+            id: rootPath + "/App.app",
+            url: URL(filePath: rootPath + "/App.app", directoryHint: .isDirectory),
+            name: "App.app",
+            isDirectory: true,
+            isSymbolicLink: false,
+            allocatedSize: 100,
+            logicalSize: 100,
+            descendantFileCount: 7,
+            lastModified: nil,
+            isPackage: true,
+            isAccessible: true,
+            isSelfAccessible: true,
+            isSynthetic: false,
+            isAutoSummarized: false
+        )
+        let root = makeTestDirectoryNode(id: rootPath, name: "root", children: [package])
+        let store = FileTreeStore(root: root, childrenByID: [root.id: [package]])
+        return PackageFixture(
+            snapshot: makeTestSnapshot(target: target, root: root, store: store),
+            package: package
+        )
+    }
+
+    /// A fresh scan of the fixture package with the root opened up: the
+    /// replacement root keeps `isPackage` and now has children.
+    private func makeExpandedPackageSnapshot(packageID: String) -> ScanSnapshot {
+        let contents = makeTestFileNode(id: packageID + "/Contents", name: "Contents", size: 100)
+        let root = makeTestDirectoryNode(
+            id: packageID, name: "App.app", children: [contents], isPackage: true
+        )
+        let store = FileTreeStore(root: root, childrenByID: [root.id: [contents]])
         return makeTestSnapshot(root: root, store: store)
     }
 }

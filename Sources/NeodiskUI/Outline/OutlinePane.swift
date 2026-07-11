@@ -523,10 +523,10 @@ private struct OutlineTreeTable: NSViewRepresentable {
             menu.addItem(ActionMenuItem(titleKey: "Reveal in Finder") { model.reveal(node) })
             menu.addItem(ActionMenuItem(titleKey: "Open") { model.open(node) })
             menu.addItem(ActionMenuItem(titleKey: "Copy Path") { model.copyPath(node) })
-            if node.isAutoSummarized {
+            if let expansion = model.contentsExpansion(for: node) {
                 menu.addItem(.separator())
-                let expand = ActionMenuItem(titleKey: "Expand Contents") {
-                    model.expandSummarizedNode(node)
+                let expand = ActionMenuItem(titleKey: expansion.menuTitleKey) {
+                    model.expandNodeContents(node)
                 }
                 expand.isEnabled = model.canRefreshSubtree
                 menu.addItem(expand)

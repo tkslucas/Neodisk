@@ -303,7 +303,7 @@ struct TreemapScene: Sendable {
         case .kind:
             return catalog.rgb(for: node)
         case .age(let referenceDate):
-            guard FileKindClassifier.isKindCountable(node) else {
+            guard FileKindClassifier.isLeafLike(node) else {
                 return FileKindCatalog.directoryRGB
             }
             return palette.ageRGB(AgeBucket.bucket(for: node.lastModified, reference: referenceDate))
@@ -324,7 +324,7 @@ struct TreemapScene: Sendable {
             return FileKindClassifier.kindID(for: node, mode: catalog.mode) == kindID
         case .ageBucket(let bucket):
             guard case .age(let referenceDate) = colorMode,
-                  FileKindClassifier.isKindCountable(node) else { return false }
+                  FileKindClassifier.isLeafLike(node) else { return false }
             return AgeBucket.bucket(for: node.lastModified, reference: referenceDate) == bucket
         case .nodes(let ids):
             return ids.contains(node.id)

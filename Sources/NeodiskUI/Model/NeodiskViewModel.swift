@@ -315,7 +315,7 @@ final class NeodiskViewModel {
             )
         }
         if case .age(let referenceDate) = treemapColorMode {
-            guard FileKindClassifier.isKindCountable(node) else {
+            guard FileKindClassifier.isLeafLike(node) else {
                 let rgb = FileKindCatalog.directoryRGB
                 return Color(red: Double(rgb.x), green: Double(rgb.y), blue: Double(rgb.z))
             }
@@ -907,7 +907,7 @@ final class NeodiskViewModel {
         // subtree. It populates in place; a second ⌘↓ then drills in normally.
         if dir.isAutoSummarized {
             guard canRefreshSubtree else { return false }
-            expandSummarizedNode(dir)
+            expandNodeContents(dir)
             return true
         }
         // Other childless folders (empty dirs, opaque packages) have nothing
@@ -956,7 +956,7 @@ final class NeodiskViewModel {
         // contents instead of re-rooting into a blank subtree (mirrors ⌘↓).
         if node.isAutoSummarized {
             guard canRefreshSubtree else { return false }
-            expandSummarizedNode(node)
+            expandNodeContents(node)
             return true
         }
         // Childless folders (empty dirs, opaque packages) have nothing to render.
@@ -1043,20 +1043,57 @@ final class NeodiskViewModel {
             && coordinator.expandingNodeID == nil
     }
 
-    /// Scans an auto-summarized folder's real contents and splices them in —
-    /// the context menu's "Expand Contents".
-    func expandSummarizedNode(_ node: FileNodeRecord) {
+    /// The contents-expansion context-menu command a node offers, if any.
+    /// Both kinds funnel into `expandNodeContents`; only the wording (and
+    /// the reason the contents are missing) differs.
+    enum ContentsExpansion {
+        /// An auto-summarized folder — "Expand Contents".
+        case summarizedFolder
+        /// A still-opaque package — Finder's "Show Package Contents".
+        case package
+
+        var menuTitleKey: String {
+            switch self {
+            case .summarizedFolder: "Expand Contents"
+            case .package: "Show Package Contents"
+            }
+        }
+    }
+
+    /// The expansion command to offer `node` in a context menu, or nil.
+    /// Every menu (outline, treemap, sunburst chart + legend, file lists)
+    /// derives its item from this one gate so they cannot drift. An already
+    /// expanded package has children in the store and offers nothing.
+    func contentsExpansion(for node: FileNodeRecord) -> ContentsExpansion? {
+        if node.isAutoSummarized { return .summarizedFolder }
+        if node.isPackage, node.isDirectory, store?.containsChildren(id: node.id) != true {
+            return .package
+        }
+        return nil
+    }
+
+    /// Scans an auto-summarized folder's or an opaque package's real
+    /// contents and splices them in — the context menu's "Expand Contents" /
+    /// "Show Package Contents".
+    func expandNodeContents(_ node: FileNodeRecord) {
         guard canRefreshSubtree else { return }
         // Match the on-screen scan's options (a volume scan forces hidden
         // files on) so the spliced subtree isn't missing entries it had.
         var options = coordinator.snapshot.map { scanOptions(for: $0.target) }
             ?? preferences?.scanOptions ?? ScanOptions()
-        // The user explicitly asked for this folder's contents;
-        // re-summarizing it would make the action a no-op.
-        options.autoSummarizeDirectories = false
+        if node.isAutoSummarized {
+            // The user explicitly asked for this folder's contents;
+            // re-summarizing it would make the action a no-op.
+            options.autoSummarizeDirectories = false
+        } else {
+            // Show Package Contents: open this one package — bundles nested
+            // inside stay opaque (each individually expandable), and huge
+            // interior folders may still auto-summarize per the usual rules.
+            options.treatRootPackageAsDirectory = true
+        }
         Task { [weak self] in
             guard let self else { return }
-            let result = await self.coordinator.expandSummarizedNode(node, options: options)
+            let result = await self.coordinator.expandNodeContents(node, options: options)
             self.handleSubtreeRefresh(result)
         }
     }

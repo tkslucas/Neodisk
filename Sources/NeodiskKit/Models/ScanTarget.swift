@@ -135,6 +135,11 @@ public nonisolated struct ScanOptions: Hashable, Codable, Sendable {
 
     public var includeHiddenFiles = false
     public var treatPackagesAsDirectories = false
+    /// Traverses the scan root even when it is a package, while packages
+    /// below it stay opaque leaves. This is how "Show Package Contents"
+    /// expands one package in place without also opening every bundle
+    /// nested inside it.
+    public var treatRootPackageAsDirectory = false
     public var autoSummarizeDirectories = true
     public var includeCloudStorage = false
     public var cloudStorageRootPath = ScanOptions.defaultCloudStorageRootPath
@@ -146,6 +151,7 @@ public nonisolated struct ScanOptions: Hashable, Codable, Sendable {
     public nonisolated init(
         includeHiddenFiles: Bool = false,
         treatPackagesAsDirectories: Bool = false,
+        treatRootPackageAsDirectory: Bool = false,
         autoSummarizeDirectories: Bool = true,
         includeCloudStorage: Bool = false,
         cloudStorageRootPath: String = ScanOptions.defaultCloudStorageRootPath,
@@ -156,6 +162,7 @@ public nonisolated struct ScanOptions: Hashable, Codable, Sendable {
     ) {
         self.includeHiddenFiles = includeHiddenFiles
         self.treatPackagesAsDirectories = treatPackagesAsDirectories
+        self.treatRootPackageAsDirectory = treatRootPackageAsDirectory
         self.autoSummarizeDirectories = autoSummarizeDirectories
         self.includeCloudStorage = includeCloudStorage
         self.cloudStorageRootPath = cloudStorageRootPath

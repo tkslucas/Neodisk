@@ -241,7 +241,7 @@ import NeodiskKit
 
         var expansionResult: ScanExpansionResult?
         let expansionTask = Task {
-            expansionResult = await coordinator.expandSummarizedNode(
+            expansionResult = await coordinator.expandNodeContents(
                 summarizedNode,
                 options: ScanOptions(includeHiddenFiles: true, autoSummarizeDirectories: false)
             )

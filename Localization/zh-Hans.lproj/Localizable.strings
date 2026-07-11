@@ -140,6 +140,7 @@
 "Open" = "打开";
 "Copy Path" = "拷贝路径";
 "Expand Contents" = "展开内容";
+"Show Package Contents" = "显示包内容";
 "No matches" = "无匹配项";
 "Top %@ of %@ matches — refine to narrow" = "已显示 %2$@ 条匹配结果中的前 %1$@ 条，请优化搜索词以缩小范围";
 

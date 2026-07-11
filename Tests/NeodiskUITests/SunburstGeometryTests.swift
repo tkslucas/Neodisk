@@ -426,8 +426,8 @@ import NeodiskKit
             "/root/sub": [nested],
         ])
 
-        #expect(!package.isSunburstFolder)
-        #expect(sub.isSunburstFolder)
+        #expect(!package.isSunburstFolder(in: store))
+        #expect(sub.isSunburstFolder(in: store))
 
         let segments = SunburstLayout.segments(
             in: store, rootID: "/root", depthLimit: 2,
@@ -437,6 +437,49 @@ import NeodiskKit
         let packageFill = try #require(packageSegment.fillRGB)
         #expect(packageSegment.colorToken.role == .file)
         #expect(packageFill.x == packageFill.y && packageFill.y == packageFill.z)
+    }
+
+    @Test func expandedPackagesAreFoldersToTheSunburst() throws {
+        // Once "Show Package Contents" splices a package's children into the
+        // store it drills and colors like any other folder.
+        let inner = makeTestFileNode(id: "/root/App.app/binary", name: "binary", size: 500)
+        let package = FileNodeRecord(
+            id: "/root/App.app",
+            url: URL(filePath: "/root/App.app", directoryHint: .isDirectory),
+            name: "App.app",
+            isDirectory: true,
+            isSymbolicLink: false,
+            allocatedSize: 500,
+            unduplicatedAllocatedSize: nil,
+            logicalSize: 500,
+            descendantFileCount: 1,
+            lastModified: nil,
+            fileIdentity: nil,
+            linkCount: 1,
+            isPackage: true,
+            isAccessible: true,
+            isSelfAccessible: true,
+            isSynthetic: false,
+            isAutoSummarized: false
+        )
+        let root = makeTestDirectoryNode(id: "/root", name: "root", children: [package])
+        let store = FileTreeStore(root: root, childrenByID: [
+            "/root": [package],
+            "/root/App.app": [inner],
+        ])
+
+        #expect(package.isSunburstFolder(in: store))
+
+        let segments = SunburstLayout.segments(
+            in: store, rootID: "/root", depthLimit: 2,
+            style: SunburstColorStyle(mode: .branch)
+        )
+        let packageSegment = try #require(segments.first { $0.nodeID == package.id })
+        let packageFill = try #require(packageSegment.fillRGB)
+        #expect(packageSegment.colorToken.role == .normal)
+        #expect(!(packageFill.x == packageFill.y && packageFill.y == packageFill.z))
+        // The package's children render as an inner ring.
+        #expect(segments.contains { $0.nodeID == inner.id })
     }
 
     @Test func colorblindPaletteRestrictsBranchHues() throws {

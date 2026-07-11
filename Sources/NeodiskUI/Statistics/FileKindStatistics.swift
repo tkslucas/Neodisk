@@ -117,7 +117,7 @@ struct FileKindCatalog: Sendable {
     }
 
     nonisolated func rgb(for node: FileNodeRecord) -> SIMD3<Float> {
-        if node.isDirectory, !FileKindClassifier.isKindCountable(node) {
+        if node.isDirectory, !FileKindClassifier.isLeafLike(node) {
             return Self.directoryRGB
         }
         return rgb(forKindID: FileKindClassifier.kindID(for: node, mode: mode))
@@ -144,7 +144,7 @@ struct FileKindCatalog: Sendable {
         var sizeByKindID: [String: (size: Int64, count: Int)] = [:]
 
         for node in store.allNodes {
-            guard FileKindClassifier.isKindCountable(node) else { continue }
+            guard FileKindClassifier.isKindCountable(node, in: store) else { continue }
             let kindID = FileKindClassifier.kindID(for: node, mode: mode)
             let existing = sizeByKindID[kindID] ?? (0, 0)
             sizeByKindID[kindID] = (existing.size + node.allocatedSize, existing.count + 1)
@@ -215,7 +215,7 @@ struct FileKindCatalog: Sendable {
         var typeSizes: [String: (size: Int64, count: Int)] = [:]
 
         for node in store.allNodes {
-            guard FileKindClassifier.isKindCountable(node) else { continue }
+            guard FileKindClassifier.isKindCountable(node, in: store) else { continue }
             let categoryID = FileKindClassifier.kindID(for: node, mode: .categories)
             let typeID = FileKindClassifier.kindID(for: node, mode: .types)
             categorySizes[categoryID, default: (0, 0)].size += node.allocatedSize

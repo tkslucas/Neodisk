@@ -13,11 +13,24 @@ import NeodiskKit
 
 
 enum FileKindClassifier {
-    /// Nodes that participate in kind statistics: regular files, plus
-    /// leaf-like directories that behave as a single item (packages such as
-    /// .app bundles, and auto-summarized folders).
-    nonisolated static func isKindCountable(_ node: FileNodeRecord) -> Bool {
+    /// Nodes that read as a single item rather than a container: regular
+    /// files, plus directories that behave as one (packages such as .app
+    /// bundles, and auto-summarized folders). This is the display-side
+    /// notion used for kind naming and coloring — an expanded package still
+    /// looks like one app.
+    nonisolated static func isLeafLike(_ node: FileNodeRecord) -> Bool {
         !node.isDirectory || node.isPackage || node.isAutoSummarized
+    }
+
+    /// Nodes that participate in kind/age/largest statistics: leaf-like
+    /// nodes whose contents are NOT in the store — an opaque package or
+    /// summarized folder counts as one item, but once "Show Package
+    /// Contents" splices its children in, those are counted individually
+    /// instead (counting both would double the size).
+    nonisolated static func isKindCountable(_ node: FileNodeRecord, in store: FileTreeStore) -> Bool {
+        guard node.isDirectory else { return true }
+        guard isLeafLike(node) else { return false }
+        return !store.containsChildren(id: node.id)
     }
 
     nonisolated static func kind(for node: FileNodeRecord, mode: FileKindDisplayMode = .types) -> FileKind {
@@ -30,7 +43,7 @@ enum FileKindClassifier {
     nonisolated static func kindID(for node: FileNodeRecord, mode: FileKindDisplayMode) -> String {
         // Plain folders aren't part of kind statistics; describe them as
         // folders instead of falling through to "No Extension"/"Other".
-        if node.isDirectory, !isKindCountable(node) {
+        if node.isDirectory, !isLeafLike(node) {
             return "folder"
         }
         switch mode {

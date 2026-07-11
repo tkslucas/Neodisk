@@ -203,11 +203,12 @@ struct SunburstPane: View {
         // parent folder instead, so the legend shows the hovered item
         // highlighted among its siblings rather than snapping to the root.
         if let nodeID = segment.nodeID,
-           let node = model.store?.node(id: nodeID) {
-            if node.isSunburstFolder, model.store?.children(of: nodeID).isEmpty == false {
+           let store = model.store,
+           let node = store.node(id: nodeID) {
+            if node.isSunburstFolder(in: store), !store.children(of: nodeID).isEmpty {
                 setPreviewFolder(nodeID)
             } else {
-                setPreviewFolder(model.store?.parent(of: nodeID)?.id)
+                setPreviewFolder(store.parent(of: nodeID)?.id)
             }
         } else {
             setPreviewFolder(nil)
@@ -273,15 +274,15 @@ struct SunburstPane: View {
         }
 
         guard let nodeID = segment.nodeID else { return }
-        if model.store?.node(id: nodeID)?.isSunburstFolder == true {
+        if let store = model.store, store.node(id: nodeID)?.isSunburstFolder(in: store) == true {
             // A single click on a folder segment drills in. drillIn guards
             // summarized/childless folders; refusals degrade to a plain
             // select.
             drillOrSelect(nodeID)
         } else {
-            // A single click on a file (or package — opaque to the scan)
-            // selects it and opens Quick Look (selection changes then
-            // live-update the open panel).
+            // A single click on a file (or a still-opaque package) selects
+            // it and opens Quick Look (selection changes then live-update
+            // the open panel).
             model.select(nodeID)
             if let node = model.store?.node(id: nodeID) {
                 QuickLookPresenter.shared.openPreview(for: node)
@@ -298,8 +299,8 @@ struct SunburstPane: View {
         guard !segment.isFreeSpace, !segment.isHiddenSpace else { return }
 
         let targetID = segment.isAggregate ? segment.parentFolderID : segment.nodeID
-        guard let targetID,
-              model.store?.node(id: targetID)?.isSunburstFolder == true,
+        guard let targetID, let store = model.store,
+              store.node(id: targetID)?.isSunburstFolder(in: store) == true,
               model.drillIn(to: targetID) else { return }
         model.select(nil)
     }
@@ -426,7 +427,8 @@ struct SunburstPane: View {
     }
 
     /// Same actions as the treemap's context menu: Reveal in Finder / Open /
-    /// Copy Path, plus Expand Contents for summarized folders.
+    /// Copy Path, plus Expand Contents / Show Package Contents for
+    /// summarized folders and opaque packages.
     private func contextMenu(for segment: SunburstSegment) -> NSMenu? {
         guard let nodeID = segment.nodeID,
               let node = model.store?.node(id: nodeID),
@@ -439,9 +441,9 @@ struct SunburstPane: View {
         menu.addItem(SunburstMenuItem(title: NSLocalizedString("Open", comment: "Sunburst context menu")) { model.open(node) })
         menu.addItem(SunburstMenuItem(title: NSLocalizedString("Copy Path", comment: "Sunburst context menu")) { model.copyPath(node) })
 
-        if node.isAutoSummarized {
+        if let expansion = model.contentsExpansion(for: node) {
             menu.addItem(.separator())
-            let item = SunburstMenuItem(title: NSLocalizedString("Expand Contents", comment: "Sunburst context menu")) { model.expandSummarizedNode(node) }
+            let item = SunburstMenuItem(title: NSLocalizedString(expansion.menuTitleKey, comment: "Sunburst context menu")) { model.expandNodeContents(node) }
             item.isEnabled = model.canRefreshSubtree
             menu.addItem(item)
         }

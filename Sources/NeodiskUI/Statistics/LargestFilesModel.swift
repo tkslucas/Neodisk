@@ -211,7 +211,7 @@ private enum TopLargestFiles {
         heapIDs.reserveCapacity(limit)
 
         for node in store.allNodes {
-            guard FileKindClassifier.isKindCountable(node) else { continue }
+            guard FileKindClassifier.isKindCountable(node, in: store) else { continue }
             total += 1
             let size = node.allocatedSize
             if heapSizes.count < limit {

@@ -154,6 +154,52 @@ import Foundation
         #expect(packageNode.descendantFileCount == 1)
     }
 
+    /// "Show Package Contents": scanning a package as the root with
+    /// `treatRootPackageAsDirectory` opens up that package only — bundles
+    /// nested inside remain opaque leaves with aggregate sizes.
+    @Test func testRootPackageExpandsWhileNestedPackagesStayOpaque() async throws {
+        let rootURL = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+
+        let packageURL = rootURL.appending(path: "Outer.app", directoryHint: .isDirectory)
+        let binaryURL = packageURL.appending(path: "Contents/MacOS/Outer")
+        let nestedBinaryURL = packageURL
+            .appending(path: "Contents/PlugIns/Nested.appex", directoryHint: .isDirectory)
+            .appending(path: "Contents/MacOS/Nested")
+
+        try FileManager.default.createDirectory(at: binaryURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: nestedBinaryURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("outer".utf8).write(to: binaryURL)
+        try Data("nested".utf8).write(to: nestedBinaryURL)
+
+        // Without the option, a package target stays one opaque leaf.
+        let opaqueSnapshot = try await finishedSnapshot(
+            target: ScanTarget(url: packageURL),
+            options: ScanOptions()
+        )
+        #expect(opaqueSnapshot.root.isPackage)
+        #expect(!containsChildren(opaqueSnapshot.root, in: opaqueSnapshot))
+        #expect(opaqueSnapshot.root.descendantFileCount == 2)
+
+        let snapshot = try await finishedSnapshot(
+            target: ScanTarget(url: packageURL),
+            options: ScanOptions(treatRootPackageAsDirectory: true)
+        )
+
+        // The root package opened up and keeps its package identity.
+        #expect(snapshot.root.isPackage)
+        #expect(containsChildren(snapshot.root, in: snapshot))
+        #expect(snapshot.root.allocatedSize >= opaqueSnapshot.root.allocatedSize)
+
+        // The nested bundle inside is still an opaque leaf.
+        let nested = try #require(
+            snapshot.treeStore.allNodes.first(where: { $0.name == "Nested.appex" })
+        )
+        #expect(nested.isPackage)
+        #expect(!containsChildren(nested, in: snapshot))
+        #expect(nested.descendantFileCount == 1)
+    }
+
     @Test func testAtomicPackageAccessFailuresProduceWarnings() async throws {
         let rootURL = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: rootURL) }

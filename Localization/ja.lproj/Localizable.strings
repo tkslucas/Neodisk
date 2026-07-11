@@ -250,3 +250,22 @@
 "Click a folder segment to open it. Click a file segment to select it." = "フォルダのセグメントをクリックすると開きます。ファイルのセグメントをクリックすると選択します。";
 "Click a folder segment to open it. Click a file segment to select it. Click the center to go up." = "フォルダのセグメントをクリックすると開きます。ファイルのセグメントをクリックすると選択します。中心をクリックすると上の階層に移動します。";
 "Changes are shown in the treemap view" = "変更はツリーマップ表示に表示されます";
+
+/* MARK: - Updates (Sparkle) */
+"Check for Updates…" = "アップデートを確認…";
+"Checking for Updates…" = "アップデートを確認中…";
+"Update Available" = "アップデートが利用可能";
+"Version %@ is available." = "バージョン%@が利用可能です。";
+"Install Update" = "アップデートをインストール";
+"Install and Relaunch" = "インストールして再起動";
+"Later" = "後で";
+"Downloading Update…" = "アップデートをダウンロード中…";
+"Preparing Update…" = "アップデートを準備中…";
+"Ready to Install" = "インストール準備完了";
+"Installing Update…" = "アップデートをインストール中…";
+"You're up to date." = "最新の状態です。";
+"Update Error" = "アップデートエラー";
+"Updates" = "アップデート";
+"Check for updates automatically" = "自動的にアップデートを確認";
+"Neodisk checks GitHub for new versions in the background and always asks before installing anything." = "NeodiskはバックグラウンドでGitHubの新しいバージョンを確認し、インストール前に必ず確認を求めます。";
+"Automatic updates work only in the packaged app." = "自動アップデートはパッケージ版のアプリでのみ機能します。";

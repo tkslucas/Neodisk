@@ -250,3 +250,22 @@
 "Click a folder segment to open it. Click a file segment to select it." = "点按文件夹扇区以打开它。点按文件扇区以选择它。";
 "Click a folder segment to open it. Click a file segment to select it. Click the center to go up." = "点按文件夹扇区以打开它。点按文件扇区以选择它。点按中心以返回上层。";
 "Changes are shown in the treemap view" = "更改会显示在矩形树图视图中";
+
+/* MARK: - Updates (Sparkle) */
+"Check for Updates…" = "检查更新…";
+"Checking for Updates…" = "正在检查更新…";
+"Update Available" = "有可用更新";
+"Version %@ is available." = "版本 %@ 已可用。";
+"Install Update" = "安装更新";
+"Install and Relaunch" = "安装并重新启动";
+"Later" = "稍后";
+"Downloading Update…" = "正在下载更新…";
+"Preparing Update…" = "正在准备更新…";
+"Ready to Install" = "准备安装";
+"Installing Update…" = "正在安装更新…";
+"You're up to date." = "已是最新版本。";
+"Update Error" = "更新出错";
+"Updates" = "更新";
+"Check for updates automatically" = "自动检查更新";
+"Neodisk checks GitHub for new versions in the background and always asks before installing anything." = "Neodisk 会在后台检查 GitHub 上的新版本，安装前一定会先询问。";
+"Automatic updates work only in the packaged app." = "自动更新仅在打包的 App 中可用。";

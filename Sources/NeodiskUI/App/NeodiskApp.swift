@@ -9,6 +9,9 @@ import SwiftUI
 public struct NeodiskApp: App {
     @State private var model = NeodiskViewModel()
     @StateObject private var preferences = AppPreferences()
+    // Sparkle auto-updates; inert (no updater) for unbundled `swift run`
+    // builds and bundles without an appcast feed. See UpdateController.
+    @StateObject private var updates = UpdateController()
 
     public init() {
         // Single-window app: no window tabs, so the View menu loses the
@@ -28,10 +31,17 @@ public struct NeodiskApp: App {
 
     public var body: some Scene {
         WindowGroup {
-            ContentView(model: model, preferences: preferences)
+            ContentView(model: model, preferences: preferences, updates: updates)
                 .onAppear { preferences.applyTheme() }
         }
         .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") {
+                    updates.checkForUpdates()
+                }
+                .disabled(!updates.canCheckForUpdates)
+            }
+
             CommandGroup(replacing: .newItem) {
                 Button {
                     model.chooseFolderAndScan()
@@ -97,7 +107,7 @@ public struct NeodiskApp: App {
         }
 
         Settings {
-            SettingsView(model: model, preferences: preferences)
+            SettingsView(model: model, preferences: preferences, updates: updates)
         }
     }
 }

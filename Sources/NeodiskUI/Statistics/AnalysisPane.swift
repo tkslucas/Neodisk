@@ -16,6 +16,7 @@ enum AnalysisTab: String, CaseIterable, Identifiable, Sendable {
     case kinds
     case age
     case duplicates
+    case changes
 
     var id: String { rawValue }
 
@@ -25,6 +26,7 @@ enum AnalysisTab: String, CaseIterable, Identifiable, Sendable {
         case .kinds: return "Kinds"
         case .age: return "Age"
         case .duplicates: return "Duplicates"
+        case .changes: return "Changes"
         }
     }
 }
@@ -66,6 +68,8 @@ struct AnalysisPane: View {
                 AgeStatsPane(model: model)
             case .duplicates:
                 DuplicatesPane(model: model)
+            case .changes:
+                ChangesPane(model: model)
             }
         }
     }

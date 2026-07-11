@@ -50,6 +50,32 @@ struct FileResultRow: View {
     }
 }
 
+/// Growth since the baseline scan: "+1.2 GB" in red, "−340 MB" in green,
+/// a quiet dot for unchanged nodes. Shared by the outline's diff column and
+/// the statistics panel's Changes tab, so every delta in the app speaks the
+/// same color language.
+struct DeltaLabel: View {
+    let delta: Int64
+
+    var body: some View {
+        Group {
+            if delta == 0 {
+                Text("·")
+                    .foregroundStyle(.tertiary)
+            } else if delta > 0 {
+                Text("+\(NeodiskFormatters.size(delta))")
+                    .foregroundStyle(.red)
+            } else {
+                Text("−\(NeodiskFormatters.size(-delta))")
+                    .foregroundStyle(.green)
+            }
+        }
+        .monospacedDigit()
+        .lineLimit(1)
+        .fixedSize(horizontal: true, vertical: false)
+    }
+}
+
 /// A node's category icon tinted with the category's fixed color — the
 /// treemap's Categories palette, so the file lists and the map speak the
 /// same color language.

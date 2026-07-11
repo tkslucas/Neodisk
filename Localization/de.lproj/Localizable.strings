@@ -182,6 +182,22 @@
 "Back to duplicates" = "Zurück zu den Duplikaten";
 "%@ files couldn't be read" = "%@ Dateien konnten nicht gelesen werden";
 
+/* MARK: - Changes tab */
+"Comparing with the previous scan…" = "Vergleich mit dem letzten Scan…";
+"No previous scan to compare" = "Kein früherer Scan zum Vergleichen";
+"Scan this location again and what was added, deleted, renamed, or resized will appear here." = "Scanne diesen Ort erneut, und hier erscheint, was seit diesem Scan hinzugefügt, gelöscht, umbenannt oder in der Größe verändert wurde.";
+"No changes since the previous scan" = "Keine Änderungen seit dem letzten Scan";
+"Changes since the previous scan" = "Änderungen seit dem letzten Scan";
+"Changes since %@" = "Änderungen seit %@";
+"%@ added · %@ deleted · %@ renamed" = "%@ hinzugefügt · %@ gelöscht · %@ umbenannt";
+"Top %@ of %@ changes" = "Top %@ von %@ Änderungen";
+"Was %@" = "Vorher: %@";
+"Added" = "Hinzugefügt";
+"Deleted" = "Gelöscht";
+"Renamed" = "Umbenannt";
+"Grown" = "Gewachsen";
+"Shrunk" = "Geschrumpft";
+
 /* MARK: - File kind category names */
 "Videos" = "Videos";
 "Images" = "Bilder";

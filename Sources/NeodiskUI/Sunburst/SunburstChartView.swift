@@ -31,6 +31,9 @@ struct SunburstChartView: View {
     let style: SunburstColorStyle
     let freeSpaceBytes: Int64?
     let hiddenSpaceBytes: Int64?
+    /// Folders whose "Smaller Items" pool the user clicked open — their
+    /// children lay out individually. Part of the layout identity.
+    let expandedAggregateIDs: Set<String>
     /// Formatted total size of the displayed folder, shown in the center
     /// hole (the hover-preview folder while the chart hovers a directory).
     let centerSizeText: String
@@ -92,6 +95,7 @@ struct SunburstChartView: View {
                         style: style,
                         freeSpaceBytes: freeSpaceBytes,
                         hiddenSpaceBytes: hiddenSpaceBytes,
+                        expandedAggregateIDs: expandedAggregateIDs,
                         layoutID: layoutID
                     ))
                 }
@@ -308,7 +312,7 @@ struct SunburstChartView: View {
         // SunburstPane).
         let previousParts = fromLayoutID.split(separator: "|", omittingEmptySubsequences: false)
         let nextParts = toLayoutID.split(separator: "|", omittingEmptySubsequences: false)
-        guard previousParts.count == 5, nextParts.count == 5,
+        guard previousParts.count == 6, nextParts.count == 6,
               previousParts[0] == nextParts[0],
               previousParts[1] != nextParts[1] else {
             zoomTransition = nil

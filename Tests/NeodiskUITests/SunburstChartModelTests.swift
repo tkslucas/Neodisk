@@ -165,6 +165,7 @@ import NeodiskKit
             style: SunburstColorStyle(mode: .branch),
             freeSpaceBytes: nil,
             hiddenSpaceBytes: nil,
+            expandedAggregateIDs: [],
             layoutID: "layout"
         ))
         #expect(didApplyLayout)
@@ -318,6 +319,7 @@ private func makeRequest(layoutID: String) -> SunburstLayoutRequest {
         style: SunburstColorStyle(),
         freeSpaceBytes: nil,
         hiddenSpaceBytes: nil,
+        expandedAggregateIDs: [],
         layoutID: layoutID
     )
 }

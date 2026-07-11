@@ -148,7 +148,8 @@ enum SunburstLayout {
         minimumAngle: Double = .pi / 90,
         style: SunburstColorStyle = SunburstColorStyle(),
         freeSpaceBytes: Int64? = nil,
-        hiddenSpaceBytes: Int64? = nil
+        hiddenSpaceBytes: Int64? = nil,
+        expandedAggregateIDs: Set<String> = []
     ) -> [SunburstSegment] {
         let unstyled = (try? segments(
             in: treeStore,
@@ -157,6 +158,7 @@ enum SunburstLayout {
             minimumAngle: minimumAngle,
             freeSpaceBytes: freeSpaceBytes,
             hiddenSpaceBytes: hiddenSpaceBytes,
+            expandedAggregateIDs: expandedAggregateIDs,
             cancellationCheck: {}
         )) ?? []
         return styled(unstyled, style: style, in: treeStore)
@@ -186,6 +188,7 @@ enum SunburstLayout {
         minimumAngle: Double = .pi / 90,
         freeSpaceBytes: Int64? = nil,
         hiddenSpaceBytes: Int64? = nil,
+        expandedAggregateIDs: Set<String> = [],
         cancellationCheck: CancellationCheck
     ) throws -> [SunburstSegment] {
         guard depthLimit > 0 else { return [] }
@@ -222,6 +225,7 @@ enum SunburstLayout {
             branchContext: nil,
             colorBranchContext: colorBranchContext,
             minimumAngle: minimumAngle,
+            expandedAggregateIDs: expandedAggregateIDs,
             cancellationCheck: cancellationCheck,
             into: &result
         )
@@ -278,6 +282,7 @@ enum SunburstLayout {
         branchContext: ColorBranch?,
         colorBranchContext: ColorBranchContext,
         minimumAngle: Double,
+        expandedAggregateIDs: Set<String>,
         cancellationCheck: CancellationCheck,
         into segments: inout [SunburstSegment]
     ) throws {
@@ -295,6 +300,10 @@ enum SunburstLayout {
             denominator: safeDenominator,
             totalAngle: totalAngle,
             minimumAngle: minimumAngle,
+            // A clicked-open "Smaller Items" pool renders its children
+            // individually, however thin (mirrors the treemap's
+            // expandAggregate contract).
+            disableAggregation: expandedAggregateIDs.contains(parentID),
             cancellationCheck: cancellationCheck
         )
 
@@ -366,6 +375,7 @@ enum SunburstLayout {
                     branchContext: branch,
                     colorBranchContext: colorBranchContext,
                     minimumAngle: minimumAngle,
+                    expandedAggregateIDs: expandedAggregateIDs,
                     cancellationCheck: cancellationCheck,
                     into: &segments
                 )
@@ -381,9 +391,10 @@ enum SunburstLayout {
         denominator: Int64,
         totalAngle: Double,
         minimumAngle: Double,
+        disableAggregation: Bool,
         cancellationCheck: CancellationCheck
     ) throws -> [GroupEntry] {
-        guard children.count > 1 else {
+        guard children.count > 1, !disableAggregation else {
             return children.map { GroupEntry(node: $0) }
         }
 

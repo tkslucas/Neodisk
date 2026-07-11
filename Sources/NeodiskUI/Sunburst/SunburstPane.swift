@@ -49,11 +49,13 @@ struct SunburstPane: View {
                         snapshotID: snapshot.id,
                         rootID: rootID,
                         freeSpaceBytes: freeSpaceBytes,
-                        hiddenSpaceBytes: hiddenSpaceBytes
+                        hiddenSpaceBytes: hiddenSpaceBytes,
+                        expandedAggregateIDs: model.expandedAggregateIDs
                     ),
                     style: style,
                     freeSpaceBytes: freeSpaceBytes,
                     hiddenSpaceBytes: hiddenSpaceBytes,
+                    expandedAggregateIDs: model.expandedAggregateIDs,
                     centerSizeText: NeodiskFormatters.size(displayedFolder.allocatedSize),
                     onHoverSegment: { handleHover($0) },
                     onClickSegment: { handleClick($0) },
@@ -143,22 +145,24 @@ struct SunburstPane: View {
     }
 
     /// One string capturing every GEOMETRY input, so `.task(id:)` reloads on
-    /// any change: snapshot, root, depth, free space, hidden space. Colors
-    /// (tab mode, highlight, palette, catalog) are deliberately absent —
-    /// they restyle the rendered layout in place (see
-    /// SunburstChartModel.applyStyle).
+    /// any change: snapshot, root, depth, free space, hidden space, opened
+    /// "Smaller Items" pools. Colors (tab mode, highlight, palette, catalog)
+    /// are deliberately absent — they restyle the rendered layout in place
+    /// (see SunburstChartModel.applyStyle).
     private static func layoutID(
         snapshotID: UUID,
         rootID: String,
         freeSpaceBytes: Int64?,
-        hiddenSpaceBytes: Int64?
+        hiddenSpaceBytes: Int64?,
+        expandedAggregateIDs: Set<String>
     ) -> String {
         [
             snapshotID.uuidString,
             rootID,
             "\(depthLimit)",
             "\(freeSpaceBytes ?? 0)",
-            "\(hiddenSpaceBytes ?? 0)"
+            "\(hiddenSpaceBytes ?? 0)",
+            expandedAggregateIDs.sorted().joined(separator: "+")
         ].joined(separator: "|")
     }
 
@@ -410,10 +414,15 @@ struct SunburstPane: View {
                     QuickLookPresenter.shared.openPreview(for: node)
                 }
             }
-        case .aggregate, .freeSpace, .hiddenSpace:
-            // The aggregate's folder is already displayed and the synthetic
-            // free/hidden-space arcs are not navigable — these rows are
-            // hover-highlight only.
+        case .aggregate:
+            // Clicking the pooled row opens it up: the displayed folder's
+            // small children lay out (and list) individually, mirroring the
+            // treemap's "smaller items" cell click.
+            guard let displayedFolderID else { return }
+            model.expandAggregate(inFolder: displayedFolderID)
+        case .freeSpace, .hiddenSpace:
+            // The synthetic free/hidden-space arcs are not navigable —
+            // these rows are hover-highlight only.
             break
         }
     }

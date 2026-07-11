@@ -70,6 +70,29 @@ import NeodiskKit
         #expect(aggregate.itemCount == 3)
     }
 
+    @Test func expandedAggregateLaysOutSmallItemsIndividually() throws {
+        let children = [
+            makeTestFileNode(id: "/root/large", name: "large", size: 100),
+            makeTestFileNode(id: "/root/tiny-1", name: "tiny-1", size: 1),
+            makeTestFileNode(id: "/root/tiny-2", name: "tiny-2", size: 1),
+            makeTestFileNode(id: "/root/tiny-3", name: "tiny-3", size: 1),
+        ]
+        let store = makeGeometryStore(children: children)
+
+        // Same tree as the pooling test, but with the folder's pool opened:
+        // every tiny child gets its own (hairline) segment.
+        let segments = SunburstLayout.segments(
+            in: store, rootID: "/root", depthLimit: 1, minimumAngle: .pi / 2,
+            expandedAggregateIDs: ["/root"]
+        )
+
+        #expect(!segments.contains { $0.isAggregate })
+        let ids = segments.compactMap(\.nodeID)
+        #expect(ids.contains("/root/tiny-1"))
+        #expect(ids.contains("/root/tiny-2"))
+        #expect(ids.contains("/root/tiny-3"))
+    }
+
     @Test func hitTesterReturnsExpectedSegment() throws {
         let children = [
             makeTestFileNode(id: "/root/a", name: "a", size: 1),

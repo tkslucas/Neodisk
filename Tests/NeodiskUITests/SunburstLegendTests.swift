@@ -7,6 +7,7 @@
 //  free-space row gating, fill colors, and the hover→row mapping.
 //
 
+import SunburstCore
 import Foundation
 import SwiftUI
 import Testing

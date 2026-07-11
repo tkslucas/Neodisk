@@ -9,6 +9,7 @@
 //  click out, and the shared file-action context menu.
 //
 
+import SunburstCore
 import AppKit
 import SwiftUI
 import TreemapKit

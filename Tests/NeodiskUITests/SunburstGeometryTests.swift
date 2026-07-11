@@ -6,6 +6,7 @@
 //  coverage for the free-space segment and layout-time kind/age coloring.
 //
 
+import SunburstCore
 import CoreGraphics
 import Foundation
 import Testing
@@ -22,7 +23,7 @@ import NeodiskKit
 
         let segments = SunburstLayout.segments(in: store, rootID: "/root", depthLimit: 1)
         let totalRadians = segments.reduce(0.0) { partialResult, segment in
-            partialResult + (segment.endAngle.radians - segment.startAngle.radians)
+            partialResult + (segment.endAngle - segment.startAngle)
         }
 
         #expect(segments.count == 2)
@@ -39,13 +40,13 @@ import NeodiskKit
 
         let segments = SunburstLayout.segments(in: store, rootID: "/root", depthLimit: 1)
         let totalRadians = segments.reduce(0.0) { partialResult, segment in
-            partialResult + (segment.endAngle.radians - segment.startAngle.radians)
+            partialResult + (segment.endAngle - segment.startAngle)
         }
         let lastSegment = try #require(segments.last)
 
         #expect(segments.count == 3)
         #expect(abs(totalRadians - .pi * 2) < 0.0001)
-        #expect(lastSegment.endAngle.radians <= .pi * 2 + 0.0001)
+        #expect(lastSegment.endAngle <= .pi * 2 + 0.0001)
     }
 
     @Test func smallItemsCollapseIntoAggregateSegment() throws {
@@ -302,9 +303,9 @@ import NeodiskKit
 
         // 300 allocated + 100 free: the file gets 3/4 of the circle, free
         // space the trailing 1/4 — always on the top ring, never recursed.
-        #expect(abs(fileSegment.endAngle.radians - .pi * 1.5) < 0.0001)
-        #expect(abs(freeSegment.startAngle.radians - .pi * 1.5) < 0.0001)
-        #expect(abs(freeSegment.endAngle.radians - .pi * 2) < 0.0001)
+        #expect(abs(fileSegment.endAngle - .pi * 1.5) < 0.0001)
+        #expect(abs(freeSegment.startAngle - .pi * 1.5) < 0.0001)
+        #expect(abs(freeSegment.endAngle - .pi * 2) < 0.0001)
         #expect(freeSegment.nodeID == nil)
         #expect(freeSegment.depth == 0)
         #expect(freeSegment.totalSize == 100)
@@ -339,11 +340,11 @@ import NeodiskKit
         // 200 allocated + 100 hidden + 100 free: half the circle for the
         // file, then the hidden quarter, then the trailing free quarter —
         // both synthetic arcs on the top ring, never recursed.
-        #expect(abs(fileSegment.endAngle.radians - .pi) < 0.0001)
-        #expect(abs(hiddenSegment.startAngle.radians - .pi) < 0.0001)
-        #expect(abs(hiddenSegment.endAngle.radians - .pi * 1.5) < 0.0001)
-        #expect(abs(freeSegment.startAngle.radians - .pi * 1.5) < 0.0001)
-        #expect(abs(freeSegment.endAngle.radians - .pi * 2) < 0.0001)
+        #expect(abs(fileSegment.endAngle - .pi) < 0.0001)
+        #expect(abs(hiddenSegment.startAngle - .pi) < 0.0001)
+        #expect(abs(hiddenSegment.endAngle - .pi * 1.5) < 0.0001)
+        #expect(abs(freeSegment.startAngle - .pi * 1.5) < 0.0001)
+        #expect(abs(freeSegment.endAngle - .pi * 2) < 0.0001)
         #expect(hiddenSegment.nodeID == nil)
         #expect(hiddenSegment.depth == 0)
         #expect(hiddenSegment.totalSize == 100)
@@ -361,8 +362,8 @@ import NeodiskKit
         )
         let hiddenSegment = try #require(segments.first { $0.isHiddenSpace })
 
-        #expect(abs(hiddenSegment.startAngle.radians - .pi * 1.5) < 0.0001)
-        #expect(abs(hiddenSegment.endAngle.radians - .pi * 2) < 0.0001)
+        #expect(abs(hiddenSegment.startAngle - .pi * 1.5) < 0.0001)
+        #expect(abs(hiddenSegment.endAngle - .pi * 2) < 0.0001)
         #expect(!segments.contains { $0.isFreeSpace })
     }
 
@@ -620,7 +621,7 @@ import NeodiskKit
     // MARK: - Angular seam
 
     @Test func drawnArcsInsetHalfTheSeamPerEdge() {
-        let (start, end) = SunburstRenderer.seamInsetAngles(
+        let (start, end) = SunburstArcGeometry.seamInsetAngles(
             startRadians: 1,
             endRadians: 2,
             innerRadius: 0.4,
@@ -633,7 +634,7 @@ import NeodiskKit
     }
 
     @Test func fullCircleArcsStaySealed() {
-        let (start, end) = SunburstRenderer.seamInsetAngles(
+        let (start, end) = SunburstArcGeometry.seamInsetAngles(
             startRadians: 0,
             endRadians: .pi * 2,
             innerRadius: 0.4,
@@ -646,7 +647,7 @@ import NeodiskKit
 
     @Test func tinySliversCapTheSeamInset() {
         let span = 0.002
-        let (start, end) = SunburstRenderer.seamInsetAngles(
+        let (start, end) = SunburstArcGeometry.seamInsetAngles(
             startRadians: 1,
             endRadians: 1 + span,
             innerRadius: 0.4,
@@ -670,7 +671,7 @@ private func pointInside(segment: SunburstSegment, in size: CGSize) -> CGPoint {
     let center = CGPoint(x: size.width / 2, y: size.height / 2)
     let maxRadius = min(size.width, size.height) / 2
     let radius = maxRadius * ((segment.innerRadius + segment.outerRadius) / 2)
-    let angle = ((segment.startAngle.radians + segment.endAngle.radians) / 2) - (.pi / 2)
+    let angle = ((segment.startAngle + segment.endAngle) / 2) - (.pi / 2)
 
     return CGPoint(
         x: center.x + (cos(angle) * radius),
@@ -688,16 +689,16 @@ private func makeSegment(
     id: String,
     startAngle: Double = 0,
     endAngle: Double = .pi * 2,
-    innerRadius: CGFloat,
-    outerRadius: CGFloat,
+    innerRadius: Double,
+    outerRadius: Double,
     depth: Int
 ) -> SunburstSegment {
     SunburstSegment(
         id: id,
         nodeID: id,
         label: id,
-        startAngle: .radians(startAngle),
-        endAngle: .radians(endAngle),
+        startAngle: startAngle,
+        endAngle: endAngle,
         innerRadius: innerRadius,
         outerRadius: outerRadius,
         depth: depth,

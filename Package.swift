@@ -26,6 +26,10 @@ let package = Package(
             name: "TreemapKit",
             targets: ["TreemapKit"]
         ),
+        .library(
+            name: "SunburstCore",
+            targets: ["SunburstCore"]
+        ),
         .executable(
             name: "Neodisk",
             targets: ["Neodisk"]
@@ -65,12 +69,21 @@ let package = Package(
             name: "TreemapKit",
             path: "Sources/TreemapKit"
         ),
+        // Pure sunburst layout, branch-hue coloring, hit-testing, and zoom
+        // remap math. Foundation-only, zero dependencies (SIMD3 comes from
+        // the stdlib) — the SwiftUI/AppKit rendering stays in NeodiskUI, so
+        // this core is consumable off-platform (e.g. a WebAssembly demo).
+        .target(
+            name: "SunburstCore",
+            path: "Sources/SunburstCore"
+        ),
         // The macOS app: SwiftUI/AppKit views, view model, scan lifecycle glue.
         .target(
             name: "NeodiskUI",
             dependencies: [
                 "NeodiskKit",
                 "TreemapKit",
+                "SunburstCore",
                 .product(name: "Sparkle", package: "Sparkle")
             ],
             path: "Sources/NeodiskUI"

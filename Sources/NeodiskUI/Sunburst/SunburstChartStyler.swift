@@ -7,6 +7,7 @@
 //  (kind/age modes) take precedence over the branch color resolver.
 //
 
+import SunburstCore
 import SwiftUI
 
 struct SunburstSegmentDrawingStyle {

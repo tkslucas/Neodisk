@@ -6,6 +6,7 @@
 //  the rendered treemap.
 //
 
+import SunburstCore
 import AppKit
 import Combine
 import Observation

@@ -16,6 +16,7 @@
 
 import SwiftUI
 import simd
+import SunburstCore
 
 struct VizPalette: Sendable, Equatable {
     /// Rank-ordered hues for the Types kind mode: the largest kind gets the
@@ -45,24 +46,11 @@ struct VizPalette: Sendable, Equatable {
         ageRamp: AgeBucket.allCases.map(\.rgb)
     )
 
-    /// Okabe-Ito kinds/categories + viridis age ramp.
+    /// Okabe-Ito kinds/categories + viridis age ramp. The kind hues are the
+    /// same Okabe-Ito set the sunburst's colorblind branch mode draws from,
+    /// so both select from one source (`SunburstColorblindKindTable`).
     static let colorblind = VizPalette(
-        kindPalette: [
-            SIMD3(0.000, 0.447, 0.698), // blue
-            SIMD3(0.835, 0.369, 0.000), // vermillion
-            SIMD3(0.000, 0.620, 0.451), // bluish green
-            SIMD3(0.800, 0.475, 0.655), // reddish purple
-            SIMD3(0.902, 0.624, 0.000), // orange
-            SIMD3(0.337, 0.706, 0.914), // sky blue
-            SIMD3(0.941, 0.894, 0.259), // yellow
-            SIMD3(0.200, 0.133, 0.533), // indigo
-            SIMD3(0.267, 0.667, 0.600), // teal
-            SIMD3(0.533, 0.133, 0.333), // wine
-            SIMD3(0.867, 0.800, 0.467), // sand
-            SIMD3(0.600, 0.600, 0.200), // olive
-            SIMD3(0.800, 0.400, 0.467), // rose
-            SIMD3(0.600, 0.867, 1.000), // pale cyan
-        ],
+        kindPalette: SunburstColorblindKindTable.kinds,
         categoryRGB: [
             "cat-video": SIMD3(0.000, 0.447, 0.698),      // blue
             "cat-image": SIMD3(0.000, 0.620, 0.451),      // bluish green
@@ -88,4 +76,10 @@ struct VizPalette: Sendable, Equatable {
             FileKindCatalog.otherRGB,   // unknown
         ]
     )
+
+    /// Which of SunburstCore's qualitative color sets the branch-hue resolver
+    /// should draw with under this palette.
+    var sunburst: SunburstPalette {
+        self == .colorblind ? .colorblind : .standard
+    }
 }

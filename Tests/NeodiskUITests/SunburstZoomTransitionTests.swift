@@ -7,13 +7,14 @@
 //  collapsed) and the per-frame presentation state machine.
 //
 
+import SunburstCore
 import CoreGraphics
 import Foundation
 import Testing
 @testable import NeodiskUI
 
 @Suite struct SunburstZoomTransitionTests {
-    private let ringWidth: CGFloat = (0.98 - SunburstLayout.centerRadius) / 6
+    private let ringWidth: Double = (0.98 - SunburstLayout.centerRadius) / 6
 
     private func makeSegment(
         id: String,
@@ -21,13 +22,13 @@ import Testing
         startRadians: Double,
         endRadians: Double
     ) -> SunburstSegment {
-        let inner = SunburstLayout.centerRadius + (CGFloat(depth) * ringWidth)
+        let inner = SunburstLayout.centerRadius + (Double(depth) * ringWidth)
         return SunburstSegment(
             id: id,
             nodeID: id,
             label: id,
-            startAngle: .radians(startRadians),
-            endAngle: .radians(endRadians),
+            startAngle: startRadians,
+            endAngle: endRadians,
             innerRadius: inner,
             outerRadius: inner + ringWidth - SunburstLayout.ringGap,
             depth: depth,

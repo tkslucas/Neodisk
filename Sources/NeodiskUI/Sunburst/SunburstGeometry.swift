@@ -2,16 +2,16 @@
 //  SunburstGeometry.swift
 //  Neodisk
 //
-//  Sunburst ring layout, arc path construction, and hit testing. Ported from
-//  Radix (MIT, attributed in LICENSE); adapted to represent volume free
-//  space as one synthetic top-ring segment. Layout emits geometry only —
-//  fills resolve in a separate `styled` pass over the finished segments, so
-//  color changes (tab, palette, highlight, catalog rebuilds) never re-lay
-//  the chart out.
+//  App-side glue over SunburstCore's pure layout: the color style (kind/age
+//  modes lean on NeodiskUI's FileKindCatalog/VizPalette), the `styled` fill
+//  pass that resolves each segment's final RGB, and the SwiftUI `Path`
+//  construction for the arcs. The layout, grouping, hit-testing, branch-hue
+//  math, and zoom remap all live in SunburstCore.
 //
 
 import SwiftUI
 import NeodiskKit
+import SunburstCore
 
 extension FileNodeRecord {
     /// Whether the sunburst treats this node as a drillable folder. Packages
@@ -21,7 +21,7 @@ extension FileNodeRecord {
     /// Contents" splices a package's children into the store it behaves like
     /// any other folder.
     nonisolated func isSunburstFolder(in store: FileTreeStore) -> Bool {
-        isDirectory && (!isPackage || store.containsChildren(id: id))
+        SunburstLayout.isSunburstFolder(self, in: store)
     }
 }
 
@@ -54,90 +54,7 @@ struct SunburstColorStyle: Equatable, Sendable {
     }
 }
 
-struct SunburstSegment: Identifiable, Hashable, Sendable {
-    let id: String
-    /// The represented tree node; nil for aggregate and free-space segments.
-    let nodeID: String?
-    let label: String
-    let startAngle: Angle
-    let endAngle: Angle
-    let innerRadius: CGFloat
-    let outerRadius: CGFloat
-    let depth: Int
-    let colorToken: SunburstColorToken
-    /// Fill resolved by the `styled` pass (kind/age colors, branch hues,
-    /// highlight dimming); nil for segments without a node, where the
-    /// drawing styler derives a fallback from `colorToken`.
-    var fillRGB: SIMD3<Float>?
-    let totalSize: Int64
-    let isAggregate: Bool
-    /// For aggregate segments: the folder whose small children pooled here,
-    /// so hover can report "N smaller items in <folder>".
-    let parentFolderID: String?
-    /// For aggregate segments: how many items pooled (descendant-counted,
-    /// matching the treemap's aggregate cells).
-    let itemCount: Int
-
-    init(
-        id: String,
-        nodeID: String?,
-        label: String,
-        startAngle: Angle,
-        endAngle: Angle,
-        innerRadius: CGFloat,
-        outerRadius: CGFloat,
-        depth: Int,
-        colorToken: SunburstColorToken,
-        fillRGB: SIMD3<Float>? = nil,
-        totalSize: Int64,
-        isAggregate: Bool,
-        parentFolderID: String? = nil,
-        itemCount: Int = 0
-    ) {
-        self.id = id
-        self.nodeID = nodeID
-        self.label = label
-        self.startAngle = startAngle
-        self.endAngle = endAngle
-        self.innerRadius = innerRadius
-        self.outerRadius = outerRadius
-        self.depth = depth
-        self.colorToken = colorToken
-        self.fillRGB = fillRGB
-        self.totalSize = totalSize
-        self.isAggregate = isAggregate
-        self.parentFolderID = parentFolderID
-        self.itemCount = itemCount
-    }
-
-    var isFreeSpace: Bool {
-        colorToken.role == .freeSpace
-    }
-
-    var isHiddenSpace: Bool {
-        colorToken.role == .hiddenSpace
-    }
-}
-
-enum SunburstLayout {
-    nonisolated static let centerRadius: CGFloat = 0.22
-    /// Visual breathing room between rings: each arc is drawn this much
-    /// short of its full ring band. Purely cosmetic — hit-testing treats
-    /// the bands as glued (see SunburstHitTestIndex) so hovering the gap
-    /// still lands on the arc it hangs off, never a dead zone.
-    nonisolated static let ringGap: CGFloat = 0.015
-    /// Background seam between neighbors within the same ring, as arc
-    /// length in units of the chart radius — thinner than the radial ring
-    /// gap. Applied at draw time (each edge insets half), never to angles
-    /// or hit-testing, so layout math and hovering are unaffected.
-    nonisolated static let angularSeam: CGFloat = 0.008
-    /// The synthetic free-space segment's id; exists in no tree store.
-    nonisolated static let freeSpaceSegmentID = "__sunburst-free-space__"
-    /// The synthetic hidden-space segment's id; exists in no tree store.
-    nonisolated static let hiddenSpaceSegmentID = "__sunburst-hidden-space__"
-
-    typealias CancellationCheck = () throws -> Void
-
+extension SunburstLayout {
     /// Layout and fills in one call — the convenience for tests and callers
     /// that don't restyle; the chart itself lays out once and restyles via
     /// `styled` as colors change.
@@ -181,261 +98,6 @@ enum SunburstLayout {
         }
     }
 
-    nonisolated static func segments(
-        in treeStore: FileTreeStore,
-        rootID: String,
-        depthLimit: Int,
-        minimumAngle: Double = .pi / 90,
-        freeSpaceBytes: Int64? = nil,
-        hiddenSpaceBytes: Int64? = nil,
-        expandedAggregateIDs: Set<String> = [],
-        cancellationCheck: CancellationCheck
-    ) throws -> [SunburstSegment] {
-        guard depthLimit > 0 else { return [] }
-        try cancellationCheck()
-        guard let root = treeStore.node(id: rootID) else { return [] }
-
-        let rootChildren = try treeStore.children(of: root.id, cancellationCheck: cancellationCheck)
-        let visibleChildren = rootChildren.isEmpty ? [root] : rootChildren
-        let ringStart = centerRadius
-        let ringWidth = (0.98 - ringStart) / CGFloat(max(depthLimit, 1))
-        // Free and hidden space join the root denominator so the allocated
-        // arcs shrink to make room; the child total floor keeps zero-byte
-        // children (each counted as at least one unit) from overflowing into
-        // the synthetic arcs.
-        let freeBytes = max(freeSpaceBytes ?? 0, 0)
-        let hiddenBytes = max(hiddenSpaceBytes ?? 0, 0)
-        let childUnitTotal = visibleChildren.reduce(Int64(0)) { $0 + max($1.allocatedSize, 1) }
-        let allocatedDenominator = max(max(root.allocatedSize, Int64(visibleChildren.count)), childUnitTotal)
-        let denominator = allocatedDenominator + freeBytes + hiddenBytes
-        let colorBranchContext = ColorBranchContext(rootChildIDs: rootColorBranchIDs(in: treeStore))
-
-        var result: [SunburstSegment] = []
-        try appendSegments(
-            in: treeStore,
-            children: visibleChildren,
-            parentID: root.id,
-            parentDenominator: denominator,
-            startAngle: 0,
-            endAngle: .pi * 2,
-            depth: 0,
-            depthLimit: depthLimit,
-            ringStart: ringStart,
-            ringWidth: ringWidth,
-            branchContext: nil,
-            colorBranchContext: colorBranchContext,
-            minimumAngle: minimumAngle,
-            expandedAggregateIDs: expandedAggregateIDs,
-            cancellationCheck: cancellationCheck,
-            into: &result
-        )
-
-        // Trailing synthetic arcs on the top ring: allocated … hidden, free.
-        let freeAngle = (.pi * 2) * (Double(freeBytes) / Double(denominator))
-        if hiddenBytes > 0 {
-            let hiddenAngle = (.pi * 2) * (Double(hiddenBytes) / Double(denominator))
-            result.append(SunburstSegment(
-                id: hiddenSpaceSegmentID,
-                nodeID: nil,
-                label: NSLocalizedString("Hidden Space", comment: "Sunburst hidden-space segment label"),
-                startAngle: .radians(.pi * 2 - freeAngle - hiddenAngle),
-                endAngle: .radians(.pi * 2 - freeAngle),
-                innerRadius: ringStart,
-                outerRadius: ringStart + ringWidth - ringGap,
-                depth: 0,
-                colorToken: .single(id: hiddenSpaceSegmentID, role: .hiddenSpace),
-                totalSize: hiddenBytes,
-                isAggregate: false
-            ))
-        }
-        if freeBytes > 0 {
-            result.append(SunburstSegment(
-                id: freeSpaceSegmentID,
-                nodeID: nil,
-                label: NSLocalizedString("Free Space", comment: "Sunburst free-space segment label"),
-                startAngle: .radians(.pi * 2 - freeAngle),
-                endAngle: .radians(.pi * 2),
-                innerRadius: ringStart,
-                outerRadius: ringStart + ringWidth - ringGap,
-                depth: 0,
-                colorToken: .single(id: freeSpaceSegmentID, role: .freeSpace),
-                totalSize: freeBytes,
-                isAggregate: false
-            ))
-        }
-        return result
-    }
-
-    // MARK: - Recursion
-
-    private nonisolated static func appendSegments(
-        in treeStore: FileTreeStore,
-        children: [FileNodeRecord],
-        parentID: String,
-        parentDenominator: Int64,
-        startAngle: Double,
-        endAngle: Double,
-        depth: Int,
-        depthLimit: Int,
-        ringStart: CGFloat,
-        ringWidth: CGFloat,
-        branchContext: ColorBranch?,
-        colorBranchContext: ColorBranchContext,
-        minimumAngle: Double,
-        expandedAggregateIDs: Set<String>,
-        cancellationCheck: CancellationCheck,
-        into segments: inout [SunburstSegment]
-    ) throws {
-        guard depth < depthLimit else { return }
-
-        try cancellationCheck()
-        let effectiveChildTotal = children.reduce(Int64(0)) { total, child in
-            total + max(child.allocatedSize, 1)
-        }
-        let safeDenominator = max(parentDenominator, effectiveChildTotal)
-        let totalAngle = endAngle - startAngle
-        let grouped = try groupedChildren(
-            children,
-            parentID: parentID,
-            denominator: safeDenominator,
-            totalAngle: totalAngle,
-            minimumAngle: minimumAngle,
-            // A clicked-open "Smaller Items" pool renders its children
-            // individually, however thin (mirrors the treemap's
-            // expandAggregate contract).
-            disableAggregation: expandedAggregateIDs.contains(parentID),
-            cancellationCheck: cancellationCheck
-        )
-
-        let siblingIndexes = colorableIndexes(for: grouped)
-        let siblingCount = max(siblingIndexes.count, 1)
-        var cursor = startAngle
-        for entry in grouped {
-            try cancellationCheck()
-            let proportion = Double(entry.totalSize) / Double(safeDenominator)
-            let segmentEnd = cursor + (totalAngle * proportion)
-            let siblingIndex = siblingIndexes[entry.id] ?? 0
-            let branch = branchContext ?? colorBranch(
-                for: entry,
-                in: treeStore,
-                context: colorBranchContext,
-                fallbackIndex: siblingIndex,
-                fallbackCount: siblingCount
-            )
-            let colorToken = SunburstColorToken(
-                branchID: branch.id,
-                localID: entry.colorID,
-                branchIndex: branch.index,
-                branchCount: branch.count,
-                siblingIndex: siblingIndex,
-                siblingCount: siblingCount,
-                depth: depth,
-                role: entry.isAggregate
-                    ? .aggregate
-                    : ((entry.node?.isSunburstFolder(in: treeStore) ?? true) ? .normal : .file)
-            )
-            let segment = SunburstSegment(
-                id: entry.id,
-                nodeID: entry.nodeID,
-                label: entry.label,
-                startAngle: .radians(cursor),
-                endAngle: .radians(segmentEnd),
-                innerRadius: ringStart + CGFloat(depth) * ringWidth,
-                outerRadius: ringStart + CGFloat(depth + 1) * ringWidth - SunburstLayout.ringGap,
-                depth: depth,
-                colorToken: colorToken,
-                totalSize: entry.totalSize,
-                isAggregate: entry.isAggregate,
-                parentFolderID: entry.isAggregate ? parentID : nil,
-                itemCount: entry.itemCount
-            )
-            segments.append(segment)
-
-            if let node = entry.node,
-               depth + 1 < depthLimit,
-               node.isDirectory,
-               node.allocatedSize > 0 {
-                let childNodes = try treeStore.children(of: node.id, cancellationCheck: cancellationCheck)
-                guard !childNodes.isEmpty else {
-                    cursor = segmentEnd
-                    continue
-                }
-
-                try appendSegments(
-                    in: treeStore,
-                    children: childNodes,
-                    parentID: node.id,
-                    parentDenominator: node.allocatedSize,
-                    startAngle: cursor,
-                    endAngle: segmentEnd,
-                    depth: depth + 1,
-                    depthLimit: depthLimit,
-                    ringStart: ringStart,
-                    ringWidth: ringWidth,
-                    branchContext: branch,
-                    colorBranchContext: colorBranchContext,
-                    minimumAngle: minimumAngle,
-                    expandedAggregateIDs: expandedAggregateIDs,
-                    cancellationCheck: cancellationCheck,
-                    into: &segments
-                )
-            }
-
-            cursor = segmentEnd
-        }
-    }
-
-    private nonisolated static func groupedChildren(
-        _ children: [FileNodeRecord],
-        parentID: String,
-        denominator: Int64,
-        totalAngle: Double,
-        minimumAngle: Double,
-        disableAggregation: Bool,
-        cancellationCheck: CancellationCheck
-    ) throws -> [GroupEntry] {
-        guard children.count > 1, !disableAggregation else {
-            return children.map { GroupEntry(node: $0) }
-        }
-
-        var visible: [GroupEntry] = []
-        var groupedNodes: [FileNodeRecord] = []
-        var groupedSize: Int64 = 0
-
-        for child in children {
-            try cancellationCheck()
-            let size = max(child.allocatedSize, 1)
-            let angle = totalAngle * (Double(size) / Double(max(denominator, 1)))
-            if angle < minimumAngle {
-                groupedNodes.append(child)
-                groupedSize += size
-            } else {
-                visible.append(GroupEntry(node: child))
-            }
-        }
-
-        if groupedNodes.count > 1 {
-            let itemCount = groupedNodes.reduce(0) {
-                $0 + ($1.isDirectory ? max($1.descendantFileCount, 1) : 1)
-            }
-            let aggregateID = "aggregate-\(children.first?.id ?? UUID().uuidString)"
-            visible.append(GroupEntry(
-                id: aggregateID,
-                nodeID: nil,
-                label: "Smaller Items",
-                totalSize: groupedSize,
-                isAggregate: true,
-                colorID: aggregateID,
-                node: nil,
-                itemCount: itemCount
-            ))
-        } else if let onlyGrouped = groupedNodes.first {
-            visible.append(GroupEntry(node: onlyGrouped))
-        }
-
-        return visible
-    }
-
     // MARK: - Fill resolution
 
     /// A node's final fill, resolved by the `styled` pass. Kind/age modes
@@ -454,7 +116,7 @@ enum SunburstLayout {
         var rgb: SIMD3<Float>
         switch style.mode {
         case .branch:
-            return SunburstColorResolver.rgb(for: token, palette: style.palette)
+            return SunburstColorResolver.rgb(for: token, palette: style.palette.sunburst)
         case .kind:
             rgb = style.catalog.rgb(for: node)
         case .age(let referenceDate):
@@ -491,143 +153,13 @@ enum SunburstLayout {
             return ids.contains(node.id)
         }
     }
-
-    // MARK: - Branch families
-
-    private nonisolated static func colorBranch(
-        for entry: GroupEntry,
-        in treeStore: FileTreeStore,
-        context: ColorBranchContext,
-        fallbackIndex: Int,
-        fallbackCount: Int
-    ) -> ColorBranch {
-        guard let branchID = topLevelBranchID(for: entry.nodeID, in: treeStore) else {
-            return ColorBranch(id: entry.colorID, index: fallbackIndex, count: fallbackCount)
-        }
-
-        guard let branch = context.branch(id: branchID) else {
-            return ColorBranch(id: branchID, index: fallbackIndex, count: fallbackCount)
-        }
-
-        return branch
-    }
-
-    private nonisolated static func rootColorBranchIDs(in treeStore: FileTreeStore) -> [String] {
-        treeStore.children(of: treeStore.rootID).map(\.id)
-    }
-
-    /// The scan-root child a node descends from — the branch its hue family
-    /// derives from. Stable across sibling reorders and drill-ins because it
-    /// always walks up to the scan root, not the focused root.
-    nonisolated static func topLevelBranchID(
-        for nodeID: String?,
-        in treeStore: FileTreeStore
-    ) -> String? {
-        guard let nodeID else { return nil }
-        guard nodeID != treeStore.rootID else { return nodeID }
-
-        var currentID = nodeID
-        while let parent = treeStore.parent(of: currentID) {
-            if parent.id == treeStore.rootID {
-                return currentID
-            }
-            currentID = parent.id
-        }
-
-        return nodeID
-    }
-
-    private nonisolated static func colorableIndexes(
-        for entries: [GroupEntry]
-    ) -> [String: Int] {
-        var indexes: [String: Int] = [:]
-        indexes.reserveCapacity(entries.count)
-
-        for entry in entries where !entry.isAggregate {
-            indexes[entry.id] = indexes.count
-        }
-
-        return indexes
-    }
-
-    private nonisolated struct ColorBranch {
-        let id: String
-        let index: Int
-        let count: Int
-    }
-
-    private nonisolated struct ColorBranchContext {
-        private let indexByID: [String: Int]
-        private let count: Int
-
-        nonisolated init(rootChildIDs: [String]) {
-            var indexByID: [String: Int] = [:]
-            indexByID.reserveCapacity(rootChildIDs.count)
-
-            for id in rootChildIDs where indexByID[id] == nil {
-                indexByID[id] = indexByID.count
-            }
-
-            self.indexByID = indexByID
-            self.count = max(indexByID.count, 1)
-        }
-
-        nonisolated func branch(id: String) -> ColorBranch? {
-            guard let index = indexByID[id] else { return nil }
-            return ColorBranch(id: id, index: index, count: count)
-        }
-    }
-
-    private nonisolated struct GroupEntry {
-        let id: String
-        let nodeID: String?
-        let label: String
-        let totalSize: Int64
-        let isAggregate: Bool
-        let colorID: String
-        let node: FileNodeRecord?
-        let itemCount: Int
-
-        init(
-            id: String,
-            nodeID: String?,
-            label: String,
-            totalSize: Int64,
-            isAggregate: Bool,
-            colorID: String,
-            node: FileNodeRecord?,
-            itemCount: Int
-        ) {
-            self.id = id
-            self.nodeID = nodeID
-            self.label = label
-            self.totalSize = totalSize
-            self.isAggregate = isAggregate
-            self.colorID = colorID
-            self.node = node
-            self.itemCount = itemCount
-        }
-
-        init(node: FileNodeRecord) {
-            self.init(
-                id: node.id,
-                nodeID: node.id,
-                label: node.name,
-                totalSize: max(node.allocatedSize, 1),
-                isAggregate: false,
-                colorID: node.id,
-                node: node,
-                itemCount: 0
-            )
-        }
-    }
 }
 
 enum SunburstRenderer {
     nonisolated static func path(for segment: SunburstSegment, in size: CGSize) -> Path {
         path(
-            startRadians: segment.startAngle.radians,
-            endRadians: segment.endAngle.radians,
+            startRadians: segment.startAngle,
+            endRadians: segment.endAngle,
             innerRadius: segment.innerRadius,
             outerRadius: segment.outerRadius,
             in: size
@@ -646,47 +178,23 @@ enum SunburstRenderer {
         )
     }
 
-    /// Draw-time angular edges: neighbors in a ring each give up half the
-    /// seam so the background shows as a hairline between them. Full-circle
-    /// arcs stay sealed (a lone slit at 12 o'clock reads as a glitch), and
-    /// tiny slivers cap the inset so the seam yields before the item does.
-    nonisolated static func seamInsetAngles(
-        startRadians: Double,
-        endRadians: Double,
-        innerRadius: CGFloat,
-        outerRadius: CGFloat
-    ) -> (start: Double, end: Double) {
-        let span = endRadians - startRadians
-        guard span > 0, span < (2 * .pi) - 0.001 else {
-            return (startRadians, endRadians)
-        }
-
-        let midRadius = Double(innerRadius + outerRadius) / 2
-        guard midRadius > 0.001 else {
-            return (startRadians, endRadians)
-        }
-
-        let inset = min((Double(SunburstLayout.angularSeam) / 2) / midRadius, span * 0.18)
-        return (startRadians + inset, endRadians - inset)
-    }
-
     private nonisolated static func path(
         startRadians: Double,
         endRadians: Double,
-        innerRadius: CGFloat,
-        outerRadius: CGFloat,
+        innerRadius: Double,
+        outerRadius: Double,
         in size: CGSize
     ) -> Path {
         let center = CGPoint(x: size.width / 2, y: size.height / 2)
         let maxRadius = min(size.width, size.height) / 2
-        let (seamStart, seamEnd) = seamInsetAngles(
+        let (seamStart, seamEnd) = SunburstArcGeometry.seamInsetAngles(
             startRadians: startRadians,
             endRadians: endRadians,
             innerRadius: innerRadius,
             outerRadius: outerRadius
         )
-        let innerRadius = maxRadius * innerRadius
-        let outerRadius = maxRadius * outerRadius
+        let innerRadius = maxRadius * CGFloat(innerRadius)
+        let outerRadius = maxRadius * CGFloat(outerRadius)
 
         let start = seamStart - (.pi / 2)
         let end = seamEnd - (.pi / 2)
@@ -708,128 +216,5 @@ enum SunburstRenderer {
         )
         path.closeSubpath()
         return path
-    }
-}
-
-enum SunburstHitTester {
-    nonisolated static func segment(
-        at point: CGPoint,
-        in size: CGSize,
-        segments: [SunburstSegment]
-    ) -> SunburstSegment? {
-        SunburstHitTestIndex(segments: segments).segment(at: point, in: size)
-    }
-}
-
-enum SunburstCenterHitTester {
-    nonisolated static func contains(
-        point: CGPoint,
-        in size: CGSize,
-        radius: CGFloat = SunburstLayout.centerRadius
-    ) -> Bool {
-        let center = CGPoint(x: size.width / 2, y: size.height / 2)
-        let maxRadius = min(size.width, size.height) / 2
-        guard maxRadius > 0, radius > 0 else { return false }
-
-        let dx = point.x - center.x
-        let dy = point.y - center.y
-        let distance = sqrt((dx * dx) + (dy * dy))
-        return (distance / maxRadius) < radius
-    }
-}
-
-struct SunburstHitTestIndex: Sendable {
-    private let rings: [Ring]
-
-    nonisolated init(segments: [SunburstSegment]) {
-        var ringSegmentsByDepth: [Int: [SunburstSegment]] = [:]
-        for segment in segments {
-            ringSegmentsByDepth[segment.depth, default: []].append(segment)
-        }
-
-        rings = ringSegmentsByDepth
-            .map { depth, segments in
-                Ring(depth: depth, segments: segments)
-            }
-            .sorted { $0.depth < $1.depth }
-    }
-
-    nonisolated func segment(at point: CGPoint, in size: CGSize) -> SunburstSegment? {
-        guard !rings.isEmpty else { return nil }
-
-        let center = CGPoint(x: size.width / 2, y: size.height / 2)
-        let dx = point.x - center.x
-        let dy = point.y - center.y
-        let maxRadius = min(size.width, size.height) / 2
-        guard maxRadius > 0 else { return nil }
-
-        let distance = sqrt((dx * dx) + (dy * dy))
-        let normalizedDistance = distance / maxRadius
-        guard let ring = rings.first(where: { $0.contains(normalizedDistance) }) else {
-            return nil
-        }
-
-        var radians = atan2(dy, dx) + (.pi / 2)
-        if radians < 0 {
-            radians += (.pi * 2)
-        }
-
-        return ring.segment(containing: radians)
-    }
-
-    private struct Ring: Sendable {
-        let depth: Int
-        let minInnerRadius: CGFloat
-        let maxOuterRadius: CGFloat
-        let segments: [SunburstSegment]
-
-        nonisolated init(depth: Int, segments: [SunburstSegment]) {
-            self.depth = depth
-            self.segments = segments.sorted { lhs, rhs in
-                lhs.startAngle.radians < rhs.startAngle.radians
-            }
-
-            var minInnerRadius = CGFloat.greatestFiniteMagnitude
-            var maxOuterRadius: CGFloat = 0
-            for segment in segments {
-                minInnerRadius = min(minInnerRadius, segment.innerRadius)
-                maxOuterRadius = max(maxOuterRadius, segment.outerRadius)
-            }
-
-            self.minInnerRadius = minInnerRadius == .greatestFiniteMagnitude ? 0 : minInnerRadius
-            self.maxOuterRadius = maxOuterRadius
-        }
-
-        nonisolated func contains(_ normalizedDistance: CGFloat) -> Bool {
-            // The band extends across the cosmetic ring gap so the space
-            // between an arc and its children's ring belongs to the arc —
-            // hovering it never drops the hover (the gaps are drawn, not
-            // hit-tested).
-            normalizedDistance >= minInnerRadius
-                && normalizedDistance <= maxOuterRadius + SunburstLayout.ringGap
-        }
-
-        nonisolated func segment(containing radians: Double) -> SunburstSegment? {
-            guard !segments.isEmpty else { return nil }
-
-            var lowerBound = 0
-            var upperBound = segments.count
-            while lowerBound < upperBound {
-                let midpoint = lowerBound + ((upperBound - lowerBound) / 2)
-                if segments[midpoint].startAngle.radians <= radians {
-                    lowerBound = midpoint + 1
-                } else {
-                    upperBound = midpoint
-                }
-            }
-
-            let candidateIndex = max(lowerBound - 1, 0)
-            let candidate = segments[candidateIndex]
-            guard radians >= candidate.startAngle.radians,
-                  radians <= candidate.endAngle.radians else {
-                return nil
-            }
-            return candidate
-        }
     }
 }

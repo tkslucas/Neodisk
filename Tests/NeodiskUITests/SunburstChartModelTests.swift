@@ -7,6 +7,7 @@
 //  ordering.
 //
 
+import SunburstCore
 import Combine
 import Foundation
 import Testing
@@ -329,8 +330,8 @@ private func makeSegment(id: String, depth: Int = 0) -> SunburstSegment {
         id: id,
         nodeID: id,
         label: id,
-        startAngle: .radians(0),
-        endAngle: .radians(1),
+        startAngle: 0,
+        endAngle: 1,
         innerRadius: 0,
         outerRadius: 1,
         depth: depth,

@@ -8,6 +8,7 @@
 //  semantics (single-click drill) and model wiring live in SunburstPane.
 //
 
+import SunburstCore
 import AppKit
 import SwiftUI
 import NeodiskKit
@@ -495,7 +496,7 @@ struct SunburstChartView: View {
     }
 
     private func centerAffordanceSize(in frame: CGRect) -> CGFloat {
-        min(frame.width, frame.height) * SunburstLayout.centerRadius
+        min(frame.width, frame.height) * CGFloat(SunburstLayout.centerRadius)
     }
 
     private func localChartPoint(

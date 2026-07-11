@@ -10,6 +10,7 @@
 //  the view lives in SunburstLegendList.
 //
 
+import SunburstCore
 import Foundation
 import SwiftUI
 import NeodiskKit

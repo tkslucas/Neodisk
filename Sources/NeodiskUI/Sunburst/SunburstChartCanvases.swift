@@ -7,6 +7,7 @@
 //  overlay, and the hover overlay. Ported from Radix.
 //
 
+import SunburstCore
 import SwiftUI
 
 struct SunburstBaseCanvas: View, Equatable {

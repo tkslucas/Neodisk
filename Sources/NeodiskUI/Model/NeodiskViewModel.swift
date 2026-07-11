@@ -947,6 +947,27 @@ final class NeodiskViewModel {
 
     // MARK: - File actions
 
+    /// Spacebar Quick Look shared by the treemap and sunburst: previews the
+    /// selected node, so click-then-space works without ever focusing one of
+    /// the sidebar lists. Beeps when nothing is selected.
+    func quickLookSelection() {
+        guard let node = selectedNode else {
+            NSSound.beep()
+            return
+        }
+        QuickLookPresenter.shared.togglePreview(for: node)
+    }
+
+    /// Return-key reveal shared by the treemap and sunburst. Beeps when the
+    /// selection has no on-disk counterpart to show.
+    func revealSelection() {
+        guard let node = selectedNode, node.supportsFileActions else {
+            NSSound.beep()
+            return
+        }
+        reveal(node)
+    }
+
     func reveal(_ node: FileNodeRecord) {
         SystemIntegration.reveal(node.url)
     }

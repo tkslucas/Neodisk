@@ -236,11 +236,11 @@ final class TreemapController {
     /// Spacebar Quick Look for the treemap: previews the selected node, so
     /// click-then-space works without ever focusing a sidebar list.
     func quickLookSelection() {
-        guard let model, let node = model.selectedNode else {
+        guard let model else {
             NSSound.beep()
             return
         }
-        QuickLookPresenter.shared.togglePreview(for: node)
+        model.quickLookSelection()
     }
 
     // MARK: - Keyboard navigation
@@ -309,11 +309,11 @@ final class TreemapController {
     }
 
     private func revealSelectionInFinder() {
-        guard let model, let node = model.selectedNode, node.supportsFileActions else {
+        guard let model else {
             NSSound.beep()
             return
         }
-        model.reveal(node)
+        model.revealSelection()
     }
 
     private func beepUnless(_ handled: Bool) {

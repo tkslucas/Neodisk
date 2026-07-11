@@ -39,6 +39,9 @@ struct SunburstChartView: View {
     /// only; no selection fallback, unlike a click).
     let onPinchDrillSegment: (SunburstSegment) -> Void
     let onNavigateToParent: () -> Void
+    /// Keyboard input while the chart has key focus; returns true when
+    /// handled so unhandled keys continue up the responder chain.
+    let onKeyDown: (NSEvent) -> Bool
     let contextMenu: (SunburstSegment) -> NSMenu?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -235,6 +238,10 @@ struct SunburstChartView: View {
             guard !chartModel.isLayoutPending, zoomTransition == nil else { return }
             handlePinchDrill(at: location, in: baseChartFrame, direction: direction)
         }
+        let keyHandler: (NSEvent) -> Bool = { event in
+            guard !chartModel.isLayoutPending, zoomTransition == nil else { return false }
+            return onKeyDown(event)
+        }
         let menuProvider: (CGPoint) -> NSMenu? = { location in
             guard !chartModel.isLayoutPending, zoomTransition == nil,
                   let segment = hitTest(at: location, in: baseChartFrame) else {
@@ -251,6 +258,7 @@ struct SunburstChartView: View {
             onHover: onHover,
             onClick: onClick,
             onPinchDrill: onPinchDrill,
+            onKeyDown: keyHandler,
             contextMenu: menuProvider,
             help: helpProvider
         )

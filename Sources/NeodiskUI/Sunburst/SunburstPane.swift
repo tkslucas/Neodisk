@@ -56,6 +56,7 @@ struct SunburstPane: View {
                     onClickSegment: { handleClick($0) },
                     onPinchDrillSegment: { handlePinchDrill($0) },
                     onNavigateToParent: { model.zoomOut() },
+                    onKeyDown: { handleKey($0) },
                     contextMenu: { contextMenu(for: $0) },
                     chartModel: chartModel
                 )
@@ -286,6 +287,59 @@ struct SunburstPane: View {
               model.store?.node(id: targetID)?.isSunburstFolder == true,
               model.drillIn(to: targetID) else { return }
         model.select(nil)
+    }
+
+    // MARK: - Keyboard
+
+    /// Keyboard navigation with the treemap's contract: arrows move the
+    /// selection (←/→ around the ring, ↑ toward the center, ↓ outward to
+    /// the largest child), ⌘↓/⌘↑ drill in/out, Space Quick Looks the
+    /// selection, Return reveals it in Finder. Keyboard drills reuse the
+    /// treemap's selection-anchoring semantics (drillIntoSelection lands on
+    /// the largest child so arrows keep working) — deliberately unlike
+    /// pointer drills, which are pure navigation and clear the selection
+    /// (see drillOrSelect).
+    private func handleKey(_ event: NSEvent) -> Bool {
+        if event.charactersIgnoringModifiers == " " {
+            model.quickLookSelection()
+            return true
+        }
+        guard let key = event.specialKey else { return false }
+        let command = event.modifierFlags.contains(.command)
+        switch key {
+        case .upArrow:
+            if command { beepUnless(model.drillOut()) } else { moveSelection(.parent) }
+        case .downArrow:
+            if command { beepUnless(model.drillIntoSelection()) } else { moveSelection(.largestChild) }
+        case .leftArrow:
+            moveSelection(.previousSibling)
+        case .rightArrow:
+            moveSelection(.nextSibling)
+        case .carriageReturn, .enter, .newline:
+            model.revealSelection()
+        default:
+            return false
+        }
+        return true
+    }
+
+    private func moveSelection(_ direction: SunburstKeyboardNav.Direction) {
+        guard let store = model.store, let rootID = model.effectiveRootID,
+              let target = SunburstKeyboardNav.target(
+                  from: model.selectedNodeID,
+                  direction: direction,
+                  rootID: rootID,
+                  store: store,
+                  isRendered: { chartModel.segment(forNodeID: $0) != nil }
+              ) else {
+            NSSound.beep()
+            return
+        }
+        model.select(target)
+    }
+
+    private func beepUnless(_ handled: Bool) {
+        if !handled { NSSound.beep() }
     }
 
     // MARK: - Legend list interaction

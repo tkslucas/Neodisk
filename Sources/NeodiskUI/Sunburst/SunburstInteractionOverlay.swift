@@ -24,6 +24,9 @@ struct SunburstInteractionOverlay: NSViewRepresentable {
     let onHover: (CGPoint?) -> Void
     let onClick: (CGPoint, Int) -> Void
     let onPinchDrill: (CGPoint, SunburstPinchDirection) -> Void
+    /// Returns true when the key was handled (arrows, drill, space, Return);
+    /// unhandled keys continue up the responder chain.
+    let onKeyDown: (NSEvent) -> Bool
     let contextMenu: (CGPoint) -> NSMenu?
     let help: (CGPoint) -> String?
 
@@ -41,6 +44,7 @@ struct SunburstInteractionOverlay: NSViewRepresentable {
         view.onHover = onHover
         view.onClick = onClick
         view.onPinchDrill = onPinchDrill
+        view.onKeyDown = onKeyDown
         view.contextMenu = contextMenu
         view.help = help
     }
@@ -49,6 +53,7 @@ struct SunburstInteractionOverlay: NSViewRepresentable {
         var onHover: (CGPoint?) -> Void = { _ in }
         var onClick: (CGPoint, Int) -> Void = { _, _ in }
         var onPinchDrill: (CGPoint, SunburstPinchDirection) -> Void = { _, _ in }
+        var onKeyDown: (NSEvent) -> Bool = { _ in false }
         var contextMenu: (CGPoint) -> NSMenu? = { _ in nil }
         var help: (CGPoint) -> String? = { _ in nil }
 
@@ -65,6 +70,18 @@ struct SunburstInteractionOverlay: NSViewRepresentable {
 
         override var isFlipped: Bool {
             true
+        }
+
+        /// Key focus so a click on the chart is enough for spacebar Quick
+        /// Look and arrow navigation — same contract as TreemapNSView.
+        override var acceptsFirstResponder: Bool {
+            true
+        }
+
+        override func keyDown(with event: NSEvent) {
+            if !onKeyDown(event) {
+                super.keyDown(with: event)
+            }
         }
 
         override func updateTrackingAreas() {

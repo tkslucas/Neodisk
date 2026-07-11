@@ -50,6 +50,7 @@ Delete and clean up safely in Finder instead.
 - Fast scanning with live progress
 - Search: `⌘F` fuzzy search over the entire scan
 - Quick Look on spacebar
+- Arrow keys move the selection in both the treemap and the sunburst
 - Drill into a folder with `⌘↓`, drill back out with `⌘↑`, or click folders in the breadcrumb bar
 - Snapshots, completed scans persist and reopen instantly
 - Changes (+/-) toggle diffs against the previous scan to show what files grew, shrinked, got added, deleted

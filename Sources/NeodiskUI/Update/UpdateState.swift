@@ -47,7 +47,9 @@ enum UpdateState {
     case extracting(progress: Double)
     case readyToInstall(install: () -> Void, dismiss: () -> Void)
     case installing
-    case upToDate(acknowledge: () -> Void)
+    /// The check found nothing. Sparkle is acknowledged immediately by the
+    /// driver, so this state can persist until the user dismisses the pill.
+    case upToDate
     case failed(message: String, dismiss: () -> Void)
 
     var isIdle: Bool {
@@ -120,7 +122,7 @@ enum UpdateState {
     /// choice, for when the indicator can no longer be shown.
     func cancel() {
         switch self {
-        case .idle, .extracting, .installing:
+        case .idle, .extracting, .installing, .upToDate:
             break
         case .checking(let cancel):
             cancel()
@@ -130,8 +132,6 @@ enum UpdateState {
             cancel()
         case .readyToInstall(_, let dismiss):
             dismiss()
-        case .upToDate(let acknowledge):
-            acknowledge()
         case .failed(_, let dismiss):
             dismiss()
         }

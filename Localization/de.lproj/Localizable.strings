@@ -236,6 +236,7 @@
 
 /* MARK: - Warnings panel */
 "Warnings" = "Warnungen";
+"Dismiss" = "Verwerfen";
 "Dismiss all warnings" = "Alle Warnungen verwerfen";
 "Dismiss this warning" = "Diese Warnung verwerfen";
 

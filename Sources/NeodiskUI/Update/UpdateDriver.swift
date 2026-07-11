@@ -77,8 +77,12 @@ final class UpdateDriver: NSObject, SPUUserDriver {
     }
 
     func showUpdateNotFoundWithError(_ error: any Error, acknowledgement: @escaping () -> Void) {
-        viewModel.state = .upToDate(acknowledge: acknowledgement)
-        if !hasIndicatorHost {
+        if hasIndicatorHost {
+            viewModel.state = .upToDate
+            // The pill persists until the user dismisses it; Sparkle can
+            // end its session now so a re-check is possible meanwhile.
+            acknowledgement()
+        } else {
             standard.showUpdateNotFoundWithError(error, acknowledgement: acknowledgement)
         }
     }
@@ -180,7 +184,14 @@ final class UpdateDriver: NSObject, SPUUserDriver {
     }
 
     func dismissUpdateInstallation() {
-        viewModel.state = .idle
+        switch viewModel.state {
+        case .upToDate, .failed:
+            // Sparkle ends its session right after these are acknowledged;
+            // the result pill persists until the user dismisses it.
+            break
+        default:
+            viewModel.state = .idle
+        }
         standard.dismissUpdateInstallation()
     }
 }

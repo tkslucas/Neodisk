@@ -160,6 +160,11 @@ public struct ContentView: View {
         }
 
         ToolbarItemGroup {
+            // Update status pill: sits between the center view picker and
+            // the trailing buttons. Hidden while idle; once a check runs it
+            // persists until the user acts on it (see UpdateIndicator).
+            UpdateIndicator(viewModel: updates.viewModel)
+
             // One fixed slot: Stop while a scan runs, Rescan otherwise
             // (grayed out until there is something to rescan).
             if model.coordinator.isScanning {
@@ -191,11 +196,6 @@ public struct ContentView: View {
                 Label("Settings", systemImage: "gearshape")
             }
             .help("Open Neodisk settings")
-
-            // Transient update status (checking/downloading/available), far
-            // right like Ghostty's pill. A status readout, not a persistent
-            // toolbar button — hidden while idle by design.
-            UpdateIndicator(viewModel: updates.viewModel)
         }
     }
 }

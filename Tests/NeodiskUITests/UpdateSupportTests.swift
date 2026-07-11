@@ -61,13 +61,13 @@ import Testing
         viewModel.hostDidAppear()
         #expect(viewModel.hasIndicatorHost)
 
-        var acknowledged = false
-        viewModel.state = .upToDate(acknowledge: { acknowledged = true })
+        var cancelled = false
+        viewModel.state = .checking(cancel: { cancelled = true })
         viewModel.hostDidDisappear()
 
         #expect(!viewModel.hasIndicatorHost)
         #expect(viewModel.state.isIdle)
-        #expect(acknowledged)
+        #expect(cancelled)
     }
 
     @Test func remainingHostKeepsPendingState() {
@@ -115,7 +115,7 @@ import Testing
             .extracting(progress: 0),
             .readyToInstall(install: {}, dismiss: {}),
             .installing,
-            .upToDate(acknowledge: {}),
+            .upToDate,
             .failed(message: "boom", dismiss: {}),
         ]
         for state in active {
@@ -125,7 +125,7 @@ import Testing
 
         #expect(UpdateState.checking(cancel: {}).isBusy)
         #expect(UpdateState.installing.isBusy)
-        #expect(!UpdateState.upToDate(acknowledge: {}).isBusy)
+        #expect(!UpdateState.upToDate.isBusy)
         #expect(!UpdateState.available(version: "1", install: {}, dismiss: {}).isBusy)
     }
 }

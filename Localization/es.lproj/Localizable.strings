@@ -237,6 +237,7 @@
 
 /* MARK: - Panel de avisos */
 "Warnings" = "Avisos";
+"Dismiss" = "Descartar";
 "Dismiss all warnings" = "Descartar todos los avisos";
 "Dismiss this warning" = "Descartar este aviso";
 

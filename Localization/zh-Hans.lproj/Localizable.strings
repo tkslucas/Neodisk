@@ -236,6 +236,7 @@
 
 /* MARK: - 警告面板 */
 "Warnings" = "警告";
+"Dismiss" = "关闭";
 "Dismiss all warnings" = "关闭所有警告";
 "Dismiss this warning" = "关闭此警告";
 

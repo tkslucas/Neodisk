@@ -236,6 +236,7 @@
 
 /* MARK: - Warnings panel */
 "Warnings" = "Avertissements";
+"Dismiss" = "Ignorer";
 "Dismiss all warnings" = "Ignorer tous les avertissements";
 "Dismiss this warning" = "Ignorer cet avertissement";
 

@@ -2,11 +2,11 @@
 //  UpdateIndicator.swift
 //  Neodisk
 //
-//  Unobtrusive update status in the window's top-right toolbar area, like
-//  Ghostty's update pill: invisible while idle, a small spinner-or-symbol
-//  plus status text while Sparkle works, and a popover with the one or two
-//  relevant actions. This is a transient status readout, not a persistent
-//  toolbar button, so appearing/disappearing is intentional.
+//  Update status pill in the window toolbar, between the center view picker
+//  and the trailing buttons. Invisible while idle; once a check runs it
+//  persists until the user acts on it. The pill body is the primary action
+//  (install when an update exists, dismiss when up to date) and the small
+//  x dismisses or cancels, so no popover is needed.
 //
 
 import SwiftUI
@@ -14,63 +14,114 @@ import SwiftUI
 struct UpdateIndicator: View {
     @ObservedObject var viewModel: UpdateViewModel
 
-    @State private var showPopover = false
-    /// Auto-dismisses the quiet "You're up to date." confirmation.
-    @State private var resetTask: Task<Void, Never>?
-
     var body: some View {
         if !viewModel.state.isIdle {
-            Button {
-                if case .upToDate(let acknowledge) = viewModel.state {
-                    viewModel.state = .idle
-                    acknowledge()
+            HStack(spacing: 2) {
+                if let action = primaryAction {
+                    Button(action: action) { pillLabel }
+                        .buttonStyle(.plain)
                 } else {
-                    showPopover.toggle()
+                    pillLabel
                 }
-            } label: {
-                HStack(spacing: 5) {
-                    if viewModel.state.isBusy {
-                        ProgressView()
-                            .controlSize(.small)
-                            .scaleEffect(0.7)
-                            .frame(width: 14, height: 14)
-                    } else if let symbol = viewModel.state.symbolName {
-                        Image(systemName: symbol)
-                            .foregroundStyle(symbolColor)
+
+                if let dismiss = dismissAction {
+                    Button(action: dismiss) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 16, height: 16)
+                            .contentShape(Circle())
                     }
-                    Text(verbatim: viewModel.state.title)
-                        .font(.system(size: 11, weight: .medium))
-                        .lineLimit(1)
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Text("Dismiss"))
+                    .padding(.trailing, 4)
+                } else {
+                    Spacer().frame(width: 8)
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(Capsule().fill(.quaternary.opacity(0.6)))
-                .contentShape(Capsule())
             }
-            .buttonStyle(.plain)
-            .help(viewModel.state.title)
+            .background(Capsule().fill(.quaternary.opacity(0.6)))
+            .help(helpText)
+            .accessibilityElement(children: .contain)
             .accessibilityLabel(Text(verbatim: viewModel.state.title))
-            .popover(isPresented: $showPopover, arrowEdge: .bottom) {
-                UpdatePopover(viewModel: viewModel)
-            }
-            .onChange(of: viewModel.state.isIdle) { _, isIdle in
-                if isIdle { showPopover = false }
-            }
-            .task(id: upToDateToken) {
-                // Let the confirmation linger briefly, then acknowledge it.
-                guard case .upToDate(let acknowledge) = viewModel.state else { return }
-                try? await Task.sleep(for: .seconds(4))
-                guard !Task.isCancelled, case .upToDate = viewModel.state else { return }
-                viewModel.state = .idle
-                acknowledge()
-            }
         }
     }
 
-    /// Changes when the state enters .upToDate so the auto-dismiss task restarts.
-    private var upToDateToken: Bool {
-        if case .upToDate = viewModel.state { return true }
-        return false
+    private var pillLabel: some View {
+        HStack(spacing: 5) {
+            if viewModel.state.isBusy {
+                ProgressView()
+                    .controlSize(.small)
+                    .scaleEffect(0.7)
+                    .frame(width: 14, height: 14)
+            } else if let symbol = viewModel.state.symbolName {
+                Image(systemName: symbol)
+                    .foregroundStyle(symbolColor)
+            }
+            Text(verbatim: viewModel.state.title)
+                .font(.system(size: 11, weight: .medium))
+                .lineLimit(1)
+        }
+        .padding(.leading, 8)
+        .padding(.vertical, 3)
+        .contentShape(Rectangle())
+    }
+
+    /// What clicking the pill body does. Progress states have no primary
+    /// action; the x is the only control there.
+    private var primaryAction: (() -> Void)? {
+        switch viewModel.state {
+        case .available(_, let install, _):
+            return install
+        case .readyToInstall(let install, _):
+            return install
+        case .upToDate:
+            return { viewModel.state = .idle }
+        case .failed(_, let dismiss):
+            return dismiss
+        default:
+            return nil
+        }
+    }
+
+    /// What the small x does: dismiss a result, cancel work in flight.
+    /// Extraction and install cannot be cancelled, so no x there.
+    private var dismissAction: (() -> Void)? {
+        switch viewModel.state {
+        case .idle, .extracting, .installing:
+            return nil
+        case .checking(let cancel):
+            return cancel
+        case .available(_, _, let dismiss):
+            return dismiss
+        case .downloading(_, _, let cancel):
+            return cancel
+        case .readyToInstall(_, let dismiss):
+            return dismiss
+        case .upToDate:
+            return { viewModel.state = .idle }
+        case .failed(_, let dismiss):
+            return dismiss
+        }
+    }
+
+    private var helpText: String {
+        switch viewModel.state {
+        case .available(let version, _, _):
+            return String(
+                format: NSLocalizedString(
+                    "Version %@ is available.",
+                    comment: "Update pill tooltip, new version line"),
+                version
+            )
+        case .readyToInstall:
+            return NSLocalizedString(
+                "Install and Relaunch",
+                comment: "Update pill tooltip, update downloaded and waiting")
+        case .failed(let message, _):
+            return message
+        default:
+            return viewModel.state.title
+        }
     }
 
     private var symbolColor: Color {
@@ -79,143 +130,5 @@ struct UpdateIndicator: View {
         case .upToDate: return .green
         default: return .accentColor
         }
-    }
-}
-
-/// Compact action sheet for the current update state.
-private struct UpdatePopover: View {
-    @ObservedObject var viewModel: UpdateViewModel
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            switch viewModel.state {
-            case .idle:
-                EmptyView()
-
-            case .checking(let cancel):
-                HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
-                    Text("Checking for Updates…")
-                }
-                trailingButtons {
-                    Button("Cancel") {
-                        cancel()
-                        dismiss()
-                    }
-                    .keyboardShortcut(.cancelAction)
-                }
-
-            case .available(let version, let install, let dismissUpdate):
-                Text(String(
-                    format: NSLocalizedString(
-                        "Version %@ is available.",
-                        comment: "Update popover, new version line"),
-                    version
-                ))
-                .fontWeight(.semibold)
-                trailingButtons {
-                    Button("Later") {
-                        dismissUpdate()
-                        dismiss()
-                    }
-                    .keyboardShortcut(.cancelAction)
-                    Button("Install Update") {
-                        install()
-                        dismiss()
-                    }
-                    .keyboardShortcut(.defaultAction)
-                    .buttonStyle(.borderedProminent)
-                }
-
-            case .downloading:
-                progressRow(label: "Downloading Update…")
-                if case .downloading(_, _, let cancel) = viewModel.state {
-                    trailingButtons {
-                        Button("Cancel") {
-                            cancel()
-                            dismiss()
-                        }
-                        .keyboardShortcut(.cancelAction)
-                    }
-                }
-
-            case .extracting:
-                progressRow(label: "Preparing Update…")
-
-            case .readyToInstall(let install, let dismissUpdate):
-                Text("Ready to Install")
-                    .fontWeight(.semibold)
-                trailingButtons {
-                    Button("Later") {
-                        dismissUpdate()
-                        dismiss()
-                    }
-                    .keyboardShortcut(.cancelAction)
-                    Button("Install and Relaunch") {
-                        install()
-                        dismiss()
-                    }
-                    .keyboardShortcut(.defaultAction)
-                    .buttonStyle(.borderedProminent)
-                }
-
-            case .installing:
-                HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
-                    Text("Installing Update…")
-                }
-
-            case .upToDate(let acknowledge):
-                Text("You're up to date.")
-                trailingButtons {
-                    Button("OK") {
-                        viewModel.state = .idle
-                        acknowledge()
-                        dismiss()
-                    }
-                    .keyboardShortcut(.defaultAction)
-                }
-
-            case .failed(let message, let dismissError):
-                Text("Update Error")
-                    .fontWeight(.semibold)
-                Text(verbatim: message)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                trailingButtons {
-                    Button("OK") {
-                        dismissError()
-                        dismiss()
-                    }
-                    .keyboardShortcut(.defaultAction)
-                }
-            }
-        }
-        .padding(14)
-        .frame(width: 280, alignment: .leading)
-    }
-
-    @ViewBuilder
-    private func progressRow(label: LocalizedStringKey) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(label)
-            if let fraction = viewModel.state.progressFraction {
-                ProgressView(value: fraction)
-            } else {
-                ProgressView()
-                    .progressViewStyle(.linear)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func trailingButtons(@ViewBuilder content: () -> some View) -> some View {
-        HStack(spacing: 8) {
-            Spacer()
-            content()
-        }
-        .controlSize(.small)
     }
 }

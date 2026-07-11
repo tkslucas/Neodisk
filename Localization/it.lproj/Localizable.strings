@@ -187,6 +187,9 @@
 "No previous scan to compare" = "Nessuna scansione precedente da confrontare";
 "Scan this location again and what was added, deleted, renamed, or resized will appear here." = "Esegui di nuovo la scansione di questa posizione e qui apparirà ciò che è stato aggiunto, eliminato, rinominato o ridimensionato.";
 "No changes since the previous scan" = "Nessuna modifica dalla scansione precedente";
+"All" = "Tutto";
+"Nothing added since the previous scan" = "Nessun elemento aggiunto dalla scansione precedente";
+"Nothing deleted since the previous scan" = "Nessun elemento eliminato dalla scansione precedente";
 "Changes since the previous scan" = "Modifiche dalla scansione precedente";
 "Changes since %@" = "Modifiche da %@";
 "%@ added · %@ deleted · %@ renamed" = "%@ aggiunti · %@ eliminati · %@ rinominati";

@@ -187,6 +187,9 @@
 "No previous scan to compare" = "No previous scan to compare";
 "Scan this location again and what was added, deleted, renamed, or resized will appear here." = "Scan this location again and what was added, deleted, renamed, or resized will appear here.";
 "No changes since the previous scan" = "No changes since the previous scan";
+"All" = "All";
+"Nothing added since the previous scan" = "Nothing added since the previous scan";
+"Nothing deleted since the previous scan" = "Nothing deleted since the previous scan";
 "Changes since the previous scan" = "Changes since the previous scan";
 "Changes since %@" = "Changes since %@";
 "%@ added · %@ deleted · %@ renamed" = "%@ added · %@ deleted · %@ renamed";

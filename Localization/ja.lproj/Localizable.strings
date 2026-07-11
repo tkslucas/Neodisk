@@ -187,6 +187,9 @@
 "No previous scan to compare" = "比較できる前回のスキャンがありません";
 "Scan this location again and what was added, deleted, renamed, or resized will appear here." = "この場所をもう一度スキャンすると、追加・削除・名称変更・サイズ変更された項目がここに表示されます。";
 "No changes since the previous scan" = "前回のスキャンから変更はありません";
+"All" = "すべて";
+"Nothing added since the previous scan" = "前回のスキャン以降に追加された項目はありません";
+"Nothing deleted since the previous scan" = "前回のスキャン以降に削除された項目はありません";
 "Changes since the previous scan" = "前回のスキャンからの変更";
 "Changes since %@" = "%@以降の変更";
 "%@ added · %@ deleted · %@ renamed" = "追加 %@ · 削除 %@ · 名称変更 %@";

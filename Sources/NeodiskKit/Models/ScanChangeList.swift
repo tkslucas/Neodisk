@@ -67,9 +67,27 @@ public struct ScanChangeEntry: Sendable, Equatable, Identifiable {
 /// list sorted by |delta| (largest disk movement first; equal-size renames
 /// sink to the end), capped to keep the UI and memory bounded.
 public struct ScanChangeList: Sendable, Equatable {
+    /// The subsets the UI's filter subtabs show. `all` is the full mixed
+    /// list; `added`/`deleted` are per-kind lists capped independently of
+    /// it, so their tails are not crowded out by the other kinds' big
+    /// movers.
+    public enum Filter: String, Sendable, Equatable, CaseIterable, Identifiable {
+        case all
+        case added
+        case deleted
+
+        public var id: String { rawValue }
+    }
+
     public let entries: [ScanChangeEntry]
     /// How many entries the diff produced before capping.
     public let totalEntryCount: Int
+    /// Added entries only, sorted and capped like `entries`.
+    public let addedEntries: [ScanChangeEntry]
+    public let addedEntryCount: Int
+    /// Deleted entries only, sorted and capped like `entries`.
+    public let deletedEntries: [ScanChangeEntry]
+    public let deletedEntryCount: Int
     /// Sum of every positive delta (added + grown + growing renames).
     public let addedBytes: Int64
     /// Magnitude of every negative delta (deleted + shrunk + shrinking renames).
@@ -77,6 +95,23 @@ public struct ScanChangeList: Sendable, Equatable {
     public let renamedCount: Int
 
     public var isEmpty: Bool { totalEntryCount == 0 }
+
+    public func entries(for filter: Filter) -> [ScanChangeEntry] {
+        switch filter {
+        case .all: return entries
+        case .added: return addedEntries
+        case .deleted: return deletedEntries
+        }
+    }
+
+    /// Pre-cap entry count of the filter's subset (for "Top X of Y" footers).
+    public func totalCount(for filter: Filter) -> Int {
+        switch filter {
+        case .all: return totalEntryCount
+        case .added: return addedEntryCount
+        case .deleted: return deletedEntryCount
+        }
+    }
 
     /// Diffs `current` against `previous`. O(nodes) over both trees; run it
     /// off the main actor for large scans.
@@ -280,6 +315,27 @@ public struct ScanChangeList: Sendable, Equatable {
             return lhs.path < rhs.path
         }
         let totalEntryCount = entries.count
+
+        // Per-kind subsets are carved out of the sorted-but-uncapped list,
+        // so each filter keeps its own biggest movers even when the mixed
+        // list's cap is dominated by another kind.
+        var addedEntries: [ScanChangeEntry] = []
+        var addedEntryCount = 0
+        var deletedEntries: [ScanChangeEntry] = []
+        var deletedEntryCount = 0
+        for entry in entries {
+            switch entry.kind {
+            case .added:
+                addedEntryCount += 1
+                if addedEntries.count < entryLimit { addedEntries.append(entry) }
+            case .deleted:
+                deletedEntryCount += 1
+                if deletedEntries.count < entryLimit { deletedEntries.append(entry) }
+            case .renamed, .grown, .shrunk:
+                break
+            }
+        }
+
         if entries.count > entryLimit {
             entries.removeLast(entries.count - entryLimit)
         }
@@ -287,6 +343,10 @@ public struct ScanChangeList: Sendable, Equatable {
         return ScanChangeList(
             entries: entries,
             totalEntryCount: totalEntryCount,
+            addedEntries: addedEntries,
+            addedEntryCount: addedEntryCount,
+            deletedEntries: deletedEntries,
+            deletedEntryCount: deletedEntryCount,
             addedBytes: addedBytes,
             removedBytes: removedBytes,
             renamedCount: renamedCount

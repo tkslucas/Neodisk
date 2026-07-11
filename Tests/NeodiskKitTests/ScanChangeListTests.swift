@@ -167,6 +167,59 @@ import Testing
         #expect(list.entries[1].path == "/base/shrank.bin")
     }
 
+    @Test func testFilterSubsetsCapIndependentlyOfTheMixedList() throws {
+        // One huge grown file dominates the mixed cap; the added and deleted
+        // subsets must still surface their own entries past it.
+        let previous = makeStore(files: [
+            ("grown.bin", 100, nil),
+            ("deleted-big.bin", 90, nil),
+            ("deleted-small.bin", 20, nil)
+        ])
+        let current = makeStore(files: [
+            ("grown.bin", 5_000, nil),
+            ("added-big.bin", 80, nil),
+            ("added-small.bin", 10, nil)
+        ])
+
+        let list = ScanChangeList.build(current: current, previous: previous, entryLimit: 2)
+
+        // Mixed list: capped at 2, dominated by the biggest movers.
+        #expect(list.entries.count == 2)
+        #expect(list.totalEntryCount == 5)
+
+        // Added subset: both added entries survive their own cap, sorted.
+        #expect(list.entries(for: .added).map(\.path)
+            == ["/base/added-big.bin", "/base/added-small.bin"])
+        #expect(list.totalCount(for: .added) == 2)
+        #expect(list.entries(for: .added).allSatisfy { $0.kind == .added })
+
+        // Deleted subset likewise.
+        #expect(list.entries(for: .deleted).map(\.path)
+            == ["/base/deleted-big.bin", "/base/deleted-small.bin"])
+        #expect(list.totalCount(for: .deleted) == 2)
+        #expect(list.entries(for: .deleted).allSatisfy { $0.kind == .deleted })
+
+        // All is the existing mixed list.
+        #expect(list.entries(for: .all) == list.entries)
+        #expect(list.totalCount(for: .all) == list.totalEntryCount)
+    }
+
+    @Test func testFilterSubsetsHonorTheirOwnLimit() throws {
+        let previous = makeStore(files: [("kept.txt", 1, nil)])
+        let current = makeStore(files: [
+            ("kept.txt", 1, nil),
+            ("a.bin", 40, nil),
+            ("b.bin", 30, nil),
+            ("c.bin", 20, nil)
+        ])
+
+        let list = ScanChangeList.build(current: current, previous: previous, entryLimit: 2)
+
+        #expect(list.entries(for: .added).count == 2)
+        #expect(list.totalCount(for: .added) == 3)
+        #expect(list.entries(for: .added).map(\.path) == ["/base/a.bin", "/base/b.bin"])
+    }
+
     @Test func testSyntheticNodesAreIgnored() throws {
         let synthetic = FileNodeRecord(
             id: "/base/System Data",

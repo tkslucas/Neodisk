@@ -80,24 +80,39 @@ private struct ChangeResultsView: View {
     let list: ScanChangeList
 
     var body: some View {
+        @Bindable var changes = model.changes
+        let filter = model.changes.filter
+        let entries = list.entries(for: filter)
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(sinceText)
-                    .font(.system(size: 11, weight: .semibold))
-                    .lineLimit(1)
-                Text(summaryText)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+            HStack {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(sinceText)
+                        .font(.system(size: 11, weight: .semibold))
+                        .lineLimit(1)
+                    Text(summaryText)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer()
+                Picker("", selection: $changes.filter) {
+                    ForEach(ScanChangeList.Filter.allCases) { filter in
+                        Text(LocalizedStringKey(filter.title)).tag(filter)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .controlSize(.small)
+                .labelsHidden()
+                .fixedSize()
             }
             .padding(.horizontal, 10)
-            .padding(.vertical, 6)
+            .padding(.vertical, 4)
 
             Divider()
 
-            if list.isEmpty {
+            if entries.isEmpty {
                 Spacer()
-                Text("No changes since the previous scan")
+                Text(emptyText(for: filter))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity)
@@ -113,7 +128,7 @@ private struct ChangeResultsView: View {
                     get: { model.selectedNodeID },
                     set: { if let id = $0 { select(entryID: id) } }
                 )
-                List(list.entries, selection: selection) { entry in
+                List(entries, selection: selection) { entry in
                     ChangeEntryRow(model: model, entry: entry)
                         .listRowSeparator(.hidden)
                 }
@@ -121,15 +136,23 @@ private struct ChangeResultsView: View {
                 .environment(\.defaultMinListRowHeight, 20)
                 .quickLookOnSpace(model: model)
 
-                if list.entries.count < list.totalEntryCount {
+                if entries.count < list.totalCount(for: filter) {
                     Divider()
-                    Text(footerText)
+                    Text(footerText(entries: entries, filter: filter))
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4)
                 }
             }
+        }
+    }
+
+    private func emptyText(for filter: ScanChangeList.Filter) -> LocalizedStringKey {
+        switch filter {
+        case .all: return "No changes since the previous scan"
+        case .added: return "Nothing added since the previous scan"
+        case .deleted: return "Nothing deleted since the previous scan"
         }
     }
 
@@ -173,12 +196,23 @@ private struct ChangeResultsView: View {
         )
     }
 
-    private var footerText: String {
+    private func footerText(entries: [ScanChangeEntry], filter: ScanChangeList.Filter) -> String {
         String(
             format: NSLocalizedString("Top %@ of %@ changes", comment: "Changes tab footer"),
-            list.entries.count.formatted(),
-            list.totalEntryCount.formatted()
+            entries.count.formatted(),
+            list.totalCount(for: filter).formatted()
         )
+    }
+}
+
+extension ScanChangeList.Filter {
+    /// Segmented-control title; "Added"/"Deleted" reuse the row-kind keys.
+    var title: String {
+        switch self {
+        case .all: return "All"
+        case .added: return "Added"
+        case .deleted: return "Deleted"
+        }
     }
 }
 

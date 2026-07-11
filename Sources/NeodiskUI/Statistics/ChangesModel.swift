@@ -30,6 +30,10 @@ final class ChangesModel {
     /// When the compared previous scan finished, for the "since …" header.
     private(set) var comparisonDate: Date?
     private(set) var isLoading = false
+    /// The subtab filter (All / Added / Deleted). Like the kind pane's
+    /// display mode it survives snapshot changes — the chosen lens carries
+    /// across scans.
+    var filter: ScanChangeList.Filter = .all
 
     /// Bumped whenever a loaded list goes stale for reasons the snapshot ID
     /// can't express (the previous snapshot rotating under the same displayed

@@ -76,9 +76,9 @@ struct AnalysisPane: View {
 }
 
 /// One flat text tab: fixed .medium weight so the active state (accent
-/// color + sliding underline) never shifts the row's layout, and a small
-/// scale floor so long localized titles compress a touch at the pane's
-/// minimum width instead of truncating.
+/// color + sliding underline) never shifts the row's layout, and a fixed
+/// font size so narrow panes truncate long titles with an ellipsis instead
+/// of rendering neighboring tabs at mismatched scales.
 private struct AnalysisTabButton: View {
     let tab: AnalysisTab
     let isActive: Bool
@@ -95,7 +95,6 @@ private struct AnalysisTabButton: View {
                     isActive ? Color.accentColor : isHovering ? Color.primary : Color.secondary
                 )
                 .lineLimit(1)
-                .minimumScaleFactor(0.75)
                 .padding(.vertical, 7)
                 .overlay(alignment: .bottom) {
                     if isActive {

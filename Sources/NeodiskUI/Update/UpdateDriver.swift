@@ -35,8 +35,8 @@ final class UpdateDriver: NSObject, SPUUserDriver {
     ) {
         // Sparkle's own consent dialog (only shown when SUEnableAutomaticChecks
         // is absent from Info.plist). Kept as a defensive fallback; Neodisk
-        // normally ships the key, making automatic checks an explicit opt-in
-        // through Settings instead.
+        // ships the key as true — checks are on by default and the Settings
+        // toggle is the opt-out. Installing always needs a user click.
         standard.show(request, reply: reply)
     }
 

@@ -51,10 +51,12 @@
 	     release under the fixed "latest" URL. -->
 	<key>SUFeedURL</key>
 	<string>https://github.com/tkslucas/Neodisk/releases/latest/download/appcast.xml</string>
-	<!-- Automatic background checks are opt-in via Settings; shipping this
-	     key also suppresses Sparkle's own second-launch permission prompt. -->
+	<!-- Background checks are on by default (Settings toggle opts out);
+	     installing always needs a user click (SUAutomaticallyUpdate stays
+	     unset/false). Shipping this key also suppresses Sparkle's own
+	     second-launch permission prompt. -->
 	<key>SUEnableAutomaticChecks</key>
-	<false/>
+	<true/>
 	<!-- TODO(release): replace with the EdDSA public key printed by Sparkle's
 	     generate_keys before shipping updates. The private key must never be
 	     committed anywhere. -->

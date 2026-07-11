@@ -57,11 +57,10 @@
 	     second-launch permission prompt. -->
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
-	<!-- TODO(release): replace with the EdDSA public key printed by Sparkle's
-	     generate_keys before shipping updates. The private key must never be
-	     committed anywhere. -->
+	<!-- EdDSA public key for update signatures; the matching private key lives
+	     only in the release keychain and must never be committed anywhere. -->
 	<key>SUPublicEDKey</key>
-	<string></string>
+	<string>7++tAQZg0HfpMbNK769GZ+bIb+odjXN7VRT6hpxy52M=</string>
 	<key>NSDesktopFolderUsageDescription</key>
 	<string>Neodisk measures how much disk space files use. It never modifies or deletes anything.</string>
 	<key>NSDocumentsFolderUsageDescription</key>

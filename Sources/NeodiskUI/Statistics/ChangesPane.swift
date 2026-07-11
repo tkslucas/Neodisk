@@ -84,27 +84,30 @@ private struct ChangeResultsView: View {
         let filter = model.changes.filter
         let entries = list.entries(for: filter)
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(sinceText)
-                        .font(.system(size: 11, weight: .semibold))
-                        .lineLimit(1)
-                    Text(summaryText)
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                Spacer()
-                Picker("", selection: $changes.filter) {
-                    ForEach(ScanChangeList.Filter.allCases) { filter in
-                        Text(LocalizedStringKey(filter.title)).tag(filter)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .controlSize(.small)
-                .labelsHidden()
-                .fixedSize()
+            VStack(alignment: .leading, spacing: 1) {
+                Text(sinceText)
+                    .font(.system(size: 11, weight: .semibold))
+                    .lineLimit(1)
+                Text(summaryText)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
+            .padding(.horizontal, 10)
+            .padding(.top, 6)
+
+            // Own centered row: beside the header it starved the "since"
+            // text into truncation at everyday panel widths.
+            Picker("", selection: $changes.filter) {
+                ForEach(ScanChangeList.Filter.allCases) { filter in
+                    Text(LocalizedStringKey(filter.title)).tag(filter)
+                }
+            }
+            .pickerStyle(.segmented)
+            .controlSize(.small)
+            .labelsHidden()
+            .fixedSize()
+            .frame(maxWidth: .infinity)
             .padding(.horizontal, 10)
             .padding(.vertical, 4)
 

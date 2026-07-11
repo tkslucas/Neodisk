@@ -87,6 +87,49 @@ import NeodiskKit
         #expect(targets.isEmpty)
     }
 
+    @Test func testDeduplicateDropsLegacyDropboxSymlinkIntoFileProvider() throws {
+        // A legacy ~/Dropbox that is only a symlink into ~/Library/CloudStorage
+        // normalizes to the provider folder's path, so the sidebar's cloud
+        // section must show a single Dropbox entry.
+        let fileManager = FileManager.default
+        let base = fileManager.temporaryDirectory
+            .appending(path: "neodisk-cloud-dedup-\(UUID().uuidString)", directoryHint: .isDirectory)
+        let cloudRoot = base.appending(path: "Library/CloudStorage", directoryHint: .isDirectory)
+        let providerFolder = cloudRoot.appending(path: "Dropbox", directoryHint: .isDirectory)
+        let legacyDropbox = base.appending(path: "Dropbox", directoryHint: .isDirectory)
+        try fileManager.createDirectory(at: providerFolder, withIntermediateDirectories: true)
+        try fileManager.createSymbolicLink(at: legacyDropbox, withDestinationURL: providerFolder)
+        defer { try? fileManager.removeItem(at: base) }
+
+        let targets = SystemIntegration.deduplicate(CloudLocationDetector.targets(
+            iCloudDriveDocumentsURL: nil,
+            cloudStorageRootURL: cloudRoot,
+            providerFolderNames: ["Dropbox"],
+            legacyDropboxURL: legacyDropbox
+        ))
+
+        #expect(targets.map(\.displayName) == ["Dropbox"])
+    }
+
+    @Test func testDeduplicateKeepsFirstOccurrenceAndOrder() {
+        func target(_ path: String, name: String) -> ScanTarget {
+            ScanTarget(
+                id: path,
+                url: URL(fileURLWithPath: path, isDirectory: true),
+                displayName: name,
+                kind: .folder
+            )
+        }
+
+        let deduplicated = SystemIntegration.deduplicate([
+            target("/Users/tester/Library/CloudStorage/Dropbox", name: "Dropbox"),
+            target("/Users/tester/Library/Mobile Documents/com~apple~CloudDocs", name: "iCloud Drive"),
+            target("/Users/tester/Library/CloudStorage/Dropbox", name: "Dropbox (legacy)"),
+        ])
+
+        #expect(deduplicated.map(\.displayName) == ["Dropbox", "iCloud Drive"])
+    }
+
     @Test func testIsCloudPathMatchesOnlyCloudRootDescendants() {
         let cloudStoragePath = ScanOptions.defaultCloudStorageRootPath
         let iCloudPath = ScanOptions.defaultICloudDriveRootPath

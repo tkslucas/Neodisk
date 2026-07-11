@@ -202,6 +202,7 @@
 
 /* MARK: - Sidebar */
 "Smart Locations" = "Locais Inteligentes";
+"Cloud Storage" = "Armazenamento na Nuvem";
 "Folders" = "Pastas";
 "Add Folder…" = "Adicionar Pasta…";
 "Scan any folder or volume and keep it in the sidebar" = "Analise qualquer pasta ou volume e mantenha-o na barra lateral";

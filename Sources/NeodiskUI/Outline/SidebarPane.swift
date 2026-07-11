@@ -2,8 +2,9 @@
 //  SidebarPane.swift
 //  Neodisk
 //
-//  Smart Locations sidebar: volumes and common folders, one click to scan,
-//  user-pinned folders with multi-select removal, and an Add Folder action.
+//  Smart Locations sidebar: volumes and common folders, detected cloud
+//  storage folders in their own section, one click to scan, user-pinned
+//  folders with multi-select removal, and an Add Folder action.
 //
 
 import AppKit
@@ -16,10 +17,10 @@ struct SidebarPane: View {
     @State private var selection: Set<String> = []
     @State private var capacityByPath: [String: String] = [:]
 
-    /// Pinned folders, minus any that duplicate a smart location.
+    /// Pinned folders, minus any that duplicate a built-in location.
     private var visiblePinnedFolders: [ScanTarget] {
-        let smartIDs = Set(model.smartLocations.map(\.id))
-        return model.pinnedFolders.filter { !smartIDs.contains($0.id) }
+        let builtInIDs = Set(model.builtInLocations.map(\.id))
+        return model.pinnedFolders.filter { !builtInIDs.contains($0.id) }
     }
 
     var body: some View {
@@ -37,17 +38,14 @@ struct SidebarPane: View {
         List(selection: $selection) {
             Section("Smart Locations") {
                 ForEach(model.smartLocations) { target in
-                    SidebarTargetRow(
-                        target: target,
-                        subtitle: capacityByPath[target.id] ?? target.id,
-                        lastScanned: model.cachedScanInfo[target.id]?.lastScanDate,
-                        now: now
-                    )
-                    .tag(target.id)
-                    .contextMenu {
-                        Button("Reveal in Finder") {
-                            SystemIntegration.reveal(target.url)
-                        }
+                    builtInLocationRow(target, now: now)
+                }
+            }
+
+            if !model.cloudLocations.isEmpty {
+                Section("Cloud Storage") {
+                    ForEach(model.cloudLocations) { target in
+                        builtInLocationRow(target, now: now)
                     }
                 }
             }
@@ -105,12 +103,12 @@ struct SidebarPane: View {
         }
         .onChange(of: selection) { _, newSelection in
             // Multi-selection only makes sense for removable folders (the
-            // point is bulk removal), so strip smart locations out of any
+            // point is bulk removal), so strip built-in locations out of any
             // multi-select — this also covers ⌘A, which the list's table
             // handles itself before onCommand interceptors ever see it.
             if newSelection.count > 1 {
-                let smartIDs = Set(model.smartLocations.map(\.id))
-                let filtered = newSelection.subtracting(smartIDs)
+                let builtInIDs = Set(model.builtInLocations.map(\.id))
+                let filtered = newSelection.subtracting(builtInIDs)
                 if filtered != newSelection {
                     selection = filtered
                     return
@@ -150,7 +148,24 @@ struct SidebarPane: View {
     }
 
     private var allTargets: [ScanTarget] {
-        model.smartLocations + visiblePinnedFolders
+        model.builtInLocations + visiblePinnedFolders
+    }
+
+    /// One row of the Smart Locations or Cloud Storage section: not
+    /// removable, so the context menu only offers Reveal in Finder.
+    private func builtInLocationRow(_ target: ScanTarget, now: Date) -> some View {
+        SidebarTargetRow(
+            target: target,
+            subtitle: capacityByPath[target.id] ?? target.id,
+            lastScanned: model.cachedScanInfo[target.id]?.lastScanDate,
+            now: now
+        )
+        .tag(target.id)
+        .contextMenu {
+            Button("Reveal in Finder") {
+                SystemIntegration.reveal(target.url)
+            }
+        }
     }
 
     private var selectedPinnedIDs: Set<String> {

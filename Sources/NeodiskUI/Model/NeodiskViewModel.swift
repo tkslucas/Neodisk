@@ -136,6 +136,12 @@ final class NeodiskViewModel {
     var pinnedFolders: [ScanTarget] = []
     /// Volumes and standard folders shown in the sidebar.
     let smartLocations = SystemIntegration.defaultTargets()
+    /// Locally-synced cloud storage folders (iCloud Drive, File Provider
+    /// roots), shown in the sidebar's own "Cloud Storage" section.
+    let cloudLocations = SystemIntegration.cloudTargets()
+    /// Every location the sidebar offers without pinning: smart locations
+    /// plus cloud locations. These never get pinned or removed.
+    var builtInLocations: [ScanTarget] { smartLocations + cloudLocations }
     /// What the snapshot cache holds per target path: which locations open
     /// instantly from cache, the sidebar's "Scanned … ago" subtitles, and
     /// how long the last scan took (whether a rescan should auto-start).
@@ -215,7 +221,7 @@ final class NeodiskViewModel {
 
         // Drop cache entries for locations no longer in the sidebar and
         // learn which targets can open instantly from cache.
-        let validTargetIDs = Set((smartLocations + pinnedFolders).map(\.id))
+        let validTargetIDs = Set((builtInLocations + pinnedFolders).map(\.id))
         Task { [weak self, snapshotCache] in
             let index = await snapshotCache.pruneAndIndex(keepingTargetIDs: validTargetIDs)
             // A scan finishing during the prune has the newer entry — keep it.
@@ -690,11 +696,12 @@ final class NeodiskViewModel {
     }
 
     /// Adds a folder to the sidebar (persisted) and starts scanning it.
-    /// Smart locations never get pinned — they are already in the sidebar.
+    /// Built-in locations (smart and cloud) never get pinned — they are
+    /// already in the sidebar.
     func chooseFolderAndScan() {
         guard let target = SystemIntegration.presentScanPanel() else { return }
-        let isSmartLocation = smartLocations.contains { $0.id == target.id }
-        if !isSmartLocation, !pinnedFolders.contains(where: { $0.id == target.id }) {
+        let isBuiltInLocation = builtInLocations.contains { $0.id == target.id }
+        if !isBuiltInLocation, !pinnedFolders.contains(where: { $0.id == target.id }) {
             pinnedFolders.append(target)
             pinnedFolderStore.add(target)
         }
@@ -702,7 +709,7 @@ final class NeodiskViewModel {
     }
 
     /// Handles folders dropped onto the window or the sidebar: pins each
-    /// one (same rules as Add Folder… — smart locations and duplicates
+    /// one (same rules as Add Folder… — built-in locations and duplicates
     /// stay unpinned) and starts scanning the first. Non-folder drops are
     /// ignored.
     @discardableResult
@@ -712,12 +719,12 @@ final class NeodiskViewModel {
         }
         guard !folderURLs.isEmpty else { return false }
 
-        let smartIDs = Set(smartLocations.map(\.id))
+        let builtInIDs = Set(builtInLocations.map(\.id))
         var firstTarget: ScanTarget?
         for url in folderURLs {
             let target = ScanTarget(url: url)
             if firstTarget == nil { firstTarget = target }
-            if !smartIDs.contains(target.id),
+            if !builtInIDs.contains(target.id),
                !pinnedFolders.contains(where: { $0.id == target.id }) {
                 pinnedFolders.append(target)
                 pinnedFolderStore.add(target)
@@ -736,8 +743,8 @@ final class NeodiskViewModel {
         pinnedFolders.removeAll { ids.contains($0.id) }
 
         // A removed folder loses its persisted snapshot too — unless it is
-        // also a smart location, which keeps its own cache entry.
-        let removedIDs = ids.subtracting(smartLocations.map(\.id))
+        // also a built-in location, which keeps its own cache entry.
+        let removedIDs = ids.subtracting(builtInLocations.map(\.id))
         guard !removedIDs.isEmpty else { return }
         for id in removedIDs {
             cachedScanInfo.removeValue(forKey: id)

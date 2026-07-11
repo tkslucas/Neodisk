@@ -201,6 +201,7 @@
 
 /* MARK: - Sidebar */
 "Smart Locations" = "Smart Locations";
+"Cloud Storage" = "Cloud Storage";
 "Folders" = "Folders";
 "Add Folder…" = "Add Folder…";
 "Scan any folder or volume and keep it in the sidebar" = "Scan any folder or volume and keep it in the sidebar";

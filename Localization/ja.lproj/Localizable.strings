@@ -201,6 +201,7 @@
 
 /* MARK: - Sidebar */
 "Smart Locations" = "スマートロケーション";
+"Cloud Storage" = "クラウドストレージ";
 "Folders" = "フォルダ";
 "Add Folder…" = "フォルダを追加…";
 "Scan any folder or volume and keep it in the sidebar" = "任意のフォルダやボリュームをスキャンしてサイドバーに保持";

@@ -201,6 +201,7 @@
 
 /* MARK: - Sidebar */
 "Smart Locations" = "Intelligente Orte";
+"Cloud Storage" = "Cloud-Speicher";
 "Folders" = "Ordner";
 "Add Folder…" = "Ordner hinzufügen …";
 "Scan any folder or volume and keep it in the sidebar" = "Scanne beliebige Ordner oder Volumes und behalte sie in der Seitenleiste";

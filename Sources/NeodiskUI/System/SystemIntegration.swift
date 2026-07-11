@@ -91,8 +91,6 @@ enum SystemIntegration {
             }
         }
 
-        targets.append(contentsOf: CloudLocationDetector.detectedTargets(fileManager: fileManager))
-
         let mountedVolumes = fileManager.mountedVolumeURLs(
             includingResourceValuesForKeys: [.volumeNameKey],
             options: [.skipHiddenVolumes]
@@ -103,6 +101,13 @@ enum SystemIntegration {
         }
 
         return deduplicate(targets)
+    }
+
+    /// Locally-synced cloud storage folders, shown in the sidebar's own
+    /// "Cloud Storage" section. Deduplicated because a legacy ~/Dropbox
+    /// symlink resolves to the same File Provider folder it points into.
+    nonisolated static func cloudTargets(fileManager: FileManager = .default) -> [ScanTarget] {
+        deduplicate(CloudLocationDetector.detectedTargets(fileManager: fileManager))
     }
 
     nonisolated static func targetCapacityDescriptions() -> [String: String] {
@@ -369,7 +374,7 @@ enum SystemIntegration {
         }
     }
 
-    private nonisolated static func deduplicate(_ targets: [ScanTarget]) -> [ScanTarget] {
+    nonisolated static func deduplicate(_ targets: [ScanTarget]) -> [ScanTarget] {
         var seen = Set<String>()
         return targets.filter { target in
             seen.insert(target.id).inserted

@@ -201,6 +201,7 @@
 
 /* MARK: - 边栏 */
 "Smart Locations" = "智能位置";
+"Cloud Storage" = "云存储";
 "Folders" = "文件夹";
 "Add Folder…" = "添加文件夹…";
 "Scan any folder or volume and keep it in the sidebar" = "扫描任意文件夹或宗卷，并将其保留在边栏中";

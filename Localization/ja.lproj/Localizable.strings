@@ -185,6 +185,22 @@
 "Back to duplicates" = "重複の一覧に戻る";
 "%@ files couldn't be read" = "%@ 個のファイルを読み込めませんでした";
 
+/* MARK: - Changes tab */
+"Comparing with the previous scan…" = "前回のスキャンと比較中…";
+"No previous scan to compare" = "比較できる前回のスキャンがありません";
+"Scan this location again and what was added, deleted, renamed, or resized will appear here." = "この場所をもう一度スキャンすると、追加・削除・名称変更・サイズ変更された項目がここに表示されます。";
+"No changes since the previous scan" = "前回のスキャンから変更はありません";
+"Changes since the previous scan" = "前回のスキャンからの変更";
+"Changes since %@" = "%@以降の変更";
+"%@ added · %@ deleted · %@ renamed" = "追加 %@ · 削除 %@ · 名称変更 %@";
+"Top %@ of %@ changes" = "%2$@件の変更のうち上位%1$@件";
+"Was %@" = "旧: %@";
+"Added" = "追加";
+"Deleted" = "削除";
+"Renamed" = "名称変更";
+"Grown" = "増加";
+"Shrunk" = "減少";
+
 /* MARK: - File kind category names */
 "Videos" = "動画";
 "Images" = "画像";

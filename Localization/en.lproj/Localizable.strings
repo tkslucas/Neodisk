@@ -185,6 +185,22 @@
 "Back to duplicates" = "Back to duplicates";
 "%@ files couldn't be read" = "%@ files couldn't be read";
 
+/* MARK: - Changes tab */
+"Comparing with the previous scan…" = "Comparing with the previous scan…";
+"No previous scan to compare" = "No previous scan to compare";
+"Scan this location again and what was added, deleted, renamed, or resized will appear here." = "Scan this location again and what was added, deleted, renamed, or resized will appear here.";
+"No changes since the previous scan" = "No changes since the previous scan";
+"Changes since the previous scan" = "Changes since the previous scan";
+"Changes since %@" = "Changes since %@";
+"%@ added · %@ deleted · %@ renamed" = "%@ added · %@ deleted · %@ renamed";
+"Top %@ of %@ changes" = "Top %@ of %@ changes";
+"Was %@" = "Was %@";
+"Added" = "Added";
+"Deleted" = "Deleted";
+"Renamed" = "Renamed";
+"Grown" = "Grown";
+"Shrunk" = "Shrunk";
+
 /* MARK: - File kind category names */
 "Videos" = "Videos";
 "Images" = "Images";

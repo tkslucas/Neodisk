@@ -185,6 +185,22 @@
 "Back to duplicates" = "返回重复项";
 "%@ files couldn't be read" = "%@ 个文件无法读取";
 
+/* MARK: - Changes tab */
+"Comparing with the previous scan…" = "正在与上次扫描比较…";
+"No previous scan to compare" = "没有可比较的上次扫描";
+"Scan this location again and what was added, deleted, renamed, or resized will appear here." = "再次扫描此位置后，这里会显示新增、删除、重命名或大小变化的项目。";
+"No changes since the previous scan" = "自上次扫描以来没有变化";
+"Changes since the previous scan" = "自上次扫描以来的变化";
+"Changes since %@" = "自%@以来的变化";
+"%@ added · %@ deleted · %@ renamed" = "新增 %@ · 删除 %@ · 重命名 %@";
+"Top %@ of %@ changes" = "已显示 %2$@ 项变化中的前 %1$@ 项";
+"Was %@" = "原位置：%@";
+"Added" = "已新增";
+"Deleted" = "已删除";
+"Renamed" = "已重命名";
+"Grown" = "已增大";
+"Shrunk" = "已减小";
+
 /* MARK: - 文件类型分类名称 */
 "Videos" = "视频";
 "Images" = "图片";

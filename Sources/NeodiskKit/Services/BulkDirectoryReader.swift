@@ -249,9 +249,19 @@ nonisolated enum BulkDirectoryReader {
         let isReadable = userAccess.map { $0 & UInt32(R_OK) != 0 } ?? true
         let fileLogicalSize = isDirectory ? 0 : logicalSize
         let fileAllocatedSize = isDirectory ? 0 : (allocatedSize ?? logicalSize)
-        // Identity is only consumed by hard-link deduplication, which
-        // ignores directories, symlinks, and single-link files.
-        let fileIdentity: FileIdentity? = (!isDirectory && !isSymbolicLink && linkCount > 1)
+        // Identity feeds hard-link deduplication (multi-link files) and
+        // rename detection in scan diffs (directories and files big enough
+        // to matter — see ScanSizeBaseline.renameTrackingMinimumFileSize).
+        // The device+inode pair is already in the bulk attribute buffer, so
+        // capturing it costs no extra syscalls, only the ~17 bytes it adds
+        // to each identity-bearing node in persisted snapshots — which is
+        // why small single-link files skip it.
+        let capturesIdentity = !isSymbolicLink && (
+            isDirectory
+                || linkCount > 1
+                || fileAllocatedSize >= ScanSizeBaseline.renameTrackingMinimumFileSize
+        )
+        let fileIdentity: FileIdentity? = capturesIdentity
             ? .fileSystem(device: device, inode: inode)
             : nil
 

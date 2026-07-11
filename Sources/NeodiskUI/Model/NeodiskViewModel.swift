@@ -92,6 +92,12 @@ final class NeodiskViewModel {
     /// On-demand duplicate-content scan and results; see DuplicatesModel.
     let duplicates: DuplicatesModel
 
+    // MARK: Changes list
+
+    /// Added/deleted/renamed/grown/shrunk entries against the previous
+    /// scan, for the statistics panel's Changes tab; see ChangesModel.
+    let changes: ChangesModel
+
     // MARK: Entire-scan search
 
     /// Outline "search entire scan" feature state; see SearchModel.
@@ -207,8 +213,10 @@ final class NeodiskViewModel {
         self.ages = AgeStatsModel(coordinator: coordinator, indexService: searchIndexService)
         self.duplicates = DuplicatesModel(coordinator: coordinator)
         self.diff = DiffModel(coordinator: coordinator, snapshotCache: snapshotCache)
+        self.changes = ChangesModel(coordinator: coordinator, snapshotCache: snapshotCache)
         pinnedFolders = pinnedFolderStore.load()
         diff.model = self
+        changes.model = self
 
         // The coordinator is @Observable, so views track its properties
         // (phase, snapshot, …) directly; the model only needs the snapshot
@@ -289,6 +297,10 @@ final class NeodiskViewModel {
             return ages.highlightedBucket.map { .ageBucket($0) }
         case .duplicates:
             return duplicates.highlightedNodeIDs.map { .nodes($0) }
+        case .changes:
+            // No dim, like Largest: the plain selection ring already ties a
+            // clicked change to its cell, and the map keeps kind colors.
+            return nil
         }
     }
 
@@ -401,6 +413,7 @@ final class NeodiskViewModel {
         kinds.reset()
         largest.reset()
         ages.reset()
+        changes.reset()
         scanWasStopped = false
         dismissedWarningIDs = []
     }
@@ -612,8 +625,10 @@ final class NeodiskViewModel {
                 try await snapshotCache.save(snapshot)
                 // Saving rotated the displayed scan's predecessor; an
                 // active diff of this target must rebase on it, and an
-                // inactive one may prefetch its baseline.
+                // inactive one may prefetch its baseline. A loaded Changes
+                // list compares against the replaced generation too.
                 self?.diff.snapshotWasRotated(for: snapshot.target)
+                self?.changes.snapshotWasRotated(for: snapshot.target)
                 // Kind stats ride along so the next restore of this
                 // snapshot starts with a colored map.
                 await Self.saveKindStatsSidecar(for: snapshot, in: snapshotCache)
@@ -830,6 +845,7 @@ final class NeodiskViewModel {
         largest.snapshotDidChange()
         ages.snapshotDidChange(snapshot)
         duplicates.snapshotDidChange()
+        changes.snapshotDidChange()
         search.snapshotDidChange()
 
         guard let snapshot else { return }

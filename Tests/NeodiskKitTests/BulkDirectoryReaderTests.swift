@@ -45,6 +45,33 @@ import Foundation
         #expect(!link.isDirectory)
     }
 
+    @Test func testRenameTrackingIdentityCapture() throws {
+        let rootURL = try makeBulkTestDirectory()
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+
+        try FileManager.default.createDirectory(
+            at: rootURL.appending(path: "folder", directoryHint: .isDirectory),
+            withIntermediateDirectories: false
+        )
+        try Data(
+            repeating: 0xCD,
+            count: Int(ScanSizeBaseline.renameTrackingMinimumFileSize)
+        ).write(to: rootURL.appending(path: "big.bin"))
+        try Data(repeating: 0xEF, count: 512).write(to: rootURL.appending(path: "small.bin"))
+
+        let children = try readBulkChildren(of: rootURL)
+
+        // Directories and files at/above the rename-tracking threshold
+        // carry their device+inode identity; small single-link files skip
+        // it to keep snapshots lean.
+        let folder = try #require(children["folder"]?.metadata)
+        #expect(folder.fileIdentity?.isFileSystemIdentity == true)
+        let big = try #require(children["big.bin"]?.metadata)
+        #expect(big.fileIdentity?.isFileSystemIdentity == true)
+        let small = try #require(children["small.bin"]?.metadata)
+        #expect(small.fileIdentity == nil)
+    }
+
     @Test func testHardLinkedFilesCarrySharedFileSystemIdentity() throws {
         let rootURL = try makeBulkTestDirectory()
         defer { try? FileManager.default.removeItem(at: rootURL) }

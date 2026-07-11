@@ -2,11 +2,19 @@
 //  CushionTreemapRenderer.swift
 //  TreemapKit
 //
-//  Rasterizes treemap cells into a CGImage with per-pixel cushion shading.
+//  Rasterizes treemap cells into RGBA8 pixels with per-pixel cushion shading.
+//  The pixel loop (`rasterize`) is portable stdlib SIMD; the CGImage assembly,
+//  the `memset_pattern4` background fill, and the Dispatch parallelization are
+//  gated so the core is consumable off-platform (e.g. a WebAssembly demo).
 //
 
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
 import Foundation
+#if canImport(Dispatch)
+import Dispatch
+#endif
 
 public enum CushionTreemapRenderer {
     /// Directional light, image coordinates (y down), pointing from the
@@ -14,52 +22,69 @@ public enum CushionTreemapRenderer {
     private nonisolated static let light = normalized(SIMD3<Double>(-0.3, -0.3, 0.906))
     private nonisolated static let ambient = 0.30
     private nonisolated static let diffuse = 0.70
+    /// Dark background so sub-pixel cells that get skipped read as seams
+    /// rather than holes. RGBA, straight (alpha 255).
+    private nonisolated static let backgroundPattern: [UInt8] = [18, 18, 22, 255]
 
-    /// Renders `cells` at `scale` (2 for Retina). Cell rects are in view
-    /// points; the output image covers `bounds` (typically the visible
-    /// window plus overscan margin).
+    /// Portable rasterization: RGBA8 premultipliedLast, one byte-quadruple per
+    /// pixel packed little-endian (`R | G<<8 | B<<16 | 0xFF000000`), row stride
+    /// `width * 4`, alpha always 255. Cell rects are in view points; the output
+    /// covers `bounds` at `scale` (2 for Retina). Callers on a canvas blit the
+    /// buffer straight into ImageData; `render` wraps it into a CGImage.
+    public nonisolated static func rasterizeRGBA(
+        cells: [TreemapCell],
+        bounds: CGRect,
+        scale: CGFloat
+    ) -> (pixels: [UInt8], width: Int, height: Int)? {
+        let width = Int((bounds.width * scale).rounded())
+        let height = Int((bounds.height * scale).rounded())
+        guard width > 0, height > 0 else { return nil }
+
+        let bytesPerRow = width * 4
+        let byteCount = bytesPerRow * height
+        var pixels = [UInt8](repeating: 0, count: byteCount)
+        pixels.withUnsafeMutableBytes { raw in
+            guard let base = raw.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return }
+            fillBackground(base, byteCount: byteCount)
+            renderCells(
+                cells,
+                origin: bounds.origin,
+                scale: Double(scale),
+                into: base,
+                width: width,
+                height: height,
+                bytesPerRow: bytesPerRow
+            )
+        }
+        return (pixels, width, height)
+    }
+
+    #if canImport(CoreGraphics)
+    /// Renders `cells` at `scale` into a CGImage. Same pixels as
+    /// `rasterizeRGBA`, but drawn directly into a CFData the CGImage's data
+    /// provider retains without copying — a plain `[UInt8]` would cost a
+    /// full-buffer copy (~25 MB at 2× on a large window) on every render.
     public nonisolated static func render(cells: [TreemapCell], bounds: CGRect, scale: CGFloat) -> CGImage? {
         let width = Int((bounds.width * scale).rounded())
         let height = Int((bounds.height * scale).rounded())
         guard width > 0, height > 0 else { return nil }
 
         let bytesPerRow = width * 4
-        // Render directly into a CFData that the CGImage's data provider
-        // retains without copying — a plain [UInt8] would cost a full-buffer
-        // copy (~25 MB at 2× on a large window) on every render.
         let byteCount = bytesPerRow * height
         guard let pixelData = CFDataCreateMutable(kCFAllocatorDefault, byteCount) else { return nil }
         CFDataSetLength(pixelData, byteCount)
         guard let rawBase = CFDataGetMutableBytePtr(pixelData) else { return nil }
 
-        // Prefill with a dark background so sub-pixel cells that get skipped
-        // read as seams rather than holes.
-        var background: [UInt8] = [18, 18, 22, 255]
-        memset_pattern4(rawBase, &background, byteCount)
-
-        // Cells never overlap, so concurrent chunks write disjoint pixels.
-        nonisolated(unsafe) let base = rawBase
-        let chunkCount = max(1, min(cells.count, ProcessInfo.processInfo.activeProcessorCount))
-        let chunkSize = (cells.count + chunkCount - 1) / max(1, chunkCount)
-
-        DispatchQueue.concurrentPerform(iterations: chunkCount) { chunkIndex in
-            // With ceil-divided chunks, trailing chunks can start past the
-            // end (e.g. 10 cells / 8 cores → chunkSize 2 → chunk 7 starts
-            // at 14); start..<end would trap with end < start.
-            let start = min(chunkIndex * chunkSize, cells.count)
-            let end = min(start + chunkSize, cells.count)
-            for index in start..<end {
-                rasterize(
-                    cell: cells[index],
-                    origin: bounds.origin,
-                    scale: Double(scale),
-                    into: base,
-                    width: width,
-                    height: height,
-                    bytesPerRow: bytesPerRow
-                )
-            }
-        }
+        fillBackground(rawBase, byteCount: byteCount)
+        renderCells(
+            cells,
+            origin: bounds.origin,
+            scale: Double(scale),
+            into: rawBase,
+            width: width,
+            height: height,
+            bytesPerRow: bytesPerRow
+        )
 
         let colorSpace = CGColorSpaceCreateDeviceRGB()
         guard let provider = CGDataProvider(data: pixelData) else { return nil }
@@ -76,6 +101,82 @@ public enum CushionTreemapRenderer {
             shouldInterpolate: false,
             intent: .defaultIntent
         )
+    }
+    #endif
+
+    /// Prefills the buffer with the dark background. `memset_pattern4` is a
+    /// Darwin libc primitive; elsewhere a 4-byte stride loop does the same.
+    private nonisolated static func fillBackground(
+        _ base: UnsafeMutablePointer<UInt8>,
+        byteCount: Int
+    ) {
+        #if canImport(Darwin)
+        var pattern = backgroundPattern
+        memset_pattern4(base, &pattern, byteCount)
+        #else
+        let (b0, b1, b2, b3) = (
+            backgroundPattern[0], backgroundPattern[1],
+            backgroundPattern[2], backgroundPattern[3]
+        )
+        var offset = 0
+        while offset < byteCount {
+            base[offset] = b0
+            base[offset + 1] = b1
+            base[offset + 2] = b2
+            base[offset + 3] = b3
+            offset += 4
+        }
+        #endif
+    }
+
+    /// Rasterizes every cell into the buffer. Cells never overlap, so
+    /// concurrent chunks write disjoint pixels; without Dispatch this falls
+    /// back to a serial pass.
+    private nonisolated static func renderCells(
+        _ cells: [TreemapCell],
+        origin: CGPoint,
+        scale: Double,
+        into base: UnsafeMutablePointer<UInt8>,
+        width: Int,
+        height: Int,
+        bytesPerRow: Int
+    ) {
+        #if canImport(Dispatch)
+        nonisolated(unsafe) let base = base
+        let chunkCount = max(1, min(cells.count, ProcessInfo.processInfo.activeProcessorCount))
+        let chunkSize = (cells.count + chunkCount - 1) / max(1, chunkCount)
+
+        DispatchQueue.concurrentPerform(iterations: chunkCount) { chunkIndex in
+            // With ceil-divided chunks, trailing chunks can start past the
+            // end (e.g. 10 cells / 8 cores → chunkSize 2 → chunk 7 starts
+            // at 14); start..<end would trap with end < start.
+            let start = min(chunkIndex * chunkSize, cells.count)
+            let end = min(start + chunkSize, cells.count)
+            for index in start..<end {
+                rasterize(
+                    cell: cells[index],
+                    origin: origin,
+                    scale: scale,
+                    into: base,
+                    width: width,
+                    height: height,
+                    bytesPerRow: bytesPerRow
+                )
+            }
+        }
+        #else
+        for cell in cells {
+            rasterize(
+                cell: cell,
+                origin: origin,
+                scale: scale,
+                into: base,
+                width: width,
+                height: height,
+                bytesPerRow: bytesPerRow
+            )
+        }
+        #endif
     }
 
     private nonisolated static func rasterize(

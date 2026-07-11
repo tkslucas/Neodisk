@@ -41,6 +41,14 @@ Swift/SwiftUI practices and keep the scanning core UI-free.
     statistics tab on launch, so captures can show any tab.
   - `NEODISK_VIZ_MODE=<treemap|sunburst>` — show that center visualization
     on launch without persisting the preference.
+  - `NEODISK_UPDATE_STATE=<checking|available|downloading|readyToInstall|upToDate|failed>`
+    — force the toolbar update pill into a non-idle state at launch (inert
+    closures), so headless snapshots can capture the indicator without a live
+    Sparkle check.
+  - When `NEODISK_UI_SNAPSHOT` is set the app runs as an accessory (no Dock
+    icon, never activates) and its window is moved offscreen and kept
+    transparent, so the capture never appears on screen or steals focus; the
+    capture is the whole window (titlebar/toolbar included).
 
 ## Project Structure
 

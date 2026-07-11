@@ -32,6 +32,7 @@ public struct ContentView: View {
                 }
         }
         .frame(minWidth: 900, minHeight: 560)
+        .background(SnapshotWindowHider())
         .sheet(isPresented: $model.showWelcomeSheet) {
             WelcomeSheet(model: model)
         }
@@ -61,6 +62,15 @@ public struct ContentView: View {
             if let rawMode = ProcessInfo.processInfo.environment["NEODISK_VIZ_MODE"],
                let mode = VizViewMode(rawValue: rawMode) {
                 model.vizViewMode = mode
+            }
+            // Dev/testing hook: NEODISK_UPDATE_STATE=<checking|available|
+            // downloading|readyToInstall|upToDate|failed> forces the update
+            // pill into a non-idle state at launch (with inert closures), so
+            // headless snapshots can capture the toolbar indicator without a
+            // live Sparkle check.
+            if let rawUpdate = ProcessInfo.processInfo.environment["NEODISK_UPDATE_STATE"],
+               let forced = UpdateState.devState(named: rawUpdate) {
+                updates.viewModel.state = forced
             }
             // Dev/testing hook: NEODISK_AUTOREVEAL=<path> selects that node
             // once it is scanned, expanding its ancestors in the outline —

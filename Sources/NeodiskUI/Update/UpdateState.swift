@@ -118,6 +118,30 @@ enum UpdateState {
         }
     }
 
+    /// Dev/testing hook (NEODISK_UPDATE_STATE): builds a representative
+    /// non-idle state with inert closures so headless snapshots can show the
+    /// toolbar pill without driving a real Sparkle check. Not used in
+    /// shipping flows.
+    static func devState(named name: String) -> UpdateState? {
+        let noop: () -> Void = {}
+        switch name {
+        case "checking":
+            return .checking(cancel: noop)
+        case "available":
+            return .available(version: "2.99.0", install: noop, dismiss: noop)
+        case "downloading":
+            return .downloading(received: 4_200_000, expected: 9_000_000, cancel: noop)
+        case "readyToInstall":
+            return .readyToInstall(install: noop, dismiss: noop)
+        case "upToDate":
+            return .upToDate
+        case "failed":
+            return .failed(message: "Update check failed.", dismiss: noop)
+        default:
+            return nil
+        }
+    }
+
     /// Answers the state's outstanding Sparkle reply with the dismissive
     /// choice, for when the indicator can no longer be shown.
     func cancel() {

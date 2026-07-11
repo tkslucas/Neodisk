@@ -9,6 +9,23 @@
 //
 
 import AppKit
+import SwiftUI
+
+/// Keeps the host window off Lucas's screen while a headless snapshot runs:
+/// moves it far offscreen and makes it transparent as soon as it is attached
+/// to a window, so `NEODISK_UI_SNAPSHOT` captures (via `cacheDisplay`, which
+/// reads the layer tree regardless of on-screen visibility) without the window
+/// ever appearing or stealing focus. Inert unless the env var is set.
+struct SnapshotWindowHider: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView { NSView() }
+
+    func updateNSView(_ view: NSView, context: Context) {
+        guard ProcessInfo.processInfo.environment["NEODISK_UI_SNAPSHOT"] != nil,
+              let window = view.window else { return }
+        window.alphaValue = 0
+        window.setFrameOrigin(CGPoint(x: -30_000, y: -30_000))
+    }
+}
 
 @MainActor
 final class DebugSnapshotter {
@@ -33,12 +50,20 @@ final class DebugSnapshotter {
     }
 
     private static func writeWindowSnapshot(of view: NSView, to path: String) {
-        guard let contentView = view.window?.contentView,
-              let rep = contentView.bitmapImageRepForCachingDisplay(in: contentView.bounds) else {
+        // Capture the window's frame view (superview of the content view) so
+        // the titlebar and toolbar are included — the content view alone omits
+        // the toolbar, which some snapshots need to verify (e.g. the update
+        // pill). Falls back to the content view if the frame view is absent.
+        guard let contentView = view.window?.contentView else {
             log("no content view to capture")
             return
         }
-        contentView.cacheDisplay(in: contentView.bounds, to: rep)
+        let target = contentView.superview ?? contentView
+        guard let rep = target.bitmapImageRepForCachingDisplay(in: target.bounds) else {
+            log("no bitmap rep to capture")
+            return
+        }
+        target.cacheDisplay(in: target.bounds, to: rep)
         guard let data = rep.representation(using: .png, properties: [:]) else {
             log("PNG encoding failed")
             return

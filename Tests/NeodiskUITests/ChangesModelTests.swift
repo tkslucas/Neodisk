@@ -12,7 +12,7 @@ import NeodiskKit
         let environment = try TestEnvironment()
         defer { environment.tearDown() }
         let target = makeTestTarget("/changes-vm/two-scans")
-        environment.pinnedFolderStore.add(target)
+        environment.sidebarFolderStore.add(target)
         // Two generations on disk: v1 has one file, v2 grew it and added one.
         try await environment.cache.save(makeSnapshot(
             target: target, files: [("report.pdf", 100)]
@@ -52,7 +52,7 @@ import NeodiskKit
         let environment = try TestEnvironment()
         defer { environment.tearDown() }
         let target = makeTestTarget("/changes-vm/first-scan")
-        environment.pinnedFolderStore.add(target)
+        environment.sidebarFolderStore.add(target)
         try await environment.cache.save(makeSnapshot(
             target: target, files: [("only.bin", 100)]
         ))
@@ -78,7 +78,7 @@ import NeodiskKit
         let environment = try TestEnvironment()
         defer { environment.tearDown() }
         let target = makeTestTarget("/changes-vm/clears")
-        environment.pinnedFolderStore.add(target)
+        environment.sidebarFolderStore.add(target)
         try await environment.cache.save(makeSnapshot(target: target, files: [("a.bin", 100)]))
         try await environment.cache.save(makeSnapshot(target: target, files: [("a.bin", 300)]))
 
@@ -105,7 +105,7 @@ import NeodiskKit
         let environment = try TestEnvironment()
         defer { environment.tearDown() }
         let target = makeTestTarget("/changes-vm/rotation")
-        environment.pinnedFolderStore.add(target)
+        environment.sidebarFolderStore.add(target)
         try await environment.cache.save(makeSnapshot(target: target, files: [("a.bin", 100)]))
         try await environment.cache.save(makeSnapshot(target: target, files: [("a.bin", 300)]))
 
@@ -140,7 +140,7 @@ import NeodiskKit
     private struct TestEnvironment {
         let cacheDirectory: URL
         let cache: ScanSnapshotCache
-        let pinnedFolderStore: PinnedFolderStore
+        let sidebarFolderStore: SidebarFolderStore
         let defaults: UserDefaults
         private let defaultsSuiteName: String
 
@@ -150,14 +150,14 @@ import NeodiskKit
             cache = ScanSnapshotCache(directoryURL: cacheDirectory, isLoggingEnabled: false)
             defaultsSuiteName = "NeodiskChangesTests-\(UUID().uuidString)"
             defaults = try #require(UserDefaults(suiteName: defaultsSuiteName))
-            pinnedFolderStore = PinnedFolderStore(defaults: defaults)
+            sidebarFolderStore = SidebarFolderStore(defaults: defaults)
         }
 
         @MainActor
         func makeModel(policy: AutoRescanPolicy) -> NeodiskViewModel {
             let model = NeodiskViewModel(
                 snapshotCache: cache,
-                pinnedFolderStore: pinnedFolderStore
+                sidebarFolderStore: sidebarFolderStore
             )
             let preferences = AppPreferences(defaults: defaults)
             preferences.autoRescanPolicy = policy

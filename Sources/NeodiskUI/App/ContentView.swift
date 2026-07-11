@@ -205,10 +205,8 @@ public struct ContentView: View {
 private struct WelcomeView: View {
     let model: NeodiskViewModel
 
-    private let targets = SystemIntegration.defaultTargets()
-
     private var startupVolume: ScanTarget? {
-        targets.first { $0.kind == .volume }
+        SystemIntegration.volumeTargets().first
     }
 
     var body: some View {

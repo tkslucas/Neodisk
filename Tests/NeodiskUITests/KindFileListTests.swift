@@ -15,7 +15,7 @@ import NeodiskKit
         defer { removeTestDefaultsSuite(defaults, named: defaultsSuiteName) }
         let model = NeodiskViewModel(
             snapshotCache: ScanSnapshotCache(directoryURL: cacheDirectory, isLoggingEnabled: false),
-            pinnedFolderStore: PinnedFolderStore(defaults: defaults)
+            sidebarFolderStore: SidebarFolderStore(defaults: defaults)
         )
 
         let movie = makeTestFileNode(id: "/kinds/movie.mp4", name: "movie.mp4", size: 3_000)
@@ -75,7 +75,7 @@ import NeodiskKit
         defer { removeTestDefaultsSuite(defaults, named: defaultsSuiteName) }
         let model = NeodiskViewModel(
             snapshotCache: ScanSnapshotCache(directoryURL: cacheDirectory, isLoggingEnabled: false),
-            pinnedFolderStore: PinnedFolderStore(defaults: defaults)
+            sidebarFolderStore: SidebarFolderStore(defaults: defaults)
         )
 
         let report = makeTestFileNode(id: "/scan/docs/report.pdf", name: "report.pdf", size: 500)

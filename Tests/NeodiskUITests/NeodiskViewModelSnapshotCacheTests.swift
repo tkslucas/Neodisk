@@ -11,7 +11,7 @@ import NeodiskKit
         let environment = try TestEnvironment()
         defer { environment.tearDown() }
         let target = makeTestTarget("/cache-vm/pinned")
-        environment.pinnedFolderStore.add(target)
+        environment.sidebarFolderStore.add(target)
         try await environment.cache.save(makeSimpleSnapshot(target: target))
 
         let model = environment.makeModel()
@@ -19,10 +19,10 @@ import NeodiskKit
             model.cachedScanInfo[target.id] != nil
         }
 
-        model.removePinnedFolders(ids: [target.id])
+        model.removeSidebarFolders(ids: [target.id])
 
         #expect(model.cachedScanInfo[target.id] == nil)
-        #expect(model.pinnedFolders.isEmpty)
+        #expect(model.sidebarFolders.isEmpty)
         try await waitUntilAsync("snapshot file deleted") {
             await environment.cache.loadSnapshot(for: target) == nil
         }
@@ -46,7 +46,7 @@ import NeodiskKit
         let environment = try TestEnvironment()
         defer { environment.tearDown() }
         let target = makeTestTarget("/cache-vm/scanned")
-        environment.pinnedFolderStore.add(target)
+        environment.sidebarFolderStore.add(target)
         let model = environment.makeModel()
 
         model.startScan(target)
@@ -77,7 +77,7 @@ import NeodiskKit
         let environment = try TestEnvironment()
         defer { environment.tearDown() }
         let target = makeTestTarget("/cache-vm/slow")
-        environment.pinnedFolderStore.add(target)
+        environment.sidebarFolderStore.add(target)
         // The last scan took four minutes — far past the auto-rescan
         // threshold, so selecting the target must show the snapshot and
         // leave rescanning to the user.
@@ -120,7 +120,7 @@ import NeodiskKit
         let environment = try TestEnvironment()
         defer { environment.tearDown() }
         let target = makeTestTarget("/cache-vm/fast-snapshot-only")
-        environment.pinnedFolderStore.add(target)
+        environment.sidebarFolderStore.add(target)
         // The last scan was instantaneous — smart would auto-rescan this,
         // but the snapshot-only policy must still display the snapshot and
         // leave rescanning to the notice or the toolbar.
@@ -156,7 +156,7 @@ import NeodiskKit
         let environment = try TestEnvironment()
         defer { environment.tearDown() }
         let target = makeTestTarget("/cache-vm/slow-automatic")
-        environment.pinnedFolderStore.add(target)
+        environment.sidebarFolderStore.add(target)
         // Four-minute last scan — smart would go snapshot-only, but the
         // automatic policy refreshes behind the cached snapshot, and the
         // decode-completion race check must not cancel that refresh.
@@ -187,7 +187,7 @@ import NeodiskKit
         let environment = try TestEnvironment()
         defer { environment.tearDown() }
         let target = makeTestTarget("/cache-vm/diffed")
-        environment.pinnedFolderStore.add(target)
+        environment.sidebarFolderStore.add(target)
         let model = environment.makeModel()
 
         // First scan: the file is 10 bytes.
@@ -249,7 +249,7 @@ import NeodiskKit
         let environment = try TestEnvironment()
         defer { environment.tearDown() }
         let target = makeTestTarget("/cache-vm/prefetched")
-        environment.pinnedFolderStore.add(target)
+        environment.sidebarFolderStore.add(target)
         let model = environment.makeModel()
         // Collapse the restore/rotate prefetch delay: this test asserts on
         // the prefetch result, not the first-paint deferral.
@@ -295,7 +295,7 @@ import NeodiskKit
         let environment = try TestEnvironment()
         defer { environment.tearDown() }
         let target = makeTestTarget("/cache-vm/auto-duplicates")
-        environment.pinnedFolderStore.add(target)
+        environment.sidebarFolderStore.add(target)
         let model = environment.makeModel()
         let preferences = AppPreferences(defaults: environment.defaults)
         preferences.autoScanDuplicates = true
@@ -318,7 +318,7 @@ import NeodiskKit
         let environment = try TestEnvironment()
         defer { environment.tearDown() }
         let target = makeTestTarget("/cache-vm/manual-duplicates")
-        environment.pinnedFolderStore.add(target)
+        environment.sidebarFolderStore.add(target)
         let model = environment.makeModel()
 
         model.startScan(target)
@@ -338,7 +338,7 @@ import NeodiskKit
         let environment = try TestEnvironment()
         defer { environment.tearDown() }
         let target = makeTestTarget("/cache-vm/restore-prefetch")
-        environment.pinnedFolderStore.add(target)
+        environment.sidebarFolderStore.add(target)
         // Two generations on disk: opening the snapshot without a rescan
         // must still prefetch the baseline from the rotated previous scan.
         try await environment.cache.save(makeSizedSnapshot(target: target, fileSize: 10))
@@ -374,7 +374,7 @@ import NeodiskKit
         let environment = try TestEnvironment()
         defer { environment.tearDown() }
         let target = makeTestTarget("/cache-vm/restore-duplicates")
-        environment.pinnedFolderStore.add(target)
+        environment.sidebarFolderStore.add(target)
         try await environment.cache.save(makeSimpleSnapshot(target: target))
 
         let model = environment.makeModel(policy: .snapshotOnly)
@@ -399,7 +399,7 @@ import NeodiskKit
         let environment = try TestEnvironment()
         defer { environment.tearDown() }
         let target = makeTestTarget("/cache-vm/restore-opted-out")
-        environment.pinnedFolderStore.add(target)
+        environment.sidebarFolderStore.add(target)
         try await environment.cache.save(makeSizedSnapshot(target: target, fileSize: 10))
         try await environment.cache.save(makeSizedSnapshot(target: target, fileSize: 25))
 
@@ -429,7 +429,7 @@ import NeodiskKit
         let cacheDirectory: URL
         let cache: ScanSnapshotCache
         let scanService: ControlledCacheScanService
-        let pinnedFolderStore: PinnedFolderStore
+        let sidebarFolderStore: SidebarFolderStore
         let defaults: UserDefaults
         private let defaultsSuiteName: String
 
@@ -440,7 +440,7 @@ import NeodiskKit
             scanService = ControlledCacheScanService()
             defaultsSuiteName = "NeodiskVMCacheTests-\(UUID().uuidString)"
             defaults = try #require(UserDefaults(suiteName: defaultsSuiteName))
-            pinnedFolderStore = PinnedFolderStore(defaults: defaults)
+            sidebarFolderStore = SidebarFolderStore(defaults: defaults)
         }
 
         /// Models get preferences the same way the app injects them
@@ -454,7 +454,7 @@ import NeodiskKit
                     progressThrottleDuration: .milliseconds(40)
                 ),
                 snapshotCache: cache,
-                pinnedFolderStore: pinnedFolderStore
+                sidebarFolderStore: sidebarFolderStore
             )
             if let policy {
                 let preferences = AppPreferences(defaults: defaults)

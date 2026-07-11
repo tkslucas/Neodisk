@@ -73,7 +73,7 @@ import NeodiskKit
         let model = NeodiskViewModel(
             coordinator: ScanCoordinator(scanService: HeldScanService()),
             snapshotCache: cache,
-            pinnedFolderStore: PinnedFolderStore(defaults: defaults)
+            sidebarFolderStore: SidebarFolderStore(defaults: defaults)
         )
         model.coordinator.replaceCurrentSnapshot(makeTestSnapshot(root: root, store: store))
 

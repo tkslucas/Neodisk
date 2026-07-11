@@ -232,10 +232,10 @@ private struct PrivacySettingsTab: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 Button("Clear Added Folders") {
-                    model.removePinnedFolders(ids: Set(model.pinnedFolders.map(\.id)))
+                    model.removeSidebarFolders(ids: Set(model.sidebarFolders.map(\.id)))
                     refreshSnapshotCacheSize()
                 }
-                .disabled(model.pinnedFolders.isEmpty)
+                .disabled(model.sidebarFolders.isEmpty)
             }
 
             Section("Scan Snapshots") {

@@ -140,7 +140,7 @@ import NeodiskKit
         let environment = try TestEnvironment()
         defer { environment.tearDown() }
         let target = makeTestTarget("/subtree/persisted")
-        environment.pinnedFolderStore.add(target)
+        environment.sidebarFolderStore.add(target)
         let model = environment.makeModel()
 
         // Full scan first: it persists and records the honest full-scan
@@ -188,7 +188,7 @@ import NeodiskKit
         let cacheDirectory: URL
         let cache: ScanSnapshotCache
         let scanService: ControlledSubtreeScanService
-        let pinnedFolderStore: PinnedFolderStore
+        let sidebarFolderStore: SidebarFolderStore
         private let defaults: UserDefaults
         private let defaultsSuiteName: String
 
@@ -199,7 +199,7 @@ import NeodiskKit
             scanService = ControlledSubtreeScanService()
             defaultsSuiteName = "NeodiskSubtreeTests-\(UUID().uuidString)"
             defaults = try #require(UserDefaults(suiteName: defaultsSuiteName))
-            pinnedFolderStore = PinnedFolderStore(defaults: defaults)
+            sidebarFolderStore = SidebarFolderStore(defaults: defaults)
         }
 
         @MainActor
@@ -210,7 +210,7 @@ import NeodiskKit
                     progressThrottleDuration: .milliseconds(40)
                 ),
                 snapshotCache: cache,
-                pinnedFolderStore: pinnedFolderStore
+                sidebarFolderStore: sidebarFolderStore
             )
         }
 

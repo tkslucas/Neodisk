@@ -74,30 +74,36 @@ enum SystemIntegration {
         return ScanTarget(url: url)
     }
 
-    nonisolated static func defaultTargets() -> [ScanTarget] {
-        let fileManager = FileManager.default
-        let homeDirectory = fileManager.homeDirectoryForCurrentUser
-        let downloadsDirectory = homeDirectory.appending(path: "Downloads", directoryHint: .isDirectory)
-        let desktopDirectory = homeDirectory.appending(path: "Desktop", directoryHint: .isDirectory)
-        let documentsDirectory = homeDirectory.appending(path: "Documents", directoryHint: .isDirectory)
-        let libraryDirectory = homeDirectory.appending(path: "Library", directoryHint: .isDirectory)
-        let applicationsDirectory = URL(filePath: "/Applications", directoryHint: .isDirectory)
+    /// Mounted volumes for the sidebar's Volumes section: the startup disk
+    /// first, then every other visible mounted volume. Never removable.
+    nonisolated static func volumeTargets() -> [ScanTarget] {
         let startupDisk = ScanTarget(url: URL(filePath: "/", directoryHint: .isDirectory), kind: .volume)
+        var targets = [startupDisk]
 
-        var targets = [startupDisk, ScanTarget(url: homeDirectory, kind: .folder)]
-        for url in [desktopDirectory, documentsDirectory, downloadsDirectory, libraryDirectory, applicationsDirectory] {
-            if fileManager.fileExists(atPath: url.path) {
-                targets.append(ScanTarget(url: url, kind: .folder))
-            }
-        }
-
-        let mountedVolumes = fileManager.mountedVolumeURLs(
+        let mountedVolumes = FileManager.default.mountedVolumeURLs(
             includingResourceValuesForKeys: [.volumeNameKey],
             options: [.skipHiddenVolumes]
         ) ?? []
-
         for volume in mountedVolumes where volume.path != "/" {
             targets.append(ScanTarget(url: volume, kind: .volume))
+        }
+
+        return deduplicate(targets)
+    }
+
+    /// The common folders the sidebar's Folders section is seeded with on
+    /// first launch. After seeding they are ordinary sidebar folders — the
+    /// user can remove any of them (unlike volumes and cloud locations).
+    nonisolated static func defaultFolderTargets() -> [ScanTarget] {
+        let fileManager = FileManager.default
+        let homeDirectory = fileManager.homeDirectoryForCurrentUser
+
+        var targets = [ScanTarget(url: homeDirectory, kind: .folder)]
+        let commonFolders = ["Desktop", "Documents", "Downloads", "Library"]
+            .map { homeDirectory.appending(path: $0, directoryHint: .isDirectory) }
+            + [URL(filePath: "/Applications", directoryHint: .isDirectory)]
+        for url in commonFolders where fileManager.fileExists(atPath: url.path) {
+            targets.append(ScanTarget(url: url, kind: .folder))
         }
 
         return deduplicate(targets)

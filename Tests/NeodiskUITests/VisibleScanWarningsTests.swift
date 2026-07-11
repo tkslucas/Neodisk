@@ -18,7 +18,7 @@ import NeodiskKit
         defer { removeTestDefaultsSuite(defaults, named: defaultsSuiteName) }
         let model = NeodiskViewModel(
             snapshotCache: ScanSnapshotCache(directoryURL: cacheDirectory, isLoggingEnabled: false),
-            pinnedFolderStore: PinnedFolderStore(defaults: defaults)
+            sidebarFolderStore: SidebarFolderStore(defaults: defaults)
         )
 
         // 150 unique warnings, each repeated twice (content-derived identity

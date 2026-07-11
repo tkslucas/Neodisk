@@ -154,9 +154,9 @@ struct SunburstLegendList: View {
             Button("Reveal in Finder") { model.reveal(node) }
             Button("Open") { model.open(node) }
             Button("Copy Path") { model.copyPath(node) }
-            if node.isAutoSummarized {
+            if let expansion = model.contentsExpansion(for: node) {
                 Divider()
-                Button("Expand Contents") { model.expandSummarizedNode(node) }
+                Button(LocalizedStringKey(expansion.menuTitleKey)) { model.expandNodeContents(node) }
                     .disabled(!model.canRefreshSubtree)
             }
         }

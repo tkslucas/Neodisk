@@ -121,7 +121,7 @@ nonisolated enum SunburstColorResolver {
             siblingIndex: 0,
             siblingCount: 1,
             depth: depth,
-            role: treeStore.node(id: nodeID)?.isSunburstFolder == false ? .file : .normal
+            role: treeStore.node(id: nodeID)?.isSunburstFolder(in: treeStore) == false ? .file : .normal
         )
         return color(for: token, palette: palette)
     }

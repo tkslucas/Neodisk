@@ -138,6 +138,7 @@
 "Open" = "Ouvrir";
 "Copy Path" = "Copier le chemin";
 "Expand Contents" = "Développer le contenu";
+"Show Package Contents" = "Afficher le contenu du paquet";
 "No matches" = "Aucun résultat";
 "Top %@ of %@ matches — refine to narrow" = "%@ premiers résultats sur %@ — affinez pour réduire";
 

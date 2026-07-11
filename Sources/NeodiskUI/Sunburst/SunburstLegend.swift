@@ -77,7 +77,7 @@ enum SunburstLegend {
             if let segment = segmentByNodeID[child.id] {
                 rows.append(SunburstLegendRow(
                     id: child.id,
-                    target: .node(id: child.id, isDirectory: child.isSunburstFolder),
+                    target: .node(id: child.id, isDirectory: child.isSunburstFolder(in: store)),
                     label: child.name,
                     size: child.allocatedSize,
                     dotColor: SunburstChartStyler.baseStyle(for: segment).fillColor,
@@ -93,7 +93,7 @@ enum SunburstLegend {
                 // depth limit): color the row the way the chart would.
                 rows.append(SunburstLegendRow(
                     id: child.id,
-                    target: .node(id: child.id, isDirectory: child.isSunburstFolder),
+                    target: .node(id: child.id, isDirectory: child.isSunburstFolder(in: store)),
                     label: child.name,
                     size: child.allocatedSize,
                     dotColor: fallbackDotColor(for: child, chartRootID: chartRootID, in: store, style: style),
@@ -149,7 +149,7 @@ enum SunburstLegend {
         }
         return SunburstLegendRow(
             id: "header-\(folder.id)",
-            target: .node(id: folder.id, isDirectory: folder.isSunburstFolder),
+            target: .node(id: folder.id, isDirectory: folder.isSunburstFolder(in: store)),
             label: folder.name,
             size: folder.allocatedSize,
             dotColor: dotColor,
@@ -201,7 +201,7 @@ enum SunburstLegend {
             siblingIndex: 0,
             siblingCount: 1,
             depth: depth,
-            role: node.isSunburstFolder ? .normal : .file
+            role: node.isSunburstFolder(in: store) ? .normal : .file
         )
         let synthetic = SunburstSegment(
             id: "legend-\(node.id)",

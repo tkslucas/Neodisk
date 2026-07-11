@@ -15,11 +15,14 @@ import NeodiskKit
 
 extension FileNodeRecord {
     /// Whether the sunburst treats this node as a drillable folder. Packages
-    /// (.app, .imovielibrary, …) are directories on disk, but the scan never
-    /// descends into them (`.skipsPackageDescendants`), so the sunburst
-    /// treats them as files: gray in branch mode, Quick Look on click,
-    /// never a drill target.
-    nonisolated var isSunburstFolder: Bool { isDirectory && !isPackage }
+    /// (.app, .imovielibrary, …) are directories on disk, but the scan keeps
+    /// them opaque, so the sunburst treats them as files: gray in branch
+    /// mode, Quick Look on click, never a drill target. Once "Show Package
+    /// Contents" splices a package's children into the store it behaves like
+    /// any other folder.
+    nonisolated func isSunburstFolder(in store: FileTreeStore) -> Bool {
+        isDirectory && (!isPackage || store.containsChildren(id: id))
+    }
 }
 
 /// How sunburst segments are colored, derived from the active analysis tab:
@@ -292,7 +295,7 @@ enum SunburstLayout {
                 depth: depth,
                 role: entry.isAggregate
                     ? .aggregate
-                    : ((entry.node?.isSunburstFolder ?? true) ? .normal : .file)
+                    : ((entry.node?.isSunburstFolder(in: treeStore) ?? true) ? .normal : .file)
             )
             let segment = SunburstSegment(
                 id: entry.id,
@@ -416,7 +419,7 @@ enum SunburstLayout {
         case .kind:
             rgb = style.catalog.rgb(for: node)
         case .age(let referenceDate):
-            if FileKindClassifier.isKindCountable(node) {
+            if FileKindClassifier.isLeafLike(node) {
                 rgb = style.palette.ageRGB(AgeBucket.bucket(for: node.lastModified, reference: referenceDate))
             } else {
                 rgb = FileKindCatalog.directoryRGB
@@ -443,7 +446,7 @@ enum SunburstLayout {
             return FileKindClassifier.kindID(for: node, mode: catalog.mode) == kindID
         case .ageBucket(let bucket):
             guard case .age(let referenceDate) = mode,
-                  FileKindClassifier.isKindCountable(node) else { return false }
+                  FileKindClassifier.isLeafLike(node) else { return false }
             return AgeBucket.bucket(for: node.lastModified, reference: referenceDate) == bucket
         case .nodes(let ids):
             return ids.contains(node.id)

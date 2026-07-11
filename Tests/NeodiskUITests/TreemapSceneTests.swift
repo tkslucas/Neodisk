@@ -396,9 +396,6 @@ import NeodiskKit
         let appNode = makeNode("Word.app", size: 5_000, isPackage: true, isDirectory: true)
         let fileNode = makeNode("movie.mp4", size: 2_000)
         let plainDir = makeNode("sub", size: 0, isDirectory: true)
-        #expect(FileKindClassifier.isKindCountable(appNode))
-        #expect(FileKindClassifier.isKindCountable(fileNode))
-        #expect(!FileKindClassifier.isKindCountable(plainDir))
 
         let rootURL = URL(filePath: "/c", directoryHint: .isDirectory)
         let children = FileTreeStore.sortedChildren([appNode, fileNode])
@@ -407,6 +404,9 @@ import NeodiskKit
             lastModified: nil, isPackage: false, isAccessible: true, childrenAreSorted: true
         )
         let store = FileTreeStore(root: root, childrenByID: ["/c": children])
+        #expect(FileKindClassifier.isKindCountable(appNode, in: store))
+        #expect(FileKindClassifier.isKindCountable(fileNode, in: store))
+        #expect(!FileKindClassifier.isKindCountable(plainDir, in: store))
 
         let types = FileKindCatalog.build(from: store, mode: .types)
         #expect(types.stats.contains { $0.kind.id == "app" && $0.totalAllocatedSize == 5_000 })
@@ -414,6 +414,40 @@ import NeodiskKit
         let categories = FileKindCatalog.build(from: store, mode: .categories)
         #expect(categories.stats.first?.kind.id == "cat-apps")
         #expect(categories.stats.contains { $0.kind.id == "cat-video" })
+    }
+
+    /// Once "Show Package Contents" splices a package's children into the
+    /// store, the files inside are counted individually and the package
+    /// itself no longer is — counting both would double its size.
+    @Test func expandedPackagesCountTheirContentsInstead() {
+        let binary = FileNodeRecord(
+            id: "/c/Word.app/Contents", url: URL(filePath: "/c/Word.app/Contents"), name: "Contents",
+            isDirectory: false, isSymbolicLink: false,
+            allocatedSize: 5_000, logicalSize: 5_000, descendantFileCount: 0,
+            lastModified: nil, isPackage: false, isAccessible: true,
+            isSelfAccessible: true, isSynthetic: false, isAutoSummarized: false
+        )
+        let appNode = makeNode("Word.app", size: 5_000, isPackage: true, isDirectory: true)
+        let rootURL = URL(filePath: "/c", directoryHint: .isDirectory)
+        let root = FileNodeRecord.directory(
+            id: "/c", url: rootURL, name: "c", children: [appNode],
+            lastModified: nil, isPackage: false, isAccessible: true, childrenAreSorted: true
+        )
+        let store = FileTreeStore(root: root, childrenByID: [
+            "/c": [appNode],
+            appNode.id: [binary],
+        ])
+
+        #expect(!FileKindClassifier.isKindCountable(appNode, in: store))
+        #expect(FileKindClassifier.isKindCountable(binary, in: store))
+        // Display identity is unchanged: an expanded package still reads and
+        // colors as an app, not as a plain folder.
+        #expect(FileKindClassifier.isLeafLike(appNode))
+        #expect(FileKindClassifier.kindID(for: appNode, mode: .categories) == "cat-apps")
+
+        let categories = FileKindCatalog.build(from: store, mode: .categories)
+        let totalCounted = categories.stats.reduce(Int64(0)) { $0 + $1.totalAllocatedSize }
+        #expect(totalCounted == 5_000)
     }
 }
 

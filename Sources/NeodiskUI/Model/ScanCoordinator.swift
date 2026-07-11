@@ -356,15 +356,15 @@ final class ScanCoordinator {
         }
     }
 
-    /// Scans an auto-summarized folder's real contents and splices them
-    /// into the displayed tree, returning how the expansion ended. A newer
-    /// expansion, a snapshot removal, or stopScan cancels the awaited work
-    /// (the call then returns `.cancelled`).
-    func expandSummarizedNode(
+    /// Scans an auto-summarized folder's or a package's real contents and
+    /// splices them into the displayed tree, returning how the expansion
+    /// ended. A newer expansion, a snapshot removal, or stopScan cancels the
+    /// awaited work (the call then returns `.cancelled`).
+    func expandNodeContents(
         _ node: FileNodeRecord,
         options: ScanOptions
     ) async -> ScanExpansionResult {
-        guard node.isAutoSummarized else { return .skipped }
+        guard node.isAutoSummarized || (node.isPackage && node.isDirectory) else { return .skipped }
         cancelExpansion()
 
         let expansionID = UUID()

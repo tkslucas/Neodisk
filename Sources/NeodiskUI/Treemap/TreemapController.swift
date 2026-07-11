@@ -223,10 +223,10 @@ final class TreemapController {
         menu.addItem(ClosureMenuItem(title: NSLocalizedString("Copy Path", comment: "Treemap context menu")) { model.copyPath(node) })
 
         // Same subtree action as the outline's context menu: summarized
-        // folders expand their contents in place.
-        if node.isAutoSummarized {
+        // folders and opaque packages expand their contents in place.
+        if let expansion = model.contentsExpansion(for: node) {
             menu.addItem(.separator())
-            let item = ClosureMenuItem(title: NSLocalizedString("Expand Contents", comment: "Treemap context menu")) { model.expandSummarizedNode(node) }
+            let item = ClosureMenuItem(title: NSLocalizedString(expansion.menuTitleKey, comment: "Treemap context menu")) { model.expandNodeContents(node) }
             item.isEnabled = model.canRefreshSubtree
             menu.addItem(item)
         }

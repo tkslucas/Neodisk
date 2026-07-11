@@ -32,7 +32,7 @@ struct SnapshotSearchIndex: Sendable {
                 allocatedSize: node.allocatedSize,
                 categoryKindID: FileKindClassifier.kindID(for: node, mode: .categories),
                 typeKindID: FileKindClassifier.kindID(for: node, mode: .types),
-                isKindCountable: FileKindClassifier.isKindCountable(node),
+                isKindCountable: FileKindClassifier.isKindCountable(node, in: store),
                 lastModified: node.lastModified
             ))
         }

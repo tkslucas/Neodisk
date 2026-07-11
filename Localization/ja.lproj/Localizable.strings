@@ -138,6 +138,7 @@
 "Open" = "開く";
 "Copy Path" = "パスをコピー";
 "Expand Contents" = "内容を展開";
+"Show Package Contents" = "パッケージの内容を表示";
 "No matches" = "一致なし";
 "Top %@ of %@ matches — refine to narrow" = "%2$@件中上位%1$@件を表示 — 絞り込むには条件を追加";
 

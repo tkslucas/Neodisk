@@ -23,8 +23,9 @@ extension View {
     /// treemap cell. No-ops for nodes without file actions (e.g. the
     /// synthetic "System Data" node).
     ///
-    /// `includeExpandContents` adds the outline tree's "Expand Contents"
-    /// item for auto-summarized folders.
+    /// `includeExpandContents` adds the outline tree's "Expand Contents" /
+    /// "Show Package Contents" item for auto-summarized folders and opaque
+    /// packages.
     func fileNodeActions(
         model: NeodiskViewModel, includeExpandContents: Bool = false
     ) -> some View {
@@ -34,9 +35,9 @@ extension View {
                 Button("Reveal in Finder") { model.reveal(node) }
                 Button("Open") { model.open(node) }
                 Button("Copy Path") { model.copyPath(node) }
-                if includeExpandContents, node.isAutoSummarized {
+                if includeExpandContents, let expansion = model.contentsExpansion(for: node) {
                     Divider()
-                    Button("Expand Contents") { model.expandSummarizedNode(node) }
+                    Button(LocalizedStringKey(expansion.menuTitleKey)) { model.expandNodeContents(node) }
                         .disabled(!model.canRefreshSubtree)
                 }
             }

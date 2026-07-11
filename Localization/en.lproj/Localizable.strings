@@ -138,6 +138,7 @@
 "Open" = "Open";
 "Copy Path" = "Copy Path";
 "Expand Contents" = "Expand Contents";
+"Show Package Contents" = "Show Package Contents";
 "No matches" = "No matches";
 "Top %@ of %@ matches — refine to narrow" = "Top %@ of %@ matches — refine to narrow";
 

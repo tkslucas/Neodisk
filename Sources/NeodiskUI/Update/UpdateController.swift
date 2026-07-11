@@ -5,8 +5,8 @@
 //  Owns the Sparkle updater for the packaged app. Unbundled `swift run`
 //  builds (no bundle identifier) and bundles without a configured SUFeedURL
 //  never create an updater — the menu item stays disabled and Settings shows
-//  a note instead. See UpdateSupport for the gate and Packaging/SPARKLE.md
-//  for the release-side requirements.
+//  a note instead. See UpdateSupport for the gate; the release-side
+//  requirements (EdDSA keys, appcast) live in the release docs.
 //
 
 import AppKit

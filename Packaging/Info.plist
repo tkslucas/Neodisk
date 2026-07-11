@@ -47,8 +47,8 @@
 	<false/>
 	<key>NSSupportsSuddenTermination</key>
 	<false/>
-	<!-- Sparkle auto-updates (see Packaging/SPARKLE.md). The appcast is
-	     attached to every GitHub release under the fixed "latest" URL. -->
+	<!-- Sparkle auto-updates. The appcast is attached to every GitHub
+	     release under the fixed "latest" URL. -->
 	<key>SUFeedURL</key>
 	<string>https://github.com/tkslucas/Neodisk/releases/latest/download/appcast.xml</string>
 	<!-- Automatic background checks are opt-in via Settings; shipping this
@@ -56,8 +56,8 @@
 	<key>SUEnableAutomaticChecks</key>
 	<false/>
 	<!-- TODO(release): replace with the EdDSA public key printed by Sparkle's
-	     generate_keys before shipping updates — see Packaging/SPARKLE.md.
-	     The private key must never be committed anywhere. -->
+	     generate_keys before shipping updates. The private key must never be
+	     committed anywhere. -->
 	<key>SUPublicEDKey</key>
 	<string></string>
 	<key>NSDesktopFolderUsageDescription</key>

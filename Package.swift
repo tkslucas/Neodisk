@@ -39,7 +39,11 @@ let package = Package(
         // The Command Line Tools toolchain ships without XCTest or Swift
         // Testing; depending on swift-testing explicitly lets `swift test`
         // work with no Xcode installed. Full Xcode toolchains work too.
-        .package(url: "https://github.com/swiftlang/swift-testing.git", from: "6.3.0")
+        .package(url: "https://github.com/swiftlang/swift-testing.git", from: "6.3.0"),
+        // Sparkle powers auto-updates for the packaged .app (GitHub releases
+        // appcast). Ships as a prebuilt xcframework, so it works on the
+        // Command Line Tools toolchain. See Packaging/SPARKLE.md.
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.7.0")
     ],
     targets: [
         // UI-free scanning core: models + services. Foundation/Darwin/
@@ -66,7 +70,8 @@ let package = Package(
             name: "NeodiskUI",
             dependencies: [
                 "NeodiskKit",
-                "TreemapKit"
+                "TreemapKit",
+                .product(name: "Sparkle", package: "Sparkle")
             ],
             path: "Sources/NeodiskUI"
         ),

@@ -81,7 +81,7 @@
 "Use scan exclusions" = "Usar exclusões de análise";
 "One pattern per line. Trailing “/” matches folders; “*” is a wildcard." = "Um padrão por linha. “/” no final corresponde a pastas; “*” é um curinga.";
 "Add Presets" = "Adicionar Predefinições";
-"Show free space in treemap" = "Mostrar espaço livre no treemap";
+"Show free space in visualizations" = "Mostrar espaço livre nas visualizações";
 "Free space appears only for volume scans and uses macOS available capacity, which can include purgeable APFS space. Applies immediately." = "O espaço livre aparece apenas para análises de volume e usa a capacidade disponível do macOS, que pode incluir espaço APFS descartável. Aplica-se imediatamente.";
 "Workspace" = "Espaço de Trabalho";
 "Show Welcome Screen" = "Mostrar Tela de Boas-Vindas";
@@ -121,7 +121,7 @@
 "Welcome to Neodisk" = "Bem-vindo ao Neodisk";
 "Scan folders and disks to see where space is going.\nNeodisk is read-only: it never modifies or deletes files." = "Analise pastas e discos para ver para onde o espaço está indo.\nO Neodisk é somente leitura: nunca modifica ou exclui arquivos.";
 "Explore the treemap" = "Explore o treemap";
-"Hover to inspect. Click to select. Pinch or scroll to move around. Double-click or right-click to Reveal in Finder." = "Passe o cursor para inspecionar. Clique para selecionar. Aproxime ou afaste os dedos, ou role, para navegar. Dê um clique duplo ou clique com o botão direito para Mostrar no Finder.";
+"Hover to inspect. Click to select. Pinch or scroll to move around. Double-click or right-click to Reveal in Finder. Switch between treemap and sunburst in the toolbar." = "Passe o cursor para inspecionar. Clique para selecionar. Aproxime ou afaste os dedos, ou role, para navegar. Dê um clique duplo ou clique com o botão direito para Mostrar no Finder. Alterne entre o treemap e o gráfico Sunburst na barra de ferramentas.";
 "Read-only access" = "Acesso somente leitura";
 "Neodisk is purely a visualizer: it only ever reads your disk and cannot delete files or move them to the Trash — by design. To clean something up, right-click it, Reveal in Finder, and delete it there." = "O Neodisk é puramente um visualizador: ele apenas lê seu disco e não pode excluir arquivos nem movê-los para a Lixeira — por design. Para limpar algo, clique com o botão direito, escolha Mostrar no Finder e exclua por lá.";
 "Enabled" = "Ativado";

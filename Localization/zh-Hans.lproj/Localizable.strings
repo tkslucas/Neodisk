@@ -80,7 +80,7 @@
 "Use scan exclusions" = "使用扫描排除项";
 "One pattern per line. Trailing “/” matches folders; “*” is a wildcard." = "每行一个模式。末尾加“/”表示匹配文件夹；“*”为通配符。";
 "Add Presets" = "添加预设";
-"Show free space in treemap" = "在矩形树图中显示可用空间";
+"Show free space in visualizations" = "在可视化视图中显示可用空间";
 "Free space appears only for volume scans and uses macOS available capacity, which can include purgeable APFS space. Applies immediately." = "可用空间仅在扫描整个宗卷时显示，使用 macOS 报告的可用容量，其中可能包含可清除的 APFS 空间。更改立即生效。";
 "Workspace" = "工作区";
 "Show Welcome Screen" = "显示欢迎界面";
@@ -120,7 +120,7 @@
 "Welcome to Neodisk" = "欢迎使用 Neodisk";
 "Scan folders and disks to see where space is going.\nNeodisk is read-only: it never modifies or deletes files." = "扫描文件夹和磁盘，了解空间都去哪儿了。\nNeodisk 是只读的：它绝不会修改或删除文件。";
 "Explore the treemap" = "探索矩形树图";
-"Hover to inspect. Click to select. Pinch or scroll to move around. Double-click or right-click to Reveal in Finder." = "悬停以查看详情，点按以选择，双指缩放或滚动以移动视图，双击或右键点按可在访达中显示。";
+"Hover to inspect. Click to select. Pinch or scroll to move around. Double-click or right-click to Reveal in Finder. Switch between treemap and sunburst in the toolbar." = "悬停以查看详情，点按以选择，双指缩放或滚动以移动视图，双击或右键点按可在访达中显示。可在工具栏中切换矩形树图和旭日图。";
 "Read-only access" = "只读访问";
 "Neodisk is purely a visualizer: it only ever reads your disk and cannot delete files or move them to the Trash — by design. To clean something up, right-click it, Reveal in Finder, and delete it there." = "Neodisk 纯粹是一个可视化工具：按照设计，它只会读取你的磁盘，无法删除文件或将其移到废纸篓。如需清理内容，请右键点按该项目，选择“在访达中显示”，然后在访达中删除。";
 "Enabled" = "已启用";

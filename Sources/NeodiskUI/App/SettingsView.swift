@@ -111,7 +111,7 @@ private struct GeneralSettingsTab: View {
             }
 
             Section("Visualization") {
-                Toggle("Show free space in treemap", isOn: $preferences.showFreeSpace)
+                Toggle("Show free space in visualizations", isOn: $preferences.showFreeSpace)
                 Text("Free space appears only for volume scans and uses macOS available capacity, which can include purgeable APFS space. Applies immediately.")
                     .font(.callout)
                     .foregroundStyle(.secondary)

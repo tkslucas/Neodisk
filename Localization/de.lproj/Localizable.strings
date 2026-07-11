@@ -80,7 +80,7 @@
 "Use scan exclusions" = "Scan-Ausschlüsse verwenden";
 "One pattern per line. Trailing “/” matches folders; “*” is a wildcard." = "Ein Muster pro Zeile. Ein abschließendes „/“ steht für Ordner; „*“ ist ein Platzhalter.";
 "Add Presets" = "Voreinstellungen hinzufügen";
-"Show free space in treemap" = "Freien Speicherplatz in der Treemap anzeigen";
+"Show free space in visualizations" = "Freien Speicherplatz in den Visualisierungen anzeigen";
 "Free space appears only for volume scans and uses macOS available capacity, which can include purgeable APFS space. Applies immediately." = "Freier Speicherplatz erscheint nur bei Volume-Scans und verwendet die von macOS gemeldete verfügbare Kapazität, die bereinigbaren APFS-Speicher einschließen kann. Gilt sofort.";
 "Workspace" = "Arbeitsbereich";
 "Show Welcome Screen" = "Willkommensbildschirm anzeigen";
@@ -120,7 +120,7 @@
 "Welcome to Neodisk" = "Willkommen bei Neodisk";
 "Scan folders and disks to see where space is going.\nNeodisk is read-only: it never modifies or deletes files." = "Scanne Ordner und Datenträger, um zu sehen, wohin der Speicherplatz geht.\nNeodisk ist rein lesend: Es verändert oder löscht niemals Dateien.";
 "Explore the treemap" = "Die Treemap erkunden";
-"Hover to inspect. Click to select. Pinch or scroll to move around. Double-click or right-click to Reveal in Finder." = "Bewege den Zeiger darüber, um zu untersuchen. Klicke zum Auswählen. Zoome mit zwei Fingern oder scrolle zum Navigieren. Doppelklicke oder klicke mit der rechten Maustaste für „Im Finder zeigen“.";
+"Hover to inspect. Click to select. Pinch or scroll to move around. Double-click or right-click to Reveal in Finder. Switch between treemap and sunburst in the toolbar." = "Bewege den Zeiger darüber, um zu untersuchen. Klicke zum Auswählen. Zoome mit zwei Fingern oder scrolle zum Navigieren. Doppelklicke oder klicke mit der rechten Maustaste für „Im Finder zeigen“. Wechsle in der Symbolleiste zwischen Treemap und Sunburst.";
 "Read-only access" = "Nur lesender Zugriff";
 "Neodisk is purely a visualizer: it only ever reads your disk and cannot delete files or move them to the Trash — by design. To clean something up, right-click it, Reveal in Finder, and delete it there." = "Neodisk ist ein reines Visualisierungswerkzeug: Es liest deinen Datenträger nur und kann Dateien nicht löschen oder in den Papierkorb verschieben — das ist so gewollt. Um etwas aufzuräumen, klicke mit der rechten Maustaste darauf, wähle „Im Finder zeigen“ und lösche es dort.";
 "Enabled" = "Aktiviert";

@@ -80,7 +80,7 @@
 "Use scan exclusions" = "スキャン除外を使用";
 "One pattern per line. Trailing “/” matches folders; “*” is a wildcard." = "1行につき1つのパターン。末尾の「/」はフォルダに一致し、「*」はワイルドカードです。";
 "Add Presets" = "プリセットを追加";
-"Show free space in treemap" = "ツリーマップに空き容量を表示";
+"Show free space in visualizations" = "ビジュアライゼーションに空き容量を表示";
 "Free space appears only for volume scans and uses macOS available capacity, which can include purgeable APFS space. Applies immediately." = "空き容量はボリュームのスキャン時にのみ表示され、macOSの利用可能容量を使用します。これには消去可能なAPFS領域が含まれる場合があります。すぐに適用されます。";
 "Workspace" = "ワークスペース";
 "Show Welcome Screen" = "ようこそ画面を表示";
@@ -120,7 +120,7 @@
 "Welcome to Neodisk" = "Neodiskへようこそ";
 "Scan folders and disks to see where space is going.\nNeodisk is read-only: it never modifies or deletes files." = "フォルダやディスクをスキャンして、容量の使用状況を確認できます。\nNeodiskは読み取り専用で、ファイルを変更または削除することはありません。";
 "Explore the treemap" = "ツリーマップを操作する";
-"Hover to inspect. Click to select. Pinch or scroll to move around. Double-click or right-click to Reveal in Finder." = "ポインタを合わせて詳細を確認します。クリックして選択します。ピンチまたはスクロールで移動します。ダブルクリックまたは右クリックでFinderに表示します。";
+"Hover to inspect. Click to select. Pinch or scroll to move around. Double-click or right-click to Reveal in Finder. Switch between treemap and sunburst in the toolbar." = "ポインタを合わせて詳細を確認します。クリックして選択します。ピンチまたはスクロールで移動します。ダブルクリックまたは右クリックでFinderに表示します。ツールバーでツリーマップとサンバーストを切り替えられます。";
 "Read-only access" = "読み取り専用アクセス";
 "Neodisk is purely a visualizer: it only ever reads your disk and cannot delete files or move them to the Trash — by design. To clean something up, right-click it, Reveal in Finder, and delete it there." = "Neodiskは純粋なビジュアライザーです。ディスクを読み取るだけで、設計上、ファイルの削除やゴミ箱への移動は一切できません。何かを整理するには、右クリックしてFinderに表示し、そこで削除してください。";
 "Enabled" = "有効";

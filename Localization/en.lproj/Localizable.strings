@@ -80,7 +80,7 @@
 "Use scan exclusions" = "Use scan exclusions";
 "One pattern per line. Trailing “/” matches folders; “*” is a wildcard." = "One pattern per line. Trailing “/” matches folders; “*” is a wildcard.";
 "Add Presets" = "Add Presets";
-"Show free space in treemap" = "Show free space in treemap";
+"Show free space in visualizations" = "Show free space in visualizations";
 "Free space appears only for volume scans and uses macOS available capacity, which can include purgeable APFS space. Applies immediately." = "Free space appears only for volume scans and uses macOS available capacity, which can include purgeable APFS space. Applies immediately.";
 "Workspace" = "Workspace";
 "Show Welcome Screen" = "Show Welcome Screen";
@@ -120,7 +120,7 @@
 "Welcome to Neodisk" = "Welcome to Neodisk";
 "Scan folders and disks to see where space is going.\nNeodisk is read-only: it never modifies or deletes files." = "Scan folders and disks to see where space is going.\nNeodisk is read-only: it never modifies or deletes files.";
 "Explore the treemap" = "Explore the treemap";
-"Hover to inspect. Click to select. Pinch or scroll to move around. Double-click or right-click to Reveal in Finder." = "Hover to inspect. Click to select. Pinch or scroll to move around. Double-click or right-click to Reveal in Finder.";
+"Hover to inspect. Click to select. Pinch or scroll to move around. Double-click or right-click to Reveal in Finder. Switch between treemap and sunburst in the toolbar." = "Hover to inspect. Click to select. Pinch or scroll to move around. Double-click or right-click to Reveal in Finder. Switch between treemap and sunburst in the toolbar.";
 "Read-only access" = "Read-only access";
 "Neodisk is purely a visualizer: it only ever reads your disk and cannot delete files or move them to the Trash — by design. To clean something up, right-click it, Reveal in Finder, and delete it there." = "Neodisk is purely a visualizer: it only ever reads your disk and cannot delete files or move them to the Trash — by design. To clean something up, right-click it, Reveal in Finder, and delete it there.";
 "Enabled" = "Enabled";

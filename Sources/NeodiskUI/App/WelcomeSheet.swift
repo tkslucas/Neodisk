@@ -42,7 +42,7 @@ struct WelcomeSheet: View {
             Label {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Explore the treemap").fontWeight(.semibold)
-                    Text("Hover to inspect. Click to select. Pinch or scroll to move around. Double-click or right-click to Reveal in Finder.")
+                    Text("Hover to inspect. Click to select. Pinch or scroll to move around. Double-click or right-click to Reveal in Finder. Switch between treemap and sunburst in the toolbar.")
                         .foregroundStyle(.secondary)
                 }
             } icon: {

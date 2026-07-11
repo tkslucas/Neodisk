@@ -103,21 +103,25 @@ struct SunburstChartView: View {
         }
     }
 
-    @ViewBuilder
     private func accessibleChart(baseChartFrame: CGRect, now: Date) -> some View {
-        let chart = interactiveChart(baseChartFrame: baseChartFrame, now: now)
+        interactiveChart(baseChartFrame: baseChartFrame, now: now)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Disk usage chart")
             .accessibilityValue(Text(verbatim: accessibilityValue))
             .accessibilityHint(accessibilityHint)
-
-        if let parentNode {
-            chart.accessibilityAction(named: Text(verbatim: goUpText(to: parentNode))) {
-                onNavigateToParent()
+            // One stable identity with the action built conditionally
+            // INSIDE: an if/else around the chart itself gave the two
+            // branches different SwiftUI identities, so drilling away from
+            // the scan root (parentNode nil → non-nil) recreated the whole
+            // subtree — including the interaction overlay's NSView, which
+            // silently dropped key focus mid-keyboard-navigation.
+            .accessibilityActions {
+                if let parentNode {
+                    Button(goUpText(to: parentNode)) {
+                        onNavigateToParent()
+                    }
+                }
             }
-        } else {
-            chart
-        }
     }
 
     private func interactiveChart(baseChartFrame: CGRect, now: Date) -> some View {

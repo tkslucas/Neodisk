@@ -125,7 +125,8 @@ struct SunburstPane: View {
     }
 
     /// Free space belongs to the volume as a whole; hide it once the user
-    /// drills into a subfolder (same gate as TreemapPane).
+    /// drills into a subfolder. Unlike the treemap the sunburst shows it
+    /// unconditionally for volume scans — no Settings toggle here.
     private var gatedFreeSpaceBytes: Int64? {
         model.zoomRootID == nil ? model.freeSpaceBytes : nil
     }

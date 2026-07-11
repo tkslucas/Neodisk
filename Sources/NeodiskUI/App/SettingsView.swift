@@ -113,8 +113,8 @@ private struct GeneralSettingsTab: View {
             }
 
             Section("Visualization") {
-                Toggle("Show free space in visualizations", isOn: $preferences.showFreeSpace)
-                Text("Free and hidden space appear only for volume scans. Free space uses macOS available capacity; hidden space is the remaining capacity the scan could not see, such as purgeable space and local snapshots. Applies immediately.")
+                Toggle("Show free space in treemap", isOn: $preferences.showFreeSpace)
+                Text("The sunburst always shows free and hidden space for volume scans; this adds them to the treemap too. Hidden space is capacity the scan could not see, such as purgeable space and local snapshots. Applies immediately.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
 

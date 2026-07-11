@@ -43,7 +43,7 @@ struct SidebarPane: View {
             }
 
             if !model.cloudLocations.isEmpty {
-                Section("Cloud Storage") {
+                Section("Local Cloud Files") {
                     ForEach(model.cloudLocations) { target in
                         builtInLocationRow(target, now: now)
                     }
@@ -151,7 +151,7 @@ struct SidebarPane: View {
         model.builtInLocations + visiblePinnedFolders
     }
 
-    /// One row of the Smart Locations or Cloud Storage section: not
+    /// One row of the Smart Locations or Local Cloud Files section: not
     /// removable, so the context menu only offers Reveal in Finder.
     private func builtInLocationRow(_ target: ScanTarget, now: Date) -> some View {
         SidebarTargetRow(

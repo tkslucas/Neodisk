@@ -104,7 +104,7 @@ enum SystemIntegration {
     }
 
     /// Locally-synced cloud storage folders, shown in the sidebar's own
-    /// "Cloud Storage" section. Deduplicated because a legacy ~/Dropbox
+    /// "Local Cloud Files" section. Deduplicated because a legacy ~/Dropbox
     /// symlink resolves to the same File Provider folder it points into.
     nonisolated static func cloudTargets(fileManager: FileManager = .default) -> [ScanTarget] {
         deduplicate(CloudLocationDetector.detectedTargets(fileManager: fileManager))

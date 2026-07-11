@@ -79,8 +79,8 @@
 "Use scan exclusions" = "Usa esclusioni di scansione";
 "One pattern per line. Trailing “/” matches folders; “*” is a wildcard." = "Un pattern per riga. La “/” finale corrisponde alle cartelle; “*” è un carattere jolly.";
 "Add Presets" = "Aggiungi preimpostazioni";
-"Show free space in visualizations" = "Mostra lo spazio libero nelle visualizzazioni";
-"Free and hidden space appear only for volume scans. Free space uses macOS available capacity; hidden space is the remaining capacity the scan could not see, such as purgeable space and local snapshots. Applies immediately." = "Lo spazio libero e lo spazio nascosto appaiono solo per le scansioni di volumi. Lo spazio libero utilizza la capacità disponibile di macOS; lo spazio nascosto è la capacità rimanente che la scansione non ha potuto vedere, come spazio eliminabile e istantanee locali. Si applica immediatamente.";
+"Show free space in treemap" = "Mostra lo spazio libero nella treemap";
+"The sunburst always shows free and hidden space for volume scans; this adds them to the treemap too. Hidden space is capacity the scan could not see, such as purgeable space and local snapshots. Applies immediately." = "Il grafico sunburst mostra sempre lo spazio libero e nascosto per le scansioni dei volumi; questa opzione li aggiunge anche alla treemap. Lo spazio nascosto è capacità che la scansione non ha potuto vedere, come spazio eliminabile e istantanee locali. Si applica immediatamente.";
 "Workspace" = "Area di lavoro";
 "Show Welcome Screen" = "Mostra schermata di benvenuto";
 "Restore Defaults" = "Ripristina impostazioni predefinite";
@@ -220,7 +220,7 @@
 
 /* MARK: - Sidebar */
 "Smart Locations" = "Posizioni intelligenti";
-"Cloud Storage" = "Archiviazione cloud";
+"Local Cloud Files" = "File cloud locali";
 "Folders" = "Cartelle";
 "Add Folder…" = "Aggiungi cartella…";
 "Scan any folder or volume and keep it in the sidebar" = "Analizza qualsiasi cartella o volume e conservalo nella barra laterale";

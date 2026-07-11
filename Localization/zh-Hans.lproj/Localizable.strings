@@ -79,8 +79,8 @@
 "Use scan exclusions" = "使用扫描排除项";
 "One pattern per line. Trailing “/” matches folders; “*” is a wildcard." = "每行一个模式。末尾加“/”表示匹配文件夹；“*”为通配符。";
 "Add Presets" = "添加预设";
-"Show free space in visualizations" = "在可视化视图中显示可用空间";
-"Free and hidden space appear only for volume scans. Free space uses macOS available capacity; hidden space is the remaining capacity the scan could not see, such as purgeable space and local snapshots. Applies immediately." = "可用空间和隐藏空间仅在扫描整个宗卷时显示。可用空间使用 macOS 报告的可用容量；隐藏空间是扫描无法看到的剩余容量，例如可清除空间和本地快照。更改立即生效。";
+"Show free space in treemap" = "在矩形树图中显示可用空间";
+"The sunburst always shows free and hidden space for volume scans; this adds them to the treemap too. Hidden space is capacity the scan could not see, such as purgeable space and local snapshots. Applies immediately." = "旭日图在扫描宗卷时始终显示可用空间和隐藏空间；此选项会将它们也添加到矩形树图中。隐藏空间是扫描无法看到的容量，例如可清除空间和本地快照。立即生效。";
 "Workspace" = "工作区";
 "Show Welcome Screen" = "显示欢迎界面";
 "Restore Defaults" = "恢复默认设置";
@@ -220,7 +220,7 @@
 
 /* MARK: - 边栏 */
 "Smart Locations" = "智能位置";
-"Cloud Storage" = "云存储";
+"Local Cloud Files" = "本地云文件";
 "Folders" = "文件夹";
 "Add Folder…" = "添加文件夹…";
 "Scan any folder or volume and keep it in the sidebar" = "扫描任意文件夹或宗卷，并将其保留在边栏中";

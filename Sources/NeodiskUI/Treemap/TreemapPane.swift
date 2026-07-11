@@ -37,9 +37,11 @@ struct TreemapPane: NSViewRepresentable {
             highlight: model.treemapHighlight,
             expandedAggregateIDs: model.expandedAggregateIDs,
             // Free and hidden space belong to the volume as a whole; hide
-            // them once the user zooms into a subfolder.
-            freeSpaceBytes: model.zoomRootID == nil ? model.freeSpaceBytes : nil,
-            hiddenSpaceBytes: model.zoomRootID == nil ? model.hiddenSpaceBytes : nil,
+            // them once the user zooms into a subfolder. The treemap gates
+            // them behind the Settings toggle (the sunburst always shows
+            // them) — hence the treemap-specific accessors.
+            freeSpaceBytes: model.zoomRootID == nil ? model.treemapFreeSpaceBytes : nil,
+            hiddenSpaceBytes: model.zoomRootID == nil ? model.treemapHiddenSpaceBytes : nil,
             palette: model.vizPalette
         )
         controller.setSelectedNode(model.selectedNodeID)

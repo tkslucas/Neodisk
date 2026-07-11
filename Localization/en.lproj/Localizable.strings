@@ -79,8 +79,8 @@
 "Use scan exclusions" = "Use scan exclusions";
 "One pattern per line. Trailing “/” matches folders; “*” is a wildcard." = "One pattern per line. Trailing “/” matches folders; “*” is a wildcard.";
 "Add Presets" = "Add Presets";
-"Show free space in visualizations" = "Show free space in visualizations";
-"Free and hidden space appear only for volume scans. Free space uses macOS available capacity; hidden space is the remaining capacity the scan could not see, such as purgeable space and local snapshots. Applies immediately." = "Free and hidden space appear only for volume scans. Free space uses macOS available capacity; hidden space is the remaining capacity the scan could not see, such as purgeable space and local snapshots. Applies immediately.";
+"Show free space in treemap" = "Show free space in treemap";
+"The sunburst always shows free and hidden space for volume scans; this adds them to the treemap too. Hidden space is capacity the scan could not see, such as purgeable space and local snapshots. Applies immediately." = "The sunburst always shows free and hidden space for volume scans; this adds them to the treemap too. Hidden space is capacity the scan could not see, such as purgeable space and local snapshots. Applies immediately.";
 "Workspace" = "Workspace";
 "Show Welcome Screen" = "Show Welcome Screen";
 "Restore Defaults" = "Restore Defaults";
@@ -220,7 +220,7 @@
 
 /* MARK: - Sidebar */
 "Smart Locations" = "Smart Locations";
-"Cloud Storage" = "Cloud Storage";
+"Local Cloud Files" = "Local Cloud Files";
 "Folders" = "Folders";
 "Add Folder…" = "Add Folder…";
 "Scan any folder or volume and keep it in the sidebar" = "Scan any folder or volume and keep it in the sidebar";

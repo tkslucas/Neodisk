@@ -143,7 +143,7 @@ final class NeodiskViewModel {
     /// Volumes and standard folders shown in the sidebar.
     let smartLocations = SystemIntegration.defaultTargets()
     /// Locally-synced cloud storage folders (iCloud Drive, File Provider
-    /// roots), shown in the sidebar's own "Cloud Storage" section.
+    /// roots), shown in the sidebar's own "Local Cloud Files" section.
     let cloudLocations = SystemIntegration.cloudTargets()
     /// Every location the sidebar offers without pinning: smart locations
     /// plus cloud locations. These never get pinned or removed.
@@ -183,8 +183,9 @@ final class NeodiskViewModel {
     private func syncDiffVisibility() {
         diff.setShowing(wantsDiffVisible)
     }
-    /// Free space of the scanned volume, when the preference is on and the
-    /// scan target is a volume; drawn as a synthetic treemap cell.
+    /// Free space of the scanned volume, when the scan target is a volume.
+    /// The sunburst always renders it; the treemap keeps the Settings toggle
+    /// (default off) — see `treemapFreeSpaceBytes`.
     var freeSpaceBytes: Int64?
     /// DaisyDisk-style "hidden space" of the scanned volume: capacity that is
     /// neither free nor accounted for by the finished scan (purgeable space,
@@ -192,6 +193,18 @@ final class NeodiskViewModel {
     /// `freeSpaceBytes`, plus a complete snapshot — mid-scan the unscanned
     /// remainder is unknown, not hidden. Drawn as a synthetic cell/arc.
     var hiddenSpaceBytes: Int64?
+
+    /// The treemap's preference-gated view of the synthetic space: unlike
+    /// the sunburst (which always shows free and hidden space for volume
+    /// scans), the treemap adds them only when the Settings toggle is on.
+    /// Toggle reactivity rides on bindPreferences → updateFreeSpace
+    /// reassigning the stored bytes, which fires observation.
+    var treemapFreeSpaceBytes: Int64? {
+        preferences?.showFreeSpace == true ? freeSpaceBytes : nil
+    }
+    var treemapHiddenSpaceBytes: Int64? {
+        preferences?.showFreeSpace == true ? hiddenSpaceBytes : nil
+    }
 
     /// Settings backing scan options and the free-space cell; assigned once
     /// by the app at launch.
@@ -684,8 +697,7 @@ final class NeodiskViewModel {
     }
 
     private func updateFreeSpace() {
-        guard preferences?.showFreeSpace == true,
-              let target = coordinator.selectedTarget,
+        guard let target = coordinator.selectedTarget,
               target.kind == .volume else {
             freeSpaceBytes = nil
             hiddenSpaceBytes = nil

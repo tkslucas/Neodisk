@@ -12,10 +12,11 @@ import NeodiskKit
 struct SettingsView: View {
     let model: NeodiskViewModel
     @ObservedObject var preferences: AppPreferences
+    @ObservedObject var updates: UpdateController
 
     var body: some View {
         TabView {
-            GeneralSettingsTab(model: model, preferences: preferences)
+            GeneralSettingsTab(model: model, preferences: preferences, updates: updates)
                 .tabItem { Label("General", systemImage: "gearshape") }
 
             PrivacySettingsTab(model: model)
@@ -30,6 +31,7 @@ struct SettingsView: View {
 private struct GeneralSettingsTab: View {
     let model: NeodiskViewModel
     @ObservedObject var preferences: AppPreferences
+    @ObservedObject var updates: UpdateController
 
     var body: some View {
         Form {
@@ -120,6 +122,32 @@ private struct GeneralSettingsTab: View {
                 Text("Swaps the file-kind and age colors for a palette that stays distinct with common color vision differences. Applies immediately.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
+            }
+
+            Section("Updates") {
+                Toggle(
+                    "Check for updates automatically",
+                    isOn: Binding(
+                        get: { updates.automaticallyChecksForUpdates },
+                        set: { updates.setAutomaticallyChecksForUpdates($0) }
+                    )
+                )
+                .disabled(!updates.isSupported)
+                if updates.isSupported {
+                    Text("Neodisk checks GitHub for new versions in the background and always asks before installing anything.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    Button("Check for Updates…") {
+                        updates.checkForUpdates()
+                    }
+                    .disabled(!updates.canCheckForUpdates)
+                } else {
+                    // Unbundled `swift run` builds and bundles without an
+                    // appcast feed cannot update themselves.
+                    Text("Automatic updates work only in the packaged app.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Section("Workspace") {

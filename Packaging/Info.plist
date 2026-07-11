@@ -47,6 +47,19 @@
 	<false/>
 	<key>NSSupportsSuddenTermination</key>
 	<false/>
+	<!-- Sparkle auto-updates (see Packaging/SPARKLE.md). The appcast is
+	     attached to every GitHub release under the fixed "latest" URL. -->
+	<key>SUFeedURL</key>
+	<string>https://github.com/tkslucas/Neodisk/releases/latest/download/appcast.xml</string>
+	<!-- Automatic background checks are opt-in via Settings; shipping this
+	     key also suppresses Sparkle's own second-launch permission prompt. -->
+	<key>SUEnableAutomaticChecks</key>
+	<false/>
+	<!-- TODO(release): replace with the EdDSA public key printed by Sparkle's
+	     generate_keys before shipping updates — see Packaging/SPARKLE.md.
+	     The private key must never be committed anywhere. -->
+	<key>SUPublicEDKey</key>
+	<string></string>
 	<key>NSDesktopFolderUsageDescription</key>
 	<string>Neodisk measures how much disk space files use. It never modifies or deletes anything.</string>
 	<key>NSDocumentsFolderUsageDescription</key>

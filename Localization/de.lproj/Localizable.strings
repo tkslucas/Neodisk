@@ -249,3 +249,22 @@
 "Click a folder segment to open it. Click a file segment to select it." = "Klicke auf ein Ordnersegment, um es zu öffnen. Klicke auf ein Dateisegment, um es auszuwählen.";
 "Click a folder segment to open it. Click a file segment to select it. Click the center to go up." = "Klicke auf ein Ordnersegment, um es zu öffnen. Klicke auf ein Dateisegment, um es auszuwählen. Klicke auf die Mitte, um nach oben zu gehen.";
 "Changes are shown in the treemap view" = "Änderungen werden in der Treemap-Darstellung angezeigt";
+
+/* MARK: - Updates (Sparkle) */
+"Check for Updates…" = "Nach Updates suchen…";
+"Checking for Updates…" = "Suche nach Updates…";
+"Update Available" = "Update verfügbar";
+"Version %@ is available." = "Version %@ ist verfügbar.";
+"Install Update" = "Update installieren";
+"Install and Relaunch" = "Installieren und neu starten";
+"Later" = "Später";
+"Downloading Update…" = "Update wird geladen…";
+"Preparing Update…" = "Update wird vorbereitet…";
+"Ready to Install" = "Bereit zur Installation";
+"Installing Update…" = "Update wird installiert…";
+"You're up to date." = "Neodisk ist auf dem neuesten Stand.";
+"Update Error" = "Update-Fehler";
+"Updates" = "Updates";
+"Check for updates automatically" = "Automatisch nach Updates suchen";
+"Neodisk checks GitHub for new versions in the background and always asks before installing anything." = "Neodisk sucht im Hintergrund auf GitHub nach neuen Versionen und fragt vor jeder Installation nach.";
+"Automatic updates work only in the packaged app." = "Automatische Updates funktionieren nur in der gepackten App.";

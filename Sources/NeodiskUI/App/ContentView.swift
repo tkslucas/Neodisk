@@ -13,10 +13,12 @@ import NeodiskKit
 public struct ContentView: View {
     @Bindable var model: NeodiskViewModel
     @ObservedObject var preferences: AppPreferences
+    let updates: UpdateController
 
-    init(model: NeodiskViewModel, preferences: AppPreferences) {
+    init(model: NeodiskViewModel, preferences: AppPreferences, updates: UpdateController) {
         self.model = model
         self.preferences = preferences
+        self.updates = updates
     }
 
     public var body: some View {
@@ -34,6 +36,9 @@ public struct ContentView: View {
             WelcomeSheet(model: model)
         }
         .onAppear {
+            // This window can host the unobtrusive update indicator; while
+            // any host window is up, the update driver stays out of dialogs.
+            updates.viewModel.hostDidAppear()
             model.preferences = preferences
             if !preferences.hasSeenWelcome {
                 model.showWelcomeSheet = true
@@ -72,6 +77,9 @@ public struct ContentView: View {
                     }
                 }
             }
+        }
+        .onDisappear {
+            updates.viewModel.hostDidDisappear()
         }
         .toolbar { toolbarContent }
         .navigationTitle(windowTitle)
@@ -217,6 +225,11 @@ public struct ContentView: View {
                 Label("Settings", systemImage: "gearshape")
             }
             .help("Open Neodisk settings")
+
+            // Transient update status (checking/downloading/available), far
+            // right like Ghostty's pill. A status readout, not a persistent
+            // toolbar button — hidden while idle by design.
+            UpdateIndicator(viewModel: updates.viewModel)
         }
     }
 }

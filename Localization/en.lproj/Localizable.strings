@@ -249,3 +249,22 @@
 "Click a folder segment to open it. Click a file segment to select it." = "Click a folder segment to open it. Click a file segment to select it.";
 "Click a folder segment to open it. Click a file segment to select it. Click the center to go up." = "Click a folder segment to open it. Click a file segment to select it. Click the center to go up.";
 "Changes are shown in the treemap view" = "Changes are shown in the treemap view";
+
+/* MARK: - Updates (Sparkle) */
+"Check for Updates…" = "Check for Updates…";
+"Checking for Updates…" = "Checking for Updates…";
+"Update Available" = "Update Available";
+"Version %@ is available." = "Version %@ is available.";
+"Install Update" = "Install Update";
+"Install and Relaunch" = "Install and Relaunch";
+"Later" = "Later";
+"Downloading Update…" = "Downloading Update…";
+"Preparing Update…" = "Preparing Update…";
+"Ready to Install" = "Ready to Install";
+"Installing Update…" = "Installing Update…";
+"You're up to date." = "You're up to date.";
+"Update Error" = "Update Error";
+"Updates" = "Updates";
+"Check for updates automatically" = "Check for updates automatically";
+"Neodisk checks GitHub for new versions in the background and always asks before installing anything." = "Neodisk checks GitHub for new versions in the background and always asks before installing anything.";
+"Automatic updates work only in the packaged app." = "Automatic updates work only in the packaged app.";

@@ -8,7 +8,9 @@
 //  coordinates.
 //
 
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
 
 public struct TreemapViewport: Equatable, Sendable {
     public var scale: CGFloat
@@ -58,10 +60,13 @@ public struct TreemapViewport: Equatable, Sendable {
         CGRect(origin: origin, size: viewSize)
     }
 
+    #if canImport(CoreGraphics)
     /// Maps view coordinates as rendered at `rendered` to this viewport's
     /// view coordinates: for a fixed canvas point, p' = p·f + (o_r·f − o),
     /// with f the scale ratio. Applied to the treemap content layer so a
     /// stale render tracks the live viewport until the next crisp render.
+    /// (CGAffineTransform is CoreGraphics-only; off-Darwin consumers do their
+    /// own display mapping.)
     public func displayTransform(fromRendered rendered: TreemapViewport) -> CGAffineTransform {
         let factor = scale / rendered.scale
         return CGAffineTransform(scaleX: factor, y: factor)
@@ -70,4 +75,5 @@ public struct TreemapViewport: Equatable, Sendable {
                 y: rendered.origin.y * factor - origin.y
             ))
     }
+    #endif
 }

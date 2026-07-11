@@ -10,8 +10,10 @@
 
 #if canImport(CoreGraphics)
 import CoreGraphics
-#endif
 import Foundation
+#elseif canImport(Dispatch)
+import Foundation  // ProcessInfo for the concurrent chunk count
+#endif
 #if canImport(Dispatch)
 import Dispatch
 #endif

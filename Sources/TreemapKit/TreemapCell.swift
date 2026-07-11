@@ -7,7 +7,9 @@
 //  1999), and a base color. Knows nothing about what the cells represent.
 //
 
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
 
 /// Accumulated cushion surface for a cell. The surface height field is a sum
 /// of parabolas; only its gradient matters for shading, and the gradient is

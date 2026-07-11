@@ -5,8 +5,9 @@
 //  Squarified treemap layout (Bruls, Huizing, van Wijk, 2000).
 //
 
+#if canImport(CoreGraphics)
 import CoreGraphics
-import Foundation
+#endif
 
 public enum TreemapLayout {
     /// Lays out `weights` inside `rect` using the squarified algorithm.

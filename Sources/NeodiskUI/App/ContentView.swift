@@ -162,10 +162,13 @@ public struct ContentView: View {
         // Update status pill: its own toolbar item so it renders as a
         // standalone cluster left of the button group instead of expanding
         // it. Hidden while idle; once a check runs it persists until the
-        // user acts on it (see UpdateIndicator).
+        // user acts on it (see UpdateIndicator). On macOS 26 adjacent items
+        // share one glass background; the spacer forces the visual break.
         ToolbarItem {
             UpdateIndicator(viewModel: updates.viewModel)
-                .padding(.trailing, 6)
+        }
+        if #available(macOS 26.0, *) {
+            ToolbarSpacer(.fixed)
         }
 
         ToolbarItemGroup {

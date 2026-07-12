@@ -77,6 +77,16 @@ let package = Package(
             name: "SunburstCore",
             path: "Sources/SunburstCore"
         ),
+        // Remote cloud-drive scanning (CloudScan): provider protocol, tree
+        // assembly, and the scan service that emits the same event stream as
+        // ScanEngine. UI-free like NeodiskKit. Deliberately excludable: drop
+        // "CloudScanKit" from NeodiskUI's dependencies below and the app
+        // builds without the feature (the UI glue is #if canImport-guarded).
+        .target(
+            name: "CloudScanKit",
+            dependencies: ["NeodiskKit"],
+            path: "Sources/CloudScanKit"
+        ),
         // The macOS app: SwiftUI/AppKit views, view model, scan lifecycle glue.
         .target(
             name: "NeodiskUI",
@@ -84,6 +94,7 @@ let package = Package(
                 "NeodiskKit",
                 "TreemapKit",
                 "SunburstCore",
+                "CloudScanKit",
                 .product(name: "Sparkle", package: "Sparkle")
             ],
             path: "Sources/NeodiskUI"
@@ -113,6 +124,16 @@ let package = Package(
                 // Golden PNG for the cushion render regression test.
                 .copy("Fixtures")
             ],
+            linkerSettings: testingInteropLinkerSettings
+        ),
+        .testTarget(
+            name: "CloudScanKitTests",
+            dependencies: [
+                "CloudScanKit",
+                "NeodiskKit",
+                .product(name: "Testing", package: "swift-testing")
+            ],
+            path: "Tests/CloudScanKitTests",
             linkerSettings: testingInteropLinkerSettings
         ),
         .testTarget(

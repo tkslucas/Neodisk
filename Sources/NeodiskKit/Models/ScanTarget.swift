@@ -8,6 +8,9 @@ import Foundation
 public enum ScanTargetKind: String, Hashable, Codable, Sendable {
     case folder
     case volume
+    /// A remote cloud-drive account (CloudScan). The target's id/url use the
+    /// `cloudscan://` scheme, not a filesystem path.
+    case cloud
 }
 
 public struct ScanTarget: Identifiable, Hashable, Sendable {

@@ -31,7 +31,17 @@ Swift/SwiftUI practices and keep the scanning core UI-free.
   remove either.
 - Run the app: `swift run -c release Neodisk`.
 - Dev hooks:
-  - `NEODISK_AUTOSCAN=<path>` — scan on launch.
+  - `NEODISK_AUTOSCAN=<path>` — scan on launch. Also accepts a connected
+    cloud account's target ID (`cloudscan://<provider>/<account>`), composing
+    with `NEODISK_CLOUD_FIXTURE` for headless cloud runs.
+  - `NEODISK_CLOUD_FIXTURE=<path.json>` — register a fixture cloud-drive
+    account (see `CloudFixture` in CloudScanKit), so the whole CloudScan
+    pipeline — sidebar row, scan, visualizations, snapshot cache — runs
+    without OAuth or network.
+  - `NEODISK_GOOGLE_CLIENT_ID` / `NEODISK_GOOGLE_CLIENT_SECRET` — Google
+    OAuth desktop client for the real Connect Google Drive flow (the
+    "secret" is not confidential under PKCE; it stays out of this repo
+    anyway). Without a client ID the connect button is hidden.
   - `NEODISK_AUTOREVEAL=<path>` — after the scan, select that node and
     expand its ancestors in the outline (deep trees in headless snapshots).
   - `Neodisk --render-png <scan-path> <out.png> [scale fx fy]` — headless

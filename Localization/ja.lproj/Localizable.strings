@@ -304,3 +304,10 @@
 "Cloud Drives" = "クラウドドライブ";
 "Duplicate detection isn't available for cloud drives" = "クラウドドライブでは重複検出を利用できません";
 "Finding duplicates reads each file's contents, which only works for files stored on this Mac." = "重複の検出は各ファイルの内容を読み取るため、このMacに保存されているファイルでのみ機能します。";
+"Connect Google Drive…" = "Google Driveに接続…";
+"Connect Cloud Drive…" = "クラウドドライブに接続…";
+"Sign Out…" = "サインアウト…";
+"Sign out of this cloud drive?" = "このクラウドドライブからサインアウトしますか？";
+"Sign Out" = "サインアウト";
+"Neodisk will disconnect %@ and remove its cached scan. You can reconnect at any time." = "Neodiskは%@との接続を解除し、キャッシュされたスキャンを削除します。いつでも再接続できます。";
+"Connect a cloud account and keep it in the sidebar" = "クラウドアカウントを接続してサイドバーに表示";

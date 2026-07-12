@@ -304,3 +304,10 @@
 "Cloud Drives" = "云盘";
 "Duplicate detection isn't available for cloud drives" = "云盘不支持重复文件检测";
 "Finding duplicates reads each file's contents, which only works for files stored on this Mac." = "查找重复文件需要读取每个文件的内容，因此仅适用于存储在这台 Mac 上的文件。";
+"Connect Google Drive…" = "连接 Google 云端硬盘…";
+"Connect Cloud Drive…" = "连接云盘…";
+"Sign Out…" = "退出登录…";
+"Sign out of this cloud drive?" = "要退出此云盘吗？";
+"Sign Out" = "退出登录";
+"Neodisk will disconnect %@ and remove its cached scan. You can reconnect at any time." = "Neodisk 将断开 %@ 的连接并移除其缓存的扫描结果。你可以随时重新连接。";
+"Connect a cloud account and keep it in the sidebar" = "连接云帐户并将其保留在边栏中";

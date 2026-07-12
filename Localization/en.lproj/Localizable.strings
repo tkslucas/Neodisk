@@ -304,3 +304,10 @@
 "Cloud Drives" = "Cloud Drives";
 "Duplicate detection isn't available for cloud drives" = "Duplicate detection isn't available for cloud drives";
 "Finding duplicates reads each file's contents, which only works for files stored on this Mac." = "Finding duplicates reads each file's contents, which only works for files stored on this Mac.";
+"Connect Google Drive…" = "Connect Google Drive…";
+"Connect Cloud Drive…" = "Connect Cloud Drive…";
+"Sign Out…" = "Sign Out…";
+"Sign out of this cloud drive?" = "Sign out of this cloud drive?";
+"Sign Out" = "Sign Out";
+"Neodisk will disconnect %@ and remove its cached scan. You can reconnect at any time." = "Neodisk will disconnect %@ and remove its cached scan. You can reconnect at any time.";
+"Connect a cloud account and keep it in the sidebar" = "Connect a cloud account and keep it in the sidebar";

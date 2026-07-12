@@ -304,3 +304,10 @@
 "Cloud Drives" = "Unità cloud";
 "Duplicate detection isn't available for cloud drives" = "Il rilevamento dei duplicati non è disponibile per le unità cloud";
 "Finding duplicates reads each file's contents, which only works for files stored on this Mac." = "La ricerca dei duplicati legge il contenuto di ogni file, il che funziona solo per i file archiviati su questo Mac.";
+"Connect Google Drive…" = "Collega Google Drive…";
+"Connect Cloud Drive…" = "Collega unità cloud…";
+"Sign Out…" = "Esci…";
+"Sign out of this cloud drive?" = "Uscire da questa unità cloud?";
+"Sign Out" = "Esci";
+"Neodisk will disconnect %@ and remove its cached scan. You can reconnect at any time." = "Neodisk disconnetterà %@ e rimuoverà la scansione memorizzata. Puoi ricollegarti in qualsiasi momento.";
+"Connect a cloud account and keep it in the sidebar" = "Collega un account cloud e tienilo nella barra laterale";

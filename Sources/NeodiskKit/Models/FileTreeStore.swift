@@ -849,9 +849,11 @@ public struct FileTreeStore: Sendable {
             }
         }
 
+        // path, not url: the URL round-trip absolutizes non-filesystem paths
+        // (cloud targets' cloudscan:// scheme) against the working directory.
         return FileNodeRecord(
             id: node.id,
-            url: node.url,
+            path: node.path,
             name: node.name,
             isDirectory: node.isDirectory,
             isSymbolicLink: node.isSymbolicLink,

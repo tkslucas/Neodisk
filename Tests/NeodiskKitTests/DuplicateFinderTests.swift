@@ -19,6 +19,15 @@ import Testing
         return data
     }
 
+    /// A block of `seed` bytes with a distinct `patchSeed` run written at
+    /// `offset`, used to make files that share a prefix (and sometimes a
+    /// tail) but diverge at a chosen point.
+    private func patched(seed: UInt8, count: Int, offset: Int, patchSeed: UInt8, length: Int = 64) -> Data {
+        var data = Data(repeating: seed, count: count)
+        data.replaceSubrange(offset..<(offset + length), with: Data(repeating: patchSeed, count: length))
+        return data
+    }
+
     private func makeStore(directory: URL, files: [(name: String, data: Data)]) throws -> FileTreeStore {
         var children: [FileNodeRecord] = []
         for file in files {
@@ -104,6 +113,103 @@ import Testing
 
             #expect(results.groups.isEmpty)
             #expect(results.candidateCount == 2)
+        }
+    }
+
+    @Test func identicalHeadDifferentInsidePrefixIsNotADuplicate() async throws {
+        try await withTempDirectory { directory in
+            // Same first 4 KB (head tier collides) but they diverge at 100 KB,
+            // still inside the 256 KB prefix, so the prefix tier separates them
+            // without any full read.
+            let store = try makeStore(directory: directory, files: [
+                ("head-twin-1.bin", patched(seed: 0x11, count: 2 * Self.megabyte, offset: 100_000, patchSeed: 0x22)),
+                ("head-twin-2.bin", patched(seed: 0x11, count: 2 * Self.megabyte, offset: 100_000, patchSeed: 0x33)),
+            ])
+
+            let results = try await DuplicateFinder.findDuplicates(in: store)
+
+            #expect(results.groups.isEmpty)
+            #expect(results.candidateCount == 2)
+        }
+    }
+
+    @Test func differingOnlyInTailIsNotADuplicate() async throws {
+        try await withTempDirectory { directory in
+            // Identical for the first 256 KB, diverging only in the final
+            // bytes: the tail sample folded into the prefix tier catches it.
+            let count = 2 * Self.megabyte
+            let store = try makeStore(directory: directory, files: [
+                ("tail-twin-1.bin", patched(seed: 0x44, count: count, offset: count - 100, patchSeed: 0x55)),
+                ("tail-twin-2.bin", patched(seed: 0x44, count: count, offset: count - 100, patchSeed: 0x66)),
+            ])
+
+            let results = try await DuplicateFinder.findDuplicates(in: store)
+
+            #expect(results.groups.isEmpty)
+            #expect(results.candidateCount == 2)
+        }
+    }
+
+    @Test func differingOnlyInMiddleIsSeparatedByFullPass() async throws {
+        try await withTempDirectory { directory in
+            // Identical head and identical tail, diverging only in the middle
+            // (past 256 KB from the start, before the last 256 KB): only the
+            // full-content pass can tell them apart, and it must.
+            let count = 2 * Self.megabyte
+            let identicalCopy = bytes(seed: 0x77, count: count)
+            let store = try makeStore(directory: directory, files: [
+                ("mid-a.bin", identicalCopy),
+                ("mid-a-copy.bin", identicalCopy),
+                ("mid-b.bin", patched(seed: 0x77, count: count, offset: 1_000_000, patchSeed: 0x88)),
+            ])
+
+            let results = try await DuplicateFinder.findDuplicates(in: store)
+
+            // The true pair groups; the middle-diverging near-twin is excluded.
+            #expect(results.groups.count == 1)
+            let group = try #require(results.groups.first)
+            #expect(group.nodeIDs.map { ($0 as NSString).lastPathComponent }.sorted()
+                == ["mid-a-copy.bin", "mid-a.bin"])
+        }
+    }
+
+    @Test func mediumFilesConfirmWithoutTailSampling() async throws {
+        try await withTempDirectory { directory in
+            // 100 KB files sit below the 256 KB tail threshold: the prefix
+            // tier reads them whole and confirms without a tail read.
+            let identical = bytes(seed: 0x12, count: 100 * 1024)
+            let store = try makeStore(directory: directory, files: [
+                ("med-1.bin", identical),
+                ("med-2.bin", identical),
+                ("med-other.bin", bytes(seed: 0x34, count: 100 * 1024)),
+            ])
+
+            let results = try await DuplicateFinder.findDuplicates(in: store, minimumFileSize: 50 * 1024)
+
+            #expect(results.groups.count == 1)
+            let group = try #require(results.groups.first)
+            #expect(group.nodeIDs.count == 2)
+            #expect(group.fileSize == Int64(100 * 1024))
+        }
+    }
+
+    @Test func tinyFilesConfirmAtHeadTier() async throws {
+        try await withTempDirectory { directory in
+            // 2 KB files are fully covered by the 4 KB head hash and confirm
+            // at the cheapest tier.
+            let identical = bytes(seed: 0x56, count: 2 * 1024)
+            let store = try makeStore(directory: directory, files: [
+                ("tiny-1.bin", identical),
+                ("tiny-2.bin", identical),
+                ("tiny-other.bin", bytes(seed: 0x78, count: 2 * 1024)),
+            ])
+
+            let results = try await DuplicateFinder.findDuplicates(in: store, minimumFileSize: 1024)
+
+            #expect(results.groups.count == 1)
+            let group = try #require(results.groups.first)
+            #expect(group.nodeIDs.count == 2)
+            #expect(group.fileSize == Int64(2 * 1024))
         }
     }
 

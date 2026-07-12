@@ -3,9 +3,12 @@
 //  Neodisk
 //
 //  Finds files with identical content in a scanned tree: group by size,
-//  then confirm candidates by hashing — a 256 KB prefix hash first, a full
-//  content hash only where prefixes collide — so the disk reads stay
-//  proportional to plausible duplicates, not to the scan. Hard links are
+//  then confirm candidates through a cheap-first hashing ladder — a 4 KB
+//  head hash, then a 256 KB head+tail hash, then a full content hash only
+//  where the coarser tiers still collide — so the disk reads stay
+//  proportional to plausible duplicates, not to the scan. Each tier only
+//  sub-partitions the previous one; the full-content hash remains the sole
+//  confirmation that two files are actually byte-identical. Hard links are
 //  one file, not duplicates, and are collapsed by file identity up front.
 //
 //  Read-only like everything else in the engine: files are opened for
@@ -57,7 +60,7 @@ public struct DuplicateScanResults: Sendable, Equatable {
 }
 
 public struct DuplicateScanProgress: Sendable, Equatable {
-    /// Monotonic 0...1 across both hashing passes, weighted by bytes read.
+    /// Monotonic 0...1 across the hashing tiers, weighted by bytes read.
     public let fractionCompleted: Double
 
     public init(fractionCompleted: Double) {
@@ -70,9 +73,15 @@ public enum DuplicateFinder {
     /// (configs, icons, node_modules) and reclaim next to nothing.
     public static let defaultMinimumFileSize: Int64 = 1 << 20 // 1 MB
 
-    /// Prefix length of the first-pass hash.
+    /// Length of the cheapest tier's head hash. Splits the common
+    /// "same size, different content" case at 1/64th of the prefix pass I/O.
+    static let headHashLength = 1 << 12 // 4 KB
+    /// Prefix length of the middle tier's head hash.
     static let prefixHashLength = 1 << 18 // 256 KB
-    /// Streaming chunk size of the full-content pass.
+    /// Length of the middle tier's tail sample, folded into the same key as
+    /// the prefix so files that diverge near the end split without a full read.
+    static let tailHashLength = 1 << 18 // 256 KB
+    /// Streaming chunk size of the full-content pass, reused across reads.
     private static let fullHashChunkSize = 1 << 22 // 4 MB
     /// Concurrent hashing width — enough to keep an SSD busy without
     /// starving the rest of the app of I/O.
@@ -148,38 +157,73 @@ public enum DuplicateFinder {
         let candidateCount = candidates.reduce(0) { $0 + $1.nodes.count }
 
         // Progress is bytes-based and monotonic: the planned total starts
-        // pessimistic (prefix pass + full pass for every candidate) and only
-        // ever shrinks as the prefix pass rules files out, so the fraction
-        // never moves backwards.
+        // pessimistic (every candidate charged for all three tiers — 4 KB
+        // head, 256 KB head+tail, full read) and only ever shrinks as each
+        // tier rules files out, so the fraction never moves backwards.
         let progress = ProgressAccounting(
             plannedBytes: candidates.reduce(Int64(0)) { total, group in
-                let prefixBytes = min(group.size, Int64(prefixHashLength)) * Int64(group.nodes.count)
-                let fullBytes = group.size > Int64(prefixHashLength)
-                    ? group.size * Int64(group.nodes.count)
-                    : 0
-                return total + prefixBytes + fullBytes
+                let perFile = headTierBytes(group.size)
+                    + prefixTierBytes(group.size)
+                    + fullTierBytes(group.size)
+                return total + perFile * Int64(group.nodes.count)
             },
             onProgress: onProgress
         )
 
-        // 3. Prefix-hash pass over every candidate.
-        let prefixResults = try await hashConcurrently(
+        var confirmed: [DuplicateGroup] = []
+
+        // 3. Head-hash pass (4 KB) over every candidate — the cheapest split.
+        let headResults = try await hashConcurrently(
             candidates.flatMap { group in group.nodes.map { (node: $0, size: group.size) } }
         ) { node, size in
-            let digest = try hashPrefix(of: node.path)
-            let read = min(size, Int64(prefixHashLength))
-            await progress.add(bytes: read)
+            let digest = try hashHead(of: node.path, size: size)
+            await progress.add(bytes: headTierBytes(size))
             return digest
         }
-        var unreadableCount = skippedUnhashable + prefixResults.unreadable.count
-        await progress.drop(bytes: prefixResults.unreadable.reduce(Int64(0)) {
-            // A file that failed its prefix read won't get a full pass either.
-            $0 + ($1.size > Int64(prefixHashLength) ? $1.size : 0)
+        var unreadableCount = skippedUnhashable + headResults.unreadable.count
+        // A file that failed its head read reaches no later tier.
+        await progress.drop(bytes: headResults.unreadable.reduce(Int64(0)) {
+            $0 + prefixTierBytes($1.size) + fullTierBytes($1.size)
         })
 
-        // Regroup by (size, prefix hash); small files are fully covered by
-        // the prefix and confirm here.
-        var confirmed: [DuplicateGroup] = []
+        // Regroup by (size, head hash). Files fully covered by the head
+        // (size <= 4 KB) confirm here; the rest advance to the prefix tier.
+        var needPrefixHash: [(node: FileNodeRecord, size: Int64)] = []
+        var headGroups: [String: [(node: FileNodeRecord, size: Int64)]] = [:]
+        for entry in headResults.hashed {
+            headGroups["\(entry.size)-\(entry.digest)", default: []].append((entry.node, entry.size))
+        }
+        for (key, members) in headGroups {
+            if members.count < 2 {
+                await progress.drop(bytes: members.reduce(Int64(0)) {
+                    $0 + prefixTierBytes($1.size) + fullTierBytes($1.size)
+                })
+                continue
+            }
+            if members[0].size <= Int64(headHashLength) {
+                confirmed.append(DuplicateGroup(
+                    id: key,
+                    fileSize: members[0].size,
+                    nodeIDs: members.map(\.node.id).sorted()
+                ))
+            } else {
+                needPrefixHash.append(contentsOf: members)
+            }
+        }
+
+        // 4. Prefix-hash pass (256 KB head + 256 KB tail) over head colliders.
+        let prefixResults = try await hashConcurrently(needPrefixHash) { node, size in
+            let digest = try hashHeadAndTail(of: node.path, size: size)
+            await progress.add(bytes: prefixTierBytes(size))
+            return digest
+        }
+        unreadableCount += prefixResults.unreadable.count
+        await progress.drop(bytes: prefixResults.unreadable.reduce(Int64(0)) {
+            $0 + fullTierBytes($1.size)
+        })
+
+        // Regroup by (size, head+tail hash). Files fully covered by the head
+        // (size <= 256 KB) confirm here; the rest advance to the full pass.
         var needFullHash: [(node: FileNodeRecord, size: Int64)] = []
         var subgroups: [String: [(node: FileNodeRecord, size: Int64)]] = [:]
         for entry in prefixResults.hashed {
@@ -188,7 +232,7 @@ public enum DuplicateFinder {
         for (key, members) in subgroups {
             if members.count < 2 {
                 await progress.drop(bytes: members.reduce(Int64(0)) {
-                    $0 + ($1.size > Int64(prefixHashLength) ? $1.size : 0)
+                    $0 + fullTierBytes($1.size)
                 })
                 continue
             }
@@ -203,7 +247,7 @@ public enum DuplicateFinder {
             }
         }
 
-        // 4. Full-content pass only where prefixes collided.
+        // 5. Full-content pass only where the head+tail sample still collided.
         let fullResults = try await hashConcurrently(needFullHash) { node, size in
             let digest = try await hashFullContents(of: node.path) { chunkBytes in
                 await progress.add(bytes: chunkBytes)
@@ -237,6 +281,32 @@ public enum DuplicateFinder {
             candidateCount: candidateCount,
             unreadableCount: unreadableCount
         )
+    }
+
+    // MARK: - Planned-bytes accounting
+    //
+    // Pure per-file byte costs, shared by the pessimistic plan and by the
+    // `drop` calls that shrink it as each tier rules a file out, so the two
+    // always agree and the fraction stays monotonic.
+
+    /// Bytes the head (4 KB) tier reads for a file of `size`.
+    private static func headTierBytes(_ size: Int64) -> Int64 {
+        min(size, Int64(headHashLength))
+    }
+
+    /// Bytes the prefix (256 KB head + 256 KB tail) tier reads. Zero when the
+    /// head tier already covered the whole file (`size <= headHashLength`).
+    private static func prefixTierBytes(_ size: Int64) -> Int64 {
+        guard size > Int64(headHashLength) else { return 0 }
+        let head = min(size, Int64(prefixHashLength))
+        let tail = size > Int64(prefixHashLength) ? min(size, Int64(tailHashLength)) : 0
+        return head + tail
+    }
+
+    /// Bytes the full pass reads. Zero unless the file is larger than the
+    /// prefix tier, since smaller files confirm without a full read.
+    private static func fullTierBytes(_ size: Int64) -> Int64 {
+        size > Int64(prefixHashLength) ? size : 0
     }
 
     // MARK: - Hashing
@@ -307,29 +377,97 @@ public enum DuplicateFinder {
         return info.st_flags & datalessFlag == 0
     }
 
-    private static func hashPrefix(of path: String) throws -> String {
-        let handle = try FileHandle(forReadingFrom: URL(filePath: path))
-        defer { try? handle.close() }
-        let data = try handle.read(upToCount: prefixHashLength) ?? Data()
-        return SHA256.hash(data: data).hexString
+    /// Hashes the first `headHashLength` bytes (or the whole file if smaller).
+    private static func hashHead(of path: String, size: Int64) throws -> String {
+        let fd = try openUncached(path)
+        defer { close(fd) }
+        let length = Int(min(size, Int64(headHashLength)))
+        let head = try readExactly(fd: fd, offset: 0, count: length)
+        var hasher = SHA256()
+        head.withUnsafeBytes { hasher.update(bufferPointer: $0) }
+        return hasher.finalize().hexString
+    }
+
+    /// Hashes the first `prefixHashLength` bytes and, for files larger than
+    /// that, folds in the last `tailHashLength` bytes so tail divergence
+    /// splits the group without reading the middle.
+    private static func hashHeadAndTail(of path: String, size: Int64) throws -> String {
+        let fd = try openUncached(path)
+        defer { close(fd) }
+        var hasher = SHA256()
+        let headLength = Int(min(size, Int64(prefixHashLength)))
+        let head = try readExactly(fd: fd, offset: 0, count: headLength)
+        head.withUnsafeBytes { hasher.update(bufferPointer: $0) }
+        if size > Int64(prefixHashLength) {
+            let tailLength = Int(min(size, Int64(tailHashLength)))
+            let tail = try readExactly(fd: fd, offset: off_t(size - Int64(tailLength)), count: tailLength)
+            tail.withUnsafeBytes { hasher.update(bufferPointer: $0) }
+        }
+        return hasher.finalize().hexString
     }
 
     private static func hashFullContents(
         of path: String,
         onChunk: (Int64) async -> Void
     ) async throws -> String {
-        let handle = try FileHandle(forReadingFrom: URL(filePath: path))
-        defer { try? handle.close() }
+        let fd = try openUncached(path, readahead: true)
+        defer { close(fd) }
         var hasher = SHA256()
+        // One buffer reused across every chunk instead of a fresh Data alloc.
+        var buffer = [UInt8](repeating: 0, count: fullHashChunkSize)
         while true {
             try Task.checkCancellation()
-            guard let chunk = try handle.read(upToCount: fullHashChunkSize), !chunk.isEmpty else {
-                break
+            let count = try buffer.withUnsafeMutableBytes { raw -> Int in
+                let n = read(fd, raw.baseAddress, fullHashChunkSize)
+                if n < 0 { throw posixError() }
+                return n
             }
-            hasher.update(data: chunk)
-            await onChunk(Int64(chunk.count))
+            if count == 0 { break }
+            buffer.withUnsafeBytes {
+                hasher.update(bufferPointer: UnsafeRawBufferPointer(start: $0.baseAddress, count: count))
+            }
+            await onChunk(Int64(count))
         }
         return hasher.finalize().hexString
+    }
+
+    // MARK: - Raw uncached reads
+    //
+    // All three tiers read through raw descriptors opened with F_NOCACHE so a
+    // full-disk dedup scan never evicts the user's page cache. The full pass
+    // adds F_RDAHEAD for its long sequential streaming.
+
+    /// Opens `path` read-only with caching disabled. The caller owns the
+    /// returned descriptor and must `close` it.
+    private static func openUncached(_ path: String, readahead: Bool = false) throws -> Int32 {
+        let fd = open(path, O_RDONLY)
+        guard fd >= 0 else { throw posixError() }
+        _ = fcntl(fd, F_NOCACHE, 1)
+        if readahead { _ = fcntl(fd, F_RDAHEAD, 1) }
+        return fd
+    }
+
+    /// Reads up to `count` bytes at `offset` via `pread`, looping over short
+    /// reads. Returns fewer bytes only at EOF.
+    private static func readExactly(fd: Int32, offset: off_t, count: Int) throws -> [UInt8] {
+        guard count > 0 else { return [] }
+        var buffer = [UInt8](repeating: 0, count: count)
+        let total = try buffer.withUnsafeMutableBytes { raw -> Int in
+            var got = 0
+            while got < count {
+                let n = pread(fd, raw.baseAddress?.advanced(by: got), count - got, offset + off_t(got))
+                if n < 0 { throw posixError() }
+                if n == 0 { break }
+                got += n
+            }
+            return got
+        }
+        if total < count { buffer.removeLast(count - total) }
+        return buffer
+    }
+
+    private static func posixError() -> POSIXError {
+        POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
     }
 }
 

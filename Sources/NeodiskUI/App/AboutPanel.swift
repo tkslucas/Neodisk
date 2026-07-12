@@ -10,6 +10,7 @@ enum AppLinks {
     static let repository = URL(string: "https://github.com/tkslucas/Neodisk")!
     static let reportIssue = URL(string: "https://github.com/tkslucas/Neodisk/issues/new/choose")!
     static let radix = URL(string: "https://github.com/colinvkim/Radix")!
+    static let sponsor = URL(string: "https://github.com/sponsors/tkslucas")!
 }
 
 /// The standard About panel with short credits: the GitHub repo, where to
@@ -49,6 +50,15 @@ enum AboutPanel {
                 "Report issues and feature requests on GitHub.", comment: ""
             ) + "\n",
             attributes: body
+        ))
+
+        var sponsorLine = body
+        sponsorLine[.link] = AppLinks.sponsor
+        credits.append(NSAttributedString(
+            string: NSLocalizedString(
+                "Support Neodisk on GitHub Sponsors.", comment: ""
+            ) + "\n",
+            attributes: sponsorLine
         ))
 
         let radixLine = NSMutableAttributedString(

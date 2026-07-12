@@ -139,6 +139,12 @@ public struct NeodiskApp: App {
                 } label: {
                     Label("Report Issue…", systemImage: "flag")
                 }
+
+                Button {
+                    NSWorkspace.shared.open(AppLinks.sponsor)
+                } label: {
+                    Label("Support Neodisk…", systemImage: "heart")
+                }
             }
         }
 

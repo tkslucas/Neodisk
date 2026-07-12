@@ -23,6 +23,22 @@ enum DisplayFormatters {
     static func roughDuration(_ interval: TimeInterval) -> String {
         formatterCache.roughDuration(interval)
     }
+
+    /// User-facing form of a node path. Filesystem paths pass through; cloud
+    /// node paths ("cloudscan://<provider>/<account>/My Drive/…") drop the
+    /// machine-oriented prefix and read from the drive root ("/My Drive/…"),
+    /// matching how the rest of the row already shows the account by name.
+    static func displayPath(_ path: String) -> String {
+        let cloudPrefix = "cloudscan://"
+        guard path.hasPrefix(cloudPrefix) else { return path }
+        // Skip "<provider>/<account>" after the scheme.
+        var remainder = path.dropFirst(cloudPrefix.count)
+        for _ in 0..<2 {
+            guard let slash = remainder.firstIndex(of: "/") else { return "/" }
+            remainder = remainder[remainder.index(after: slash)...]
+        }
+        return "/" + remainder
+    }
 }
 
 private final class FormatterCache: @unchecked Sendable {

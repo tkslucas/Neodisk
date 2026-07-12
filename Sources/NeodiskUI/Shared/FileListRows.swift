@@ -42,11 +42,11 @@ struct FileResultRow: View {
                 .fixedSize(horizontal: true, vertical: false)
         }
         .font(.system(size: 12))
-        .help(node.path)
+        .help(DisplayFormatters.displayPath(node.path))
     }
 
     private var containingFolder: String {
-        (node.path as NSString).deletingLastPathComponent
+        (DisplayFormatters.displayPath(node.path) as NSString).deletingLastPathComponent
     }
 }
 

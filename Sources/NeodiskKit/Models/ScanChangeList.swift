@@ -32,8 +32,8 @@
 import Foundation
 
 /// One row of the changes list.
-public struct ScanChangeEntry: Sendable, Equatable, Identifiable {
-    public enum Kind: String, Sendable, Equatable, CaseIterable {
+public struct ScanChangeEntry: Sendable, Equatable, Identifiable, Codable {
+    public enum Kind: String, Sendable, Equatable, CaseIterable, Codable {
         case added
         case deleted
         case renamed
@@ -66,7 +66,7 @@ public struct ScanChangeEntry: Sendable, Equatable, Identifiable {
 /// The diff of the displayed snapshot against its predecessor, as a flat
 /// list sorted by |delta| (largest disk movement first; equal-size renames
 /// sink to the end), capped to keep the UI and memory bounded.
-public struct ScanChangeList: Sendable, Equatable {
+public struct ScanChangeList: Sendable, Equatable, Codable {
     /// The subsets the UI's filter subtabs show. `all` is the full mixed
     /// list; `added`/`deleted` are per-kind lists capped independently of
     /// it, so their tails are not crowded out by the other kinds' big

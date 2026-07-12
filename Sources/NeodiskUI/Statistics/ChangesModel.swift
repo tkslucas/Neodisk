@@ -86,6 +86,20 @@ final class ChangesModel {
         let target = snapshot.target
         let currentStore = snapshot.treeStore
         Task { [weak self, snapshotCache] in
+            // Fast path: a persisted diff keyed on exactly the current and
+            // previous snapshot files (written proactively at scan finish, or
+            // by a prior open). Skips decoding the predecessor and rebuilding.
+            if let cached = await snapshotCache.loadChangeList(
+                forTargetID: target.id, entryLimit: Self.entryLimit
+            ) {
+                guard let self, self.loadGeneration == generation,
+                      self.coordinator.snapshot?.id == snapshot.id else { return }
+                self.isLoading = false
+                self.list = cached.list
+                self.comparisonDate = cached.comparisonDate
+                return
+            }
+
             let previous = await snapshotCache.loadPreviousSnapshot(for: target)
             let list = await Task.detached(priority: .userInitiated) {
                 previous.map {
@@ -102,6 +116,14 @@ final class ChangesModel {
             if let list {
                 self.list = list
                 self.comparisonDate = previous?.finishedAt
+                // Write the freshly built diff back so the next open (this
+                // launch or after relaunch) hits the fast path.
+                await snapshotCache.saveChangeList(
+                    list,
+                    comparisonDate: previous?.finishedAt,
+                    forTargetID: target.id,
+                    entryLimit: Self.entryLimit
+                )
             } else {
                 // Corrupt or vanished predecessor: reflect it so the gate
                 // (and the outline's Δ column) disable together.

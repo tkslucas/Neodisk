@@ -540,6 +540,34 @@ final class NeodiskViewModel {
         await snapshotCache.saveAuxiliaryData(sidecarData, forTargetID: snapshot.target.id)
     }
 
+    /// Computes and persists the Changes-tab diff for a just-saved snapshot
+    /// against its now-rotated predecessor, mirroring the kind-stats sidecar.
+    /// Utility priority and off the main actor: it decodes the predecessor
+    /// and runs the O(nodes) build the tab would otherwise pay on first open.
+    /// A no-op when there is no predecessor to diff against.
+    private static func saveChangeListSidecar(
+        for snapshot: ScanSnapshot,
+        in snapshotCache: ScanSnapshotCache
+    ) async {
+        let target = snapshot.target
+        guard let previous = await snapshotCache.loadPreviousSnapshot(for: target) else { return }
+        let currentStore = snapshot.treeStore
+        let entryLimit = ChangesModel.entryLimit
+        let list = await Task.detached(priority: .utility) {
+            ScanChangeList.build(
+                current: currentStore,
+                previous: previous.treeStore,
+                entryLimit: entryLimit
+            )
+        }.value
+        await snapshotCache.saveChangeList(
+            list,
+            comparisonDate: previous.finishedAt,
+            forTargetID: target.id,
+            entryLimit: entryLimit
+        )
+    }
+
     /// A saved snapshot landed on screen with no refresh scan behind it, so
     /// no scan finish will run the usual conveniences — prefetch the Changes
     /// baseline and optionally start the duplicate scan here instead. (When
@@ -675,6 +703,10 @@ final class NeodiskViewModel {
                 // snapshot starts with a colored map.
                 await Self.saveKindStatsSidecar(for: snapshot, in: snapshotCache)
                 self?.kindStatsSidecarGeneration += 1
+                // Compute and persist the change list now, off the main
+                // actor, so the first open of the Changes tab is instant
+                // instead of paying a predecessor decode plus O(nodes) build.
+                await Self.saveChangeListSidecar(for: snapshot, in: snapshotCache)
             } catch {
                 FileHandle.standardError.write(
                     Data("Neodisk: failed to persist scan snapshot: \(error)\n".utf8)

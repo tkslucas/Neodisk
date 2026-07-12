@@ -58,6 +58,7 @@ public actor ScanSnapshotCache {
     private static let magic: UInt32 = 0x4E44_5343 // "NDSC"
     private static let fileExtension = "ndscan"
     private static let auxiliaryFileExtension = "ndaux"
+    private static let changeListFileExtension = "nddiff"
 
     private let directoryURL: URL
     private let isLoggingEnabled: Bool
@@ -185,9 +186,14 @@ public actor ScanSnapshotCache {
             try? FileManager.default.removeItem(at: url)
         }
 
-        // Auxiliary payloads live and die with their latest snapshot.
+        // Auxiliary payloads (kind stats, cached change lists) live and die
+        // with their latest snapshot.
         for url in auxiliaryFileURLs() where !latestBasenames.contains(Self.slotBasename(url)) {
             log("pruning orphaned auxiliary data \(url.lastPathComponent)")
+            try? FileManager.default.removeItem(at: url)
+        }
+        for url in changeListFileURLs() where !latestBasenames.contains(Self.slotBasename(url)) {
+            log("pruning orphaned change-list cache \(url.lastPathComponent)")
             try? FileManager.default.removeItem(at: url)
         }
 
@@ -219,24 +225,90 @@ public actor ScanSnapshotCache {
         try? Data(contentsOf: auxiliaryFileURL(forTargetID: targetID))
     }
 
+    // MARK: - Cached change list (`.nddiff` slot)
+
+    /// The content-stable key for a target's cached diff: the identity of the
+    /// current and rotated-previous snapshot files plus the entry limit. Nil
+    /// when either snapshot file is missing (nothing to diff yet).
+    public func changeListCacheKey(
+        forTargetID targetID: String,
+        entryLimit: Int
+    ) -> ScanChangeCacheKey? {
+        guard let current = fileSignature(at: fileURL(forTargetID: targetID)),
+              let previous = fileSignature(at: previousFileURL(forTargetID: targetID)) else {
+            return nil
+        }
+        return ScanChangeCacheKey(
+            currentSize: current.size,
+            currentModified: current.modified,
+            previousSize: previous.size,
+            previousModified: previous.modified,
+            entryLimit: entryLimit
+        )
+    }
+
+    /// Returns the persisted change list for a target only when it is still
+    /// valid for the current snapshot files (same identity, entry limit, and
+    /// diff format); otherwise nil so the caller recomputes.
+    public func loadChangeList(
+        forTargetID targetID: String,
+        entryLimit: Int
+    ) -> ScanChangeListCacheEntry? {
+        guard let key = changeListCacheKey(forTargetID: targetID, entryLimit: entryLimit),
+              let data = try? Data(contentsOf: changeListFileURL(forTargetID: targetID)),
+              let entry = ScanChangeListCacheEntry.decoding(data),
+              entry.isValid(for: key) else {
+            return nil
+        }
+        return entry
+    }
+
+    /// Persists a computed change list, keyed on the current snapshot files.
+    /// A no-op when the files it would key on are missing.
+    public func saveChangeList(
+        _ list: ScanChangeList,
+        comparisonDate: Date?,
+        forTargetID targetID: String,
+        entryLimit: Int
+    ) {
+        guard let key = changeListCacheKey(forTargetID: targetID, entryLimit: entryLimit) else {
+            return
+        }
+        let entry = ScanChangeListCacheEntry(key: key, comparisonDate: comparisonDate, list: list)
+        guard let data = try? entry.encoded() else { return }
+        try? FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        try? data.write(to: changeListFileURL(forTargetID: targetID), options: .atomic)
+    }
+
     public func removeSnapshot(forTargetID targetID: String) {
         try? FileManager.default.removeItem(at: fileURL(forTargetID: targetID))
         try? FileManager.default.removeItem(at: previousFileURL(forTargetID: targetID))
         try? FileManager.default.removeItem(at: auxiliaryFileURL(forTargetID: targetID))
+        try? FileManager.default.removeItem(at: changeListFileURL(forTargetID: targetID))
     }
 
     public func removeAll() {
-        for url in cacheFileURLs() + auxiliaryFileURLs() {
+        for url in cacheFileURLs() + auxiliaryFileURLs() + changeListFileURLs() {
             try? FileManager.default.removeItem(at: url)
         }
     }
 
     /// Total size of all cache files, for the Settings privacy tab.
     public func totalSizeOnDisk() -> Int64 {
-        (cacheFileURLs() + auxiliaryFileURLs()).reduce(into: Int64(0)) { total, url in
-            let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
-            total = total.addingClamped(Int64(size))
+        (cacheFileURLs() + auxiliaryFileURLs() + changeListFileURLs())
+            .reduce(into: Int64(0)) { total, url in
+                let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+                total = total.addingClamped(Int64(size))
+            }
+    }
+
+    private func fileSignature(at url: URL) -> (size: Int64, modified: Double)? {
+        guard let values = try? url.resourceValues(
+            forKeys: [.fileSizeKey, .contentModificationDateKey]
+        ), let size = values.fileSize, let modified = values.contentModificationDate else {
+            return nil
         }
+        return (Int64(size), modified.timeIntervalSinceReferenceDate)
     }
 
     // MARK: - Files
@@ -258,6 +330,13 @@ public actor ScanSnapshotCache {
     private func auxiliaryFileURL(forTargetID targetID: String) -> URL {
         directoryURL.appending(
             path: "\(Self.hashedName(forTargetID: targetID)).\(Self.auxiliaryFileExtension)",
+            directoryHint: .notDirectory
+        )
+    }
+
+    private func changeListFileURL(forTargetID targetID: String) -> URL {
+        directoryURL.appending(
+            path: "\(Self.hashedName(forTargetID: targetID)).\(Self.changeListFileExtension)",
             directoryHint: .notDirectory
         )
     }
@@ -294,6 +373,14 @@ public actor ScanSnapshotCache {
             includingPropertiesForKeys: [.fileSizeKey]
         )) ?? []
         return contents.filter { $0.pathExtension == Self.auxiliaryFileExtension }
+    }
+
+    private func changeListFileURLs() -> [URL] {
+        let contents = (try? FileManager.default.contentsOfDirectory(
+            at: directoryURL,
+            includingPropertiesForKeys: [.fileSizeKey]
+        )) ?? []
+        return contents.filter { $0.pathExtension == Self.changeListFileExtension }
     }
 
     private func elapsedDescription(since start: ContinuousClock.Instant) -> String {

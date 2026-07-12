@@ -220,6 +220,65 @@ import Testing
         #expect(list.entries(for: .added).map(\.path) == ["/base/a.bin", "/base/b.bin"])
     }
 
+    @Test func testChangeListSurvivesCodableRoundTrip() throws {
+        // A mix of every entry kind, capped, so the round trip exercises the
+        // full struct (subsets, counts, byte sums).
+        let identity = FileIdentity(device: 1, inode: 10)
+        let previous = makeStore(files: [
+            ("kept.txt", 100, nil, 1),
+            ("grew.bin", 200, nil, 1),
+            ("shrank.bin", 300, nil, 1),
+            ("gone.bin", 400, nil, 1),
+            ("old-name.mov", 900, identity, 1)
+        ])
+        let current = makeStore(files: [
+            ("kept.txt", 100, nil, 1),
+            ("grew.bin", 260, nil, 1),
+            ("shrank.bin", 250, nil, 1),
+            ("fresh.bin", 500, nil, 1),
+            ("new-name.mov", 900, identity, 1)
+        ])
+        let list = ScanChangeList.build(current: current, previous: previous, entryLimit: 3)
+
+        let encoded = try JSONEncoder().encode(list)
+        let decoded = try JSONDecoder().decode(ScanChangeList.self, from: encoded)
+
+        #expect(decoded == list)
+        #expect(decoded.entries == list.entries)
+        #expect(decoded.totalEntryCount == list.totalEntryCount)
+        #expect(decoded.addedEntries == list.addedEntries)
+        #expect(decoded.deletedEntries == list.deletedEntries)
+        #expect(decoded.addedBytes == list.addedBytes)
+        #expect(decoded.removedBytes == list.removedBytes)
+        #expect(decoded.renamedCount == list.renamedCount)
+    }
+
+    @Test func testChangeListCacheEntryValidatesKeyAndFormat() throws {
+        let previous = makeStore(files: [("a.bin", 100, nil)])
+        let current = makeStore(files: [("a.bin", 300, nil)])
+        let list = ScanChangeList.build(current: current, previous: previous)
+        let key = ScanChangeCacheKey(
+            currentSize: 10, currentModified: 1, previousSize: 20, previousModified: 2, entryLimit: 500
+        )
+        let entry = ScanChangeListCacheEntry(key: key, comparisonDate: Date(), list: list)
+
+        let roundTripped = try #require(
+            ScanChangeListCacheEntry.decoding(try entry.encoded())
+        )
+        #expect(roundTripped.list == list)
+        #expect(roundTripped.isValid(for: key))
+
+        // Any key field change invalidates the cache.
+        let otherKey = ScanChangeCacheKey(
+            currentSize: 11, currentModified: 1, previousSize: 20, previousModified: 2, entryLimit: 500
+        )
+        #expect(!roundTripped.isValid(for: otherKey))
+        let otherLimit = ScanChangeCacheKey(
+            currentSize: 10, currentModified: 1, previousSize: 20, previousModified: 2, entryLimit: 250
+        )
+        #expect(!roundTripped.isValid(for: otherLimit))
+    }
+
     @Test func testSyntheticNodesAreIgnored() throws {
         let synthetic = FileNodeRecord(
             id: "/base/System Data",

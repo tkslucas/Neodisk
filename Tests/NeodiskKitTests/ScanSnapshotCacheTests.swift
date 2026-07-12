@@ -323,7 +323,116 @@ import Testing
         #expect(loaded.treeStore.node(id: oldFile.id) == nil)
     }
 
+    // MARK: - Cached change list (`.nddiff`)
+
+    @Test func testChangeListCacheHitMissAndInvalidation() async throws {
+        let cacheDirectory = makeTemporaryCacheDirectory()
+        defer { try? FileManager.default.removeItem(at: cacheDirectory) }
+        let cache = ScanSnapshotCache(directoryURL: cacheDirectory, isLoggingEnabled: false)
+        let target = makeTestTarget("/cache/nddiff")
+
+        // No previous snapshot yet: nothing to key on, so save is a no-op.
+        try await cache.save(makeFileSnapshot(target: target, files: [("a.bin", 100)]))
+        #expect(await cache.changeListCacheKey(forTargetID: target.id, entryLimit: 500) == nil)
+        await cache.saveChangeList(
+            makeEmptyList(), comparisonDate: nil, forTargetID: target.id, entryLimit: 500
+        )
+        #expect(await cache.loadChangeList(forTargetID: target.id, entryLimit: 500) == nil)
+
+        // Second save rotates the first into the previous slot: now both
+        // files exist and a diff can be keyed and persisted.
+        let previousStore = makeFileStore(target: target, files: [("a.bin", 100)])
+        let currentStore = makeFileStore(target: target, files: [("a.bin", 300), ("b.bin", 50)])
+        try await cache.save(makeFileSnapshot(target: target, files: [("a.bin", 300), ("b.bin", 50)]))
+        let list = ScanChangeList.build(current: currentStore, previous: previousStore, entryLimit: 500)
+        let comparisonDate = Date(timeIntervalSinceReferenceDate: 12_345)
+        await cache.saveChangeList(
+            list, comparisonDate: comparisonDate, forTargetID: target.id, entryLimit: 500
+        )
+
+        // Hit: same files, same limit.
+        let hit = try #require(await cache.loadChangeList(forTargetID: target.id, entryLimit: 500))
+        #expect(hit.list == list)
+        #expect(hit.comparisonDate.map { abs($0.timeIntervalSince(comparisonDate)) < 0.001 } == true)
+
+        // Miss: a different entry limit is a different key.
+        #expect(await cache.loadChangeList(forTargetID: target.id, entryLimit: 250) == nil)
+
+        // Invalidation: a third save rotates the files, changing their
+        // identity, so the stale diff no longer matches.
+        try await cache.save(makeFileSnapshot(target: target, files: [("a.bin", 300), ("c.bin", 9)]))
+        #expect(await cache.loadChangeList(forTargetID: target.id, entryLimit: 500) == nil)
+    }
+
+    @Test func testChangeListCacheIsPrunedAndRemovedWithItsSnapshot() async throws {
+        let cacheDirectory = makeTemporaryCacheDirectory()
+        defer { try? FileManager.default.removeItem(at: cacheDirectory) }
+        let cache = ScanSnapshotCache(directoryURL: cacheDirectory, isLoggingEnabled: false)
+        let target = makeTestTarget("/cache/nddiff-prune")
+
+        try await cache.save(makeFileSnapshot(target: target, files: [("a.bin", 100)]))
+        try await cache.save(makeFileSnapshot(target: target, files: [("a.bin", 300)]))
+        await cache.saveChangeList(
+            makeEmptyList(), comparisonDate: nil, forTargetID: target.id, entryLimit: 500
+        )
+        #expect(changeListFileURLs(in: cacheDirectory).count == 1)
+
+        // Pruning keeps the diff whose snapshot survives …
+        _ = await cache.pruneAndIndex(keepingTargetIDs: [target.id])
+        #expect(changeListFileURLs(in: cacheDirectory).count == 1)
+
+        // … and drops it with a pruned snapshot.
+        _ = await cache.pruneAndIndex(keepingTargetIDs: [])
+        #expect(changeListFileURLs(in: cacheDirectory).isEmpty)
+
+        // removeSnapshot and removeAll clear it too, and it counts toward the
+        // total on disk.
+        try await cache.save(makeFileSnapshot(target: target, files: [("a.bin", 100)]))
+        try await cache.save(makeFileSnapshot(target: target, files: [("a.bin", 300)]))
+        await cache.saveChangeList(
+            makeEmptyList(), comparisonDate: nil, forTargetID: target.id, entryLimit: 500
+        )
+        #expect(await cache.totalSizeOnDisk() > 0)
+        await cache.removeSnapshot(forTargetID: target.id)
+        #expect(changeListFileURLs(in: cacheDirectory).isEmpty)
+
+        try await cache.save(makeFileSnapshot(target: target, files: [("a.bin", 100)]))
+        try await cache.save(makeFileSnapshot(target: target, files: [("a.bin", 300)]))
+        await cache.saveChangeList(
+            makeEmptyList(), comparisonDate: nil, forTargetID: target.id, entryLimit: 500
+        )
+        await cache.removeAll()
+        #expect(changeListFileURLs(in: cacheDirectory).isEmpty)
+        #expect(await cache.totalSizeOnDisk() == 0)
+    }
+
     // MARK: - Helpers
+
+    private func changeListFileURLs(in directory: URL) -> [URL] {
+        let contents = (try? FileManager.default.contentsOfDirectory(
+            at: directory, includingPropertiesForKeys: nil
+        )) ?? []
+        return contents.filter { $0.pathExtension == "nddiff" }
+    }
+
+    private func makeFileStore(target: ScanTarget, files: [(String, Int64)]) -> FileTreeStore {
+        let children = files.map { name, size in
+            makeTestFileNode(id: target.id + "/" + name, name: name, size: size)
+        }
+        let root = makeTestDirectoryNode(id: target.id, name: target.displayName, children: children)
+        return FileTreeStore(root: root, childrenByID: [root.id: children])
+    }
+
+    private func makeFileSnapshot(target: ScanTarget, files: [(String, Int64)]) -> ScanSnapshot {
+        let store = makeFileStore(target: target, files: files)
+        return makeTestSnapshot(target: target, root: store.root, store: store)
+    }
+
+    private func makeEmptyList() -> ScanChangeList {
+        let previous = makeFileStore(target: makeTestTarget("/x"), files: [("k.bin", 1)])
+        let current = makeFileStore(target: makeTestTarget("/x"), files: [("k.bin", 1)])
+        return ScanChangeList.build(current: current, previous: previous, entryLimit: 500)
+    }
 
     private func makeTemporaryCacheDirectory() -> URL {
         FileManager.default.temporaryDirectory

@@ -19,10 +19,25 @@ import CloudScanKit
 final class CloudScanModel: CloudScanIntegrating {
     private let service: CloudScanService
     private let providers: [any CloudProvider]
+    /// The provider connect actions to offer, in menu order. Empty when no
+    /// provider's OAuth client is configured.
+    private let connectMenu: [(id: String, title: String)]
+    /// How the provider opens the consent page. Injected so this file never
+    /// imports AppKit; the factory supplies an NSWorkspace-backed closure.
+    private let openURL: @Sendable (URL) -> Void
 
-    init(service: CloudScanService, providers: [any CloudProvider]) {
+    var onAccountsChanged: (() -> Void)?
+
+    init(
+        service: CloudScanService,
+        providers: [any CloudProvider],
+        connectMenu: [(id: String, title: String)] = [],
+        openURL: @escaping @Sendable (URL) -> Void = { _ in }
+    ) {
         self.service = service
         self.providers = providers
+        self.connectMenu = connectMenu
+        self.openURL = openURL
     }
 
     var accountTargets: [ScanTarget] {
@@ -48,6 +63,39 @@ final class CloudScanModel: CloudScanIntegrating {
 
     var scanService: any ScanEventStreaming {
         CloudScanServiceAdapter(service: service)
+    }
+
+    var canConnectAccounts: Bool { !connectMenu.isEmpty }
+
+    var connectMenuItems: [(id: String, title: String)] { connectMenu }
+
+    func connectAccount(providerID: String) async throws -> ScanTarget {
+        guard let provider = service.provider(forID: providerID) else {
+            throw CloudScanError.invalidTarget(providerID)
+        }
+        let account = try await provider.authorize(openURL: openURL)
+        guard let target = CloudTargetID.target(
+            providerID: account.providerID,
+            accountID: account.accountID,
+            displayName: account.email
+        ) else {
+            throw CloudScanError.invalidTarget(account.accountID)
+        }
+        onAccountsChanged?()
+        return target
+    }
+
+    func signOut(targetID: String) async {
+        guard let parsed = CloudTargetID.parse(targetID),
+              let provider = service.provider(forID: parsed.providerID) else {
+            return
+        }
+        if let account = (try? provider.restoreAccounts())?.first(where: {
+            $0.accountID == parsed.accountID
+        }) {
+            try? await provider.signOut(account)
+        }
+        onAccountsChanged?()
     }
 }
 

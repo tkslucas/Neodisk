@@ -60,6 +60,64 @@ import NeodiskKit
         #expect(model.builtInLocations.contains { $0.id == account.id })
         #expect(model.cloudScan?.accountSubtitle(forTargetID: account.id) == "Fixture Drive")
     }
+
+    @MainActor
+    @Test func testConnectRefreshesCloudDriveAccounts() async throws {
+        let cloudScan = FakeCloudScanIntegration(
+            accountTargets: [],
+            subtitles: [:],
+            connectMenu: [(id: "google", title: "Connect Google Drive…")]
+        )
+        let environment = try IsolatedModelEnvironment()
+        defer { environment.tearDown() }
+        let model = environment.makeModel(cloudScan: cloudScan)
+
+        #expect(model.cloudDriveAccounts.isEmpty)
+        #expect(model.cloudScan?.canConnectAccounts == true)
+
+        let connected = makeCloudTarget()
+        cloudScan.nextConnectResult = connected
+        model.connectCloudAccount(providerID: "google")
+
+        try await eventually { model.cloudDriveAccounts.map(\.id) == [connected.id] }
+        #expect(model.cloudDriveAccounts.map(\.id) == [connected.id])
+    }
+
+    @MainActor
+    @Test func testSignOutRemovesCloudAccount() async throws {
+        let account = makeCloudTarget()
+        let cloudScan = FakeCloudScanIntegration(
+            accountTargets: [account],
+            subtitles: [account.id: "Google Drive"],
+            connectMenu: [(id: "google", title: "Connect Google Drive…")]
+        )
+        let environment = try IsolatedModelEnvironment()
+        defer { environment.tearDown() }
+        let model = environment.makeModel(cloudScan: cloudScan)
+
+        #expect(model.cloudDriveAccounts.map(\.id) == [account.id])
+
+        model.signOutCloudAccount(targetID: account.id)
+
+        try await eventually { model.cloudDriveAccounts.isEmpty }
+        #expect(model.cloudDriveAccounts.isEmpty)
+        #expect(model.cachedScanInfo[account.id] == nil)
+    }
+}
+
+/// Polls a MainActor condition, yielding between checks, until it holds or the
+/// budget runs out.
+@MainActor
+private func eventually(
+    timeout: Duration = .seconds(5),
+    _ condition: @MainActor () -> Bool
+) async throws {
+    let deadline = ContinuousClock.now + timeout
+    while ContinuousClock.now < deadline {
+        if condition() { return }
+        try await Task.sleep(for: .milliseconds(10))
+    }
+    #expect(condition())
 }
 
 private func makeCloudTarget() -> ScanTarget {
@@ -98,18 +156,45 @@ private final class RecordingStreamService: ScanEventStreaming, @unchecked Senda
 
 @MainActor
 private final class FakeCloudScanIntegration: CloudScanIntegrating {
-    let accountTargets: [ScanTarget]
-    private let subtitles: [String: String]
+    private(set) var accountTargets: [ScanTarget]
+    private var subtitles: [String: String]
+    private let connectMenu: [(id: String, title: String)]
+    /// The target `connectAccount` should append and return.
+    var nextConnectResult: ScanTarget?
+    var onAccountsChanged: (() -> Void)?
 
-    init(accountTargets: [ScanTarget], subtitles: [String: String]) {
+    init(
+        accountTargets: [ScanTarget],
+        subtitles: [String: String],
+        connectMenu: [(id: String, title: String)] = []
+    ) {
         self.accountTargets = accountTargets
         self.subtitles = subtitles
+        self.connectMenu = connectMenu
     }
 
     var scanService: any ScanEventStreaming { RecordingStreamService() }
 
     func accountSubtitle(forTargetID targetID: String) -> String? {
         subtitles[targetID]
+    }
+
+    var canConnectAccounts: Bool { !connectMenu.isEmpty }
+
+    var connectMenuItems: [(id: String, title: String)] { connectMenu }
+
+    func connectAccount(providerID: String) async throws -> ScanTarget {
+        let target = nextConnectResult ?? makeCloudTarget()
+        accountTargets.append(target)
+        subtitles[target.id] = "Google Drive"
+        onAccountsChanged?()
+        return target
+    }
+
+    func signOut(targetID: String) async {
+        accountTargets.removeAll { $0.id == targetID }
+        subtitles[targetID] = nil
+        onAccountsChanged?()
     }
 }
 

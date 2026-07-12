@@ -11,6 +11,7 @@
 import Foundation
 import NeodiskKit
 #if canImport(CloudScanKit)
+import AppKit
 import CloudScanKit
 #endif
 
@@ -20,20 +21,43 @@ enum CloudScanFactory {
     static func make(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> (any CloudScanIntegrating)? {
-        // M1 has no OAuth: the only account source is a JSON fixture named by
-        // NEODISK_CLOUD_FIXTURE (the same hook the tests and screenshots use).
-        // Google Drive arrives later.
-        guard let fixturePath = environment["NEODISK_CLOUD_FIXTURE"] else { return nil }
-        do {
-            let provider = try FixtureCloudProvider(contentsOf: URL(filePath: fixturePath))
-            let service = CloudScanService(providers: [provider])
-            return CloudScanModel(service: service, providers: [provider])
-        } catch {
-            FileHandle.standardError.write(
-                Data("Neodisk: could not load cloud fixture at \(fixturePath): \(error)\n".utf8)
-            )
-            return nil
+        // Google Drive is always available (empty until its OAuth client is
+        // configured, in which case the connect button appears). The JSON
+        // fixture named by NEODISK_CLOUD_FIXTURE is appended for tests and
+        // screenshots — its account shows without OAuth.
+        var providers: [any CloudProvider] = []
+        var connectMenu: [(id: String, title: String)] = []
+
+        let googleConfig = GoogleOAuthConfiguration.fromEnvironment(environment)
+        let google = GoogleDriveProvider(
+            configuration: googleConfig,
+            transport: URLSessionTransport(),
+            tokenStore: KeychainTokenStore()
+        )
+        providers.append(google)
+        if googleConfig.isConfigured {
+            connectMenu.append((id: google.providerID, title: "Connect Google Drive…"))
         }
+
+        if let fixturePath = environment["NEODISK_CLOUD_FIXTURE"] {
+            do {
+                providers.append(try FixtureCloudProvider(contentsOf: URL(filePath: fixturePath)))
+            } catch {
+                FileHandle.standardError.write(
+                    Data("Neodisk: could not load cloud fixture at \(fixturePath): \(error)\n".utf8)
+                )
+            }
+        }
+
+        let service = CloudScanService(providers: providers)
+        return CloudScanModel(
+            service: service,
+            providers: providers,
+            connectMenu: connectMenu,
+            // NSWorkspace wants the main thread; the authorizer calls this
+            // from a background task.
+            openURL: { url in DispatchQueue.main.async { NSWorkspace.shared.open(url) } }
+        )
     }
 #else
     @MainActor

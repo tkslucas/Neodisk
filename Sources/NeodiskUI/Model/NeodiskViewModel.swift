@@ -290,6 +290,11 @@ final class NeodiskViewModel {
         // computed, so their persisted snapshots survive the launch prune
         // (builtInLocations already folds cloudDriveAccounts in).
         cloudDriveAccounts = cloudScan?.accountTargets ?? []
+        // Refresh the sidebar's cloud rows whenever an account is connected
+        // or signed out.
+        self.cloudScan?.onAccountsChanged = { [weak self] in
+            self?.refreshCloudDriveAccounts()
+        }
 
         // Drop cache entries for locations no longer in the sidebar and
         // learn which targets can open instantly from cache.
@@ -924,6 +929,47 @@ final class NeodiskViewModel {
             nodeCount: info.nodeCount,
             hasPreviousSnapshot: false
         )
+    }
+
+    // MARK: - Cloud accounts
+
+    /// Re-reads the connected cloud accounts after a connect or sign-out. The
+    /// assignment fires observation, so the sidebar's Cloud Drives section
+    /// updates.
+    private func refreshCloudDriveAccounts() {
+        cloudDriveAccounts = cloudScan?.accountTargets ?? []
+    }
+
+    /// Runs the provider's OAuth flow (opening the browser) and, on success,
+    /// scans the new account. Failures surface through the standard action
+    /// alert.
+    func connectCloudAccount(providerID: String) {
+        guard let cloudScan else { return }
+        Task { [weak self] in
+            do {
+                let target = try await cloudScan.connectAccount(providerID: providerID)
+                self?.startScan(target)
+            } catch {
+                self?.actionErrorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    /// Signs out of a connected cloud account: revokes and forgets its
+    /// credentials, drops its cached scan, and clears the display if that
+    /// account is what's on screen.
+    func signOutCloudAccount(targetID: String) {
+        guard let cloudScan else { return }
+        let wasDisplayed = coordinator.selectedTarget?.id == targetID
+        Task { [weak self, snapshotCache] in
+            await cloudScan.signOut(targetID: targetID)
+            await snapshotCache.removeSnapshot(forTargetID: targetID)
+            guard let self else { return }
+            self.cachedScanInfo.removeValue(forKey: targetID)
+            if wasDisplayed {
+                self.coordinator.clearScan()
+            }
+        }
     }
 
     // MARK: - Snapshot cache maintenance

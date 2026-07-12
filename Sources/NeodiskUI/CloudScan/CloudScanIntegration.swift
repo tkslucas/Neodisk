@@ -26,6 +26,24 @@ protocol CloudScanIntegrating: AnyObject {
     var scanService: any ScanEventStreaming { get }
     /// The provider name shown under an account row ("Google Drive").
     func accountSubtitle(forTargetID targetID: String) -> String?
+
+    /// True when at least one provider can be connected interactively (its
+    /// OAuth client is configured). Drives whether the sidebar shows the
+    /// Cloud Drives section and its connect button when no account exists yet.
+    var canConnectAccounts: Bool { get }
+    /// One entry per connectable provider: a stable provider id and the
+    /// button title ("Connect Google Drive…"). Empty when nothing is
+    /// configured.
+    var connectMenuItems: [(id: String, title: String)] { get }
+    /// Runs the provider's OAuth flow (opening the browser) and returns the
+    /// new account's sidebar target. Fires `onAccountsChanged` on success.
+    func connectAccount(providerID: String) async throws -> ScanTarget
+    /// Revokes and forgets the account behind a cloud target, then fires
+    /// `onAccountsChanged`.
+    func signOut(targetID: String) async
+    /// Called after the connected-account set changes (connect / sign out) so
+    /// the view model can refresh its sidebar targets.
+    var onAccountsChanged: (() -> Void)? { get set }
 }
 
 /// Sends `.cloud` targets to the cloud scan service and everything else to

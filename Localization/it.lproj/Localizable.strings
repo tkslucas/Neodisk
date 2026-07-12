@@ -290,3 +290,10 @@
 "Check for updates automatically" = "Cerca aggiornamenti automaticamente";
 "Neodisk checks GitHub for new versions in the background and always asks before installing anything." = "Neodisk cerca nuove versioni su GitHub in background e chiede sempre conferma prima di installare qualsiasi cosa.";
 "Automatic updates work only in the packaged app." = "Gli aggiornamenti automatici funzionano solo nell’app pacchettizzata.";
+
+/* MARK: - Help & About */
+"About Neodisk" = "Informazioni su Neodisk";
+"Neodisk on GitHub" = "Neodisk su GitHub";
+"Report Issue…" = "Segnala un problema…";
+"Report issues and feature requests on GitHub." = "Segnala problemi e richieste di funzionalità su GitHub.";
+"Scan engine and sunburst derive from Radix by Colin Kim." = "Il motore di scansione e il sunburst derivano da Radix di Colin Kim.";

@@ -290,3 +290,10 @@
 "Check for updates automatically" = "自动检查更新";
 "Neodisk checks GitHub for new versions in the background and always asks before installing anything." = "Neodisk 会在后台检查 GitHub 上的新版本，安装前一定会先询问。";
 "Automatic updates work only in the packaged app." = "自动更新仅在打包的 App 中可用。";
+
+/* MARK: - Help & About */
+"About Neodisk" = "关于 Neodisk";
+"Neodisk on GitHub" = "GitHub 上的 Neodisk";
+"Report Issue…" = "报告问题…";
+"Report issues and feature requests on GitHub." = "请在 GitHub 上报告问题和提交功能请求。";
+"Scan engine and sunburst derive from Radix by Colin Kim." = "扫描引擎和旭日图源自 Colin Kim 的 Radix。";

@@ -45,6 +45,12 @@ public struct NeodiskApp: App {
                 .onAppear { preferences.applyTheme() }
         }
         .commands {
+            CommandGroup(replacing: .appInfo) {
+                Button("About Neodisk") {
+                    AboutPanel.show()
+                }
+            }
+
             CommandGroup(after: .appInfo) {
                 Button {
                     updates.checkForUpdates()
@@ -115,6 +121,22 @@ public struct NeodiskApp: App {
                 }
                 .keyboardShortcut("k", modifiers: [.control, .command])
                 .disabled(model.coordinator.snapshot == nil)
+            }
+
+            // No help book; the app is meant to be self-explanatory. Help
+            // points at the GitHub repo instead.
+            CommandGroup(replacing: .help) {
+                Button {
+                    NSWorkspace.shared.open(AppLinks.repository)
+                } label: {
+                    Label("Neodisk on GitHub", systemImage: "link")
+                }
+
+                Button {
+                    NSWorkspace.shared.open(AppLinks.reportIssue)
+                } label: {
+                    Label("Report Issue…", systemImage: "flag")
+                }
             }
         }
 

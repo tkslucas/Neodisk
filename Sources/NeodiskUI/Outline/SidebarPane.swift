@@ -319,8 +319,12 @@ private struct VolumeCapacityBar: View {
     let data: VolumeBarData
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// The segment (or free track) the pointer is over; shows the tooltip.
+    /// The segment (or free track) the pointer is over; drives the bubble's
+    /// expanded/contracted state.
     @State private var hoveredSegmentID: String?
+    /// The segment the bubble describes. Outlives `hoveredSegmentID` so the
+    /// contract animation keeps its content and place instead of vanishing.
+    @State private var shownSegmentID: String?
     /// Measured bubble size; the tooltip stays invisible until the first
     /// measurement lands so it never flashes at an unclamped position.
     @State private var tooltipSize: CGSize = .zero
@@ -349,8 +353,16 @@ private struct VolumeCapacityBar: View {
             .background(Color.primary.opacity(0.12))
             .clipShape(Capsule())
             .overlay(alignment: .topLeading) {
-                if let info = hoveredInfo(barWidth: geometry.size.width) {
-                    tooltip(info: info, barWidth: geometry.size.width)
+                // Mounted while `shownSegmentID` is set (through the whole
+                // contract animation); only scale and opacity animate, so
+                // the bubble always plays the same expand/contract in the
+                // same segment-anchored place.
+                if let info = shownInfo(barWidth: geometry.size.width) {
+                    tooltip(
+                        info: info,
+                        barWidth: geometry.size.width,
+                        isExpanded: hoveredSegmentID != nil
+                    )
                 }
             }
         }
@@ -358,14 +370,16 @@ private struct VolumeCapacityBar: View {
         .onPreferenceChange(VolumeBarTooltipSizeKey.self) { tooltipSize = $0 }
     }
 
-    /// Entering expands the bubble (animated insertion); leaving contracts
-    /// it after a short grace period, so hopping to the next segment (whose
-    /// enter event may arrive after this one's exit) repositions the bubble
-    /// instead of replaying the contract/expand cycle.
+    /// Entering expands the bubble; leaving contracts it after a short
+    /// grace period, so hopping to the next segment (whose enter event may
+    /// arrive after this one's exit) repositions the bubble instead of
+    /// replaying the contract/expand cycle. Only the expanded/contracted
+    /// flip is animated — content and position swap instantly.
     private func hover(_ id: String, isHovering: Bool) {
         if isHovering {
             unhoverTask?.cancel()
             unhoverTask = nil
+            shownSegmentID = id
             if hoveredSegmentID == nil {
                 withAnimation(reduceMotion ? .easeOut(duration: 0.1) : .spring(duration: 0.28)) {
                     hoveredSegmentID = id
@@ -394,9 +408,9 @@ private struct VolumeCapacityBar: View {
         let midX: CGFloat
     }
 
-    private func hoveredInfo(barWidth: CGFloat) -> HoverInfo? {
-        guard let hoveredSegmentID else { return nil }
-        if hoveredSegmentID == Self.freeTrackID {
+    private func shownInfo(barWidth: CGFloat) -> HoverInfo? {
+        guard let shownSegmentID else { return nil }
+        if shownSegmentID == Self.freeTrackID {
             guard let available = data.availableSize, !data.segments.isEmpty else { return nil }
             let usedWidth = barWidth * data.segments.reduce(0) { $0 + $1.fraction }
             return HoverInfo(label: "Available", size: available, midX: (usedWidth + barWidth) / 2)
@@ -404,7 +418,7 @@ private struct VolumeCapacityBar: View {
         var x: CGFloat = 0
         for segment in data.segments {
             let width = barWidth * segment.fraction
-            if segment.id == hoveredSegmentID {
+            if segment.id == shownSegmentID {
                 return HoverInfo(label: segment.label, size: segment.size, midX: x + (width / 2))
             }
             x += width
@@ -416,11 +430,18 @@ private struct VolumeCapacityBar: View {
     /// bubble centers on the stretch but clamps to the bar's width; the
     /// tail keeps pointing at the stretch even when the bubble clamps.
     /// Offsets need the bubble's size, so it reports it via preference and
-    /// hides until measured.
-    private func tooltip(info: HoverInfo, barWidth: CGFloat) -> some View {
+    /// hides until measured. Position is never animated: expand/contract is
+    /// a scale out of the tail tip plus a fade, identical every time for a
+    /// given segment.
+    private func tooltip(info: HoverInfo, barWidth: CGFloat, isExpanded: Bool) -> some View {
         let width = tooltipSize.width
         let offsetX = min(max(info.midX - (width / 2), 0), max(barWidth - width, 0))
         let tailX = width > 0 ? info.midX - offsetX : nil
+        let anchor: UnitPoint = if let tailX, width > 0 {
+            UnitPoint(x: tailX / width, y: 1)
+        } else {
+            .bottom
+        }
         return VolumeBarTooltip(
             label: info.label,
             size: info.size,
@@ -430,22 +451,10 @@ private struct VolumeCapacityBar: View {
         .background(GeometryReader { proxy in
             Color.clear.preference(key: VolumeBarTooltipSizeKey.self, value: proxy.size)
         })
+        .scaleEffect(isExpanded || reduceMotion ? 1 : 0.35, anchor: anchor)
+        .opacity(tooltipSize == .zero || !isExpanded ? 0 : 1)
         .offset(x: offsetX, y: -(tooltipSize.height + Self.tooltipGap))
-        .opacity(tooltipSize == .zero ? 0 : 1)
-        .transition(bubbleTransition(tailX: tailX, width: width))
         .allowsHitTesting(false)
-    }
-
-    /// Expand on hover / contract on unhover, growing out of the tail tip
-    /// with a fade. Reduce Motion keeps just the fade.
-    private func bubbleTransition(tailX: CGFloat?, width: CGFloat) -> AnyTransition {
-        guard !reduceMotion else { return .opacity }
-        let anchor: UnitPoint = if let tailX, width > 0 {
-            UnitPoint(x: tailX / width, y: 1)
-        } else {
-            .bottom
-        }
-        return .scale(scale: 0.35, anchor: anchor).combined(with: .opacity)
     }
 }
 

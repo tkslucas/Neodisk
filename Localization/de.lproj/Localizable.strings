@@ -299,6 +299,7 @@
 "Support Neodisk…" = "Neodisk unterstützen…";
 "Support" = "Unterstützen";
 "License" = "Lizenz";
+"Privacy" = "Datenschutz";
 "Version %@" = "Version %@";
 
 // Cloud Drives (remote CloudScan)

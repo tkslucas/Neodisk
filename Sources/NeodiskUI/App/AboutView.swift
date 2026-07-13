@@ -13,6 +13,7 @@ enum AppLinks {
     static let sponsor = URL(string: "https://github.com/sponsors/tkslucas")!
     /// The license page also carries the Radix attribution notice.
     static let license = URL(string: "https://github.com/tkslucas/Neodisk/blob/main/LICENSE")!
+    static let privacy = URL(string: "https://neodisk.app/privacy")!
 }
 
 /// Custom About window: icon, name, version, Support/GitHub buttons, and a
@@ -49,10 +50,14 @@ struct AboutView: View {
             }
             .padding(.top, 24)
 
-            Link("License", destination: AppLinks.license)
-                .font(.caption)
-                .tint(.secondary)
-                .padding(.top, 20)
+            HStack(spacing: 6) {
+                Link("License", destination: AppLinks.license)
+                Text(verbatim: "·")
+                Link("Privacy", destination: AppLinks.privacy)
+            }
+            .font(.caption)
+            .tint(.secondary)
+            .padding(.top, 20)
         }
         .padding(.top, 24)
         .padding(.bottom, 20)

@@ -117,26 +117,35 @@ private enum OutlineRowMetrics {
     /// 16, three 4pt gaps, then the name, an 8pt minimum gap, and the
     /// trailing cluster at its own inset.
     static func contentWidth(
-        for rows: [NeodiskViewModel.OutlineRow], baseline: ScanSizeBaseline?
+        for rows: [NeodiskViewModel.OutlineRow], baseline: ScanSizeBaseline?,
+        includeCloudOnly: Bool
     ) -> CGFloat {
         var maxWidth: CGFloat = 0
         for row in rows {
             var width = contentInset + CGFloat(row.depth) * indentPerDepth + 46
             width += cachedWidth(of: row.node.name, font: nameFont, cachePrefix: "n:")
-            width += 8 + clusterWidth(for: row, baseline: baseline) + contentInset
+            width += 8 + clusterWidth(for: row, baseline: baseline, includeCloudOnly: includeCloudOnly)
+                + contentInset
             maxWidth = max(maxWidth, width)
         }
         return maxWidth.rounded(.up)
     }
 
+    /// Width of FileSizeLabel's cloud glyph plus its 3pt gap.
+    private static let cloudGlyphWidth: CGFloat = 15
+
     static func clusterWidth(
-        for row: NeodiskViewModel.OutlineRow, baseline: ScanSizeBaseline?
+        for row: NeodiskViewModel.OutlineRow, baseline: ScanSizeBaseline?,
+        includeCloudOnly: Bool
     ) -> CGFloat {
         var width = cachedWidth(
-            of: NeodiskFormatters.size(row.node.allocatedSize),
+            of: NeodiskFormatters.size(row.node.displayWeight(includingCloudOnly: includeCloudOnly)),
             font: sizeFont,
             cachePrefix: "s:"
         )
+        if includeCloudOnly && row.node.cloudOnlyLogicalSize > 0 {
+            width += cloudGlyphWidth
+        }
         if let baseline {
             width += cachedWidth(
                 of: deltaText(baseline.sizeDelta(for: row.node)),
@@ -336,13 +345,16 @@ private struct OutlineTreeTable: NSViewRepresentable {
                 return
             }
             pendingApply = nil
+            // Fingerprint the displayed size (cloud-only toggle included), so
+            // flipping the toggle reloads rows whose number or glyph changes.
+            let includeCloudOnly = model.showsCloudOnlyFiles
             let newFingerprints = newRows.map {
                 RowFingerprint(
                     id: $0.id,
                     depth: $0.depth,
                     isExpandable: $0.isExpandable,
                     name: $0.node.name,
-                    size: $0.node.allocatedSize,
+                    size: $0.node.displayWeight(includingCloudOnly: includeCloudOnly),
                     delta: baseline?.sizeDelta(for: $0.node)
                 )
             }
@@ -355,7 +367,9 @@ private struct OutlineTreeTable: NSViewRepresentable {
             rowIndexByID = Dictionary(
                 uniqueKeysWithValues: newRows.enumerated().map { ($0.element.id, $0.offset) }
             )
-            contentWidth = OutlineRowMetrics.contentWidth(for: newRows, baseline: baseline)
+            contentWidth = OutlineRowMetrics.contentWidth(
+                for: newRows, baseline: baseline, includeCloudOnly: includeCloudOnly
+            )
             tableView?.reloadData()
         }
 
@@ -842,7 +856,7 @@ private struct OutlineTrailingSection: View {
                 DeltaLabel(delta: baseline.sizeDelta(for: row.node))
             }
 
-            Text(NeodiskFormatters.size(row.node.allocatedSize))
+            FileSizeLabel(node: row.node, includeCloudOnly: model.showsCloudOnlyFiles)
                 .foregroundStyle(state.showsAccentSelection
                     ? AnyShapeStyle(.white.opacity(0.85))
                     : AnyShapeStyle(.secondary))
@@ -881,8 +895,12 @@ private struct OutlineSearchResultsList: View {
         } else {
             List(results.ids, id: \.self, selection: selection) { nodeID in
                 if let node = model.store?.node(id: nodeID) {
-                    FileResultRow(node: node, palette: model.vizPalette)
-                        .listRowSeparator(.hidden)
+                    FileResultRow(
+                        node: node,
+                        palette: model.vizPalette,
+                        includeCloudOnly: model.showsCloudOnlyFiles
+                    )
+                    .listRowSeparator(.hidden)
                 }
             }
             .fileNodeActions(model: model)

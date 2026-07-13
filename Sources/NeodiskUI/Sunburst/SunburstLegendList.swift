@@ -49,7 +49,8 @@ struct SunburstLegendList: View {
                             chartRootID: chartRootID,
                             in: store,
                             segments: chartModel.renderedSegments,
-                            style: style
+                            style: style,
+                            includeCloudOnly: model.showsCloudOnlyFiles
                         ),
                         isHeader: true,
                         isSelected: false,
@@ -125,7 +126,8 @@ struct SunburstLegendList: View {
             chartRootID: chartRootID,
             in: store,
             segments: chartModel.renderedSegments,
-            style: style
+            style: style,
+            includeCloudOnly: model.showsCloudOnlyFiles
         )
     }
 
@@ -241,6 +243,11 @@ private struct LegendRowView: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
             Spacer(minLength: 8)
+            if row.showsCloudGlyph {
+                Image(systemName: "cloud")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(isHeader ? .primary : .secondary)
+            }
             Text(verbatim: NeodiskFormatters.size(row.size))
                 .font(sizeFont)
                 .monospacedDigit()

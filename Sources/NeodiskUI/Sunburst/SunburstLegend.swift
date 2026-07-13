@@ -36,6 +36,10 @@ struct SunburstLegendRow: Identifiable, Equatable {
     let isDimmed: Bool
     /// Pooled item count; non-zero only on the aggregate row.
     let itemCount: Int
+    /// Marks a row whose size includes cloud-only bytes (the cloud-only
+    /// toggle is on and the node has some) — rendered as a small cloud
+    /// glyph beside the size.
+    var showsCloudGlyph: Bool = false
 }
 
 enum SunburstLegend {
@@ -54,7 +58,8 @@ enum SunburstLegend {
         chartRootID: String,
         in store: FileTreeStore,
         segments: [SunburstSegment],
-        style: SunburstColorStyle
+        style: SunburstColorStyle,
+        includeCloudOnly: Bool = false
     ) -> [SunburstLegendRow] {
         var segmentByNodeID: [String: SunburstSegment] = [:]
         var aggregateSegment: SunburstSegment?
@@ -72,24 +77,29 @@ enum SunburstLegend {
             }
         }
 
+        // Sort by the same weight the chart lays arcs out with, so the
+        // legend order matches the ring.
         let children = store.children(of: displayedFolderID).sorted { lhs, rhs in
-            lhs.allocatedSize != rhs.allocatedSize
-                ? lhs.allocatedSize > rhs.allocatedSize
-                : lhs.name < rhs.name
+            let lhsWeight = lhs.displayWeight(includingCloudOnly: includeCloudOnly)
+            let rhsWeight = rhs.displayWeight(includingCloudOnly: includeCloudOnly)
+            return lhsWeight != rhsWeight ? lhsWeight > rhsWeight : lhs.name < rhs.name
         }
 
         var rows: [SunburstLegendRow] = []
         rows.reserveCapacity(children.count + 2)
         for child in children {
+            let size = child.displayWeight(includingCloudOnly: includeCloudOnly)
+            let showsCloudGlyph = includeCloudOnly && child.cloudOnlyLogicalSize > 0
             if let segment = segmentByNodeID[child.id] {
                 rows.append(SunburstLegendRow(
                     id: child.id,
                     target: .node(id: child.id, isDirectory: child.isSunburstFolder(in: store)),
                     label: child.name,
-                    size: child.allocatedSize,
+                    size: size,
                     dotColor: SunburstChartStyler.baseStyle(for: segment).fillColor,
                     isDimmed: false,
-                    itemCount: 0
+                    itemCount: 0,
+                    showsCloudGlyph: showsCloudGlyph
                 ))
             } else if aggregateSegment != nil {
                 // The chart pooled this child into the aggregate segment —
@@ -102,10 +112,11 @@ enum SunburstLegend {
                     id: child.id,
                     target: .node(id: child.id, isDirectory: child.isSunburstFolder(in: store)),
                     label: child.name,
-                    size: child.allocatedSize,
+                    size: size,
                     dotColor: fallbackDotColor(for: child, chartRootID: chartRootID, in: store, style: style),
                     isDimmed: false,
-                    itemCount: 0
+                    itemCount: 0,
+                    showsCloudGlyph: showsCloudGlyph
                 ))
             }
         }
@@ -158,7 +169,8 @@ enum SunburstLegend {
         chartRootID: String,
         in store: FileTreeStore,
         segments: [SunburstSegment],
-        style: SunburstColorStyle
+        style: SunburstColorStyle,
+        includeCloudOnly: Bool = false
     ) -> SunburstLegendRow {
         let dotColor: Color
         if let segment = segments.first(where: { $0.nodeID == folder.id }) {
@@ -170,10 +182,11 @@ enum SunburstLegend {
             id: "header-\(folder.id)",
             target: .node(id: folder.id, isDirectory: folder.isSunburstFolder(in: store)),
             label: folder.name,
-            size: folder.allocatedSize,
+            size: folder.displayWeight(includingCloudOnly: includeCloudOnly),
             dotColor: dotColor,
             isDimmed: false,
-            itemCount: 0
+            itemCount: 0,
+            showsCloudGlyph: includeCloudOnly && folder.cloudOnlyLogicalSize > 0
         )
     }
 

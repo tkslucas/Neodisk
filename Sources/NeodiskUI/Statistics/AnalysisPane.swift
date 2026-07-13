@@ -201,8 +201,12 @@ struct StatsFileListView: View {
                 )
                 List(visibleIDs, id: \.self, selection: selection) { nodeID in
                     if let node = model.store?.node(id: nodeID) {
-                        FileResultRow(node: node, palette: model.vizPalette)
-                            .listRowSeparator(.hidden)
+                        FileResultRow(
+                            node: node,
+                            palette: model.vizPalette,
+                            includeCloudOnly: model.showsCloudOnlyFiles
+                        )
+                        .listRowSeparator(.hidden)
                     }
                 }
                 .fileNodeActions(model: model)

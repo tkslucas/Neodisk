@@ -13,10 +13,30 @@ import NeodiskKit
 /// statistics file lists: category icon tinted with the category's fixed
 /// color (the treemap's Categories palette, so lists and map speak the same
 /// color language), name, dimmed containing folder, size.
+/// Size text for file rows: the same number the visualizations weight by.
+/// With the cloud-only toggle on, a node whose bytes live (partly) in the
+/// cloud shows the combined size behind a small cloud glyph; off, rows show
+/// the plain on-disk size — matching the map, where cloud-only tiles vanish.
+struct FileSizeLabel: View {
+    let node: FileNodeRecord
+    let includeCloudOnly: Bool
+
+    var body: some View {
+        HStack(spacing: 3) {
+            if includeCloudOnly && node.cloudOnlyLogicalSize > 0 {
+                Image(systemName: "cloud")
+                    .font(.system(size: 9, weight: .medium))
+            }
+            Text(NeodiskFormatters.size(node.displayWeight(includingCloudOnly: includeCloudOnly)))
+        }
+    }
+}
+
 struct FileResultRow: View {
     let node: FileNodeRecord
     /// The active palette, so tints follow the colorblind Settings toggle.
     var palette: VizPalette = .standard
+    var includeCloudOnly: Bool = false
 
     var body: some View {
         HStack(spacing: 6) {
@@ -35,7 +55,7 @@ struct FileResultRow: View {
 
             Spacer(minLength: 8)
 
-            Text(NeodiskFormatters.size(node.allocatedSize))
+            FileSizeLabel(node: node, includeCloudOnly: includeCloudOnly)
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
                 .lineLimit(1)

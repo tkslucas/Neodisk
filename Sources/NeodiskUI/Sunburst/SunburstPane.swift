@@ -59,7 +59,9 @@ struct SunburstPane: View {
                     hiddenSpaceBytes: hiddenSpaceBytes,
                     expandedAggregateIDs: model.expandedAggregateIDs,
                     includeCloudOnly: model.showsCloudOnlyFiles,
-                    centerSizeText: NeodiskFormatters.size(displayedFolder.allocatedSize),
+                    centerSizeText: NeodiskFormatters.size(
+                        displayedFolder.displayWeight(includingCloudOnly: model.showsCloudOnlyFiles)
+                    ),
                     onHoverSegment: { handleHover($0) },
                     onClickSegment: { handleClick($0) },
                     onPinchDrillSegment: { handlePinchDrill($0) },

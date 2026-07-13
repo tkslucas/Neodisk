@@ -43,6 +43,9 @@ final class LargestFilesModel {
     /// just the visible prefix); empty while browsing.
     @ObservationIgnored private var entries: [FileSearchEntry] = []
     @ObservationIgnored private var loadedSnapshotID: UUID?
+    /// Whether cloud-only bytes count toward the ranking — mirrors the
+    /// toolbar toggle, passed in by the pane on every load.
+    @ObservationIgnored private var includeCloudOnly = false
 
     init(coordinator: ScanCoordinator, indexService: SearchIndexService) {
         self.coordinator = coordinator
@@ -50,15 +53,22 @@ final class LargestFilesModel {
     }
 
     /// Called from the pane whenever it is on screen with a snapshot (tab
-    /// switches and partial-snapshot updates alike); no-op when the list
-    /// already matches the displayed snapshot. Loading only from the pane
-    /// keeps hidden tabs from scanning the tree during scans.
-    func loadIfNeeded() {
+    /// switches, partial-snapshot updates, and cloud-only toggle flips);
+    /// no-op when the list already matches the displayed snapshot and
+    /// toggle. Loading only from the pane keeps hidden tabs from scanning
+    /// the tree during scans.
+    func loadIfNeeded(includeCloudOnly: Bool = false) {
         guard let snapshot = coordinator.snapshot else { return }
-        guard loadedSnapshotID != snapshot.id else { return }
+        guard loadedSnapshotID != snapshot.id || self.includeCloudOnly != includeCloudOnly else {
+            return
+        }
+        let snapshotChanged = loadedSnapshotID != snapshot.id
         loadedSnapshotID = snapshot.id
-        // A new tree: any lazily-built index entries belong to the old one.
-        entries = []
+        self.includeCloudOnly = includeCloudOnly
+        if snapshotChanged {
+            // A new tree: any lazily-built index entries belong to the old one.
+            entries = []
+        }
         // Keep the previous list on screen while a partial refresh rebuilds;
         // the spinner is for the nothing-yet case only.
         isLoading = visibleIDs.isEmpty
@@ -119,17 +129,20 @@ final class LargestFilesModel {
         filterDebouncer.cancel()
         // Once the index has been built for a filter, its size-descending
         // prefix is exactly the browse list — reuse it instead of rescanning.
-        if !entries.isEmpty {
+        // Not with cloud-only weighting: the index ranks by on-disk size, so
+        // the top-N rescan (which ranks by display weight) stays the truth.
+        if !entries.isEmpty, !includeCloudOnly {
             isLoading = false
             visibleIDs = entries.prefix(Self.browseLimit).map(\.id)
             totalMatches = entries.count
             return
         }
         let limit = Self.browseLimit
+        let includeCloudOnly = includeCloudOnly
         loadTask = Task { [weak self] in
             let store = snapshot.treeStore
             let result = await Task.detached(priority: .userInitiated) {
-                TopLargestFiles.select(from: store, limit: limit)
+                TopLargestFiles.select(from: store, limit: limit, includeCloudOnly: includeCloudOnly)
             }.value
             guard let self, !Task.isCancelled,
                   self.coordinator.snapshot?.id == snapshot.id,
@@ -170,11 +183,24 @@ final class LargestFilesModel {
     private func applyFuzzy(query: String) {
         let limit = Self.browseLimit
         let entries = entries
+        let includeCloudOnly = includeCloudOnly
+        let store = coordinator.snapshot?.treeStore
         filterDebouncer.schedule { [weak self] in
             let results = await Task.detached(priority: .userInitiated) {
                 // Order-preserving on purpose: this list ranks by size, and
                 // the filter narrows that ranking.
-                FuzzyMatcher.matchesInEntryOrder(query: query, entries: entries, limit: limit)
+                var results = FuzzyMatcher.matchesInEntryOrder(query: query, entries: entries, limit: limit)
+                // The index order is on-disk size; with cloud-only weighting
+                // on, re-rank the kept matches by display weight (bounded by
+                // `limit`, so the store lookups stay cheap).
+                if includeCloudOnly, let store {
+                    results.ids.sort { lhs, rhs in
+                        let lhsWeight = store.node(id: lhs)?.displayWeight(includingCloudOnly: true) ?? 0
+                        let rhsWeight = store.node(id: rhs)?.displayWeight(includingCloudOnly: true) ?? 0
+                        return lhsWeight != rhsWeight ? lhsWeight > rhsWeight : lhs < rhs
+                    }
+                }
+                return results
             }.value
             guard let self, !Task.isCancelled,
                   self.filterText.trimmingCharacters(in: .whitespaces) == query else {
@@ -201,7 +227,7 @@ private enum TopLargestFiles {
         var totalMatches: Int
     }
 
-    static func select(from store: FileTreeStore, limit: Int) -> Result {
+    static func select(from store: FileTreeStore, limit: Int, includeCloudOnly: Bool = false) -> Result {
         var total = 0
         // Parallel arrays as a binary min-heap of the kept entries: the root
         // is the smallest kept size, so it is the first evicted once full.
@@ -213,7 +239,7 @@ private enum TopLargestFiles {
         for node in store.allNodes {
             guard FileKindClassifier.isKindCountable(node, in: store) else { continue }
             total += 1
-            let size = node.allocatedSize
+            let size = node.displayWeight(includingCloudOnly: includeCloudOnly)
             if heapSizes.count < limit {
                 heapSizes.append(size)
                 heapIDs.append(node.id)

@@ -114,6 +114,17 @@ import Testing
         #expect(root.cloudOnlyLogicalSize == 5_000)
     }
 
+    @Test func testMetadataCarriesCloudOnlyTotalWithoutDecodingPayload() throws {
+        let data = try ScanSnapshotCodec.encode(makeSnapshot())
+        let url = FileManager.default.temporaryDirectory
+            .appending(path: "cloud-meta-\(UUID().uuidString).ndscan")
+        try data.write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let metadata = try ScanSnapshotCodec.readMetadata(fromFileAt: url)
+        #expect(metadata.cloudOnlyLogicalSize == 5_000)
+    }
+
     @Test func testVersion2FilesDecodeWithoutCloudOnlyData() throws {
         let data = try ScanSnapshotCodec.encode(makeSnapshot(), version: 2)
         let decoded = try ScanSnapshotCodec.decode(data)

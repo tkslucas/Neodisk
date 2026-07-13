@@ -646,7 +646,9 @@ final class NeodiskViewModel {
             lastScanDate: date,
             lastScanDuration: snapshot.finishedAt.map { $0.timeIntervalSince(snapshot.startedAt) },
             nodeCount: snapshot.treeStore.nodeCount,
-            hasPreviousSnapshot: info.hasPreviousSnapshot
+            hasPreviousSnapshot: info.hasPreviousSnapshot,
+            totalAllocatedSize: snapshot.aggregateStats.totalAllocatedSize,
+            cloudOnlyLogicalSize: Self.cloudOnlyBytes(of: snapshot)
         )
     }
 
@@ -717,7 +719,9 @@ final class NeodiskViewModel {
             lastScanDate: snapshot.finishedAt ?? Date(),
             lastScanDuration: snapshot.finishedAt.map { $0.timeIntervalSince(snapshot.startedAt) },
             nodeCount: snapshot.treeStore.nodeCount,
-            hasPreviousSnapshot: hadCachedSnapshot
+            hasPreviousSnapshot: hadCachedSnapshot,
+            totalAllocatedSize: snapshot.aggregateStats.totalAllocatedSize,
+            cloudOnlyLogicalSize: Self.cloudOnlyBytes(of: snapshot)
         )
         saveSnapshotToCache(snapshot)
     }
@@ -741,7 +745,9 @@ final class NeodiskViewModel {
             lastScanDate: existing?.lastScanDate ?? (snapshot.finishedAt ?? Date()),
             lastScanDuration: existing?.lastScanDuration,
             nodeCount: snapshot.treeStore.nodeCount,
-            hasPreviousSnapshot: existing != nil
+            hasPreviousSnapshot: existing != nil,
+            totalAllocatedSize: snapshot.aggregateStats.totalAllocatedSize,
+            cloudOnlyLogicalSize: Self.cloudOnlyBytes(of: snapshot)
         )
         saveSnapshotToCache(snapshot)
     }
@@ -1001,6 +1007,13 @@ final class NeodiskViewModel {
         setHasPreviousSnapshot(false, forTargetID: targetID)
     }
 
+    /// Cloud-only bytes below a snapshot's root, carried into
+    /// `cachedScanInfo` so the sidebar's cloud bar works without decoding.
+    private static func cloudOnlyBytes(of snapshot: ScanSnapshot) -> Int64 {
+        let store = snapshot.treeStore
+        return store.node(id: store.rootID)?.cloudOnlyLogicalSize ?? 0
+    }
+
     private func setHasPreviousSnapshot(_ hasPrevious: Bool, forTargetID targetID: String) {
         guard let info = cachedScanInfo[targetID],
               info.hasPreviousSnapshot != hasPrevious else { return }
@@ -1008,7 +1021,9 @@ final class NeodiskViewModel {
             lastScanDate: info.lastScanDate,
             lastScanDuration: info.lastScanDuration,
             nodeCount: info.nodeCount,
-            hasPreviousSnapshot: hasPrevious
+            hasPreviousSnapshot: hasPrevious,
+            totalAllocatedSize: info.totalAllocatedSize,
+            cloudOnlyLogicalSize: info.cloudOnlyLogicalSize
         )
     }
 

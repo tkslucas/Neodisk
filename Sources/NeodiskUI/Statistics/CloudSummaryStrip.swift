@@ -87,15 +87,3 @@ struct CloudSummaryStrip: View {
         return totalWidth * CGFloat(Double(part) / total)
     }
 }
-
-/// The dataless diagonal hatch as an overlay for plain SwiftUI views —
-/// the same brush the sunburst draws its cloud-only arcs with, so every
-/// surface strokes the identical texture.
-private struct DatalessHatchOverlay: View {
-    var body: some View {
-        Canvas { context, size in
-            SunburstDatalessHatch(size: size)
-                .draw(over: Path(CGRect(origin: .zero, size: size)), in: context)
-        }
-    }
-}

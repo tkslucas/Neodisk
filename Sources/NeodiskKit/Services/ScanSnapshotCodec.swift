@@ -43,6 +43,11 @@ nonisolated enum ScanSnapshotCodec {
         /// file's payload. Optional: files written before the field existed
         /// decode as nil (JSON metadata is additive) and simply never match.
         var changeDigest: String?
+        /// Cloud-only (dataless) bytes below the root, so index consumers
+        /// (the sidebar's cloud bar) can read it without decoding the node
+        /// payload. Optional and omitted when zero: additive, older files
+        /// decode as nil.
+        var cloudOnlyLogicalSize: Int64?
     }
 
     private struct NodeFlags: OptionSet {
@@ -101,7 +106,10 @@ nonisolated enum ScanSnapshotCodec {
             directoryCount: stats.directoryCount,
             accessibleItemCount: stats.accessibleItemCount,
             inaccessibleItemCount: stats.inaccessibleItemCount,
-            changeDigest: changeDigest ?? ScanChangeList.contentDigest(of: store)
+            changeDigest: changeDigest ?? ScanChangeList.contentDigest(of: store),
+            cloudOnlyLogicalSize: (store.storage.nodes.first?.cloudOnlyLogicalSize).flatMap {
+                $0 > 0 ? $0 : nil
+            }
         )
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .secondsSince1970

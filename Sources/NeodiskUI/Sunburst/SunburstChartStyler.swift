@@ -76,6 +76,19 @@ final class SunburstDatalessHatch {
     }
 }
 
+/// The dataless diagonal hatch as an overlay for plain SwiftUI views (the
+/// statistics strip's bar, the sidebar's cloud bar) — the same brush the
+/// sunburst draws its cloud-only arcs with, so every surface strokes the
+/// identical texture.
+struct DatalessHatchOverlay: View {
+    var body: some View {
+        Canvas { context, size in
+            SunburstDatalessHatch(size: size)
+                .draw(over: Path(CGRect(origin: .zero, size: size)), in: context)
+        }
+    }
+}
+
 enum SunburstChartStyler {
     static func baseStyle(
         for segment: SunburstSegment

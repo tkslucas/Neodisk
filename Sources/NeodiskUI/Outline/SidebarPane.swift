@@ -49,7 +49,7 @@ struct SidebarPane: View {
             if !model.cloudLocations.isEmpty {
                 Section("Local Cloud Files") {
                     ForEach(model.cloudLocations) { target in
-                        builtInLocationRow(target, now: now, bar: nil)
+                        builtInLocationRow(target, now: now, bar: cloudBar(for: target))
                     }
                 }
             }
@@ -82,7 +82,8 @@ struct SidebarPane: View {
                         target: target,
                         subtitle: capacityByPath[target.id] ?? target.id,
                         lastScanned: model.cachedScanInfo[target.id]?.lastScanDate,
-                        now: now
+                        now: now,
+                        bar: cloudBar(for: target)
                     )
                     .tag(target.id)
                     .contextMenu { removeMenu(clicked: target) }
@@ -298,6 +299,17 @@ struct SidebarPane: View {
         selection.subtract(ids)
     }
 
+    /// The on-this-Mac / cloud-only bar under scanned cloud locations and
+    /// folders — straight from the cache index, no snapshot decode. Volume
+    /// rows keep their kind-colored capacity bar instead.
+    private func cloudBar(for target: ScanTarget) -> VolumeBarData? {
+        guard let info = model.cachedScanInfo[target.id] else { return nil }
+        return VolumeBarData.cloudProportions(
+            onThisMac: info.totalAllocatedSize,
+            cloudOnly: info.cloudOnlyLogicalSize
+        )
+    }
+
     // MARK: - Volume capacity bars
 
     /// Reloads whenever a sidecar lands or the palette changes. The
@@ -343,15 +355,21 @@ nonisolated struct VolumeBarData: Equatable, Sendable {
     struct Segment: Equatable, Sendable, Identifiable {
         let id: String
         /// Localization key for the hover tooltip: a kind category display
-        /// name, or "Hidden Space" for the unscanned tail.
+        /// name, "Hidden Space" for the unscanned tail, or the cloud bar's
+        /// "On this Mac" / "Cloud-only".
         let label: String
         let size: Int64
         let rgb: SIMD3<Float>
         /// Fraction of the volume's total capacity.
         let fraction: Double
+        /// Overrides the rgb-derived fill — the cloud bar uses the dynamic
+        /// accent color, which has no fixed rgb.
+        var explicitColor: Color?
+        /// Cloud-only segments wear the shared dataless hatch.
+        var isHatched = false
 
         var color: Color {
-            Color(red: Double(rgb.x), green: Double(rgb.y), blue: Double(rgb.z))
+            explicitColor ?? Color(red: Double(rgb.x), green: Double(rgb.y), blue: Double(rgb.z))
         }
     }
 
@@ -361,6 +379,37 @@ nonisolated struct VolumeBarData: Equatable, Sendable {
     let availableSize: Int64?
 
     static let empty = VolumeBarData(segments: [], availableSize: nil)
+
+    /// The two-segment on-this-Mac / cloud-only proportion bar for scanned
+    /// cloud locations — the sidebar-sized sibling of CloudSummaryStrip's
+    /// bar, sharing its colors and the dataless hatch. Nil without any
+    /// cloud-only bytes (nothing worth a bar).
+    static func cloudProportions(onThisMac: Int64, cloudOnly: Int64) -> VolumeBarData? {
+        guard cloudOnly > 0 else { return nil }
+        let total = Double(onThisMac) + Double(cloudOnly)
+        return VolumeBarData(
+            segments: [
+                Segment(
+                    id: "on-this-mac",
+                    label: "On this Mac",
+                    size: onThisMac,
+                    rgb: .zero,
+                    fraction: Double(onThisMac) / total,
+                    explicitColor: .accentColor
+                ),
+                Segment(
+                    id: "cloud-only",
+                    label: "Cloud-only",
+                    size: cloudOnly,
+                    rgb: .zero,
+                    fraction: Double(cloudOnly) / total,
+                    explicitColor: .accentColor.opacity(0.3),
+                    isHatched: true
+                ),
+            ],
+            availableSize: nil
+        )
+    }
 
     static func make(
         volumeURL: URL,
@@ -437,6 +486,11 @@ private struct VolumeCapacityBar: View {
                 ForEach(data.segments) { segment in
                     Rectangle()
                         .fill(segment.color)
+                        .overlay {
+                            if segment.isHatched {
+                                DatalessHatchOverlay()
+                            }
+                        }
                         .frame(width: geometry.size.width * segment.fraction)
                         .onHover { hover(segment.id, isHovering: $0) }
                 }
@@ -644,7 +698,9 @@ private struct SidebarTargetRow: View {
     /// Reference date for the relative scan label, from the enclosing
     /// TimelineView.
     var now: Date
-    /// Volume rows only: the capacity bar (empty track before any scan).
+    /// Volume rows: the kind-colored capacity bar (empty track before any
+    /// scan). Scanned cloud locations and folders: the on-this-Mac /
+    /// cloud-only proportion bar.
     var bar: VolumeBarData?
 
     var body: some View {

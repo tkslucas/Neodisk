@@ -40,17 +40,27 @@ public struct CachedScanInfo: Sendable {
     public let nodeCount: Int
     /// True when a rotated previous snapshot also exists (enables diffing).
     public let hasPreviousSnapshot: Bool
+    /// On-disk bytes of the cached scan's root, for sidebar summaries.
+    public let totalAllocatedSize: Int64
+    /// Cloud-only (dataless) bytes below the cached scan's root; 0 for
+    /// scans without cloud content and for caches written before the field
+    /// existed.
+    public let cloudOnlyLogicalSize: Int64
 
     public init(
         lastScanDate: Date,
         lastScanDuration: TimeInterval?,
         nodeCount: Int,
-        hasPreviousSnapshot: Bool
+        hasPreviousSnapshot: Bool,
+        totalAllocatedSize: Int64 = 0,
+        cloudOnlyLogicalSize: Int64 = 0
     ) {
         self.lastScanDate = lastScanDate
         self.lastScanDuration = lastScanDuration
         self.nodeCount = nodeCount
         self.hasPreviousSnapshot = hasPreviousSnapshot
+        self.totalAllocatedSize = totalAllocatedSize
+        self.cloudOnlyLogicalSize = cloudOnlyLogicalSize
     }
 }
 
@@ -253,7 +263,9 @@ public actor ScanSnapshotCache {
                 lastScanDate: metadata.finishedAt ?? metadata.startedAt,
                 lastScanDuration: duration.flatMap { $0 >= 0 ? $0 : nil },
                 nodeCount: metadata.nodeCount,
-                hasPreviousSnapshot: previousTargetPaths.contains(path)
+                hasPreviousSnapshot: previousTargetPaths.contains(path),
+                totalAllocatedSize: metadata.totalAllocatedSize,
+                cloudOnlyLogicalSize: metadata.cloudOnlyLogicalSize ?? 0
             )
         }
         return infoByPath

@@ -66,6 +66,11 @@ Swift/SwiftUI practices and keep the scanning core UI-free.
     icon, never activates) and its window is moved offscreen and kept
     transparent, so the capture never appears on screen or steals focus; the
     capture is the whole window (titlebar/toolbar included).
+  - `NEODISK_UI_SNAPSHOT` and `--render-png` also swap the CloudScan token
+    store for an empty in-memory one: cloud account restore reads the
+    Keychain at launch, and from a binary signed differently than the one
+    that stored the token macOS shows an access prompt — which a headless
+    run must never put on screen.
 
 ## Project Structure
 

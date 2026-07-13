@@ -28,11 +28,23 @@ enum CloudScanFactory {
         var providers: [any CloudProvider] = []
         var connectMenu: [(id: String, title: String)] = []
 
+        // Headless capture modes must not read the Keychain: account restore
+        // runs at launch, and from a binary whose code signature differs from
+        // the one that wrote the token item (e.g. a dev `swift run` build vs
+        // the packaged app) macOS puts an access prompt on screen — the one
+        // thing a headless run must never do. An empty in-memory store keeps
+        // captures deterministic; the fixture provider is unaffected.
+        let headlessCapture = environment["NEODISK_UI_SNAPSHOT"] != nil
+            || CommandLine.arguments.contains("--render-png")
+        func makeTokenStore() -> any TokenStoring {
+            headlessCapture ? InMemoryTokenStore() : KeychainTokenStore()
+        }
+
         let googleConfig = GoogleOAuthConfiguration.fromEnvironment(environment)
         let google = GoogleDriveProvider(
             configuration: googleConfig,
             transport: URLSessionTransport(),
-            tokenStore: KeychainTokenStore()
+            tokenStore: makeTokenStore()
         )
         providers.append(google)
         if googleConfig.isConfigured {
@@ -43,7 +55,7 @@ enum CloudScanFactory {
         let dropbox = DropboxProvider(
             configuration: dropboxConfig,
             transport: URLSessionTransport(),
-            tokenStore: KeychainTokenStore()
+            tokenStore: makeTokenStore()
         )
         providers.append(dropbox)
         if dropboxConfig.isConfigured {
@@ -54,7 +66,7 @@ enum CloudScanFactory {
         let oneDrive = OneDriveProvider(
             configuration: oneDriveConfig,
             transport: URLSessionTransport(),
-            tokenStore: KeychainTokenStore()
+            tokenStore: makeTokenStore()
         )
         providers.append(oneDrive)
         if oneDriveConfig.isConfigured {

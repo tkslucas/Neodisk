@@ -53,6 +53,25 @@ public struct GoogleOAuthConfiguration: Sendable, Equatable {
     /// authorization is unavailable and the UI hides the connect action.
     public var isConfigured: Bool { !clientID.isEmpty }
 
+    /// The provider-neutral client OAuthAuthorizer consumes. Google quirks:
+    /// access_type=offline + prompt=consent force a refresh token on every
+    /// connect, so a reconnect is never left with only a short-lived access
+    /// token.
+    public var oauthClient: OAuthClientConfiguration {
+        OAuthClientConfiguration(
+            clientID: clientID,
+            clientSecret: clientSecret,
+            authEndpoint: authEndpoint,
+            tokenEndpoint: tokenEndpoint,
+            revokeEndpoint: revokeEndpoint,
+            scope: scope,
+            extraAuthParameters: [
+                (name: "access_type", value: "offline"),
+                (name: "prompt", value: "consent")
+            ]
+        )
+    }
+
     // MARK: - Licensing-deferred swap point
     //
     // Registering the Google Cloud project (and its OAuth consent screen) is

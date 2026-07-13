@@ -23,7 +23,7 @@ private func testConfiguration() -> GoogleOAuthConfiguration {
                 "scope": "drive.metadata.readonly"
             ])
         ])
-        let authorizer = OAuthAuthorizer(configuration: testConfiguration(), transport: transport)
+        let authorizer = OAuthAuthorizer(configuration: testConfiguration().oauthClient, transport: transport)
 
         let tokens = try await authorizer.exchangeCode(
             "the-code", verifier: "the-verifier", redirectURI: "http://127.0.0.1:5000"
@@ -44,7 +44,7 @@ private func testConfiguration() -> GoogleOAuthConfiguration {
         let transport = FakeTransport(responses: [
             .json(200, ["access_token": "access-2", "expires_in": 3600, "token_type": "Bearer"])
         ])
-        let authorizer = OAuthAuthorizer(configuration: testConfiguration(), transport: transport)
+        let authorizer = OAuthAuthorizer(configuration: testConfiguration().oauthClient, transport: transport)
 
         let tokens = try await authorizer.refresh(refreshToken: "keep-me")
 
@@ -61,7 +61,7 @@ private func testConfiguration() -> GoogleOAuthConfiguration {
         let transport = FakeTransport(responses: [
             .json(400, ["error": "invalid_grant", "error_description": "Bad Request"])
         ])
-        let authorizer = OAuthAuthorizer(configuration: testConfiguration(), transport: transport)
+        let authorizer = OAuthAuthorizer(configuration: testConfiguration().oauthClient, transport: transport)
 
         await #expect(throws: OAuthError.httpError(status: 400, error: "invalid_grant", description: "Bad Request")) {
             _ = try await authorizer.exchangeCode("c", verifier: "v", redirectURI: "http://127.0.0.1:1")
@@ -70,7 +70,7 @@ private func testConfiguration() -> GoogleOAuthConfiguration {
 
     @Test func testRevokePostsToken() async throws {
         let transport = FakeTransport(responses: [.empty(200)])
-        let authorizer = OAuthAuthorizer(configuration: testConfiguration(), transport: transport)
+        let authorizer = OAuthAuthorizer(configuration: testConfiguration().oauthClient, transport: transport)
 
         await authorizer.revoke(token: "revoke-me")
 
@@ -79,7 +79,7 @@ private func testConfiguration() -> GoogleOAuthConfiguration {
     }
 
     @Test func testAuthorizationURLCarriesPKCEAndState() {
-        let authorizer = OAuthAuthorizer(configuration: testConfiguration(), transport: FakeTransport(responses: []))
+        let authorizer = OAuthAuthorizer(configuration: testConfiguration().oauthClient, transport: FakeTransport(responses: []))
         let url = authorizer.buildAuthorizationURL(
             redirectURI: "http://127.0.0.1:5000", state: "st", codeChallenge: "chal"
         )

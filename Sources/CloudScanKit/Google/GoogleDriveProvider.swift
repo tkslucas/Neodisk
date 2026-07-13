@@ -54,7 +54,7 @@ public struct GoogleDriveProvider: CloudProvider {
             throw GoogleDriveError.notConfigured
         }
 
-        let authorizer = OAuthAuthorizer(configuration: configuration, transport: transport)
+        let authorizer = OAuthAuthorizer(configuration: configuration.oauthClient, transport: transport)
         let tokens = try await authorizer.authorize(openURL: openURL)
 
         let identity = try await fetchIdentity(accessToken: tokens.accessToken)
@@ -96,7 +96,7 @@ public struct GoogleDriveProvider: CloudProvider {
         if let credentials = try? tokenStore.load(
             forProviderID: providerID, accountID: account.accountID
         ) {
-            let authorizer = OAuthAuthorizer(configuration: configuration, transport: transport)
+            let authorizer = OAuthAuthorizer(configuration: configuration.oauthClient, transport: transport)
             await authorizer.revoke(token: credentials.refreshToken)
         }
         try tokenStore.delete(forProviderID: providerID, accountID: account.accountID)
@@ -150,7 +150,7 @@ public struct GoogleDriveProvider: CloudProvider {
     // MARK: - Request plumbing
 
     private var authorizer: OAuthAuthorizer {
-        OAuthAuthorizer(configuration: configuration, transport: transport)
+        OAuthAuthorizer(configuration: configuration.oauthClient, transport: transport)
     }
 
     private func makeClient(for account: CloudAccount) -> GoogleAPIClient {

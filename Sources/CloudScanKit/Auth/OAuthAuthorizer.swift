@@ -30,7 +30,7 @@ enum OAuthError: Error, Equatable, Sendable {
 }
 
 struct OAuthAuthorizer: Sendable {
-    let configuration: GoogleOAuthConfiguration
+    let configuration: OAuthClientConfiguration
     let transport: any CloudTransport
     /// Injected for tests; production stamps the receipt time onto expiry.
     var now: @Sendable () -> Date = { Date() }
@@ -76,12 +76,8 @@ struct OAuthAuthorizer: Sendable {
             URLQueryItem(name: "scope", value: configuration.scope),
             URLQueryItem(name: "code_challenge", value: codeChallenge),
             URLQueryItem(name: "code_challenge_method", value: "S256"),
-            URLQueryItem(name: "state", value: state),
-            // Force a refresh token every time so a reconnect is never left
-            // with only a short-lived access token.
-            URLQueryItem(name: "access_type", value: "offline"),
-            URLQueryItem(name: "prompt", value: "consent")
-        ]
+            URLQueryItem(name: "state", value: state)
+        ] + configuration.extraAuthParameters.map { URLQueryItem(name: $0.name, value: $0.value) }
         return components.url!
     }
 
@@ -119,9 +115,11 @@ struct OAuthAuthorizer: Sendable {
     }
 
     /// Best-effort revocation — failures are swallowed; the credentials are
-    /// deleted regardless by the caller.
+    /// deleted regardless by the caller. No-op for providers without a
+    /// revocation endpoint.
     func revoke(token: String) async {
-        var request = URLRequest(url: configuration.revokeEndpoint)
+        guard let revokeEndpoint = configuration.revokeEndpoint else { return }
+        var request = URLRequest(url: revokeEndpoint)
         request.httpMethod = "POST"
         request.setValue(
             "application/x-www-form-urlencoded",

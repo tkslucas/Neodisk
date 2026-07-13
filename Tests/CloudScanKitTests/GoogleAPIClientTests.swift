@@ -30,7 +30,7 @@ private func makeBroker(
     TokenBroker(
         providerID: "google",
         accountID: accountID,
-        authorizer: OAuthAuthorizer(configuration: testConfiguration(), transport: transport),
+        authorizer: OAuthAuthorizer(configuration: testConfiguration().oauthClient, transport: transport),
         tokenStore: store,
         now: now
     )

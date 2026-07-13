@@ -422,6 +422,17 @@ nonisolated struct NodeMetadata: Sendable {
     let volumeUsedCapacity: Int64?
     let fileIdentity: FileIdentity?
     let linkCount: UInt64
+    /// Cloud file whose content is not downloaded (SF_DATALESS). Detected on
+    /// the getattrlistbulk path; the URLResourceValues fallback reports false
+    /// (no key exposes it, and cloud volumes are APFS so they take the bulk
+    /// path anyway).
+    var isDataless: Bool = false
+}
+
+/// BSD st_flags bits the scanner cares about (sys/stat.h).
+nonisolated enum BSDFileFlags {
+    /// SF_DATALESS: file content lives in a cloud drive, not on disk.
+    static let dataless: UInt32 = 0x4000_0000
 }
 
 public nonisolated enum FileIdentity: Hashable, Sendable {

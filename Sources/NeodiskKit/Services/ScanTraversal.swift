@@ -532,7 +532,8 @@ nonisolated final class ScanTraversal {
                 isAccessible: summary.isAccessible,
                 isSelfAccessible: meta.isReadable,
                 isSynthetic: false,
-                isAutoSummarized: true
+                isAutoSummarized: true,
+                cloudOnlyLogicalSize: summary.cloudOnlyLogicalSize
             )
             hardLinkClaims.append(contentsOf: summary.hardLinkClaims)
             minimumAllocatedSizeByNodeID[atomicNode.id] = meta.allocatedSize
@@ -846,7 +847,8 @@ nonisolated final class ScanTraversal {
             isAccessible: metadata.isReadable,
             isSelfAccessible: metadata.isReadable,
             isSynthetic: false,
-            isAutoSummarized: false
+            isAutoSummarized: false,
+            isDataless: metadata.isDataless
         )
     }
 
@@ -914,7 +916,8 @@ nonisolated final class ScanTraversal {
                 isAccessible: metadata.isReadable && summary.isAccessible,
                 isSelfAccessible: metadata.isReadable,
                 isSynthetic: false,
-                isAutoSummarized: false
+                isAutoSummarized: false,
+                cloudOnlyLogicalSize: summary.cloudOnlyLogicalSize
             ),
             summary.warnings,
             summary.hardLinkClaims,

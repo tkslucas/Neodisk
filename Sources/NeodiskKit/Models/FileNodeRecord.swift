@@ -26,6 +26,16 @@ public struct FileNodeRecord: Identifiable, Sendable {
     public let isSelfAccessible: Bool
     public let isSynthetic: Bool
     public let isAutoSummarized: Bool
+    /// File exists in a cloud drive (iCloud/File Provider) but its content
+    /// is not downloaded: full logical size, ~0 bytes on disk (SF_DATALESS).
+    /// Always false for directories — a directory's cloud share is carried
+    /// by `cloudOnlyLogicalSize` instead.
+    public let isDataless: Bool
+    /// Bytes that live only in the cloud below this node: for files,
+    /// `logicalSize` when dataless, else 0; for directories, the descendant
+    /// sum. Display weight = `allocatedSize + cloudOnlyLogicalSize` when the
+    /// cloud-only toggle is on.
+    public let cloudOnlyLogicalSize: Int64
 
     /// URL form of `path`. Computed on demand — see `path`.
     public nonisolated var url: URL {
@@ -55,7 +65,9 @@ public struct FileNodeRecord: Identifiable, Sendable {
         isAccessible: Bool,
         isSelfAccessible: Bool,
         isSynthetic: Bool,
-        isAutoSummarized: Bool
+        isAutoSummarized: Bool,
+        isDataless: Bool = false,
+        cloudOnlyLogicalSize: Int64? = nil
     ) {
         self.init(
             id: id,
@@ -74,7 +86,9 @@ public struct FileNodeRecord: Identifiable, Sendable {
             isAccessible: isAccessible,
             isSelfAccessible: isSelfAccessible,
             isSynthetic: isSynthetic,
-            isAutoSummarized: isAutoSummarized
+            isAutoSummarized: isAutoSummarized,
+            isDataless: isDataless,
+            cloudOnlyLogicalSize: cloudOnlyLogicalSize
         )
     }
 
@@ -95,7 +109,9 @@ public struct FileNodeRecord: Identifiable, Sendable {
         isAccessible: Bool,
         isSelfAccessible: Bool,
         isSynthetic: Bool,
-        isAutoSummarized: Bool
+        isAutoSummarized: Bool,
+        isDataless: Bool = false,
+        cloudOnlyLogicalSize: Int64? = nil
     ) {
         self.id = id
         self.path = path
@@ -114,6 +130,18 @@ public struct FileNodeRecord: Identifiable, Sendable {
         self.isSelfAccessible = isSelfAccessible
         self.isSynthetic = isSynthetic
         self.isAutoSummarized = isAutoSummarized
+        self.isDataless = isDataless && !isDirectory
+        self.cloudOnlyLogicalSize = cloudOnlyLogicalSize
+            ?? (isDataless && !isDirectory ? logicalSize : 0)
+    }
+
+    /// Weight used by the visualizations: on-disk bytes, plus the bytes that
+    /// live only in the cloud when the cloud-only toggle is on. One
+    /// definition shared by treemap and sunburst.
+    public nonisolated func displayWeight(includingCloudOnly: Bool) -> Int64 {
+        includingCloudOnly
+            ? allocatedSize.addingClamped(cloudOnlyLogicalSize)
+            : allocatedSize
     }
 
     nonisolated var itemKind: String {
@@ -151,11 +179,13 @@ public struct FileNodeRecord: Identifiable, Sendable {
         let sortedChildren = childrenAreSorted ? children : FileTreeStore.sortedChildren(children)
         var allocatedSize: Int64 = 0
         var logicalSize: Int64 = 0
+        var cloudOnlyLogicalSize: Int64 = 0
         var descendantFileCount = 0
         var childrenAreAccessible = true
         for child in sortedChildren {
             allocatedSize = allocatedSize.addingClamped(child.allocatedSize)
             logicalSize = logicalSize.addingClamped(child.logicalSize)
+            cloudOnlyLogicalSize = cloudOnlyLogicalSize.addingClamped(child.cloudOnlyLogicalSize)
             childrenAreAccessible = childrenAreAccessible && child.isAccessible
             if child.isDirectory {
                 descendantFileCount += child.descendantFileCount
@@ -181,7 +211,8 @@ public struct FileNodeRecord: Identifiable, Sendable {
             isAccessible: isFullyAccessible,
             isSelfAccessible: isAccessible,
             isSynthetic: false,
-            isAutoSummarized: false
+            isAutoSummarized: false,
+            cloudOnlyLogicalSize: cloudOnlyLogicalSize
         )
     }
 }

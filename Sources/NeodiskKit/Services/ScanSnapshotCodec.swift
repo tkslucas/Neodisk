@@ -63,6 +63,10 @@ nonisolated enum ScanSnapshotCodec {
         static let hasUnduplicatedSize = NodeFlags(rawValue: 1 << 12)
         static let hasLogicalSize = NodeFlags(rawValue: 1 << 13)
         static let hasDescendantFileCount = NodeFlags(rawValue: 1 << 14)
+        /// v3+, last free UInt16 bit, meaning split by node type: on a file
+        /// it marks the file dataless (cloud-only); on a directory it gates
+        /// a trailing cloudOnlyLogicalSize Int64.
+        static let cloudOnly = NodeFlags(rawValue: 1 << 15)
     }
 
     private static let magic: UInt32 = 0x4E44_5343 // "NDSC"
@@ -120,6 +124,7 @@ nonisolated enum ScanSnapshotCodec {
                 node,
                 parentID: parentID,
                 childCount: storage.childCount(of: Int32(index)),
+                version: version,
                 to: &payload
             )
         }
@@ -141,6 +146,7 @@ nonisolated enum ScanSnapshotCodec {
         _ node: FileNodeRecord,
         parentID: String?,
         childCount: Int,
+        version: UInt32,
         to writer: inout ByteWriter
     ) {
         let derivedID = parentID.map { joinedChildID(parentID: $0, name: node.name) }
@@ -163,6 +169,13 @@ nonisolated enum ScanSnapshotCodec {
         if node.unduplicatedAllocatedSize != node.allocatedSize { flags.insert(.hasUnduplicatedSize) }
         if node.logicalSize != node.allocatedSize { flags.insert(.hasLogicalSize) }
         if node.descendantFileCount != defaultDescendantFileCount { flags.insert(.hasDescendantFileCount) }
+        if version >= 3 {
+            if node.isDirectory {
+                if node.cloudOnlyLogicalSize > 0 { flags.insert(.cloudOnly) }
+            } else if node.isDataless {
+                flags.insert(.cloudOnly)
+            }
+        }
 
         writer.append(flags.rawValue)
         writer.appendString(node.name)
@@ -171,6 +184,9 @@ nonisolated enum ScanSnapshotCodec {
         writer.append(node.allocatedSize)
         if flags.contains(.hasUnduplicatedSize) { writer.append(node.unduplicatedAllocatedSize) }
         if flags.contains(.hasLogicalSize) { writer.append(node.logicalSize) }
+        // Files carry no cloud payload — their cloudOnlyLogicalSize derives
+        // from the flag and logicalSize on decode.
+        if flags.contains(.cloudOnly), node.isDirectory { writer.append(node.cloudOnlyLogicalSize) }
         if flags.contains(.hasDescendantFileCount) { writer.append(Int64(node.descendantFileCount)) }
         if let lastModified = node.lastModified {
             writer.append(lastModified.timeIntervalSinceReferenceDate)
@@ -243,6 +259,7 @@ nonisolated enum ScanSnapshotCodec {
             let store = try readTreeStore(
                 nodeCount: metadata.nodeCount,
                 aggregateStats: stats,
+                version: version,
                 from: &reader
             )
             guard reader.isAtEnd else {
@@ -340,6 +357,7 @@ nonisolated enum ScanSnapshotCodec {
     private static func readTreeStore(
         nodeCount: Int,
         aggregateStats: ScanAggregateStats,
+        version: UInt32,
         from reader: inout PayloadReader
     ) throws -> FileTreeStore {
         guard nodeCount <= reader.remainingByteCount else {
@@ -365,7 +383,7 @@ nonisolated enum ScanSnapshotCodec {
 
         for _ in 0..<nodeCount {
             let parentID = openDirectories.last.map { nodes[Int($0.index)].id }
-            let (node, childCount) = try readNode(parentID: parentID, from: &reader)
+            let (node, childCount) = try readNode(parentID: parentID, version: version, from: &reader)
             let index = Int32(nodes.count)
 
             if let openIndex = openDirectories.indices.last {
@@ -427,6 +445,7 @@ nonisolated enum ScanSnapshotCodec {
 
     private static func readNode(
         parentID: String?,
+        version: UInt32,
         from reader: inout PayloadReader
     ) throws -> (node: FileNodeRecord, childCount: Int) {
         let flags = NodeFlags(rawValue: try reader.readUInt16())
@@ -449,10 +468,13 @@ nonisolated enum ScanSnapshotCodec {
         let allocatedSize = try reader.readInt64()
         let unduplicatedSize = flags.contains(.hasUnduplicatedSize) ? try reader.readInt64() : allocatedSize
         let logicalSize = flags.contains(.hasLogicalSize) ? try reader.readInt64() : allocatedSize
+        let hasCloudOnly = version >= 3 && flags.contains(.cloudOnly)
+        let directoryCloudOnlySize: Int64 = hasCloudOnly && isDirectory ? try reader.readInt64() : 0
         let descendantFileCount = flags.contains(.hasDescendantFileCount)
             ? Int(try reader.readInt64())
             : (isDirectory ? 0 : 1)
-        guard allocatedSize >= 0, unduplicatedSize >= 0, logicalSize >= 0, descendantFileCount >= 0 else {
+        guard allocatedSize >= 0, unduplicatedSize >= 0, logicalSize >= 0,
+              directoryCloudOnlySize >= 0, descendantFileCount >= 0 else {
             throw ScanSnapshotCacheError.corruptData("node \(id) has negative size or count")
         }
 
@@ -498,7 +520,9 @@ nonisolated enum ScanSnapshotCodec {
             isAccessible: isAccessible,
             isSelfAccessible: flags.contains(.selfAccessibilityDiffers) ? !isAccessible : isAccessible,
             isSynthetic: flags.contains(.isSynthetic),
-            isAutoSummarized: flags.contains(.isAutoSummarized)
+            isAutoSummarized: flags.contains(.isAutoSummarized),
+            isDataless: hasCloudOnly && !isDirectory,
+            cloudOnlyLogicalSize: isDirectory ? directoryCloudOnlySize : nil
         )
         return (node, childCount)
     }

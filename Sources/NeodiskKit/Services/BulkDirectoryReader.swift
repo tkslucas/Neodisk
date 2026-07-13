@@ -277,7 +277,8 @@ nonisolated enum BulkDirectoryReader {
                 isReadable: isReadable,
                 volumeUsedCapacity: nil,
                 fileIdentity: fileIdentity,
-                linkCount: isDirectory ? 1 : linkCount
+                linkCount: isDirectory ? 1 : linkCount,
+                isDataless: !isDirectory && bsdFlags & BSDFileFlags.dataless != 0
             ),
             entryErrno: nil,
             isHidden: isHidden

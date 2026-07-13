@@ -32,6 +32,7 @@ nonisolated struct DirectoryEntry: Sendable {
 nonisolated struct AtomicDirectorySummary: Sendable {
     let allocatedSize: Int64
     let logicalSize: Int64
+    let cloudOnlyLogicalSize: Int64
     let descendantFileCount: Int
     let isAccessible: Bool
     let warnings: [ScanWarning]
@@ -41,6 +42,7 @@ nonisolated struct AtomicDirectorySummary: Sendable {
 nonisolated final class AtomicDirectorySummaryState {
     var allocatedSize: Int64 = 0
     var logicalSize: Int64 = 0
+    var cloudOnlyLogicalSize: Int64 = 0
     var descendantFileCount = 0
     var isAccessible = true
     var warnings: [ScanWarning] = []

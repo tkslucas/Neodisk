@@ -63,7 +63,10 @@ public struct SnapshotSaveOutcome: Sendable {
 }
 
 public actor ScanSnapshotCache {
-    static let currentFormatVersion: UInt32 = 2
+    /// v3 adds the cloud-only bit (files) and cloudOnlyLogicalSize payload
+    /// (directories); older builds reject v3 files cleanly as
+    /// unsupportedVersion and rescan.
+    static let currentFormatVersion: UInt32 = 3
     static let oldestReadableFormatVersion: UInt32 = 1
     private static let magic: UInt32 = 0x4E44_5343 // "NDSC"
     private static let fileExtension = "ndscan"

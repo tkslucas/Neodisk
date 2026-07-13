@@ -177,6 +177,13 @@ public struct ContentView: View {
         ToolbarItem(placement: .principal) {
             vizModePicker
         }
+        // Cloud-only toggle sits beside the view switcher: it re-weights the
+        // whole visualization, so it shares the picker's altitude. Persistent
+        // but disabled when there is nothing for it to do (per the toolbar
+        // contract in AGENTS.md).
+        ToolbarItem(placement: .principal) {
+            cloudOnlyToggle
+        }
 
         // Update status pill kept visually separate from the trailing button
         // group. On macOS 26 every toolbar item in a logical group shares one
@@ -217,6 +224,21 @@ public struct ContentView: View {
         .pickerStyle(.segmented)
         .disabled(model.coordinator.snapshot == nil)
         .help("Switch between treemap and sunburst views")
+    }
+
+    private var cloudOnlyToggle: some View {
+        Toggle(isOn: $preferences.showCloudOnlyFiles) {
+            Label("Cloud-Only Files", systemImage: "cloud")
+        }
+        .toggleStyle(.button)
+        .disabled(!model.snapshotHasCloudItems)
+        .help(
+            !model.snapshotHasCloudItems
+                ? "No cloud-only files in this scan"
+                : preferences.showCloudOnlyFiles
+                    ? "Hide cloud-only files (files not downloaded from your cloud drives)"
+                    : "Show cloud-only files (files not downloaded from your cloud drives)"
+        )
     }
 
     @ViewBuilder

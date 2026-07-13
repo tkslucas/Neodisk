@@ -228,6 +228,21 @@ final class NeodiskViewModel {
         preferences?.showFreeSpace == true ? hiddenSpaceBytes : nil
     }
 
+    /// Mirror of the persisted cloud-only toggle, synced by bindPreferences
+    /// so observation fires when it flips (same pattern as free space).
+    var showCloudOnlyFilesPreferred = true
+    /// Whether the displayed snapshot contains any cloud-only (dataless)
+    /// bytes — gates the toolbar toggle, which is otherwise a no-op.
+    var snapshotHasCloudItems: Bool {
+        guard let store = coordinator.snapshot?.treeStore else { return false }
+        return (store.node(id: store.rootID)?.cloudOnlyLogicalSize ?? 0) > 0
+    }
+    /// The effective display flag both visualizations weight by:
+    /// preference on, and the snapshot actually has cloud-only bytes.
+    var showsCloudOnlyFiles: Bool {
+        showCloudOnlyFilesPreferred && snapshotHasCloudItems
+    }
+
     /// Settings backing scan options and the free-space cell; assigned once
     /// by the app at launch.
     var preferences: AppPreferences? {
@@ -779,10 +794,19 @@ final class NeodiskViewModel {
                 self?.updateFreeSpace()
                 self?.syncVizPalette()
                 self?.syncVizViewMode()
+                self?.syncCloudOnlyPreference()
             }
         updateFreeSpace()
         syncVizPalette()
         syncVizViewMode()
+        syncCloudOnlyPreference()
+    }
+
+    private func syncCloudOnlyPreference() {
+        guard let preferences else { return }
+        if showCloudOnlyFilesPreferred != preferences.showCloudOnlyFiles {
+            showCloudOnlyFilesPreferred = preferences.showCloudOnlyFiles
+        }
     }
 
     /// Mirror the persisted view-mode preference onto the model so the

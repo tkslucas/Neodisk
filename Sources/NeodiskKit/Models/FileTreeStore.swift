@@ -841,6 +841,9 @@ public struct FileTreeStore: Sendable {
         let logicalSize = children.reduce(into: Int64(0)) { result, child in
             result = result.addingClamped(child.logicalSize)
         }
+        let cloudOnlyLogicalSize = children.reduce(into: Int64(0)) { result, child in
+            result = result.addingClamped(child.cloudOnlyLogicalSize)
+        }
         let descendantFileCount = children.reduce(into: 0) { result, child in
             if child.isDirectory {
                 result += child.descendantFileCount
@@ -867,7 +870,8 @@ public struct FileTreeStore: Sendable {
             isAccessible: node.isSelfAccessible && children.allSatisfy(\.isAccessible),
             isSelfAccessible: node.isSelfAccessible,
             isSynthetic: node.isSynthetic,
-            isAutoSummarized: node.isAutoSummarized
+            isAutoSummarized: node.isAutoSummarized,
+            cloudOnlyLogicalSize: cloudOnlyLogicalSize
         )
     }
 }

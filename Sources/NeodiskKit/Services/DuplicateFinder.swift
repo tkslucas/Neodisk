@@ -360,21 +360,16 @@ public enum DuplicateFinder {
         return results
     }
 
-    /// `st_flags` bit set on File Provider placeholders whose contents are
-    /// not materialized locally (sys/stat.h `SF_DATALESS`). Reading such a
-    /// file forces a network download; we refuse to, so a paused or offline
-    /// provider can't stall the scan.
-    private static let datalessFlag: UInt32 = 0x4000_0000
-
     /// Metadata-only readiness gate: a candidate is safe to hash only when
     /// it's a regular file whose bytes are on disk right now. `stat` touches
     /// inode metadata alone — it never opens the file, never blocks on a
-    /// provider, and never triggers a download.
+    /// provider, and never triggers a download. Dataless (cloud-only) files
+    /// are refused so a paused or offline provider can't stall the scan.
     private static func isHashable(_ path: String) -> Bool {
         var info = stat()
         guard path.withCString({ stat($0, &info) }) == 0 else { return false }
         guard (info.st_mode & mode_t(S_IFMT)) == mode_t(S_IFREG) else { return false }
-        return info.st_flags & datalessFlag == 0
+        return info.st_flags & BSDFileFlags.dataless == 0
     }
 
     /// Hashes the first `headHashLength` bytes (or the whole file if smaller).

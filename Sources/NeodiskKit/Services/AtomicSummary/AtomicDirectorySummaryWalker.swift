@@ -242,6 +242,7 @@ extension AtomicDirectorySummarizer {
     nonisolated private func merge(_ summary: AtomicDirectorySummary, into state: AtomicDirectorySummaryState) {
         state.allocatedSize = state.allocatedSize.addingClamped(summary.allocatedSize)
         state.logicalSize = state.logicalSize.addingClamped(summary.logicalSize)
+        state.cloudOnlyLogicalSize = state.cloudOnlyLogicalSize.addingClamped(summary.cloudOnlyLogicalSize)
         state.descendantFileCount += summary.descendantFileCount
         state.isAccessible = state.isAccessible && summary.isAccessible
         state.warnings.append(contentsOf: summary.warnings)
@@ -311,6 +312,9 @@ extension AtomicDirectorySummarizer {
     nonisolated private func accumulateAtomicFile(_ metadata: NodeMetadata, url: URL, into state: AtomicDirectorySummaryState) {
         state.allocatedSize = state.allocatedSize.addingClamped(metadata.allocatedSize)
         state.logicalSize = state.logicalSize.addingClamped(metadata.logicalSize)
+        if metadata.isDataless {
+            state.cloudOnlyLogicalSize = state.cloudOnlyLogicalSize.addingClamped(metadata.logicalSize)
+        }
 
         if !metadata.isSymbolicLink {
             state.descendantFileCount += 1
@@ -325,6 +329,7 @@ extension AtomicDirectorySummarizer {
         return AtomicDirectorySummary(
             allocatedSize: state.allocatedSize,
             logicalSize: state.logicalSize,
+            cloudOnlyLogicalSize: state.cloudOnlyLogicalSize,
             descendantFileCount: state.descendantFileCount,
             isAccessible: state.isAccessible,
             warnings: state.warnings,

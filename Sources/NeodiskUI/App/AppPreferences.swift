@@ -62,6 +62,10 @@ final class AppPreferences: ObservableObject {
     @AppStorage("includeHiddenFiles") var includeHiddenFiles = true
     @AppStorage("autoSummarizeDirectories") var autoSummarizeDirectories = true
     @AppStorage("includeCloudStorage") var includeCloudStorage = true
+    /// Weight cloud files that are not downloaded (dataless) by their cloud
+    /// size in the visualizations, instead of their ~0 on-disk size. Display
+    /// only — a no-op for scans without cloud items.
+    @AppStorage("showCloudOnlyFiles") var showCloudOnlyFiles = true
     @AppStorage("showFreeSpace") var showFreeSpace = false
     /// Swap the visualization's kind/age colors for a colorblind-safe palette
     /// (Okabe-Ito + viridis). Applies immediately; see VizPalette.
@@ -97,6 +101,7 @@ final class AppPreferences: ObservableObject {
             wrappedValue: true, "autoSummarizeDirectories", store: defaults
         )
         _includeCloudStorage = AppStorage(wrappedValue: true, "includeCloudStorage", store: defaults)
+        _showCloudOnlyFiles = AppStorage(wrappedValue: true, "showCloudOnlyFiles", store: defaults)
         _showFreeSpace = AppStorage(wrappedValue: false, "showFreeSpace", store: defaults)
         _useColorblindPalette = AppStorage(wrappedValue: false, "useColorblindPalette", store: defaults)
         _useScanExclusions = AppStorage(wrappedValue: false, "useScanExclusions", store: defaults)
@@ -161,6 +166,7 @@ final class AppPreferences: ObservableObject {
         includeHiddenFiles = true
         autoSummarizeDirectories = true
         includeCloudStorage = true
+        showCloudOnlyFiles = true
         showFreeSpace = false
         useColorblindPalette = false
         useScanExclusions = false

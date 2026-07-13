@@ -75,6 +75,7 @@ nonisolated private final class AtomicSummaryAccumulator: @unchecked Sendable {
     private let lock = NSLock()
     private var allocatedSize: Int64 = 0
     private var logicalSize: Int64 = 0
+    private var cloudOnlyLogicalSize: Int64 = 0
     private var descendantFileCount = 0
     private var isAccessible = true
     private var warnings: [ScanWarning] = []
@@ -106,6 +107,9 @@ nonisolated private final class AtomicSummaryAccumulator: @unchecked Sendable {
         lock.lock()
         allocatedSize = allocatedSize.addingClamped(metadata.allocatedSize)
         logicalSize = logicalSize.addingClamped(metadata.logicalSize)
+        if metadata.isDataless {
+            cloudOnlyLogicalSize = cloudOnlyLogicalSize.addingClamped(metadata.logicalSize)
+        }
         if !metadata.isSymbolicLink {
             descendantFileCount += 1
         }
@@ -121,6 +125,7 @@ nonisolated private final class AtomicSummaryAccumulator: @unchecked Sendable {
         return AtomicDirectorySummary(
             allocatedSize: allocatedSize,
             logicalSize: logicalSize,
+            cloudOnlyLogicalSize: cloudOnlyLogicalSize,
             descendantFileCount: descendantFileCount,
             isAccessible: isAccessible,
             warnings: warnings,

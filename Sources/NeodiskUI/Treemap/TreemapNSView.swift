@@ -25,7 +25,7 @@ final class TreemapNSView: NSView {
     private let selectionLayer = CALayer()
     /// Identity of the scene whose labels are currently materialized.
     private var labeledSceneViewport: TreemapViewport?
-    private let debugSnapshotter = DebugSnapshotter()
+    private let debugSnapshotter = DebugSnapshotter.shared
 
     init(controller: TreemapController) {
         self.controller = controller

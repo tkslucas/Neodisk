@@ -17,11 +17,36 @@ import SwiftUI
 /// reads the layer tree regardless of on-screen visibility) without the window
 /// ever appearing or stealing focus. Inert unless the env var is set.
 struct SnapshotWindowHider: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView { NSView() }
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        guard ProcessInfo.processInfo.environment["NEODISK_UI_SNAPSHOT"] != nil else {
+            return view
+        }
+        // Poll for the window instead of relying on updateNSView: SwiftUI
+        // does not re-call updateNSView on window attachment, so a quiet
+        // view hierarchy (sunburst mode) never saw a non-nil window there.
+        Task { @MainActor [weak view] in
+            for _ in 0..<200 {
+                if let view, let window = view.window {
+                    Self.hide(window)
+                    // Visualizations without a dedicated capture path (the
+                    // sunburst) still get a plain window capture.
+                    DebugSnapshotter.shared.scheduleWindowFallback(for: view)
+                    return
+                }
+                try? await Task.sleep(for: .milliseconds(25))
+            }
+        }
+        return view
+    }
 
     func updateNSView(_ view: NSView, context: Context) {
         guard ProcessInfo.processInfo.environment["NEODISK_UI_SNAPSHOT"] != nil,
               let window = view.window else { return }
+        Self.hide(window)
+    }
+
+    private static func hide(_ window: NSWindow) {
         window.alphaValue = 0
         window.setFrameOrigin(CGPoint(x: -30_000, y: -30_000))
     }
@@ -29,7 +54,10 @@ struct SnapshotWindowHider: NSViewRepresentable {
 
 @MainActor
 final class DebugSnapshotter {
+    static let shared = DebugSnapshotter()
+
     private var scheduled = false
+    private var fallbackScheduled = false
 
     func scheduleIfRequested(for view: TreemapNSView) {
         guard view.window != nil, !scheduled,
@@ -45,6 +73,23 @@ final class DebugSnapshotter {
             view.controller.magnify(by: 3, anchor: center)
             _ = view.controller.scroll(by: CGSize(width: -view.bounds.width, height: 0))
             try? await Task.sleep(for: .seconds(2))
+            Self.writeWindowSnapshot(of: view, to: path)
+        }
+    }
+
+    /// Plain window capture for runs where no treemap view ever attaches
+    /// (NEODISK_VIZ_MODE=sunburst): waits out the scan, then defers to the
+    /// treemap path if one registered in the meantime.
+    func scheduleWindowFallback(for view: NSView) {
+        guard view.window != nil, !fallbackScheduled, !scheduled,
+              let path = ProcessInfo.processInfo.environment["NEODISK_UI_SNAPSHOT"] else {
+            return
+        }
+        fallbackScheduled = true
+        Self.log("fallback scheduled windowNumber=\(view.window?.windowNumber ?? -1)")
+        Task { @MainActor [weak self, weak view] in
+            try? await Task.sleep(for: .seconds(10))
+            guard let self, !self.scheduled, let view else { return }
             Self.writeWindowSnapshot(of: view, to: path)
         }
     }

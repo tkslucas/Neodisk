@@ -257,8 +257,11 @@ nonisolated struct VolumeBarData: Equatable, Sendable {
     }
 
     let segments: [Segment]
+    /// Free capacity (important-usage) for the empty track's tooltip; nil
+    /// hides that tooltip.
+    let availableSize: Int64?
 
-    static let empty = VolumeBarData(segments: [])
+    static let empty = VolumeBarData(segments: [], availableSize: nil)
 
     static func make(
         volumeURL: URL,
@@ -269,6 +272,7 @@ nonisolated struct VolumeBarData: Equatable, Sendable {
               total > 0 else {
             return .empty
         }
+        let available = SystemIntegration.volumeAvailableCapacityForImportantUsage(for: volumeURL)
 
         var segments: [Segment] = []
         var scannedBytes: Int64 = 0
@@ -288,7 +292,7 @@ nonisolated struct VolumeBarData: Equatable, Sendable {
 
         // Used capacity the scan didn't account for (hidden space, other
         // users' homes): a neutral tail segment, like macOS "System Data".
-        if let available = SystemIntegration.volumeAvailableCapacityForImportantUsage(for: volumeURL) {
+        if let available {
             let unaccounted = total - available - scannedBytes
             if unaccounted > 0 {
                 segments.append(Segment(
@@ -301,15 +305,24 @@ nonisolated struct VolumeBarData: Equatable, Sendable {
             }
         }
 
-        return VolumeBarData(segments: segments)
+        return VolumeBarData(segments: segments, availableSize: available)
     }
 }
 
 private struct VolumeCapacityBar: View {
+    /// Sentinel hover ID for the empty (free-space) track after the
+    /// segments.
+    private static let freeTrackID = "free-track"
+    /// Gap between the tooltip's tail tip and the top of the bar.
+    private static let tooltipGap: CGFloat = 6
+
     let data: VolumeBarData
 
-    /// The segment the pointer is over; shows the kind/size tooltip bubble.
+    /// The segment (or free track) the pointer is over; shows the tooltip.
     @State private var hoveredSegmentID: String?
+    /// Measured bubble size; the tooltip stays invisible until the first
+    /// measurement lands so it never flashes at an unclamped position.
+    @State private var tooltipSize: CGSize = .zero
 
     var body: some View {
         GeometryReader { geometry in
@@ -318,68 +331,107 @@ private struct VolumeCapacityBar: View {
                     Rectangle()
                         .fill(segment.color)
                         .frame(width: geometry.size.width * segment.fraction)
-                        .onHover { isHovering in
-                            if isHovering {
-                                hoveredSegmentID = segment.id
-                            } else if hoveredSegmentID == segment.id {
-                                hoveredSegmentID = nil
-                            }
-                        }
+                        .onHover { hover(segment.id, isHovering: $0) }
                 }
-                Spacer(minLength: 0)
+                // The empty track stands for free space; hover-sensitive so
+                // it can answer with the available capacity.
+                Rectangle()
+                    .fill(Color.clear)
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
+                    .onHover { hover(Self.freeTrackID, isHovering: $0) }
             }
             .frame(maxHeight: .infinity)
             .background(Color.primary.opacity(0.12))
             .clipShape(Capsule())
-            .overlay(alignment: .bottom) {
-                if let segment = data.segments.first(where: { $0.id == hoveredSegmentID }) {
-                    tooltip(for: segment, barWidth: geometry.size.width)
+            .overlay(alignment: .topLeading) {
+                if let info = hoveredInfo(barWidth: geometry.size.width) {
+                    tooltip(info: info, barWidth: geometry.size.width)
                 }
             }
         }
         .frame(height: 5)
+        .onPreferenceChange(VolumeBarTooltipSizeKey.self) { tooltipSize = $0 }
     }
 
-    /// The bubble above the hovered segment, macOS-storage-bar style:
-    /// centered on the segment, clamped so it never overhangs the bar
-    /// (the alignment-guide closure is the one place the bubble's own
-    /// width is known without a measuring pass).
-    private func tooltip(for segment: VolumeBarData.Segment, barWidth: CGFloat) -> some View {
-        let midX = segmentMidX(segment, barWidth: barWidth)
-        return VolumeBarTooltip(label: segment.label, size: segment.size)
-            .fixedSize()
-            .alignmentGuide(HorizontalAlignment.center) { dimensions in
-                let half = dimensions.width / 2
-                let clampedMid = min(max(midX, half), max(barWidth - half, half))
-                return half + ((barWidth / 2) - clampedMid)
-            }
-            .alignmentGuide(VerticalAlignment.bottom) { dimensions in
-                // Bar height (5) + gap so the tail tip floats just above.
-                dimensions.height + 8
-            }
-            .allowsHitTesting(false)
+    private func hover(_ id: String, isHovering: Bool) {
+        if isHovering {
+            hoveredSegmentID = id
+        } else if hoveredSegmentID == id {
+            hoveredSegmentID = nil
+        }
     }
 
-    private func segmentMidX(_ segment: VolumeBarData.Segment, barWidth: CGFloat) -> CGFloat {
+    // MARK: - Tooltip
+
+    private struct HoverInfo {
+        let label: String
+        let size: Int64
+        /// Center of the hovered stretch, in bar coordinates.
+        let midX: CGFloat
+    }
+
+    private func hoveredInfo(barWidth: CGFloat) -> HoverInfo? {
+        guard let hoveredSegmentID else { return nil }
+        if hoveredSegmentID == Self.freeTrackID {
+            guard let available = data.availableSize, !data.segments.isEmpty else { return nil }
+            let usedWidth = barWidth * data.segments.reduce(0) { $0 + $1.fraction }
+            return HoverInfo(label: "Available", size: available, midX: (usedWidth + barWidth) / 2)
+        }
         var x: CGFloat = 0
-        for candidate in data.segments {
-            let width = barWidth * candidate.fraction
-            if candidate.id == segment.id {
-                return x + (width / 2)
+        for segment in data.segments {
+            let width = barWidth * segment.fraction
+            if segment.id == hoveredSegmentID {
+                return HoverInfo(label: segment.label, size: segment.size, midX: x + (width / 2))
             }
             x += width
         }
-        return x
+        return nil
+    }
+
+    /// The bubble above the hovered stretch, macOS-storage-bar style. The
+    /// bubble centers on the stretch but clamps to the bar's width; the
+    /// tail keeps pointing at the stretch even when the bubble clamps.
+    /// Offsets need the bubble's size, so it reports it via preference and
+    /// hides until measured.
+    private func tooltip(info: HoverInfo, barWidth: CGFloat) -> some View {
+        let width = tooltipSize.width
+        let offsetX = min(max(info.midX - (width / 2), 0), max(barWidth - width, 0))
+        return VolumeBarTooltip(
+            label: info.label,
+            size: info.size,
+            tailX: width > 0 ? info.midX - offsetX : nil
+        )
+        .fixedSize()
+        .background(GeometryReader { proxy in
+            Color.clear.preference(key: VolumeBarTooltipSizeKey.self, value: proxy.size)
+        })
+        .offset(x: offsetX, y: -(tooltipSize.height + Self.tooltipGap))
+        .opacity(tooltipSize == .zero ? 0 : 1)
+        .allowsHitTesting(false)
     }
 }
 
-/// The hover bubble for one capacity-bar segment: kind name over its size,
-/// in a rounded bubble with a tail pointing down at the segment.
+private struct VolumeBarTooltipSizeKey: PreferenceKey {
+    nonisolated static let defaultValue: CGSize = .zero
+
+    nonisolated static func reduce(value: inout CGSize, nextValue: () -> CGSize) {
+        let next = nextValue()
+        if next != .zero {
+            value = next
+        }
+    }
+}
+
+/// The hover bubble for one capacity-bar stretch: kind name over its size,
+/// in a rounded bubble with a tail pointing down at the hovered spot.
 private struct VolumeBarTooltip: View {
     static let tailHeight: CGFloat = 5
 
     let label: String
     let size: Int64
+    /// Tail tip x in bubble coordinates; nil centers it (pre-measurement).
+    let tailX: CGFloat?
 
     var body: some View {
         VStack(spacing: 1) {
@@ -394,7 +446,7 @@ private struct VolumeBarTooltip: View {
         .padding(.vertical, 5)
         .padding(.bottom, Self.tailHeight)
         .background {
-            let bubble = TooltipBubbleShape(tailHeight: Self.tailHeight)
+            let bubble = TooltipBubbleShape(tailHeight: Self.tailHeight, tailX: tailX)
             bubble
                 .fill(Color(nsColor: .controlBackgroundColor))
                 .overlay(bubble.stroke(Color.primary.opacity(0.15), lineWidth: 0.5))
@@ -404,12 +456,14 @@ private struct VolumeBarTooltip: View {
     }
 }
 
-/// Rounded rectangle with a centered downward tail, drawn as one path so
+/// Rounded rectangle with a downward tail at `tailX`, drawn as one path so
 /// fill, stroke, and shadow stay continuous across the tail joint.
 private struct TooltipBubbleShape: Shape {
     var cornerRadius: CGFloat = 7
     var tailWidth: CGFloat = 12
     var tailHeight: CGFloat
+    /// Tail tip x; nil centers it. Clamped clear of the rounded corners.
+    var tailX: CGFloat?
 
     nonisolated func path(in rect: CGRect) -> Path {
         let body = CGRect(
@@ -418,14 +472,18 @@ private struct TooltipBubbleShape: Shape {
             width: rect.width,
             height: rect.height - tailHeight
         )
+        let halfTail = tailWidth / 2
+        let minTip = rect.minX + cornerRadius + halfTail
+        let maxTip = rect.maxX - cornerRadius - halfTail
+        let tip = min(max(tailX ?? rect.midX, minTip), max(maxTip, minTip))
         var path = Path()
         path.addRoundedRect(
             in: body,
             cornerSize: CGSize(width: cornerRadius, height: cornerRadius)
         )
-        path.move(to: CGPoint(x: rect.midX - (tailWidth / 2), y: body.maxY))
-        path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.midX + (tailWidth / 2), y: body.maxY))
+        path.move(to: CGPoint(x: tip - halfTail, y: body.maxY))
+        path.addLine(to: CGPoint(x: tip, y: rect.maxY))
+        path.addLine(to: CGPoint(x: tip + halfTail, y: body.maxY))
         path.closeSubpath()
         return path
     }

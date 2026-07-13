@@ -255,6 +255,7 @@
 "macOS could not copy the path for %@." = "macOS 无法拷贝 %@ 的路径。";
 "The item at %@ is no longer available for Quick Look." = "位于 %@ 的项目已无法通过快速查看打开。";
 "Free Space" = "可用空间";
+"Available" = "可用";
 "Hidden Space" = "隐藏空间";
 "just now" = "刚刚";
 "Use colorblind-safe colors" = "使用色盲友好配色";

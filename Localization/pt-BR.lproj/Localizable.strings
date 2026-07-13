@@ -256,6 +256,7 @@
 "macOS could not copy the path for %@." = "O macOS não conseguiu copiar o caminho de %@.";
 "The item at %@ is no longer available for Quick Look." = "O item em %@ não está mais disponível para a Visualização Rápida.";
 "Free Space" = "Espaço Livre";
+"Available" = "Disponível";
 "Hidden Space" = "Espaço Oculto";
 "just now" = "agora mesmo";
 "Use colorblind-safe colors" = "Usar cores adaptadas para daltonismo";

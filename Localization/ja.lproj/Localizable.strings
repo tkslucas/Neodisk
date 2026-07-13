@@ -255,6 +255,7 @@
 "macOS could not copy the path for %@." = "macOSは%@のパスをコピーできませんでした。";
 "The item at %@ is no longer available for Quick Look." = "%@の項目はクイックルックで利用できなくなりました。";
 "Free Space" = "空き容量";
+"Available" = "利用可能";
 "Hidden Space" = "隠れた領域";
 "just now" = "たった今";
 "Use colorblind-safe colors" = "色覚に配慮した配色を使用";

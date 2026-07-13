@@ -255,6 +255,7 @@
 "macOS could not copy the path for %@." = "macOS n'a pas pu copier le chemin de %@.";
 "The item at %@ is no longer available for Quick Look." = "L'élément à %@ n'est plus disponible pour Coup d'œil.";
 "Free Space" = "Espace libre";
+"Available" = "Disponible";
 "Hidden Space" = "Espace masqué";
 "just now" = "à l'instant";
 </content>

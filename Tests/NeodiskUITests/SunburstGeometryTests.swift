@@ -648,7 +648,7 @@ import NeodiskKit
         #expect(abs(span(cloudOn) - .pi) < 0.0001)
 
         // The dataless bit rides the segment in both modes (it drives the
-        // dashed stroke); the local file never carries it.
+        // hatched fill); the local file never carries it.
         #expect(cloudOn.isDataless)
         #expect(cloudOff.isDataless)
         #expect(!localOn.isDataless)
@@ -676,7 +676,7 @@ import NeodiskKit
             in: store, rootID: "/root", depthLimit: 3, includeCloudOnly: true
         )
 
-        // A directory whose bytes all live in the cloud gets the dashed
+        // A directory whose bytes all live in the cloud gets the hatch
         // marker, and with the toggle on it has the weight to drill so its
         // cloud child renders in the inner ring.
         let dirOn = try #require(on.first { $0.nodeID == cloudDir.id })

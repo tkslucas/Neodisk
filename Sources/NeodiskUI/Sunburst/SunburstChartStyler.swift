@@ -15,42 +15,68 @@ struct SunburstSegmentDrawingStyle {
     let fillOpacity: Double
     let strokeColor: Color
     let strokeWidth: CGFloat
-    /// Dash pattern for the arc stroke, nil for a solid stroke. Set only for
-    /// cloud-only (dataless) arcs — a subtle dashed hairline, no fill change,
-    /// so it reads the same over branch and kind/age coloring and under the
-    /// colorblind palette (dash is texture, not hue).
-    var dash: [CGFloat]?
-
-    init(
-        fillBaseColor: Color,
-        fillOpacity: Double,
-        strokeColor: Color,
-        strokeWidth: CGFloat,
-        dash: [CGFloat]? = nil
-    ) {
-        self.fillBaseColor = fillBaseColor
-        self.fillOpacity = fillOpacity
-        self.strokeColor = strokeColor
-        self.strokeWidth = strokeWidth
-        self.dash = dash
-    }
 
     var fillColor: Color {
         fillBaseColor.opacity(fillOpacity)
     }
+}
 
-    /// SwiftUI stroke style — dashed when `dash` is set, otherwise a plain
-    /// solid stroke of the same width.
-    var strokeStyle: StrokeStyle {
-        StrokeStyle(lineWidth: strokeWidth, dash: dash ?? [])
+/// Diagonal hatch drawn over the fill of cloud-only (dataless) arcs — the
+/// sunburst counterpart of the treemap's dataless stripes. Alternating
+/// lighter and darker bands over the segment's own color, so it reads in
+/// light and dark mode, over branch and kind/age coloring, and under the
+/// colorblind palette (texture, not hue). One instance per Canvas pass:
+/// the stripe geometry is built lazily once and reused for every clipped
+/// draw that frame.
+final class SunburstDatalessHatch {
+    /// Band thickness in points; light and dark bands alternate, so the
+    /// full pattern repeats every two bands.
+    private static let bandWidth: CGFloat = 3
+    private static let lightBand = Color.white.opacity(0.13)
+    private static let darkBand = Color.black.opacity(0.13)
+
+    private let size: CGSize
+    private lazy var stripes = Self.stripePaths(in: size)
+
+    init(size: CGSize) {
+        self.size = size
+    }
+
+    /// Hatches the region covered by `path` (typically one arc, or the
+    /// union of every dataless arc in the layer).
+    func draw(over path: Path, in context: GraphicsContext) {
+        var hatched = context
+        hatched.clip(to: path)
+        hatched.stroke(stripes.light, with: .color(Self.lightBand), lineWidth: Self.bandWidth)
+        hatched.stroke(stripes.dark, with: .color(Self.darkBand), lineWidth: Self.bandWidth)
+    }
+
+    /// "/"-direction lines along x + y = c covering `size`, one band apart,
+    /// split by parity into the light and dark stripe sets.
+    private static func stripePaths(in size: CGSize) -> (light: Path, dark: Path) {
+        var light = Path()
+        var dark = Path()
+        var offset: CGFloat = 0
+        var isDark = false
+        let limit = size.width + size.height
+        while offset <= limit {
+            let start = CGPoint(x: max(0, offset - size.height), y: min(offset, size.height))
+            let end = CGPoint(x: min(offset, size.width), y: max(0, offset - size.width))
+            if isDark {
+                dark.move(to: start)
+                dark.addLine(to: end)
+            } else {
+                light.move(to: start)
+                light.addLine(to: end)
+            }
+            offset += bandWidth
+            isDark.toggle()
+        }
+        return (light, dark)
     }
 }
 
 enum SunburstChartStyler {
-    /// Cloud-only arcs: a fine dashed hairline over the normal fill. Short
-    /// dash, short gap — subtle at any arc thickness and free of the moiré a
-    /// hatch fill would throw on thin rings.
-    private static let datalessDash: [CGFloat] = [3, 2]
     static func baseStyle(
         for segment: SunburstSegment
     ) -> SunburstSegmentDrawingStyle {
@@ -78,13 +104,8 @@ enum SunburstChartStyler {
         return SunburstSegmentDrawingStyle(
             fillBaseColor: baseColor(for: segment),
             fillOpacity: baseOpacity,
-            // Cloud-only arcs keep the ring's separator hairline but dash it
-            // and lift the opacity a touch so the pattern reads; the dash is
-            // the only mark distinguishing them, so it must survive light and
-            // dark and every coloring mode.
-            strokeColor: Color(nsColor: .separatorColor).opacity(segment.isDataless ? 0.7 : 0.4),
-            strokeWidth: 1,
-            dash: segment.isDataless ? Self.datalessDash : nil
+            strokeColor: Color(nsColor: .separatorColor).opacity(0.4),
+            strokeWidth: 1
         )
     }
 

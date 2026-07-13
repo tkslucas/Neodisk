@@ -20,11 +20,20 @@ struct SunburstBaseCanvas: View, Equatable {
 
     var body: some View {
         Canvas { context, size in
+            // Cloud-only arcs collect into one region so the hatch pass
+            // clips and strokes once, not per arc.
+            var datalessRegion = Path()
             for segment in segments {
                 let path = SunburstRenderer.path(for: segment, in: size)
                 let style = SunburstChartStyler.baseStyle(for: segment)
                 context.fill(path, with: .color(style.fillColor))
-                context.stroke(path, with: .color(style.strokeColor), style: style.strokeStyle)
+                context.stroke(path, with: .color(style.strokeColor), lineWidth: style.strokeWidth)
+                if segment.isDataless {
+                    datalessRegion.addPath(path)
+                }
+            }
+            if !datalessRegion.isEmpty {
+                SunburstDatalessHatch(size: size).draw(over: datalessRegion, in: context)
             }
         }
     }
@@ -49,7 +58,7 @@ struct SunburstSelectionOverlay: View, Equatable {
                 if style.fillOpacity > 0 {
                     context.fill(path, with: .color(style.fillColor))
                 }
-                context.stroke(path, with: .color(style.strokeColor), style: style.strokeStyle)
+                context.stroke(path, with: .color(style.strokeColor), lineWidth: style.strokeWidth)
             }
         }
     }

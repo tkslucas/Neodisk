@@ -182,6 +182,9 @@ struct SunburstZoomTransitionCanvas: View {
 
     var body: some View {
         Canvas { context, size in
+            // One hatch brush per frame: stripe geometry is built lazily on
+            // the first dataless arc and reused for the rest.
+            let hatch = SunburstDatalessHatch(size: size)
             switch presentation.phase {
             case .zooming(let progress):
                 guard let focus = state.focus else { return }
@@ -189,6 +192,7 @@ struct SunburstZoomTransitionCanvas: View {
                     state.animatedSegments,
                     focus: focus,
                     progress: progress,
+                    hatch: hatch,
                     in: &context,
                     size: size
                 )
@@ -198,6 +202,7 @@ struct SunburstZoomTransitionCanvas: View {
                     state.incomingSegments,
                     alphaForDeepRings: alpha,
                     deeperThan: state.handoffFadeDepthThreshold,
+                    hatch: hatch,
                     in: &context,
                     size: size
                 )
@@ -207,6 +212,7 @@ struct SunburstZoomTransitionCanvas: View {
                     state.previousSegments,
                     alphaForDeepRings: 1,
                     deeperThan: Int.max,
+                    hatch: hatch,
                     in: &context,
                     size: size
                 )
@@ -217,6 +223,7 @@ struct SunburstZoomTransitionCanvas: View {
                         state.animatedSegments,
                         focus: focus,
                         progress: 1,
+                        hatch: hatch,
                         in: &context,
                         size: size
                     )
@@ -228,6 +235,7 @@ struct SunburstZoomTransitionCanvas: View {
                     alphaForDeepRings: alpha,
                     deeperThan: state.handoffFadeDepthThreshold,
                     onlyDeepRings: true,
+                    hatch: hatch,
                     in: &context,
                     size: size
                 )
@@ -239,6 +247,7 @@ struct SunburstZoomTransitionCanvas: View {
         _ segments: [SunburstSegment],
         focus: SunburstSegment,
         progress: Double,
+        hatch: SunburstDatalessHatch,
         in context: inout GraphicsContext,
         size: CGSize
     ) {
@@ -259,6 +268,7 @@ struct SunburstZoomTransitionCanvas: View {
                     focus: focus,
                     progress: progress
                 ),
+                hatch: hatch,
                 in: &context,
                 size: size
             )
@@ -270,6 +280,7 @@ struct SunburstZoomTransitionCanvas: View {
         alphaForDeepRings: Double,
         deeperThan threshold: Int,
         onlyDeepRings: Bool = false,
+        hatch: SunburstDatalessHatch,
         in context: inout GraphicsContext,
         size: CGSize
     ) {
@@ -285,6 +296,7 @@ struct SunburstZoomTransitionCanvas: View {
                 segment,
                 arc: SunburstZoomGeometry.identityArc(for: segment),
                 effectiveDepth: Double(segment.depth),
+                hatch: hatch,
                 in: &context,
                 size: size
             )
@@ -295,6 +307,7 @@ struct SunburstZoomTransitionCanvas: View {
         _ segment: SunburstSegment,
         arc: SunburstZoomArc,
         effectiveDepth: Double,
+        hatch: SunburstDatalessHatch,
         in context: inout GraphicsContext,
         size: CGSize
     ) {
@@ -303,6 +316,11 @@ struct SunburstZoomTransitionCanvas: View {
         let path = SunburstRenderer.path(for: arc, in: size)
         let style = SunburstChartStyler.baseStyle(for: segment, effectiveDepth: effectiveDepth)
         context.fill(path, with: .color(style.fillColor))
-        context.stroke(path, with: .color(style.strokeColor), style: style.strokeStyle)
+        context.stroke(path, with: .color(style.strokeColor), lineWidth: style.strokeWidth)
+        if segment.isDataless {
+            // The copied context keeps the caller's opacity, so the hatch
+            // fades with its arc during the transition.
+            hatch.draw(over: path, in: context)
+        }
     }
 }

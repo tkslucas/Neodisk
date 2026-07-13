@@ -39,9 +39,12 @@ Swift/SwiftUI practices and keep the scanning core UI-free.
     pipeline — sidebar row, scan, visualizations, snapshot cache — runs
     without OAuth or network.
   - `NEODISK_GOOGLE_CLIENT_ID` / `NEODISK_GOOGLE_CLIENT_SECRET` — Google
-    OAuth desktop client for the real Connect Google Drive flow (the
-    "secret" is not confidential under PKCE; it stays out of this repo
-    anyway). Without a client ID the connect button is hidden.
+    OAuth desktop client for the Connect Google Drive flow. The shipped
+    client ID is baked into `GoogleOAuthConfiguration.swift` (public by
+    nature; the flow is protected by PKCE). The client secret is not in this
+    repo: release packaging injects it into Info.plist
+    (`NeodiskGoogleClientSecret`), and dev builds pass it via the env var.
+    Without a secret the connect action stays hidden.
   - `NEODISK_DROPBOX_APP_KEY` / `NEODISK_ONEDRIVE_CLIENT_ID` — same gate for
     the Dropbox and OneDrive connect actions (pure PKCE public clients, no
     secrets). With several providers configured the sidebar's connect button

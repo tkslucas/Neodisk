@@ -49,9 +49,12 @@ public struct GoogleOAuthConfiguration: Sendable, Equatable {
         self.scope = scope
     }
 
-    /// True once a client ID is present. When false the provider reports
+    /// True once a client ID and secret are present (Google desktop clients
+    /// need both at the token endpoint). When false the provider reports
     /// authorization is unavailable and the UI hides the connect action.
-    public var isConfigured: Bool { !clientID.isEmpty }
+    public var isConfigured: Bool {
+        !clientID.isEmpty && !(clientSecret ?? "").isEmpty
+    }
 
     /// The provider-neutral client OAuthAuthorizer consumes. Google quirks:
     /// access_type=offline + prompt=consent force a refresh token on every
@@ -72,23 +75,32 @@ public struct GoogleOAuthConfiguration: Sendable, Equatable {
         )
     }
 
-    // MARK: - Licensing-deferred swap point
+    // MARK: - Shipped client identity
     //
-    // Registering the Google Cloud project (and its OAuth consent screen) is
-    // deferred; until then these stay empty and the feature reports itself as
-    // unconfigured. Swap real values in here, or supply them via the
-    // environment variables below, to light the flow up.
-    static let placeholderClientID = ""
-    static let placeholderClientSecret: String? = nil
+    // Neodisk's registered Google OAuth desktop client ID. It is public by
+    // nature (it appears in the auth URL of every sign-in; the flow is
+    // protected by PKCE, not by hiding it). The accompanying client secret —
+    // required by Google at the token endpoint but likewise documented as
+    // non-confidential for installed apps — is deliberately NOT in source:
+    // release packaging injects it into Info.plist, and dev builds supply it
+    // via NEODISK_GOOGLE_CLIENT_SECRET. Without one the provider reports
+    // itself unconfigured and the connect action stays hidden.
+    static let shippedClientID =
+        "790657586324-s0mh1aaqkkcu2utph11odu043pij5dgl.apps.googleusercontent.com"
+
+    /// Info.plist key the packaging script writes the client secret under.
+    public static let clientSecretInfoPlistKey = "NeodiskGoogleClientSecret"
 
     public static func fromEnvironment(
-        _ environment: [String: String] = ProcessInfo.processInfo.environment
+        _ environment: [String: String] = ProcessInfo.processInfo.environment,
+        infoDictionary: [String: Any]? = Bundle.main.infoDictionary
     ) -> GoogleOAuthConfiguration {
-        let clientID = environment["NEODISK_GOOGLE_CLIENT_ID"] ?? placeholderClientID
+        let clientID = environment["NEODISK_GOOGLE_CLIENT_ID"] ?? shippedClientID
         let secret = environment["NEODISK_GOOGLE_CLIENT_SECRET"]
+            ?? infoDictionary?[clientSecretInfoPlistKey] as? String
         return GoogleOAuthConfiguration(
             clientID: clientID,
-            clientSecret: secret?.isEmpty == false ? secret : placeholderClientSecret
+            clientSecret: secret?.isEmpty == false ? secret : nil
         )
     }
 }

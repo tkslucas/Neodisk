@@ -56,6 +56,10 @@ struct TreemapScene: Sendable {
     /// local snapshots, files the scan could not see), laid out like the
     /// free-space node; nil when the feature is off or nothing is hidden.
     var hiddenSpaceNode: FileNodeRecord?
+    /// Whether cloud-only (dataless) bytes count toward layout weight; mirrors
+    /// the model's `showsCloudOnlyFiles`. `rect(forNodeID:)` re-runs the layout
+    /// and must weigh children exactly as `build` did, so the scene remembers.
+    let includingCloudOnly: Bool
     /// Coarse spatial buckets over `cells` so hover hit-testing doesn't
     /// linear-scan tens of thousands of cells per mouse-move.
     private let cellGrid: CellGrid
@@ -69,7 +73,8 @@ struct TreemapScene: Sendable {
         labels: [CellLabel],
         expandedAggregateIDs: Set<String>,
         freeSpaceNode: FileNodeRecord? = nil,
-        hiddenSpaceNode: FileNodeRecord? = nil
+        hiddenSpaceNode: FileNodeRecord? = nil,
+        includingCloudOnly: Bool = false
     ) {
         self.rootID = rootID
         self.size = size
@@ -80,6 +85,7 @@ struct TreemapScene: Sendable {
         self.expandedAggregateIDs = expandedAggregateIDs
         self.freeSpaceNode = freeSpaceNode
         self.hiddenSpaceNode = hiddenSpaceNode
+        self.includingCloudOnly = includingCloudOnly
         self.cellGrid = CellGrid(cells: cells, bounds: renderBounds)
     }
 
@@ -139,6 +145,7 @@ struct TreemapScene: Sendable {
         viewport: TreemapViewport = .identity,
         freeSpaceBytes: Int64? = nil,
         hiddenSpaceBytes: Int64? = nil,
+        includingCloudOnly: Bool = false,
         palette: VizPalette = .standard
     ) -> TreemapScene {
         var cells: [TreemapCell] = []
@@ -148,7 +155,8 @@ struct TreemapScene: Sendable {
                 rootID: rootID, size: size, viewport: viewport,
                 renderBounds: CGRect(origin: .zero, size: size),
                 cells: [], labels: [],
-                expandedAggregateIDs: expandedAggregateIDs
+                expandedAggregateIDs: expandedAggregateIDs,
+                includingCloudOnly: includingCloudOnly
             )
         }
 
@@ -187,18 +195,18 @@ struct TreemapScene: Sendable {
                 && min(rect.width, rect.height) >= minSubdivisionSide
 
             if subdividable {
-                var children = store.children(of: node.id).filter { $0.allocatedSize > 0 }
-                if isRoot {
-                    let syntheticNodes = [freeSpaceNode, hiddenSpaceNode].compactMap { $0 }
-                    if !syntheticNodes.isEmpty {
-                        children = FileTreeStore.sortedChildren(children + syntheticNodes)
-                    }
-                }
+                let filtered = store.children(of: node.id)
+                    .filter { $0.displayWeight(includingCloudOnly: includingCloudOnly) > 0 }
+                let syntheticNodes = isRoot ? [freeSpaceNode, hiddenSpaceNode].compactMap { $0 } : []
+                let children = layoutSiblings(
+                    filtered, synthetic: syntheticNodes, includingCloudOnly: includingCloudOnly
+                )
                 if !children.isEmpty {
                     let childHeight = isRoot ? ridgeHeight : ridgeHeight * ridgeFalloff
                     let layout = layoutChildren(
                         children,
                         in: rect,
+                        includingCloudOnly: includingCloudOnly,
                         disableAggregation: expandedAggregateIDs.contains(node.id)
                     )
 
@@ -226,6 +234,11 @@ struct TreemapScene: Sendable {
                             }
                             if !lit { aggregateRGB = dimmedRGB(aggregateRGB) }
                         }
+                        // Hatch the merged cell only when every node folded
+                        // into it is itself cloud-only (nothing on disk); a
+                        // mix stays plain, the cheap-and-correct v1.
+                        let aggregateDataless = includingCloudOnly
+                            && tail.allSatisfy { $0.allocatedSize == 0 }
                         cells.append(TreemapCell(
                             nodeID: node.id,
                             rect: aggregateRect,
@@ -234,8 +247,11 @@ struct TreemapScene: Sendable {
                             isDirectory: true,
                             aggregate: TreemapCell.AggregateInfo(
                                 itemCount: itemCount,
-                                totalSize: tail.reduce(Int64(0)) { $0 + $1.allocatedSize }
-                            )
+                                totalSize: tail.reduce(Int64(0)) {
+                                    $0 + $1.displayWeight(includingCloudOnly: includingCloudOnly)
+                                }
+                            ),
+                            isDataless: aggregateDataless
                         ))
                     }
                     continue
@@ -259,6 +275,11 @@ struct TreemapScene: Sendable {
             if let highlight, !matches(node, highlight: highlight, colorMode: colorMode, catalog: catalog) {
                 rgb = dimmedRGB(rgb)
             }
+            // Hatch a cell whose weight is entirely cloud-only: a dataless
+            // file, or an undivided directory holding nothing but cloud bytes.
+            let isDataless = includingCloudOnly
+                && (node.isDataless
+                    || (node.isDirectory && node.allocatedSize == 0 && node.cloudOnlyLogicalSize > 0))
             cells.append(TreemapCell(
                 nodeID: node.id,
                 rect: rect,
@@ -266,7 +287,8 @@ struct TreemapScene: Sendable {
                 surface: surface,
                 isDirectory: node.isDirectory,
                 isFreeSpace: isFreeSpace,
-                isHiddenSpace: isHiddenSpace
+                isHiddenSpace: isHiddenSpace,
+                isDataless: isDataless
             ))
 
             if !node.isDirectory {
@@ -285,7 +307,8 @@ struct TreemapScene: Sendable {
             renderBounds: renderBounds, cells: cells, labels: labels,
             expandedAggregateIDs: expandedAggregateIDs,
             freeSpaceNode: freeSpaceNode,
-            hiddenSpaceNode: hiddenSpaceNode
+            hiddenSpaceNode: hiddenSpaceNode,
+            includingCloudOnly: includingCloudOnly
         )
     }
 
@@ -388,6 +411,32 @@ struct TreemapScene: Sendable {
         )
     }
 
+    /// Orders a directory's laid-out siblings (its filtered children plus any
+    /// synthetic root blocks). Squarify wants weights descending, and with
+    /// cloud-only weighting on the store's `allocatedSize` order is wrong —
+    /// a mostly-dataless cloud root has nearly every child at zero on-disk
+    /// bytes, so sort by `displayWeight` instead. With the flag off this stays
+    /// byte-identical to before: the store order is preserved, and synthetic
+    /// blocks fall back to the store's own `sortedChildren`.
+    nonisolated static func layoutSiblings(
+        _ children: [FileNodeRecord],
+        synthetic: [FileNodeRecord],
+        includingCloudOnly: Bool
+    ) -> [FileNodeRecord] {
+        if includingCloudOnly {
+            return (children + synthetic).sorted { lhs, rhs in
+                let lw = lhs.displayWeight(includingCloudOnly: true)
+                let rw = rhs.displayWeight(includingCloudOnly: true)
+                if lw == rw {
+                    return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+                }
+                return lw > rw
+            }
+        }
+        if synthetic.isEmpty { return children }
+        return FileTreeStore.sortedChildren(children + synthetic)
+    }
+
     struct ChildLayout {
         /// Rects for the first `keptCount` children, in order.
         let rects: ArraySlice<CGRect>
@@ -402,14 +451,18 @@ struct TreemapScene: Sendable {
     nonisolated static func layoutChildren(
         _ children: [FileNodeRecord],
         in rect: CGRect,
+        includingCloudOnly: Bool = false,
         disableAggregation: Bool = false
     ) -> ChildLayout {
-        let totalSize = children.reduce(Int64(0)) { $0 + $1.allocatedSize }
+        func weight(_ node: FileNodeRecord) -> Int64 {
+            node.displayWeight(includingCloudOnly: includingCloudOnly)
+        }
+        let totalSize = children.reduce(Int64(0)) { $0 + weight($1) }
         var keptCount = children.count
         if !disableAggregation, minChildCellArea > 0, totalSize > 0 {
             let areaPerByte = Double(rect.width * rect.height) / Double(totalSize)
             while keptCount > 0,
-                  Double(children[keptCount - 1].allocatedSize) * areaPerByte
+                  Double(weight(children[keptCount - 1])) * areaPerByte
                     < Double(minChildCellArea) {
                 keptCount -= 1
             }
@@ -418,14 +471,14 @@ struct TreemapScene: Sendable {
         // Merging fewer than two children would just recolor one cell.
         if children.count - keptCount < 2 {
             let rects = TreemapLayout.squarify(
-                weights: children.map { Double($0.allocatedSize) },
+                weights: children.map { Double(weight($0)) },
                 in: rect
             )
             return ChildLayout(rects: rects[...], keptCount: children.count, aggregateRect: nil)
         }
 
-        let tailSize = children[keptCount...].reduce(Int64(0)) { $0 + $1.allocatedSize }
-        var weights = children[..<keptCount].map { Double($0.allocatedSize) }
+        let tailSize = children[keptCount...].reduce(Int64(0)) { $0 + weight($1) }
+        var weights = children[..<keptCount].map { Double(weight($0)) }
         weights.append(Double(tailSize))
         let rects = TreemapLayout.squarify(weights: weights, in: rect)
         return ChildLayout(
@@ -477,22 +530,23 @@ struct TreemapScene: Sendable {
             height: size.height * viewport.scale
         )
         for (parent, child) in zip(chain, chain.dropFirst()) {
-            var children = store.children(of: parent.id).filter { $0.allocatedSize > 0 }
-            if parent.id == rootID {
-                // Mirror the render path: the synthetic free/hidden-space
-                // nodes participate in the root layout, shifting every
-                // sibling's rect.
-                let syntheticNodes = [freeSpaceNode, hiddenSpaceNode].compactMap { $0 }
-                if !syntheticNodes.isEmpty {
-                    children = FileTreeStore.sortedChildren(children + syntheticNodes)
-                }
-            }
+            let filtered = store.children(of: parent.id)
+                .filter { $0.displayWeight(includingCloudOnly: includingCloudOnly) > 0 }
+            // Mirror the render path exactly: the synthetic free/hidden-space
+            // nodes participate in the root layout, and cloud-only weighting
+            // reorders siblings — both shift every sibling's rect.
+            let syntheticNodes = parent.id == rootID
+                ? [freeSpaceNode, hiddenSpaceNode].compactMap { $0 } : []
+            let children = Self.layoutSiblings(
+                filtered, synthetic: syntheticNodes, includingCloudOnly: includingCloudOnly
+            )
             guard let childIndex = children.firstIndex(where: { $0.id == child.id }) else {
                 return nil
             }
             let layout = Self.layoutChildren(
                 children,
                 in: rect,
+                includingCloudOnly: includingCloudOnly,
                 disableAggregation: expandedAggregateIDs.contains(parent.id)
             )
             if childIndex < layout.keptCount {

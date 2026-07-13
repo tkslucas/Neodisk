@@ -86,6 +86,10 @@ public enum HeadlessRender {
                 // dimming in headless renders.
                 let highlight = environment["NEODISK_RENDER_HIGHLIGHT_KIND"]
                     .map { TreemapHighlight.kind($0) }
+                // NEODISK_RENDER_CLOUD_ONLY=0 turns cloud-only weighting off;
+                // on by default to match the app's toolbar toggle (a no-op
+                // for scans without cloud items).
+                let includingCloudOnly = environment["NEODISK_RENDER_CLOUD_ONLY"] != "0"
                 let viewport = TreemapViewport(
                     scale: zoomScale,
                     origin: CGPoint(
@@ -97,7 +101,8 @@ public enum HeadlessRender {
                     store: store, rootID: store.root.id, size: size, catalog: catalog,
                     colorMode: colorMode,
                     highlight: highlight,
-                    viewport: viewport
+                    viewport: viewport,
+                    includingCloudOnly: includingCloudOnly
                 )
                 guard let image = CushionTreemapRenderer.render(cells: scene.cells, bounds: scene.renderBounds, scale: 2) else {
                     FileHandle.standardError.write(Data("render failed\n".utf8))

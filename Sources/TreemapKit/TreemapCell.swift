@@ -51,6 +51,11 @@ public struct TreemapCell: Sendable {
     /// snapshots, unreadable files); `nodeID` is then a synthetic ID that
     /// exists in no tree store.
     public var isHiddenSpace: Bool
+    /// Set when this cell's weight is cloud-only (a dataless file, or a
+    /// directory whose bytes all live in the cloud): the rasterizer bakes a
+    /// diagonal hatch over it so the space reads as "not on disk" independent
+    /// of hue (and so it survives the colorblind palette).
+    public var isDataless: Bool
 
     public struct AggregateInfo: Sendable {
         public let itemCount: Int
@@ -70,7 +75,8 @@ public struct TreemapCell: Sendable {
         isDirectory: Bool,
         aggregate: AggregateInfo? = nil,
         isFreeSpace: Bool = false,
-        isHiddenSpace: Bool = false
+        isHiddenSpace: Bool = false,
+        isDataless: Bool = false
     ) {
         self.nodeID = nodeID
         self.rect = rect
@@ -80,5 +86,6 @@ public struct TreemapCell: Sendable {
         self.aggregate = aggregate
         self.isFreeSpace = isFreeSpace
         self.isHiddenSpace = isHiddenSpace
+        self.isDataless = isDataless
     }
 }

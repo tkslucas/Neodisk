@@ -31,6 +31,7 @@ final class TreemapController {
         var expandedAggregateIDs: Set<String> = []
         var freeSpaceBytes: Int64?
         var hiddenSpaceBytes: Int64?
+        var includingCloudOnly = false
         var palette: VizPalette = .standard
     }
 
@@ -64,6 +65,7 @@ final class TreemapController {
         expandedAggregateIDs: Set<String>,
         freeSpaceBytes: Int64? = nil,
         hiddenSpaceBytes: Int64? = nil,
+        includingCloudOnly: Bool = false,
         palette: VizPalette = .standard
     ) {
         let newInputs = Inputs(
@@ -75,6 +77,7 @@ final class TreemapController {
             expandedAggregateIDs: expandedAggregateIDs,
             freeSpaceBytes: freeSpaceBytes,
             hiddenSpaceBytes: hiddenSpaceBytes,
+            includingCloudOnly: includingCloudOnly,
             palette: palette
         )
         guard newInputs != inputs else { return }
@@ -383,6 +386,7 @@ final class TreemapController {
         let expandedAggregateIDs = inputs.expandedAggregateIDs
         let freeSpaceBytes = inputs.freeSpaceBytes
         let hiddenSpaceBytes = inputs.hiddenSpaceBytes
+        let includingCloudOnly = inputs.includingCloudOnly
         let palette = inputs.palette
         let scale = view?.window?.backingScaleFactor ?? 2
         renderTask = Task { [weak self] in
@@ -400,6 +404,7 @@ final class TreemapController {
                     viewport: viewport,
                     freeSpaceBytes: freeSpaceBytes,
                     hiddenSpaceBytes: hiddenSpaceBytes,
+                    includingCloudOnly: includingCloudOnly,
                     palette: palette
                 )
                 guard !Task.isCancelled else { return nil }

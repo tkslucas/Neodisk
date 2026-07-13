@@ -28,6 +28,16 @@ public enum CushionTreemapRenderer {
     /// rather than holes. RGBA, straight (alpha 255).
     private nonisolated static let backgroundPattern: [UInt8] = [18, 18, 22, 255]
 
+    /// Diagonal hatch baked into cloud-only (`isDataless`) cells: alternating
+    /// bands `hatchStripePeriod` device pixels wide along the x+y diagonal,
+    /// each band nudged one way or the other by `hatchContrast`. Modulating
+    /// symmetrically about the cell's own brightness keeps the stripes visible
+    /// on both light and dark fills without shifting hue. The hatch lives in
+    /// pixel space, so it tracks gesture zoom through the layer transform and
+    /// re-crisps on the next render, exactly like the rest of the raster.
+    private nonisolated static let hatchStripePeriod = 4
+    private nonisolated static let hatchContrast = 0.14
+
     /// Portable rasterization: RGBA8 premultipliedLast, one byte-quadruple per
     /// pixel packed little-endian (`R | G<<8 | B<<16 | 0xFF000000`), row stride
     /// `width * 4`, alpha always 255. Cell rects are in view points; the output
@@ -204,6 +214,10 @@ public enum CushionTreemapRenderer {
         let r = Double(cell.rgb.x)
         let g = Double(cell.rgb.y)
         let b = Double(cell.rgb.z)
+        // Cloud-only cells get a diagonal hatch folded into the shade term; a
+        // per-cell branch keeps the stripe math off the hot path for the vast
+        // majority of cells, which are on-disk.
+        let hatch = cell.isDataless
 
         // SIMD lane constants, hoisted out of the pixel loops. Every vector
         // expression below mirrors the scalar tail's operation tree exactly
@@ -226,6 +240,10 @@ public enum CushionTreemapRenderer {
         let scale255V = SIMD8<Double>(repeating: 255)
         let zeroV = SIMD8<Double>()
         let alphaV = SIMD8<UInt32>(repeating: 255 &<< 24)
+        let twoV = SIMD8<Double>(repeating: 2)
+        let hatchPeriodV = SIMD8<Double>(repeating: Double(hatchStripePeriod))
+        let hatchHighV = SIMD8<Double>(repeating: 1 + hatchContrast)
+        let hatchSpanV = SIMD8<Double>(repeating: 2 * hatchContrast)
 
         for py in y0..<y1 {
             // Sample the surface at the pixel center, in view coordinates.
@@ -235,6 +253,7 @@ public enum CushionTreemapRenderer {
             // every lane, matching the scalar `gy * gy` / `gy * light.y`.
             let gySquaredV = SIMD8<Double>(repeating: gy * gy)
             let gyLightYV = SIMD8<Double>(repeating: gy * light.y)
+            let hatchRowV = SIMD8<Double>(repeating: Double(py))
             var offset = py * bytesPerRow + x0 * 4
             var px = x0
 
@@ -247,7 +266,16 @@ public enum CushionTreemapRenderer {
                 // Surface normal is (-gx, -gy, 1) (unnormalized).
                 let normalLength = (gx * gx + gySquaredV + oneV).squareRoot()
                 let dot = (-gx * lightXV - gyLightYV + lightZV) / normalLength
-                let shade = ambientV + diffuseV * pointwiseMax(zeroV, dot)
+                var shade = ambientV + diffuseV * pointwiseMax(zeroV, dot)
+                if hatch {
+                    // stripe = floor((px + py) / period); parity 0/1 = stripe
+                    // mod 2. Pixel indices are exact integers well within
+                    // double range, so this matches the scalar-tail integer
+                    // math bit-for-bit and leaves no seam at the body boundary.
+                    let stripe = floorV((pxV + hatchRowV) / hatchPeriodV)
+                    let parity = stripe - twoV * floorV(stripe * halfV)
+                    shade = shade * (hatchHighV - hatchSpanV * parity)
+                }
 
                 // Clamp to [0, 255] and truncate toward zero, exactly like the
                 // scalar `UInt8(min(255, max(0, …)))`.
@@ -271,7 +299,11 @@ public enum CushionTreemapRenderer {
                 // Surface normal is (-gx, -gy, 1) (unnormalized).
                 let normalLength = (gx * gx + gy * gy + 1).squareRoot()
                 let dot = (-gx * light.x - gy * light.y + light.z) / normalLength
-                let shade = ambient + diffuse * max(0, dot)
+                var shade = ambient + diffuse * max(0, dot)
+                if hatch {
+                    let parity = ((px + py) / hatchStripePeriod) & 1
+                    shade *= (1 + hatchContrast) - (2 * hatchContrast) * Double(parity)
+                }
 
                 base[offset] = UInt8(min(255, max(0, r * shade * 255)))
                 base[offset + 1] = UInt8(min(255, max(0, g * shade * 255)))
@@ -300,6 +332,15 @@ public enum CushionTreemapRenderer {
         let floored = rounded.replacing(with: rounded - 1, where: rounded .> d)
         let bits = unsafeBitCast(floored + magic, to: SIMD8<UInt64>.self)
         return SIMD8<UInt32>(truncatingIfNeeded: bits)
+    }
+
+    /// Per-lane `floor` for magnitudes below 2^52, via the same round-trip the
+    /// truncation helper uses: adding then subtracting 2^52 snaps to the
+    /// nearest integer, and lanes that rounded up are stepped back down.
+    private nonisolated static func floorV(_ d: SIMD8<Double>) -> SIMD8<Double> {
+        let magic = SIMD8<Double>(repeating: 0x1.0p52)
+        let rounded = (d + magic) - magic
+        return rounded.replacing(with: rounded - 1, where: rounded .> d)
     }
 
     private nonisolated static func normalized(_ v: SIMD3<Double>) -> SIMD3<Double> {

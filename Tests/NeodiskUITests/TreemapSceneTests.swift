@@ -391,6 +391,138 @@ import NeodiskKit
         #expect(try aggregateRGB(highlight: nil) == FileKindCatalog.otherRGB)
     }
 
+    /// A tree with one on-disk file and one cloud-only (dataless) file of
+    /// equal logical size; the dataless file has no bytes on disk.
+    private func makeCloudStore() -> FileTreeStore {
+        let rootURL = URL(filePath: "/cloud", directoryHint: .isDirectory)
+        let onDisk = FileNodeRecord(
+            id: "/cloud/local.bin", url: rootURL.appending(path: "local.bin"), name: "local.bin",
+            isDirectory: false, isSymbolicLink: false,
+            allocatedSize: 1_000, logicalSize: 1_000, descendantFileCount: 0,
+            lastModified: nil, isPackage: false, isAccessible: true,
+            isSelfAccessible: true, isSynthetic: false, isAutoSummarized: false
+        )
+        let cloudOnly = FileNodeRecord(
+            id: "/cloud/remote.mov", url: rootURL.appending(path: "remote.mov"), name: "remote.mov",
+            isDirectory: false, isSymbolicLink: false,
+            allocatedSize: 0, logicalSize: 1_000, descendantFileCount: 0,
+            lastModified: nil, isPackage: false, isAccessible: true,
+            isSelfAccessible: true, isSynthetic: false, isAutoSummarized: false,
+            isDataless: true
+        )
+        let children = FileTreeStore.sortedChildren([onDisk, cloudOnly])
+        let root = FileNodeRecord.directory(
+            id: "/cloud", url: rootURL, name: "cloud", children: children,
+            lastModified: nil, isPackage: false, isAccessible: true, childrenAreSorted: true
+        )
+        return FileTreeStore(root: root, childrenByID: ["/cloud": children])
+    }
+
+    @Test func cloudOnlyWeightDependsOnFlag() throws {
+        let store = makeCloudStore()
+        let size = CGSize(width: 400, height: 300)
+
+        // Off: the cloud-only file has zero display weight, so it is filtered
+        // out and the on-disk file fills the canvas.
+        let off = TreemapScene.build(
+            store: store, rootID: "/cloud", size: size, catalog: .empty,
+            includingCloudOnly: false
+        )
+        #expect(!off.cells.contains { $0.nodeID == "/cloud/remote.mov" })
+        let localOff = try #require(off.cells.first { $0.nodeID == "/cloud/local.bin" })
+        #expect(abs(Double(localOff.rect.width * localOff.rect.height) - 400 * 300) < 1)
+
+        // On: both files weigh 1000, so each owns half the canvas.
+        let on = TreemapScene.build(
+            store: store, rootID: "/cloud", size: size, catalog: .empty,
+            includingCloudOnly: true
+        )
+        let cloudOn = try #require(on.cells.first { $0.nodeID == "/cloud/remote.mov" })
+        let localOn = try #require(on.cells.first { $0.nodeID == "/cloud/local.bin" })
+        #expect(abs(Double(cloudOn.rect.width * cloudOn.rect.height) - 400 * 300 / 2) < 1)
+        #expect(abs(Double(localOn.rect.width * localOn.rect.height) - 400 * 300 / 2) < 1)
+    }
+
+    @Test func datalessCellIsFlaggedOnlyWithFlag() throws {
+        let store = makeCloudStore()
+        let size = CGSize(width: 400, height: 300)
+
+        let on = TreemapScene.build(
+            store: store, rootID: "/cloud", size: size, catalog: .empty,
+            includingCloudOnly: true
+        )
+        #expect(try #require(on.cells.first { $0.nodeID == "/cloud/remote.mov" }).isDataless)
+        #expect(try !#require(on.cells.first { $0.nodeID == "/cloud/local.bin" }).isDataless)
+    }
+
+    /// Files whose display weight ranks differently from their on-disk size:
+    /// two cloud-only files (no bytes on disk, large logical size) interleaved
+    /// with two on-disk files, named so weight order differs from name order.
+    private func makeMixedCloudChildren() -> [FileNodeRecord] {
+        let rootURL = URL(filePath: "/mix", directoryHint: .isDirectory)
+        func file(_ name: String, alloc: Int64, logical: Int64, dataless: Bool) -> FileNodeRecord {
+            FileNodeRecord(
+                id: "/mix/\(name)", url: rootURL.appending(path: name), name: name,
+                isDirectory: false, isSymbolicLink: false,
+                allocatedSize: alloc, logicalSize: logical, descendantFileCount: 0,
+                lastModified: nil, isPackage: false, isAccessible: true,
+                isSelfAccessible: true, isSynthetic: false, isAutoSummarized: false,
+                isDataless: dataless
+            )
+        }
+        return [
+            file("a.mov", alloc: 0, logical: 5_000, dataless: true),   // weight 5000
+            file("c.bin", alloc: 3_000, logical: 3_000, dataless: false), // weight 3000
+            file("b.mov", alloc: 0, logical: 200, dataless: true),     // weight 200
+            file("d.bin", alloc: 100, logical: 100, dataless: false),  // weight 100
+        ]
+    }
+
+    @Test func layoutSiblingsOrdersByDisplayWeightWhenFlagOn() {
+        let children = makeMixedCloudChildren()
+
+        // Flag off, no synthetic blocks: order is preserved verbatim.
+        let off = TreemapScene.layoutSiblings(children, synthetic: [], includingCloudOnly: false)
+        #expect(off.map(\.name) == children.map(\.name))
+
+        // Flag on: descending display weight, so the big cloud-only file leads.
+        let on = TreemapScene.layoutSiblings(children, synthetic: [], includingCloudOnly: true)
+        #expect(on.map(\.name) == ["a.mov", "c.bin", "b.mov", "d.bin"])
+    }
+
+    @Test func buildAndRectAgreeUnderCloudWeighting() throws {
+        let rootURL = URL(filePath: "/mix", directoryHint: .isDirectory)
+        let children = FileTreeStore.sortedChildren(makeMixedCloudChildren())
+        let root = FileNodeRecord.directory(
+            id: "/mix", url: rootURL, name: "mix", children: children,
+            lastModified: nil, isPackage: false, isAccessible: true, childrenAreSorted: true
+        )
+        let store = FileTreeStore(root: root, childrenByID: ["/mix": children])
+        let size = CGSize(width: 400, height: 300)
+
+        let scene = TreemapScene.build(
+            store: store, rootID: "/mix", size: size, catalog: .empty,
+            includingCloudOnly: true
+        )
+
+        // All four weigh enough to render individually (no aggregation), and
+        // the biggest tile is the large cloud-only file, proving the reorder
+        // reached squarify.
+        #expect(scene.cells.count == 4)
+        let largest = try #require(scene.cells.max(by: { $0.rect.width * $0.rect.height < $1.rect.width * $1.rect.height }))
+        #expect(largest.nodeID == "/mix/a.mov")
+
+        // Placement agrees between the rendered cells and rect(forNodeID:),
+        // which re-runs the layout — so hit-testing and selection stay put.
+        for cell in scene.cells {
+            let rect = try #require(scene.rect(forNodeID: cell.nodeID, in: store))
+            #expect(abs(rect.minX - cell.rect.minX) < 0.001, "\(cell.nodeID)")
+            #expect(abs(rect.minY - cell.rect.minY) < 0.001, "\(cell.nodeID)")
+            #expect(abs(rect.width - cell.rect.width) < 0.001, "\(cell.nodeID)")
+            #expect(abs(rect.height - cell.rect.height) < 0.001, "\(cell.nodeID)")
+        }
+    }
+
     @Test func rendererProducesImageOfExpectedSize() {
         let store = makeStore()
         let scene = TreemapScene.build(

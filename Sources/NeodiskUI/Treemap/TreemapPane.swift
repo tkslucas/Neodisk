@@ -42,6 +42,7 @@ struct TreemapPane: NSViewRepresentable {
             // them) — hence the treemap-specific accessors.
             freeSpaceBytes: model.zoomRootID == nil ? model.treemapFreeSpaceBytes : nil,
             hiddenSpaceBytes: model.zoomRootID == nil ? model.treemapHiddenSpaceBytes : nil,
+            includingCloudOnly: model.showsCloudOnlyFiles,
             palette: model.vizPalette
         )
         controller.setSelectedNode(model.selectedNodeID)

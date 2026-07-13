@@ -72,9 +72,7 @@
 "Rescan automatically always refreshes behind the saved results; Smart skips the refresh when the last scan took a while; Show snapshot only always waits for Rescan Now." = "Rescan automatically always refreshes behind the saved results; Smart skips the refresh when the last scan took a while; Show snapshot only always waits for Rescan Now.";
 "When Results Appear" = "When Results Appear";
 "Prepare the Changes comparison in the background" = "Prepare the Changes comparison in the background";
-"Loads the previous scan whenever results appear — after a scan or when opening a saved snapshot — so the Changes button responds instantly. Takes effect once a location has been scanned twice." = "Loads the previous scan whenever results appear — after a scan or when opening a saved snapshot — so the Changes button responds instantly. Takes effect once a location has been scanned twice.";
 "Find duplicate files automatically" = "Find duplicate files automatically";
-"Starts the duplicate scan whenever results appear — after a scan or when opening a saved snapshot. Comparing file contents reads a lot of data, which can take time and energy on large locations." = "Starts the duplicate scan whenever results appear — after a scan or when opening a saved snapshot. Comparing file contents reads a lot of data, which can take time and energy on large locations.";
 "Exclusions" = "Exclusions";
 "Use scan exclusions" = "Use scan exclusions";
 "One pattern per line. Trailing “/” matches folders; “*” is a wildcard." = "One pattern per line. Trailing “/” matches folders; “*” is a wildcard.";
@@ -328,3 +326,8 @@
 "Cloud storage" = "Cloud storage";
 "On this Mac" = "On this Mac";
 "Cloud-only" = "Cloud-only";
+
+/* Settings tabs (2026-07-13) */
+"Advanced" = "Advanced";
+"Loads the previous scan in the background so the Changes view opens instantly." = "Loads the previous scan in the background so the Changes view opens instantly.";
+"Runs the duplicate scan automatically when results appear. Reading file contents can take time and energy on large locations." = "Runs the duplicate scan automatically when results appear. Reading file contents can take time and energy on large locations.";

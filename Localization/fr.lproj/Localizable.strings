@@ -72,9 +72,7 @@
 "Rescan automatically always refreshes behind the saved results; Smart skips the refresh when the last scan took a while; Show snapshot only always waits for Rescan Now." = "« Réanalyser automatiquement » actualise toujours en arrière-plan derrière les résultats enregistrés ; « Intelligent » ignore l'actualisation quand la dernière analyse a pris du temps ; « Afficher seulement l'instantané » attend toujours un clic sur Réanalyser maintenant.";
 "When Results Appear" = "Quand des résultats s’affichent";
 "Prepare the Changes comparison in the background" = "Préparer la comparaison des modifications en arrière-plan";
-"Loads the previous scan whenever results appear — after a scan or when opening a saved snapshot — so the Changes button responds instantly. Takes effect once a location has been scanned twice." = "Charge l’analyse précédente dès que des résultats s’affichent — après une analyse ou à l’ouverture d’un instantané enregistré — pour que le bouton Modifications réponde instantanément. Prend effet lorsqu’un emplacement a été analysé deux fois.";
 "Find duplicate files automatically" = "Rechercher automatiquement les fichiers en double";
-"Starts the duplicate scan whenever results appear — after a scan or when opening a saved snapshot. Comparing file contents reads a lot of data, which can take time and energy on large locations." = "Lance la recherche de doublons dès que des résultats s’affichent — après une analyse ou à l’ouverture d’un instantané enregistré. La comparaison du contenu des fichiers lit beaucoup de données, ce qui peut prendre du temps et de l’énergie sur les grands emplacements.";
 "Exclusions" = "Exclusions";
 "Use scan exclusions" = "Utiliser des exclusions d'analyse";
 "One pattern per line. Trailing “/” matches folders; “*” is a wildcard." = "Un motif par ligne. Un « / » final cible les dossiers ; « * » est un caractère générique.";
@@ -329,3 +327,8 @@
 "Cloud storage" = "Stockage cloud";
 "On this Mac" = "Sur ce Mac";
 "Cloud-only" = "Cloud uniquement";
+
+/* Settings tabs (2026-07-13) */
+"Advanced" = "Avancé";
+"Loads the previous scan in the background so the Changes view opens instantly." = "Charge l’analyse précédente en arrière-plan pour que la vue Modifications s’ouvre instantanément.";
+"Runs the duplicate scan automatically when results appear. Reading file contents can take time and energy on large locations." = "Lance la recherche de doublons automatiquement dès que des résultats s’affichent. La lecture du contenu des fichiers peut prendre du temps et de l’énergie sur les grands emplacements.";

@@ -2,8 +2,9 @@
 //  SettingsView.swift
 //  Neodisk
 //
-//  Settings window (⌘,): General (appearance, scanning, visualization) and
-//  Privacy (Full Disk Access status).
+//  Settings window (⌘,): General (appearance, updates, workspace), View
+//  (visualization), Advanced (scanning, results, exclusions) and Privacy
+//  (Full Disk Access status).
 //
 
 import SwiftUI
@@ -18,6 +19,12 @@ struct SettingsView: View {
         TabView {
             GeneralSettingsTab(model: model, preferences: preferences, updates: updates)
                 .tabItem { Label("General", systemImage: "gearshape") }
+
+            ViewSettingsTab(preferences: preferences)
+                .tabItem { Label("View", systemImage: "eye") }
+
+            AdvancedSettingsTab(preferences: preferences)
+                .tabItem { Label("Advanced", systemImage: "slider.horizontal.3") }
 
             PrivacySettingsTab(model: model)
                 .tabItem { Label("Privacy", systemImage: "hand.raised") }
@@ -47,6 +54,75 @@ private struct GeneralSettingsTab: View {
                 .pickerStyle(.segmented)
             }
 
+            Section("Updates") {
+                Toggle(
+                    "Check for updates automatically",
+                    isOn: Binding(
+                        get: { updates.automaticallyChecksForUpdates },
+                        set: { updates.setAutomaticallyChecksForUpdates($0) }
+                    )
+                )
+                .disabled(!updates.isSupported)
+                if updates.isSupported {
+                    Text("Neodisk checks GitHub for new versions in the background and always asks before installing anything.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    Button("Check for Updates…") {
+                        updates.checkForUpdates()
+                    }
+                    .disabled(!updates.canCheckForUpdates)
+                } else {
+                    // Unbundled `swift run` builds and bundles without an
+                    // appcast feed cannot update themselves.
+                    Text("Automatic updates work only in the packaged app.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section("Workspace") {
+                Button("Show Welcome Screen") {
+                    model.showWelcomeSheet = true
+                }
+                Button("Restore Defaults") {
+                    preferences.restoreDefaults()
+                }
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+// MARK: - View
+
+private struct ViewSettingsTab: View {
+    @ObservedObject var preferences: AppPreferences
+
+    var body: some View {
+        Form {
+            Section("Visualization") {
+                Toggle("Show free space in treemap", isOn: $preferences.showFreeSpace)
+                Text("The sunburst always shows free and hidden space for volume scans; this adds them to the treemap too. Hidden space is capacity the scan could not see, such as purgeable space and local snapshots. Applies immediately.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+
+                Toggle("Use colorblind-safe colors", isOn: $preferences.useColorblindPalette)
+                Text("Swaps the file-kind and age colors for a palette that stays distinct with common color vision differences. Applies immediately.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+// MARK: - Advanced
+
+private struct AdvancedSettingsTab: View {
+    @ObservedObject var preferences: AppPreferences
+
+    var body: some View {
+        Form {
             Section("Scanning") {
                 Toggle("Show hidden files while scanning", isOn: $preferences.includeHiddenFiles)
                 Text("Mounted volume scans always include hidden files automatically.")
@@ -84,11 +160,11 @@ private struct GeneralSettingsTab: View {
                     "Prepare the Changes comparison in the background",
                     isOn: $preferences.prepareChangesAfterScan
                 )
-                Text("Loads the previous scan whenever results appear — after a scan or when opening a saved snapshot — so the Changes button responds instantly. Takes effect once a location has been scanned twice.")
+                Text("Loads the previous scan in the background so the Changes view opens instantly.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 Toggle("Find duplicate files automatically", isOn: $preferences.autoScanDuplicates)
-                Text("Starts the duplicate scan whenever results appear — after a scan or when opening a saved snapshot. Comparing file contents reads a lot of data, which can take time and energy on large locations.")
+                Text("Runs the duplicate scan automatically when results appear. Reading file contents can take time and energy on large locations.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -109,53 +185,6 @@ private struct GeneralSettingsTab: View {
                         addPresetPatterns()
                     }
                     .disabled(!preferences.useScanExclusions)
-                }
-            }
-
-            Section("Visualization") {
-                Toggle("Show free space in treemap", isOn: $preferences.showFreeSpace)
-                Text("The sunburst always shows free and hidden space for volume scans; this adds them to the treemap too. Hidden space is capacity the scan could not see, such as purgeable space and local snapshots. Applies immediately.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-
-                Toggle("Use colorblind-safe colors", isOn: $preferences.useColorblindPalette)
-                Text("Swaps the file-kind and age colors for a palette that stays distinct with common color vision differences. Applies immediately.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section("Updates") {
-                Toggle(
-                    "Check for updates automatically",
-                    isOn: Binding(
-                        get: { updates.automaticallyChecksForUpdates },
-                        set: { updates.setAutomaticallyChecksForUpdates($0) }
-                    )
-                )
-                .disabled(!updates.isSupported)
-                if updates.isSupported {
-                    Text("Neodisk checks GitHub for new versions in the background and always asks before installing anything.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                    Button("Check for Updates…") {
-                        updates.checkForUpdates()
-                    }
-                    .disabled(!updates.canCheckForUpdates)
-                } else {
-                    // Unbundled `swift run` builds and bundles without an
-                    // appcast feed cannot update themselves.
-                    Text("Automatic updates work only in the packaged app.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Section("Workspace") {
-                Button("Show Welcome Screen") {
-                    model.showWelcomeSheet = true
-                }
-                Button("Restore Defaults") {
-                    preferences.restoreDefaults()
                 }
             }
         }

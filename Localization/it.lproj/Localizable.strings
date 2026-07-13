@@ -72,9 +72,7 @@
 "Rescan automatically always refreshes behind the saved results; Smart skips the refresh when the last scan took a while; Show snapshot only always waits for Rescan Now." = "Ripeti scansione automaticamente aggiorna sempre i risultati salvati in background; Smart salta l'aggiornamento se l'ultima scansione ha richiesto molto tempo; Mostra solo istantanea attende sempre Ripeti scansione ora.";
 "When Results Appear" = "Quando compaiono i risultati";
 "Prepare the Changes comparison in the background" = "Prepara il confronto delle modifiche in background";
-"Loads the previous scan whenever results appear — after a scan or when opening a saved snapshot — so the Changes button responds instantly. Takes effect once a location has been scanned twice." = "Carica la scansione precedente quando compaiono i risultati — dopo una scansione o all’apertura di un’istantanea salvata — così il pulsante Modifiche risponde all’istante. Ha effetto quando una posizione è stata scansionata due volte.";
 "Find duplicate files automatically" = "Trova automaticamente i file duplicati";
-"Starts the duplicate scan whenever results appear — after a scan or when opening a saved snapshot. Comparing file contents reads a lot of data, which can take time and energy on large locations." = "Avvia la ricerca dei duplicati quando compaiono i risultati — dopo una scansione o all’apertura di un’istantanea salvata. Il confronto dei contenuti dei file legge molti dati e può richiedere tempo ed energia su posizioni grandi.";
 "Exclusions" = "Esclusioni";
 "Use scan exclusions" = "Usa esclusioni di scansione";
 "One pattern per line. Trailing “/” matches folders; “*” is a wildcard." = "Un pattern per riga. La “/” finale corrisponde alle cartelle; “*” è un carattere jolly.";
@@ -328,3 +326,8 @@
 "Cloud storage" = "Spazio cloud";
 "On this Mac" = "Su questo Mac";
 "Cloud-only" = "Solo cloud";
+
+/* Settings tabs (2026-07-13) */
+"Advanced" = "Avanzate";
+"Loads the previous scan in the background so the Changes view opens instantly." = "Carica la scansione precedente in background così la vista Modifiche si apre subito.";
+"Runs the duplicate scan automatically when results appear. Reading file contents can take time and energy on large locations." = "Avvia automaticamente la ricerca dei duplicati quando compaiono i risultati. La lettura dei contenuti dei file può richiedere tempo ed energia su posizioni grandi.";

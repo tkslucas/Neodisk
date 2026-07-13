@@ -72,9 +72,7 @@
 "Rescan automatically always refreshes behind the saved results; Smart skips the refresh when the last scan took a while; Show snapshot only always waits for Rescan Now." = "“自动重新扫描”始终在已保存结果的后台刷新；“智能”会在上次扫描耗时较长时跳过刷新；“仅显示快照”则始终等待点按“立即重新扫描”。";
 "When Results Appear" = "显示结果时";
 "Prepare the Changes comparison in the background" = "在后台准备变化对比";
-"Loads the previous scan whenever results appear — after a scan or when opening a saved snapshot — so the Changes button responds instantly. Takes effect once a location has been scanned twice." = "每当显示结果时（扫描完成后或打开已保存的快照时）立即载入上一次扫描，使“变化”按钮即刻响应。同一位置扫描两次后生效。";
 "Find duplicate files automatically" = "自动查找重复文件";
-"Starts the duplicate scan whenever results appear — after a scan or when opening a saved snapshot. Comparing file contents reads a lot of data, which can take time and energy on large locations." = "每当显示结果时（扫描完成后或打开已保存的快照时）立即开始重复项扫描。比较文件内容需要读取大量数据，在较大的位置上可能耗时耗电。";
 "Exclusions" = "排除项";
 "Use scan exclusions" = "使用扫描排除项";
 "One pattern per line. Trailing “/” matches folders; “*” is a wildcard." = "每行一个模式。末尾加“/”表示匹配文件夹；“*”为通配符。";
@@ -328,3 +326,8 @@
 "Cloud storage" = "云存储";
 "On this Mac" = "本 Mac";
 "Cloud-only" = "仅云端";
+
+/* Settings tabs (2026-07-13) */
+"Advanced" = "高级";
+"Loads the previous scan in the background so the Changes view opens instantly." = "在后台载入上一次扫描，使“变化”视图即刻打开。";
+"Runs the duplicate scan automatically when results appear. Reading file contents can take time and energy on large locations." = "结果显示时自动开始重复项扫描。读取文件内容在较大的位置上可能耗时耗电。";

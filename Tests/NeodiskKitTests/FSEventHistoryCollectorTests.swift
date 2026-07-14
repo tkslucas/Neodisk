@@ -106,4 +106,26 @@ import Testing
         let history = try await collector.value()
         #expect(history.events.map(\.path) == ["\(mountPoint)/inside.txt"])
     }
+
+    @Test func escalationSentinelsSurviveTheWindowFilter() async throws {
+        // Drop/wrap/root/volume sentinels can carry event ID 0 (like
+        // RootChanged) or land past `through`; filtering one out turns a
+        // truncated replay into a clean-looking one and the planner would
+        // splice instead of full-scanning.
+        let sentinels: [(String, UInt32)] = [
+            ("dropped-user", UInt32(kFSEventStreamEventFlagUserDropped)),
+            ("dropped-kernel", UInt32(kFSEventStreamEventFlagKernelDropped)),
+            ("ids-wrapped", UInt32(kFSEventStreamEventFlagEventIdsWrapped)),
+            ("root-changed", UInt32(kFSEventStreamEventFlagRootChanged)),
+            ("volume-mounted", UInt32(kFSEventStreamEventFlagMount)),
+            ("volume-unmounted", UInt32(kFSEventStreamEventFlagUnmount)),
+        ]
+        for id: UInt64 in [0, 500] { // ID 0 sentinel, and one past `through`
+            let collector = makeCollector()
+            deliver(sentinels.map { ($0.0, $0.1, id) } + [("", historyDone, 0)], to: collector)
+            let history = try await collector.value()
+            #expect(history.events.count == sentinels.count)
+            #expect(history.events.allSatisfy { $0.flags.demandsFullScan })
+        }
+    }
 }

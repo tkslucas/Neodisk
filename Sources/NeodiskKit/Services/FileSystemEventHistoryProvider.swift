@@ -340,8 +340,11 @@ final class FSEventHistoryCollector: @unchecked Sendable {
             }
 
             let eventID = eventIDs[index]
-            // RootChanged carries event ID 0 and must never be filtered out.
-            guard mappedFlags.contains(.rootChanged) ||
+            // Escalation sentinels (RootChanged, dropped events, wrapped IDs,
+            // volume changes) can carry event ID 0 or fall past the window
+            // and must never be filtered out — losing one turns a truncated
+            // replay into a clean-looking one.
+            guard mappedFlags.demandsFullScan ||
                     (eventID > since.eventID && eventID <= through.eventID) else {
                 continue
             }

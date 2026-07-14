@@ -47,7 +47,9 @@ import NeodiskKit
         defer { environment.tearDown() }
         let target = makeTestTarget("/cache-vm/scanned")
         environment.sidebarFolderStore.add(target)
-        let model = environment.makeModel()
+        // Pin the policy: the snapshotOnly default would show the snapshot
+        // without the refresh this test is about.
+        let model = environment.makeModel(policy: .smart)
 
         model.startScan(target)
         let finished = makeSimpleSnapshot(target: target)
@@ -61,8 +63,11 @@ import NeodiskKit
 
         // Move away, then reselect: the cached snapshot must appear while
         // the refresh scan is still running, with partials suppressed.
+        // Session memory is cleared first so the disk restore path — this
+        // test's subject — actually runs, as it would after a relaunch.
         let elsewhere = makeTestTarget("/cache-vm/elsewhere")
         model.startScan(elsewhere)
+        model.coordinator.forgetAllRecentSnapshots()
         model.startScan(target)
 
         try await waitUntilAsync("cached snapshot displayed during refresh") {
@@ -114,6 +119,33 @@ import NeodiskKit
         #expect(model.coordinator.isScanning)
         #expect(environment.scanService.scanCount == 1)
         model.stopScan()
+    }
+
+    @Test func testDefaultPolicyIsSnapshotOnly() async throws {
+        let environment = try TestEnvironment()
+        defer { environment.tearDown() }
+        let target = makeTestTarget("/cache-vm/default-policy")
+        environment.sidebarFolderStore.add(target)
+        // The last scan was instantaneous — the old smart default would
+        // auto-rescan this; the snapshot-only default must not.
+        try await environment.cache.save(makeSimpleSnapshot(target: target))
+
+        // Fresh preferences (nothing persisted) must resolve to snapshotOnly.
+        #expect(AppPreferences(defaults: environment.defaults).autoRescanPolicy == .snapshotOnly)
+
+        let model = environment.makeModel()
+        try await waitUntilAsync("prune indexes the snapshot") {
+            model.cachedScanInfo[target.id] != nil
+        }
+
+        model.startScan(target)
+
+        try await waitUntilAsync("snapshot displayed without scanning") {
+            model.coordinator.phase == .displaying
+        }
+        #expect(!model.coordinator.isScanning)
+        #expect(model.snapshotNotice?.targetID == target.id)
+        #expect(environment.scanService.scanCount == 0)
     }
 
     @Test func testSnapshotOnlyPolicyShowsFastSnapshotWithoutRescan() async throws {

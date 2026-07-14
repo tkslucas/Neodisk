@@ -484,7 +484,7 @@ final class NeodiskViewModel {
     /// without an unsolicited refresh scan. Explicit rescans
     /// (forcesRescan: true) never consult this.
     private func shouldSkipAutoRescan(lastScanDuration: TimeInterval?) -> Bool {
-        switch preferences?.autoRescanPolicy ?? .smart {
+        switch preferences?.autoRescanPolicy ?? .snapshotOnly {
         case .automatic:
             return false
         case .smart:

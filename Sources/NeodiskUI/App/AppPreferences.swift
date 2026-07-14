@@ -36,8 +36,9 @@ enum ThemePreference: String, CaseIterable, Identifiable {
 }
 
 /// What happens when a location with a cached snapshot is opened from the
-/// sidebar: refresh it right away, decide from the last scan's duration
-/// (the default), or always wait for an explicit rescan.
+/// sidebar: refresh it right away, decide from the last scan's duration,
+/// or always wait for an explicit rescan (the default — opening a location
+/// should never start work the user didn't ask for).
 enum AutoRescanPolicy: String, CaseIterable, Identifiable {
     case automatic
     case smart
@@ -75,7 +76,7 @@ final class AppPreferences: ObservableObject {
     /// trailing "/" matches directories, "*" wildcards within a component).
     @AppStorage("exclusionPatternsText") var exclusionPatternsText =
         ScanExclusionMatcher.commonPresetPatterns.joined(separator: "\n")
-    @AppStorage("autoRescanPolicy") var autoRescanPolicyRaw = AutoRescanPolicy.smart.rawValue
+    @AppStorage("autoRescanPolicy") var autoRescanPolicyRaw = AutoRescanPolicy.snapshotOnly.rawValue
     /// Which visualization fills the center pane (treemap or sunburst).
     @AppStorage("vizViewMode") var vizViewModeRaw = VizViewMode.treemap.rawValue
     /// Decode the previous snapshot whenever a complete tree lands on screen
@@ -111,7 +112,7 @@ final class AppPreferences: ObservableObject {
             store: defaults
         )
         _autoRescanPolicyRaw = AppStorage(
-            wrappedValue: AutoRescanPolicy.smart.rawValue, "autoRescanPolicy", store: defaults
+            wrappedValue: AutoRescanPolicy.snapshotOnly.rawValue, "autoRescanPolicy", store: defaults
         )
         _vizViewModeRaw = AppStorage(
             wrappedValue: VizViewMode.treemap.rawValue, "vizViewMode", store: defaults
@@ -129,7 +130,7 @@ final class AppPreferences: ObservableObject {
     }
 
     var autoRescanPolicy: AutoRescanPolicy {
-        get { AutoRescanPolicy(rawValue: autoRescanPolicyRaw) ?? .smart }
+        get { AutoRescanPolicy(rawValue: autoRescanPolicyRaw) ?? .snapshotOnly }
         set { autoRescanPolicyRaw = newValue.rawValue }
     }
 
@@ -171,7 +172,7 @@ final class AppPreferences: ObservableObject {
         useColorblindPalette = false
         useScanExclusions = false
         exclusionPatternsText = ScanExclusionMatcher.commonPresetPatterns.joined(separator: "\n")
-        autoRescanPolicyRaw = AutoRescanPolicy.smart.rawValue
+        autoRescanPolicyRaw = AutoRescanPolicy.snapshotOnly.rawValue
         vizViewModeRaw = VizViewMode.treemap.rawValue
         prepareChangesAfterScan = true
         autoScanDuplicates = false

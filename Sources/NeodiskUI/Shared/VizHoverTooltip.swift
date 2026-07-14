@@ -178,7 +178,7 @@ struct VizHoverTooltipLayer: View {
 
     private static let cursorGap: CGFloat = 14
     private static let edgeInset: CGFloat = 6
-    private static let revealDelay: Duration = .milliseconds(500)
+    private static let revealDelay: Duration = .milliseconds(150)
 
     var body: some View {
         VizHoverTooltip(data: data)

@@ -10,6 +10,7 @@
 //  {
 //    "account":      {"providerID": "fixture", "accountID": "demo",
 //                     "email": "demo@example.com"},
+//    "displayName":  "Fixture Drive",   // optional sidebar subtitle
 //    "quota":        {"totalBytes": 16106127360, "usedBytes": 7300000000},
 //    "rootFolderID": "root",
 //    "pageSize":     500,
@@ -24,6 +25,9 @@ import Foundation
 
 public struct CloudFixture: Codable, Sendable {
     public var account: CloudAccount
+    /// Sidebar subtitle for the fixture account ("Google Drive" in demos);
+    /// FixtureCloudProvider falls back to "Fixture Drive" when absent.
+    public var displayName: String?
     public var quota: CloudQuota
     public var rootFolderID: String
     public var pageSize: Int?
@@ -31,12 +35,14 @@ public struct CloudFixture: Codable, Sendable {
 
     public init(
         account: CloudAccount,
+        displayName: String? = nil,
         quota: CloudQuota,
         rootFolderID: String,
         pageSize: Int? = nil,
         files: [CloudFileEntry]
     ) {
         self.account = account
+        self.displayName = displayName
         self.quota = quota
         self.rootFolderID = rootFolderID
         self.pageSize = pageSize
@@ -56,12 +62,12 @@ public struct FixtureCloudProvider: CloudProvider {
 
     public var providerID: String { fixture.account.providerID }
 
-    public init(fixture: CloudFixture, displayName: String = "Fixture Drive") {
+    public init(fixture: CloudFixture, displayName: String? = nil) {
         self.fixture = fixture
-        self.displayName = displayName
+        self.displayName = displayName ?? fixture.displayName ?? "Fixture Drive"
     }
 
-    public init(contentsOf url: URL, displayName: String = "Fixture Drive") throws {
+    public init(contentsOf url: URL, displayName: String? = nil) throws {
         self.init(
             fixture: try CloudFixture.decoding(try Data(contentsOf: url)),
             displayName: displayName

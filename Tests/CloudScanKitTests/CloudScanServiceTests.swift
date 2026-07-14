@@ -166,6 +166,7 @@ private func makeFixture(fileCount: Int = 6, pageSize: Int = 2) -> CloudFixture 
         let json = """
         {
           "account": {"providerID": "fixture", "accountID": "demo", "email": "d@e.com"},
+          "displayName": "Demo Drive",
           "quota": {"totalBytes": 1000, "usedBytes": 300},
           "rootFolderID": "root",
           "files": [
@@ -179,5 +180,10 @@ private func makeFixture(fileCount: Int = 6, pageSize: Int = 2) -> CloudFixture 
         #expect(fixture.files.count == 1)
         #expect(fixture.files[0].modifiedAt != nil)
         #expect(fixture.pageSize == nil)
+        // The JSON displayName names the provider; absent it stays the default.
+        #expect(FixtureCloudProvider(fixture: fixture).displayName == "Demo Drive")
+        var unnamed = fixture
+        unnamed.displayName = nil
+        #expect(FixtureCloudProvider(fixture: unnamed).displayName == "Fixture Drive")
     }
 }

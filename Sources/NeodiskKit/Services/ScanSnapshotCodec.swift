@@ -48,6 +48,16 @@ nonisolated enum ScanSnapshotCodec {
         /// payload. Optional and omitted when zero: additive, older files
         /// decode as nil.
         var cloudOnlyLogicalSize: Int64?
+        /// FSEvents journal position captured when the scan started; the
+        /// basis for the next incremental rescan. Optional and additive:
+        /// files written before the field existed decode as nil, which the
+        /// incremental gate reads as "no baseline checkpoint" and falls back
+        /// to a full scan.
+        var incrementalCheckpoint: FSEventsCheckpoint?
+        /// The effective scan options behind this snapshot, so a rescan can
+        /// verify the options shape is unchanged and reproduce the tree.
+        /// Optional and additive: older files decode as nil.
+        var scanOptions: ScanOptions?
     }
 
     private struct NodeFlags: OptionSet {
@@ -109,7 +119,9 @@ nonisolated enum ScanSnapshotCodec {
             changeDigest: changeDigest ?? ScanChangeList.contentDigest(of: store),
             cloudOnlyLogicalSize: (store.storage.nodes.first?.cloudOnlyLogicalSize).flatMap {
                 $0 > 0 ? $0 : nil
-            }
+            },
+            incrementalCheckpoint: snapshot.incrementalCheckpoint,
+            scanOptions: snapshot.scanOptions
         )
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .secondsSince1970
@@ -306,7 +318,9 @@ nonisolated enum ScanSnapshotCodec {
             finishedAt: metadata.finishedAt,
             scanWarnings: warnings,
             aggregateStats: stats,
-            isComplete: true
+            isComplete: true,
+            scanOptions: metadata.scanOptions,
+            incrementalCheckpoint: metadata.incrementalCheckpoint
         )
     }
 

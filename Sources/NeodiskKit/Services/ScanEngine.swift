@@ -274,6 +274,29 @@ public final class ScanEngine: Sendable {
     }
 
     public nonisolated func scan(target: ScanTarget, options: ScanOptions) -> AsyncThrowingStream<ScanProgressEvent, Error> {
+        scan(target: target, options: options, behaviorOverride: nil, baseDepth: 0)
+    }
+
+    /// Rescans one subtree of a previous scan so its result can be spliced
+    /// back into the baseline tree. `behavior` and `baseDepth` come from the
+    /// original scan (root behavior and the subtree root's depth in the
+    /// baseline), so depth-gated decisions — auto-summarization above all —
+    /// fire exactly as they would have in a full scan.
+    nonisolated func scanSubtree(
+        target: ScanTarget,
+        options: ScanOptions,
+        behavior: ScanBehavior,
+        baseDepth: Int
+    ) -> AsyncThrowingStream<ScanProgressEvent, Error> {
+        scan(target: target, options: options, behaviorOverride: behavior, baseDepth: baseDepth)
+    }
+
+    private nonisolated func scan(
+        target: ScanTarget,
+        options: ScanOptions,
+        behaviorOverride: ScanBehavior?,
+        baseDepth: Int
+    ) -> AsyncThrowingStream<ScanProgressEvent, Error> {
         // Bounded, newest-wins: a stalled consumer must not queue an
         // unbounded backlog of `.partial` trees (each one a full copy of the
         // tree so far — an effective memory bomb on large scans). Progress
@@ -285,6 +308,8 @@ public final class ScanEngine: Sendable {
                     let snapshot = try await self.performScan(
                         target: target,
                         options: options,
+                        behaviorOverride: behaviorOverride,
+                        baseDepth: baseDepth,
                         continuation: continuation
                     )
                     continuation.yield(.finished(snapshot))
@@ -307,13 +332,15 @@ public final class ScanEngine: Sendable {
     private nonisolated func performScan(
         target: ScanTarget,
         options: ScanOptions,
+        behaviorOverride: ScanBehavior? = nil,
+        baseDepth: Int = 0,
         continuation: AsyncThrowingStream<ScanProgressEvent, Error>.Continuation
     ) async throws -> ScanSnapshot {
         let startedAt = Date()
         var metrics = ScanMetrics()
         var warnings: [ScanWarning] = []
         var emissionState = ScanEmissionState()
-        let behavior = ScanBehavior(
+        let behavior = behaviorOverride ?? ScanBehavior(
             excludesStartupVolumeInternals: target.kind == .volume && target.url.path == "/"
         )
         let exclusionMatcher = ScanExclusionMatcher(
@@ -329,6 +356,7 @@ public final class ScanEngine: Sendable {
             includeVolumeDetails: true,
             options: options,
             behavior: behavior,
+            baseDepth: baseDepth,
             exclusionMatcher: exclusionMatcher,
             metrics: &metrics,
             warnings: &warnings,
@@ -374,6 +402,7 @@ public final class ScanEngine: Sendable {
         includeVolumeDetails: Bool,
         options: ScanOptions,
         behavior: ScanBehavior,
+        baseDepth: Int = 0,
         exclusionMatcher: ScanExclusionMatcher,
         metrics: inout ScanMetrics,
         warnings: inout [ScanWarning],
@@ -393,6 +422,7 @@ public final class ScanEngine: Sendable {
             volumeFileSystemTypeProvider: volumeFileSystemTypeProvider,
             diagnostics: diagnostics,
             bulkEnumerationEnabled: bulkEnumerationEnabled,
+            baseDepth: baseDepth,
             metrics: metrics,
             warnings: warnings,
             emissionState: emissionState

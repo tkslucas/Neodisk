@@ -154,6 +154,11 @@ nonisolated final class ScanTraversal {
     private let bulkEnumerationEnabled: Bool
     private let cancellationCheck: CancellationCheck = { try Task.checkCancellation() }
     private let atomicSummaryWorkerLimit: Int
+    /// The scan root's depth in the tree this scan is a part of. Non-zero
+    /// only for incremental subtree rescans, where depth-gated behavior
+    /// (auto-summarize thresholds) must fire exactly as it would have in
+    /// the full scan that produced the baseline.
+    private let baseDepth: Int
 
     // MARK: - Mutable traversal state (scan-task confined)
 
@@ -189,6 +194,7 @@ nonisolated final class ScanTraversal {
         volumeFileSystemTypeProvider: @escaping ScanEngine.VolumeFileSystemTypeProvider,
         diagnostics: ScanDiagnosticsContext?,
         bulkEnumerationEnabled: Bool,
+        baseDepth: Int = 0,
         metrics: ScanMetrics,
         warnings: [ScanWarning],
         emissionState: ScanEmissionState
@@ -205,6 +211,7 @@ nonisolated final class ScanTraversal {
         self.volumeFileSystemTypeProvider = volumeFileSystemTypeProvider
         self.diagnostics = diagnostics
         self.bulkEnumerationEnabled = bulkEnumerationEnabled
+        self.baseDepth = baseDepth
         self.atomicSummaryWorkerLimit = ScanConcurrencyPolicy.atomicSummaryWorkerLimit(for: options)
         self.concurrency = AdaptiveScanConcurrency(
             options: options,
@@ -289,7 +296,7 @@ nonisolated final class ScanTraversal {
                 localizedEnumerationError: nil,
                 isDirectoryHint: nil,
                 parentKey: -1,
-                depth: 0,
+                depth: baseDepth,
                 weight: 1
             )
         ]
@@ -347,7 +354,7 @@ nonisolated final class ScanTraversal {
                     }
                     metrics.currentPath = item.url.path
 
-                    if shouldTraverseDirectory(metadata: meta, isRoot: item.depth == 0) {
+                    if shouldTraverseDirectory(metadata: meta, isRoot: item.depth == baseDepth) {
                         metrics.directoriesVisited += 1
                         metrics.recalculateProgress()
                         maybeEmitProgress()

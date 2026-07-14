@@ -51,6 +51,9 @@ Swift/SwiftUI practices and keep the scanning core UI-free.
     becomes a menu.
   - `NEODISK_AUTOREVEAL=<path>` — after the scan, select that node and
     expand its ancestors in the outline (deep trees in headless snapshots).
+  - `NEODISK_INCREMENTAL=0` — disable incremental FSEvents rescans; every
+    rescan runs the full traversal (fallback safety valve, and the honest
+    baseline when benchmarking scan changes).
   - `Neodisk --render-png <scan-path> <out.png> [scale fx fy]` — headless
     treemap render for verifying visual changes.
   - `NEODISK_UI_SNAPSHOT=<out.png>` — offscreen window capture with zoom.

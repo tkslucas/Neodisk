@@ -20,9 +20,31 @@ enum AppModelPhase: Equatable, Sendable {
 
 protocol ScanEventStreaming: Sendable {
     func scan(target: ScanTarget, options: ScanOptions) -> AsyncThrowingStream<ScanProgressEvent, Error>
+
+    /// A refresh of a previously scanned target. The baseline provider hands
+    /// over the target's last complete snapshot (typically a cache decode
+    /// shared with the display path) so an incremental-capable service can
+    /// re-enumerate only what changed; nil means scan from scratch.
+    func rescan(
+        target: ScanTarget,
+        options: ScanOptions,
+        baselineProvider: @escaping @Sendable () async -> ScanSnapshot?
+    ) -> AsyncThrowingStream<ScanProgressEvent, Error>
+}
+
+extension ScanEventStreaming {
+    /// Services without an incremental path refresh by scanning again.
+    func rescan(
+        target: ScanTarget,
+        options: ScanOptions,
+        baselineProvider: @escaping @Sendable () async -> ScanSnapshot?
+    ) -> AsyncThrowingStream<ScanProgressEvent, Error> {
+        scan(target: target, options: options)
+    }
 }
 
 extension ScanEngine: ScanEventStreaming {}
+extension IncrementalScanService: ScanEventStreaming {}
 
 /// Where the displayed tree comes from and how live scan events treat it —
 /// the one place that owns the cached-snapshot/refresh choreography, which
@@ -162,15 +184,29 @@ final class ScanCoordinator {
     /// target (otherwise the caller feeds one in via
     /// `displayCachedSnapshot`), and `.partial` events are suppressed until
     /// the fresh `.finished` snapshot replaces it.
+    ///
+    /// `baselineProvider` hands the scan service the target's last complete
+    /// snapshot so it can rescan incrementally; when nil, the displayed
+    /// same-target snapshot (if complete) serves as the baseline.
     func startRefreshScan(
         _ target: ScanTarget,
         options: ScanOptions,
+        baselineProvider: (@Sendable () async -> ScanSnapshot?)? = nil,
         prepare: () -> Void = {}
     ) {
         let retainedSnapshot = snapshot?.isComplete == true && snapshot?.target.id == target.id
             ? snapshot
             : nil
-        beginScan(target, options: options, retainedSnapshot: retainedSnapshot, prepare: prepare)
+        let baselineProvider = baselineProvider ?? retainedSnapshot.map { retained in
+            { @Sendable in retained }
+        }
+        beginScan(
+            target,
+            options: options,
+            retainedSnapshot: retainedSnapshot,
+            baselineProvider: baselineProvider,
+            prepare: prepare
+        )
         displaySource = .cachedWhileRefreshing(
             scanDate: retainedSnapshot.map { $0.finishedAt ?? $0.startedAt }
         )
@@ -239,6 +275,7 @@ final class ScanCoordinator {
         _ target: ScanTarget,
         options: ScanOptions,
         retainedSnapshot: ScanSnapshot?,
+        baselineProvider: (@Sendable () async -> ScanSnapshot?)? = nil,
         prepare: () -> Void
     ) {
         stopScan(resetState: false)
@@ -257,7 +294,9 @@ final class ScanCoordinator {
         let scanID = UUID()
         activeScanID = scanID
         activeScanStartDate = Date()
-        let stream = scanService.scan(target: target, options: options)
+        let stream = baselineProvider.map { provider in
+            scanService.rescan(target: target, options: options, baselineProvider: provider)
+        } ?? scanService.scan(target: target, options: options)
         scanTask = Task { [weak self] in
             await self?.consumeScanStream(stream, scanID: scanID)
         }

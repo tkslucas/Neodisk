@@ -143,6 +143,10 @@ public struct ScanSnapshot: Identifiable, Sendable {
     public let isComplete: Bool
     public let scanOptions: ScanOptions?
     public let source: ScanSnapshotSource
+    /// FSEvents journal position captured when this scan started; the basis
+    /// for the next incremental rescan. Nil for partial snapshots, imported
+    /// archives, cloud targets, and volumes without a usable journal.
+    public let incrementalCheckpoint: FSEventsCheckpoint?
 
     public nonisolated init(
         id: UUID = UUID(),
@@ -154,7 +158,8 @@ public struct ScanSnapshot: Identifiable, Sendable {
         aggregateStats: ScanAggregateStats,
         isComplete: Bool,
         scanOptions: ScanOptions? = nil,
-        source: ScanSnapshotSource = .live
+        source: ScanSnapshotSource = .live,
+        incrementalCheckpoint: FSEventsCheckpoint? = nil
     ) {
         self.id = id
         self.target = target
@@ -166,6 +171,7 @@ public struct ScanSnapshot: Identifiable, Sendable {
         self.isComplete = isComplete
         self.scanOptions = scanOptions
         self.source = source
+        self.incrementalCheckpoint = source.isPersistable ? incrementalCheckpoint : nil
     }
 
     public nonisolated var root: FileNodeRecord {
@@ -198,7 +204,8 @@ public struct ScanSnapshot: Identifiable, Sendable {
             aggregateStats: updatedStore.aggregateStats,
             isComplete: isComplete,
             scanOptions: scanOptions,
-            source: source
+            source: source,
+            incrementalCheckpoint: incrementalCheckpoint
         )
     }
 
@@ -237,7 +244,8 @@ public struct ScanSnapshot: Identifiable, Sendable {
             aggregateStats: updatedStore.aggregateStats,
             isComplete: isComplete,
             scanOptions: scanOptions,
-            source: source
+            source: source,
+            incrementalCheckpoint: incrementalCheckpoint
         )
     }
 
@@ -264,6 +272,8 @@ public struct ScanSnapshot: Identifiable, Sendable {
             }
         }
 
+        // Scoping narrows the tree to a subtarget; the checkpoint describes
+        // the original scan root, so it does not travel to the scoped copy.
         return ScanSnapshot(
             target: target,
             treeStore: scopedStore,
@@ -275,6 +285,34 @@ public struct ScanSnapshot: Identifiable, Sendable {
             scanOptions: scanOptions,
             source: source
         )
+    }
+
+    /// Merges sub-scan warnings into a baseline after an incremental splice:
+    /// baseline warnings under any replaced root are stale (that subtree was
+    /// re-scanned) and dropped, the sub-scan's own warnings are appended, and
+    /// the result is deduped by `ScanWarning.id` with surviving baseline
+    /// warnings kept ahead of the new ones.
+    nonisolated static func mergedWarningsPruningReplacedSubtrees(
+        existing: [ScanWarning],
+        replacedRootPaths: [String],
+        additional: [ScanWarning]
+    ) -> [ScanWarning] {
+        var seen = Set<String>()
+        var result: [ScanWarning] = []
+
+        for warning in existing {
+            if replacedRootPaths.contains(where: { path(warning.path, isContainedIn: $0) }) {
+                continue
+            }
+            if seen.insert(warning.id).inserted {
+                result.append(warning)
+            }
+        }
+        for warning in additional where seen.insert(warning.id).inserted {
+            result.append(warning)
+        }
+
+        return result
     }
 
     private nonisolated static func mergedWarnings(

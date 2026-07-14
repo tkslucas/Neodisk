@@ -453,11 +453,19 @@ final class NeodiskViewModel {
             // A persisted snapshot exists (or the launch index isn't ready
             // yet and one might): show it as soon as it decodes, refreshing
             // behind it. A cache miss reverts to live partial streaming
-            // within milliseconds.
+            // within milliseconds. One decode feeds both the display and the
+            // refresh scan's incremental baseline.
             snapshotNotice = nil
             resetPerScanState()
-            coordinator.startRefreshScan(target, options: options)
-            restoreCachedSnapshot(for: target, canCancelRefresh: !forcesRescan)
+            let load = Task { [snapshotCache, kinds] in
+                await Self.loadSeededSnapshot(for: target, in: snapshotCache, seeding: kinds)
+            }
+            coordinator.startRefreshScan(
+                target,
+                options: options,
+                baselineProvider: { await load.value.snapshot }
+            )
+            restoreCachedSnapshot(for: target, canCancelRefresh: !forcesRescan, load: load)
         } else {
             snapshotNotice = nil
             resetPerScanState()
@@ -652,11 +660,20 @@ final class NeodiskViewModel {
         )
     }
 
-    private func restoreCachedSnapshot(for target: ScanTarget, canCancelRefresh: Bool = false) {
+    private func restoreCachedSnapshot(
+        for target: ScanTarget,
+        canCancelRefresh: Bool = false,
+        load: Task<(snapshot: ScanSnapshot?, sidecar: KindStatsSidecar?), Never>? = nil
+    ) {
         Task { [weak self, snapshotCache] in
-            let (cached, sidecar) = await Self.loadSeededSnapshot(
-                for: target, in: snapshotCache, seeding: self?.kinds
-            )
+            let (cached, sidecar): (ScanSnapshot?, KindStatsSidecar?)
+            if let load {
+                (cached, sidecar) = await load.value
+            } else {
+                (cached, sidecar) = await Self.loadSeededSnapshot(
+                    for: target, in: snapshotCache, seeding: self?.kinds
+                )
+            }
             guard let self else { return }
             if let cached {
                 self.coordinator.displayCachedSnapshot(cached)

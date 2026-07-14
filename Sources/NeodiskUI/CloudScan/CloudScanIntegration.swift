@@ -60,7 +60,7 @@ struct RoutingScanService: ScanEventStreaming {
     let cloudService: (any ScanEventStreaming)?
 
     init(
-        localService: any ScanEventStreaming = ScanEngine(),
+        localService: any ScanEventStreaming = IncrementalScanService(),
         cloudService: (any ScanEventStreaming)? = nil
     ) {
         self.localService = localService
@@ -78,6 +78,17 @@ struct RoutingScanService: ScanEventStreaming {
             return AsyncThrowingStream { $0.finish(throwing: CloudScanUnavailableError()) }
         }
         return cloudService.scan(target: target, options: options)
+    }
+
+    func rescan(
+        target: ScanTarget,
+        options: ScanOptions,
+        baselineProvider: @escaping @Sendable () async -> ScanSnapshot?
+    ) -> AsyncThrowingStream<ScanProgressEvent, Error> {
+        guard target.kind == .cloud else {
+            return localService.rescan(target: target, options: options, baselineProvider: baselineProvider)
+        }
+        return scan(target: target, options: options)
     }
 }
 

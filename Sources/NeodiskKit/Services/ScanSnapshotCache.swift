@@ -72,6 +72,14 @@ public struct SnapshotSaveOutcome: Sendable {
     public let hasPreviousSnapshot: Bool
 }
 
+/// Concurrency contract: the actor serializes *file-slot* operations, but
+/// heavy CPU work (encode, decode, content digest — seconds for a
+/// multi-million-node volume) runs detached behind an `await`, so the actor
+/// stays free to serve other targets meanwhile. Switching to a cached
+/// location while another location's save is in flight must display in
+/// decode-time, not queue-time. Every file mutation happens inside one
+/// synchronous (suspension-free) section, so interleaved readers only ever
+/// observe complete slot states.
 public actor ScanSnapshotCache {
     /// v3 adds the cloud-only bit (files) and cloudOnlyLogicalSize payload
     /// (directories); older builds reject v3 files cleanly as
@@ -114,18 +122,24 @@ public actor ScanSnapshotCache {
     /// identical tree would make every diff empty and destroy the baseline
     /// the rescan was meant to be compared against.
     @discardableResult
-    public func save(_ snapshot: ScanSnapshot) throws -> SnapshotSaveOutcome {
+    public func save(_ snapshot: ScanSnapshot) async throws -> SnapshotSaveOutcome {
         guard snapshot.isComplete else {
             throw ScanSnapshotCacheError.incompleteSnapshot
         }
 
         let start = ContinuousClock.now
-        let digest = ScanChangeList.contentDigest(of: snapshot.treeStore)
-        let data = try ScanSnapshotCodec.encode(
-            snapshot,
-            version: Self.currentFormatVersion,
-            changeDigest: digest
-        )
+        // Digest + encode off the actor: a concurrent save of the same
+        // target cannot interleave here (a target's next scan cannot finish
+        // while its previous save encodes), but loads of other targets must
+        // not wait behind this.
+        let (digest, data) = try await Task.detached {
+            let digest = ScanChangeList.contentDigest(of: snapshot.treeStore)
+            return (digest, try ScanSnapshotCodec.encode(
+                snapshot,
+                version: Self.currentFormatVersion,
+                changeDigest: digest
+            ))
+        }.value
         try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
 
         let latestURL = fileURL(forTargetID: snapshot.target.id)
@@ -166,23 +180,26 @@ public actor ScanSnapshotCache {
     /// Returns the cached snapshot for a target, or nil when there is none.
     /// Unreadable files (corruption, old format versions) are deleted so they
     /// never fail twice.
-    public func loadSnapshot(for target: ScanTarget) -> ScanSnapshot? {
-        loadSnapshot(for: target, at: fileURL(forTargetID: target.id))
+    public func loadSnapshot(for target: ScanTarget) async -> ScanSnapshot? {
+        await loadSnapshot(for: target, at: fileURL(forTargetID: target.id))
     }
 
     /// Returns the rotated previous snapshot for a target — the scan before
     /// the one `loadSnapshot` returns — or nil when the target has only been
     /// scanned once.
-    public func loadPreviousSnapshot(for target: ScanTarget) -> ScanSnapshot? {
-        loadSnapshot(for: target, at: previousFileURL(forTargetID: target.id))
+    public func loadPreviousSnapshot(for target: ScanTarget) async -> ScanSnapshot? {
+        await loadSnapshot(for: target, at: previousFileURL(forTargetID: target.id))
     }
 
-    private func loadSnapshot(for target: ScanTarget, at url: URL) -> ScanSnapshot? {
+    private func loadSnapshot(for target: ScanTarget, at url: URL) async -> ScanSnapshot? {
+        let signatureAtRead = fileSignature(at: url)
         guard let data = try? Data(contentsOf: url) else { return nil }
 
         let start = ContinuousClock.now
         do {
-            let snapshot = try ScanSnapshotCodec.decode(data)
+            // Decode off the actor, so a slow decode (or another target's
+            // in-flight save) never queues other targets' cache traffic.
+            let snapshot = try await Task.detached { try ScanSnapshotCodec.decode(data) }.value
             guard snapshot.target.id == target.id else {
                 // Filename hash collision or a moved cache directory; not our
                 // snapshot, and not ours to delete.
@@ -195,7 +212,14 @@ public actor ScanSnapshotCache {
             return snapshot
         } catch {
             log("discarding unreadable snapshot for \(target.id): \(error)")
-            try? FileManager.default.removeItem(at: url)
+            // The decode ran unisolated; a save may have replaced the file
+            // meanwhile, and the corruption verdict only applies to the
+            // bytes read — never delete a newer file.
+            if let current = fileSignature(at: url),
+               signatureAtRead?.size == current.size,
+               signatureAtRead?.modified == current.modified {
+                try? FileManager.default.removeItem(at: url)
+            }
             return nil
         }
     }

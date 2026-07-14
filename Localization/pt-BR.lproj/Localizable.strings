@@ -332,3 +332,9 @@
 "Advanced" = "Avançado";
 "Loads the previous scan in the background so the Changes view opens instantly." = "Carrega a análise anterior em segundo plano para que a visualização Alterações abra na hora.";
 "Runs the duplicate scan automatically when results appear. Reading file contents can take time and energy on large locations." = "Inicia a busca de duplicatas automaticamente quando os resultados aparecem. Ler o conteúdo dos arquivos pode levar tempo e energia em locais grandes.";
+/* Hover tooltips (2026-07-13) */
+"Free space · %@" = "Espaço livre · %@";
+"Hidden space · %@" = "Espaço oculto · %@";
+"%@ smaller items" = "%@ itens menores";
+"%@ · %@ of %@" = "%@ · %@ de %@";
+"Space available on this volume." = "Espaço disponível neste volume.";

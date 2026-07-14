@@ -20,6 +20,15 @@ final class TreemapController {
     weak var view: TreemapNSView?
     weak var model: NeodiskViewModel?
 
+    /// Cursor position (flipped view coordinates), or nil on exit — drives the
+    /// hover tooltip's placement. Kept view-local; the shared model still owns
+    /// the hovered node/cell state the status bar reads.
+    var onHoverPoint: ((CGPoint?) -> Void)?
+    /// Fires on the edges of a pan/zoom gesture so the pane can hide the
+    /// tooltip while the map is moving (never per-frame — gesture frames must
+    /// not round-trip through SwiftUI state).
+    var onGestureActiveChange: ((Bool) -> Void)?
+
     /// Render-relevant inputs, compared as a unit so the flood of unrelated
     /// model updates (hover, selection, outline expansion) costs nothing.
     private struct Inputs: Equatable {
@@ -53,6 +62,18 @@ final class TreemapController {
     private var renderTask: Task<Void, Never>?
     private var gestureStartScale: CGFloat = 1
     private var gestureNetMagnification: CGFloat = 1
+
+    /// Whether a pan/zoom gesture is in progress; toggling notifies the pane
+    /// (tooltip hides while true). Only the edges fire, never every frame.
+    private var isGesturing = false {
+        didSet {
+            guard isGesturing != oldValue else { return }
+            onGestureActiveChange?(isGesturing)
+        }
+    }
+    /// Momentum scroll/zoom has no explicit end event, so it self-clears after
+    /// a brief idle; each event reschedules the reset.
+    private var gestureIdleResetTask: Task<Void, Never>?
 
     // MARK: - Inputs from the representable
 
@@ -141,6 +162,7 @@ final class TreemapController {
         model.hoveredAggregate = cell?.aggregate
         model.hoveredCellIsFreeSpace = cell?.isFreeSpace == true
         model.hoveredCellIsHiddenSpace = cell?.isHiddenSpace == true
+        onHoverPoint?(cell == nil ? nil : point)
     }
 
     func hoverEnded() {
@@ -148,6 +170,7 @@ final class TreemapController {
         model?.hoveredAggregate = nil
         model?.hoveredCellIsFreeSpace = false
         model?.hoveredCellIsHiddenSpace = false
+        onHoverPoint?(nil)
     }
 
     func click(at point: CGPoint) {
@@ -181,6 +204,8 @@ final class TreemapController {
     func beginMagnify() {
         gestureStartScale = viewport.scale
         gestureNetMagnification = 1
+        gestureIdleResetTask?.cancel()
+        isGesturing = true
     }
 
     func magnify(by factor: CGFloat, anchor: CGPoint) {
@@ -198,11 +223,13 @@ final class TreemapController {
         }
         gestureNetMagnification = 1
         renderIfViewportMoved()
+        isGesturing = false
     }
 
     /// Option-scroll zoom (browser/maps style), anchored at the cursor.
     func scrollZoom(by factor: CGFloat, anchor: CGPoint) {
         guard factor > 0 else { return }
+        noteTransientGesture()
         viewport = viewport.zoomed(by: factor, anchor: anchor, viewSize: viewSize)
         pushDisplay()
         renderIfViewportMoved()
@@ -212,6 +239,7 @@ final class TreemapController {
     /// should fall through to the responder chain (map at 1:1).
     func scroll(by delta: CGSize) -> Bool {
         guard viewport.scale > 1 else { return false }
+        noteTransientGesture()
         viewport = viewport.panned(by: delta, viewSize: viewSize)
         pushDisplay()
         renderIfViewportMoved()
@@ -220,9 +248,23 @@ final class TreemapController {
 
     /// Two-finger double-tap: zoom the viewport in a comfortable step.
     func smartMagnify(at point: CGPoint) {
+        noteTransientGesture()
         viewport = viewport.zoomed(by: 2, anchor: point, viewSize: viewSize)
         pushDisplay()
         renderIfViewportMoved()
+    }
+
+    /// Marks a momentum gesture active and (re)arms the idle reset that
+    /// clears it once the map settles, so the tooltip returns on the next
+    /// pointer move without needing an explicit gesture-end event.
+    private func noteTransientGesture() {
+        isGesturing = true
+        gestureIdleResetTask?.cancel()
+        gestureIdleResetTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(200))
+            guard !Task.isCancelled else { return }
+            self?.isGesturing = false
+        }
     }
 
     func contextMenu(at point: CGPoint) -> NSMenu? {

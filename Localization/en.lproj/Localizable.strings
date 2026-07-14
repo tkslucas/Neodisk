@@ -331,3 +331,9 @@
 "Advanced" = "Advanced";
 "Loads the previous scan in the background so the Changes view opens instantly." = "Loads the previous scan in the background so the Changes view opens instantly.";
 "Runs the duplicate scan automatically when results appear. Reading file contents can take time and energy on large locations." = "Runs the duplicate scan automatically when results appear. Reading file contents can take time and energy on large locations.";
+/* Hover tooltips (2026-07-13) */
+"Free space · %@" = "Free space · %@";
+"Hidden space · %@" = "Hidden space · %@";
+"%@ smaller items" = "%@ smaller items";
+"%@ · %@ of %@" = "%@ · %@ of %@";
+"Space available on this volume." = "Space available on this volume.";

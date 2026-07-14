@@ -61,6 +61,9 @@ struct SunburstChartView: View {
     /// The in-flight drill zoom (DaisyDisk-style); nil outside transitions.
     /// Rendering derives from this plus the TimelineView frame date.
     @State private var zoomTransition: SunburstZoomTransitionState?
+    /// Cursor position within the chart (top-left origin), or nil when off an
+    /// arc or over the center — drives the hover tooltip's placement.
+    @State private var hoverLocation: CGPoint?
 
     private var loadingDiskMapProgressTaskID: String {
         "\(layoutID)|\(chartModel.isLayoutPending)"
@@ -109,6 +112,28 @@ struct SunburstChartView: View {
                 .onChange(of: style) { _, nextStyle in
                     chartModel.applyStyle(nextStyle, in: treeStore)
                 }
+                .overlay(alignment: .topLeading) {
+                    hoverTooltip(paneSize: geometry.size)
+                }
+        }
+    }
+
+    /// The floating hover tooltip over the chart. Suppressed during layout
+    /// loads and zoom transitions (the hovered segment is stale then); the
+    /// center "go up" affordance keeps the hole to itself.
+    @ViewBuilder
+    private func hoverTooltip(paneSize: CGSize) -> some View {
+        if zoomTransition == nil, !chartModel.isLayoutPending,
+           let location = hoverLocation, let segment = chartModel.hoveredSegment {
+            VizHoverTooltipLayer(
+                data: VizHoverTooltipData(
+                    segment: segment,
+                    basis: rootNode,
+                    includingCloudOnly: includeCloudOnly
+                ),
+                location: location,
+                paneSize: paneSize
+            )
         }
     }
 
@@ -309,6 +334,9 @@ struct SunburstChartView: View {
     /// layout to land and plays the reverse. Everything else (rescans,
     /// unrendered targets, Reduce Motion) keeps the plain fade.
     private func prepareZoomTransition(fromLayoutID: String, toLayoutID: String) {
+        // The drill moves to a new root; the last hover is stale until the
+        // pointer moves over the new layout.
+        hoverLocation = nil
         guard !reduceMotion else {
             zoomTransition = nil
             return
@@ -421,6 +449,7 @@ struct SunburstChartView: View {
     private func updateHover(at location: CGPoint?, in frame: CGRect) {
         guard let location else {
             isHoveringCenter = false
+            hoverLocation = nil
             chartModel.setHoveredSegmentID(nil)
             onHoverSegment(nil)
             return
@@ -428,6 +457,7 @@ struct SunburstChartView: View {
 
         if parentNode != nil, isCenterHit(at: location, in: frame) {
             isHoveringCenter = true
+            hoverLocation = nil
             chartModel.setHoveredSegmentID(nil)
             onHoverSegment(nil)
             return
@@ -435,6 +465,7 @@ struct SunburstChartView: View {
 
         isHoveringCenter = false
         let nextSegment = hitTest(at: location, in: frame)
+        hoverLocation = nextSegment == nil ? nil : location
         chartModel.setHoveredSegmentID(nextSegment?.id)
         onHoverSegment(nextSegment)
     }

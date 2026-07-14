@@ -30,15 +30,15 @@ import Testing
     }
 
     @Test func thicknessIsMonotonicallyNonIncreasing() {
-        let metrics = SunburstRingMetrics(depthLimit: 6)
-        for depth in 1..<6 {
+        let metrics = SunburstRingMetrics(depthLimit: 8)
+        for depth in 1..<8 {
             // Each ring is no thicker than the one inside it — the taper only
             // ever thins outward.
             #expect(metrics.thickness(depth: depth) <= metrics.thickness(depth: depth - 1) + 1e-12)
         }
     }
 
-    @Test func onlyTheOutermostTwoRingsTaper() {
+    @Test func onlyTheOutermostTwoBodyRingsTaper() {
         let metrics = SunburstRingMetrics(depthLimit: 6)
         // Every ring inside the taper shares one full thickness…
         let full = metrics.thickness(depth: 0)
@@ -49,6 +49,24 @@ import Testing
         // at their published ratios.
         #expect(abs(metrics.thickness(depth: 4) - full * SunburstRingMetrics.penultimateRingRatio) < 1e-12)
         #expect(abs(metrics.thickness(depth: 5) - full * SunburstRingMetrics.lastRingRatio) < 1e-12)
+    }
+
+    @Test func layersPastTheBodyAreFixedThinSlivers() {
+        // The pane's actual configuration: a 6-ring body plus 2 fixed thin
+        // detail rings. The body keeps its full/taper composition over the
+        // span the slivers leave behind; the slivers sit at exactly the
+        // published thickness.
+        let metrics = SunburstRingMetrics(depthLimit: 8)
+        let full = metrics.thickness(depth: 0)
+        for depth in 1...3 {
+            #expect(abs(metrics.thickness(depth: depth) - full) < 1e-12)
+        }
+        #expect(abs(metrics.thickness(depth: 4) - full * SunburstRingMetrics.penultimateRingRatio) < 1e-12)
+        #expect(abs(metrics.thickness(depth: 5) - full * SunburstRingMetrics.lastRingRatio) < 1e-12)
+        #expect(abs(metrics.thickness(depth: 6) - SunburstRingMetrics.fixedThinThickness) < 1e-12)
+        #expect(abs(metrics.thickness(depth: 7) - SunburstRingMetrics.fixedThinThickness) < 1e-12)
+        // The slivers are the thinnest rings — the taper never inverts.
+        #expect(metrics.thickness(depth: 6) < metrics.thickness(depth: 5))
     }
 
     @Test func twoOrFewerRingsStayUniform() {

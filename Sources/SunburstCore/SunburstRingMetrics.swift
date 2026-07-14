@@ -13,19 +13,29 @@
 //  wasm build alongside the rest of SunburstCore.
 //
 
-/// Maps a ring depth to its radial band. All rings share one full thickness
-/// except the outermost two, which step down (2/3, then 4/9 of a full ring),
-/// floored so deep arcs stay clickable, and the whole stack is normalized to
-/// fill exactly the same outer radius regardless of how many rings there are.
+/// Maps a ring depth to its radial band. The body rings share one full
+/// thickness except the body's outermost two, which step down (2/3, then 4/9
+/// of a full ring); depth layers past the body render as fixed thin slivers
+/// at the edge. Everything is floored so deep arcs stay clickable, and the
+/// whole stack is normalized to fill exactly the same outer radius regardless
+/// of how many rings there are.
 public struct SunburstRingMetrics: Sendable, Equatable {
-    /// Only the outermost rings thin; everything inside them keeps one full,
-    /// equal thickness (owner-tuned 2026-07-13: an all-depths geometric taper
-    /// read as goofy).
-    public static let taperedRingCount = 2
-    /// The next-to-last ring's fraction of a full ring, and the last ring's —
-    /// one step smaller, then one smaller again.
+    /// The ring budget the body composition is tuned for: within it, only the
+    /// outermost rings thin and everything inside them keeps one full, equal
+    /// thickness (owner-tuned 2026-07-13: an all-depths geometric taper read
+    /// as goofy).
+    public static let bodyRingCount = 6
+    /// The body's next-to-last ring's fraction of a full ring, and its last
+    /// ring's — one step smaller, then one smaller again.
     public static let penultimateRingRatio: Double = 2.0 / 3.0
     public static let lastRingRatio: Double = 4.0 / 9.0
+    /// Depth layers past the body render as fixed thin detail rings at the
+    /// very edge (DaisyDisk's outer slivers), at most this many.
+    public static let fixedThinRingCount = 2
+    /// Each fixed thin ring's band as a fraction of the chart radius. The
+    /// cosmetic `ringGap` comes out of the band, so the drawn sliver is
+    /// `0.038 - 0.015 = 0.023` — thin, but still hoverable.
+    public static let fixedThinThickness: Double = 0.038
     /// A ring's band never gets thinner than this fraction of the chart
     /// radius, so deep arcs stay clickable. At a typical ~250pt chart radius
     /// that is ~9pt. When the floor binds (many rings), the radius it claims
@@ -106,14 +116,37 @@ public struct SunburstRingMetrics: Sendable, Equatable {
         return boundaries[ringIndex]
     }
 
-    /// Ring thicknesses, floored and normalized to fill exactly `available`.
-    /// All rings weigh 1 except the outermost `taperedRingCount`, which get
-    /// the two taper ratios; the weights are scaled to the available span.
-    /// Rings that would fall below the floor are water-filled: pinned at the
-    /// floor, with the remaining span redivided among the rest by their
-    /// weights, iterating until stable — so the floor is honored without ever
-    /// overrunning the total.
+    /// Ring thicknesses, normalized to fill exactly `available`: the body
+    /// rings split the span left over by the fixed thin edge rings, which
+    /// claim `fixedThinThickness` apiece. Degenerate spans (where the special
+    /// casing would leave a body ring thinner than the thin edge, inverting
+    /// the taper) fall back to an equal split.
     static func ringThicknesses(count: Int, available: Double) -> [Double] {
+        guard count > 0, available > 0 else { return [] }
+
+        let thinCount = min(max(count - Self.bodyRingCount, 0), Self.fixedThinRingCount)
+        let thin = Self.fixedThinThickness
+        let bodyAvailable = available - (Double(thinCount) * thin)
+        guard bodyAvailable > 0 else {
+            return Array(repeating: available / Double(count), count: count)
+        }
+
+        var thicknesses = bodyThicknesses(count: count - thinCount, available: bodyAvailable)
+        if let bodyLast = thicknesses.last, bodyLast < thin {
+            return Array(repeating: available / Double(count), count: count)
+        }
+        thicknesses.append(contentsOf: repeatElement(thin, count: thinCount))
+        return thicknesses
+    }
+
+    /// The body rings' thicknesses, floored and normalized to fill exactly
+    /// `available`. All rings weigh 1 except the outermost two, which get the
+    /// taper ratios; the weights are scaled to the available span. Rings that
+    /// would fall below the floor are water-filled: pinned at the floor, with
+    /// the remaining span redivided among the rest by their weights, iterating
+    /// until stable — so the floor is honored without ever overrunning the
+    /// total.
+    private static func bodyThicknesses(count: Int, available: Double) -> [Double] {
         guard count > 0, available > 0 else { return [] }
 
         let floor = Self.minThicknessFraction
@@ -127,7 +160,7 @@ public struct SunburstRingMetrics: Sendable, Equatable {
         var weights = [Double](repeating: 1, count: count)
         // The taper wants full-thickness rings inside it to read against;
         // with 2 or fewer rings there is no "inside", so stay uniform.
-        if count > Self.taperedRingCount {
+        if count > 2 {
             weights[count - 2] = Self.penultimateRingRatio
             weights[count - 1] = Self.lastRingRatio
         }

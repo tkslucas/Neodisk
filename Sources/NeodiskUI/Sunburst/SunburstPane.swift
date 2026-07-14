@@ -16,8 +16,10 @@ import TreemapKit
 import NeodiskKit
 
 struct SunburstPane: View {
-    /// Rings drawn below the focused root (no settings knob in v1).
-    static let depthLimit = 6
+    /// Rings drawn below the focused root (no settings knob in v1): the
+    /// 6-ring body plus 2 fixed thin detail rings at the edge (see
+    /// SunburstRingMetrics).
+    static let depthLimit = 8
 
     let model: NeodiskViewModel
 

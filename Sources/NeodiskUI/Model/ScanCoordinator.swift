@@ -86,7 +86,16 @@ final class ScanProgressState: ObservableObject {
 final class ScanCoordinator {
     var phase: AppModelPhase = .idle
     var snapshot: ScanSnapshot? {
-        didSet { onSnapshotChange?(snapshot) }
+        didSet {
+            // Every complete snapshot that reaches the screen — scan finish,
+            // cached display, restore, node removal — is the freshest truth
+            // for its target and becomes the instant-display copy. Partials
+            // (isComplete == false) never land here.
+            if let snapshot, snapshot.isComplete {
+                rememberRecentSnapshot(snapshot)
+            }
+            onSnapshotChange?(snapshot)
+        }
     }
     var selectedTarget: ScanTarget?
     private(set) var completedScanSnapshot: ScanSnapshot?
@@ -117,6 +126,17 @@ final class ScanCoordinator {
         }
         return nil
     }
+
+    /// The last few complete snapshots displayed this session, by target ID —
+    /// switching back to one of them shows its map instantly with no cache
+    /// decode, then refreshes behind it. The map holds plain references (the
+    /// currently displayed snapshot is usually one of them), so the memory
+    /// cost is only the non-displayed tail, bounded by a total node budget.
+    @ObservationIgnored private var recentSnapshotsByTargetID: [String: ScanSnapshot] = [:]
+    /// Least-recently-displayed first.
+    @ObservationIgnored private var recentSnapshotTargetIDs: [String] = []
+    private static let maxRecentSnapshots = 4
+    private static let recentSnapshotNodeBudget = 4_000_000
 
     @ObservationIgnored private var scanTask: Task<Void, Never>?
     @ObservationIgnored private var expandTask: Task<ScanExpansionResult, Never>?
@@ -194,12 +214,16 @@ final class ScanCoordinator {
         baselineProvider: (@Sendable () async -> ScanSnapshot?)? = nil,
         prepare: () -> Void = {}
     ) {
+        // Prefer what this session already holds: the displayed snapshot, or
+        // a recently displayed one of the same target. Either keeps the map
+        // on screen through the refresh with no cache decode, and doubles as
+        // the incremental baseline (it IS the target's last complete scan).
         let retainedSnapshot = snapshot?.isComplete == true && snapshot?.target.id == target.id
             ? snapshot
-            : nil
-        let baselineProvider = baselineProvider ?? retainedSnapshot.map { retained in
+            : recentSnapshot(forTargetID: target.id)
+        let baselineProvider = retainedSnapshot.map { retained in
             { @Sendable in retained }
-        }
+        } ?? baselineProvider
         beginScan(
             target,
             options: options,
@@ -336,6 +360,49 @@ final class ScanCoordinator {
         } else if !isScanning {
             displaySource = .restoredWithoutScan
             phase = .displaying
+        }
+    }
+
+    // MARK: - In-memory recent snapshots
+
+    /// The remembered snapshot for a target, if it was displayed recently
+    /// enough to still be retained. Callers use it to skip the disk decode
+    /// entirely when switching back to a location.
+    func recentSnapshot(forTargetID targetID: String) -> ScanSnapshot? {
+        recentSnapshotsByTargetID[targetID]
+    }
+
+    /// Drops a target's remembered snapshot. Must be called when the
+    /// target's persisted scans are deleted — session memory must never
+    /// resurrect a scan the user removed.
+    func forgetRecentSnapshot(forTargetID targetID: String) {
+        recentSnapshotsByTargetID.removeValue(forKey: targetID)
+        recentSnapshotTargetIDs.removeAll { $0 == targetID }
+    }
+
+    func forgetAllRecentSnapshots() {
+        recentSnapshotsByTargetID = [:]
+        recentSnapshotTargetIDs = []
+    }
+
+    private func rememberRecentSnapshot(_ snapshot: ScanSnapshot) {
+        let targetID = snapshot.target.id
+        recentSnapshotsByTargetID[targetID] = snapshot
+        recentSnapshotTargetIDs.removeAll { $0 == targetID }
+        recentSnapshotTargetIDs.append(targetID)
+
+        // Evict least-recently-displayed entries beyond the count cap or the
+        // node budget, but always keep the newest — a single giant volume
+        // must still be remembered.
+        var totalNodes = recentSnapshotTargetIDs
+            .compactMap { recentSnapshotsByTargetID[$0]?.treeStore.nodeCount }
+            .reduce(0, +)
+        while recentSnapshotTargetIDs.count > 1,
+              recentSnapshotTargetIDs.count > Self.maxRecentSnapshots
+              || totalNodes > Self.recentSnapshotNodeBudget {
+            let evicted = recentSnapshotTargetIDs.removeFirst()
+            totalNodes -= recentSnapshotsByTargetID.removeValue(forKey: evicted)?
+                .treeStore.nodeCount ?? 0
         }
     }
 

@@ -138,6 +138,12 @@ public struct ContentView: View {
             // down and recreate the treemap view mid-session.
             if model.coordinator.snapshot != nil {
                 WorkspaceView(model: model)
+            } else if case .cachedWhileRefreshing = model.coordinator.displaySource {
+                // A cached snapshot is decoding for display while the refresh
+                // runs — a previously scanned location must never present as
+                // a from-zero scan. If the decode fails, the coordinator
+                // drops to .liveStreaming and the progress view takes over.
+                SnapshotRestoreView(target: model.coordinator.selectedTarget)
             } else {
                 ScanProgressView(model: model)
             }

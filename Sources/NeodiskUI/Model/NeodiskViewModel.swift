@@ -449,6 +449,13 @@ final class NeodiskViewModel {
             // always; smart when the last scan of this location took long):
             // display the snapshot and offer the rescan in a notice instead.
             displaySnapshotWithoutRescan(for: target, info: info)
+        } else if coordinator.recentSnapshot(forTargetID: target.id) != nil {
+            // Displayed earlier this session: the map appears instantly from
+            // memory (startRefreshScan retains it and uses it as the
+            // incremental baseline) — no disk decode, no transition screen.
+            snapshotNotice = nil
+            resetPerScanState()
+            coordinator.startRefreshScan(target, options: options)
         } else if cachedScanInfo[target.id] != nil || !hasIndexedSnapshotCache {
             // A persisted snapshot exists (or the launch index isn't ready
             // yet and one might): show it as soon as it decodes, refreshing
@@ -509,6 +516,19 @@ final class NeodiskViewModel {
     private func displaySnapshotWithoutRescan(for target: ScanTarget, info: CachedScanInfo) {
         snapshotNotice = nil
         resetPerScanState()
+        // Displayed earlier this session: skip the disk decode and restore
+        // from memory in place — same notice, no loading state.
+        if let recent = coordinator.recentSnapshot(forTargetID: target.id) {
+            coordinator.restoreCompletedSnapshot(recent)
+            syncCachedScanDate(with: recent)
+            snapshotNotice = SnapshotNotice(
+                targetID: target.id,
+                scanDate: recent.finishedAt ?? recent.startedAt,
+                lastScanDuration: info.lastScanDuration
+            )
+            snapshotWasRestoredWithoutRescan()
+            return
+        }
         coordinator.beginSnapshotRestore(target)
         Task { [weak self, snapshotCache] in
             let (cached, sidecar) = await Self.loadSeededSnapshot(
@@ -1010,6 +1030,7 @@ final class NeodiskViewModel {
         guard !removedIDs.isEmpty else { return }
         for id in removedIDs {
             cachedScanInfo.removeValue(forKey: id)
+            coordinator.forgetRecentSnapshot(forTargetID: id)
         }
         Task { [snapshotCache] in
             for id in removedIDs {
@@ -1079,6 +1100,7 @@ final class NeodiskViewModel {
             await snapshotCache.removeSnapshot(forTargetID: targetID)
             guard let self else { return }
             self.cachedScanInfo.removeValue(forKey: targetID)
+            self.coordinator.forgetRecentSnapshot(forTargetID: targetID)
             if wasDisplayed {
                 self.coordinator.clearScan()
             }
@@ -1095,6 +1117,7 @@ final class NeodiskViewModel {
     func clearScanSnapshots() async {
         await snapshotCache.removeAll()
         cachedScanInfo = [:]
+        coordinator.forgetAllRecentSnapshots()
     }
 
     private func snapshotDidChange(_ snapshot: ScanSnapshot?) {

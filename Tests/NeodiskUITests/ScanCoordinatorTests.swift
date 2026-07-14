@@ -112,6 +112,39 @@ import NeodiskKit
     }
 
     @MainActor
+    @Test func testSwitchingBackToRecentTargetDisplaysInstantlyFromMemory() async throws {
+        let service = ControlledScanService()
+        let coordinator = ScanCoordinator(scanService: service, progressThrottleDuration: .milliseconds(40))
+        let firstTarget = makeCoordinatorTarget("/scan/first")
+        let secondTarget = makeCoordinatorTarget("/scan/second")
+        let firstSnapshot = makeCoordinatorSnapshot(target: firstTarget)
+        let secondSnapshot = makeCoordinatorSnapshot(target: secondTarget)
+
+        // Scan first, then second: first's snapshot leaves the screen but
+        // stays remembered in memory.
+        coordinator.startScan(firstTarget, options: ScanOptions())
+        service.yield(.finished(firstSnapshot), scanIndex: 0)
+        service.finish(scanIndex: 0)
+        try await waitUntil("first displayed") { coordinator.phase == .displaying }
+
+        coordinator.startScan(secondTarget, options: ScanOptions())
+        service.yield(.finished(secondSnapshot), scanIndex: 1)
+        service.finish(scanIndex: 1)
+        try await waitUntil("second displayed") { coordinator.snapshot?.target == secondTarget }
+
+        // Switching back shows first's map synchronously — no decode, no
+        // transition screen — with the refresh scan running behind it.
+        coordinator.startRefreshScan(firstTarget, options: ScanOptions())
+        #expect(coordinator.snapshot?.id == firstSnapshot.id)
+        #expect(coordinator.phase == .scanning)
+        #expect(coordinator.suppressesPartialEvents)
+
+        // Forgetting the target removes the instant-display copy.
+        coordinator.forgetRecentSnapshot(forTargetID: secondTarget.id)
+        #expect(coordinator.recentSnapshot(forTargetID: secondTarget.id) == nil)
+    }
+
+    @MainActor
     @Test func testProgressEventsAreThrottledToLatestPendingMetrics() async throws {
         let service = ControlledScanService()
         let coordinator = ScanCoordinator(scanService: service, progressThrottleDuration: .milliseconds(90))

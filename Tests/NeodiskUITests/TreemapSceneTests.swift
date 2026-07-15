@@ -292,7 +292,7 @@ import NeodiskKit
         let hiddenCell = try #require(scene.cells.first { $0.isHiddenSpace })
         #expect(freeCell.nodeID != hiddenCell.nodeID)
         #expect(!hiddenCell.isFreeSpace)
-        #expect(hiddenCell.rgb == TreemapScene.hiddenSpaceRGB)
+        #expect(hiddenCell.rgb == SyntheticSpaceColors.hiddenSpaceRGB)
         let hiddenArea = Double(hiddenCell.rect.width * hiddenCell.rect.height)
         #expect(abs(hiddenArea - 400 * 300 / 3) < 1)
 

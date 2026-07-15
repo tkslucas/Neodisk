@@ -113,12 +113,8 @@ struct TreemapScene: Sendable {
     nonisolated static let overscanFraction: CGFloat = 0.3
     /// Suffix of the synthetic free-space node's id (root id + suffix).
     private nonisolated static let freeSpaceNodeSuffix = "/__free-space__"
-    nonisolated static let freeSpaceRGB = SIMD3<Float>(0.13, 0.13, 0.16)
     /// Suffix of the synthetic hidden-space node's id (root id + suffix).
     private nonisolated static let hiddenSpaceNodeSuffix = "/__hidden-space__"
-    /// A lighter neutral than the near-black free-space cell, so the two
-    /// synthetic blocks read as related but distinct quiet areas.
-    nonisolated static let hiddenSpaceRGB = SIMD3<Float>(0.30, 0.30, 0.33)
 
     /// Kind-highlight dimming: non-matching cells blend this far toward
     /// their own gray (desaturation) and drop to this brightness, so the
@@ -277,9 +273,9 @@ struct TreemapScene: Sendable {
             let isHiddenSpace = node.id == hiddenSpaceNode?.id
             var rgb: SIMD3<Float>
             if isFreeSpace {
-                rgb = Self.freeSpaceRGB
+                rgb = SyntheticSpaceColors.freeSpaceRGB
             } else if isHiddenSpace {
-                rgb = Self.hiddenSpaceRGB
+                rgb = SyntheticSpaceColors.hiddenSpaceRGB
             } else {
                 rgb = baseRGB(for: node, colorMode: colorMode, catalog: catalog, palette: palette)
             }

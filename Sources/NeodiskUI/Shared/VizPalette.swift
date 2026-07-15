@@ -83,3 +83,14 @@ struct VizPalette: Sendable, Equatable {
         self == .colorblind ? .colorblind : .standard
     }
 }
+
+/// The two synthetic volume cells the treemap draws (free space, hidden
+/// space) and the status bar echoes in its swatches. Neutral greys, so they
+/// are already CVD-safe and shared across both palettes — unlike the
+/// categorical kind/age hues above.
+enum SyntheticSpaceColors {
+    nonisolated static let freeSpaceRGB = SIMD3<Float>(0.13, 0.13, 0.16)
+    /// A lighter neutral than the near-black free-space cell, so the two
+    /// synthetic blocks read as related but distinct quiet areas.
+    nonisolated static let hiddenSpaceRGB = SIMD3<Float>(0.30, 0.30, 0.33)
+}

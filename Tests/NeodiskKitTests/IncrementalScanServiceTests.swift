@@ -387,6 +387,15 @@ struct IncrementalScanServiceTests {
         #expect(first.filesVisited == baseline.aggregateStats.fileCount - betaNode.descendantFileCount)
         #expect(first.bytesDiscovered == baseline.aggregateStats.totalAllocatedSize - betaNode.allocatedSize)
 
+        // The bar opens at the retained share of the baseline's bytes and
+        // never moves backward from there.
+        let retained = Double(first.bytesDiscovered)
+            / Double(baseline.aggregateStats.totalAllocatedSize)
+        #expect(abs(first.progressFraction - min(retained, 0.95)) < 0.0001)
+        #expect(first.progressFraction > 0)
+        let fractions = progress.map(\.progressFraction)
+        #expect(fractions == fractions.sorted())
+
         // And closes at exactly the spliced snapshot's totals.
         let last = try #require(progress.last)
         let snapshot = try #require(finished)

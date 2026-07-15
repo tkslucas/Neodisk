@@ -248,6 +248,20 @@ public final class IncrementalScanService: Sendable {
             completedCounters.bytesDiscovered = max(completedCounters.bytesDiscovered - node.allocatedSize, 0)
         }
         completedCounters.currentPath = target.url.path
+        // The bar opens at the retained share of the baseline's bytes for the
+        // same reason the counters do: what is not being rescanned is already
+        // done. Sub-scan progress then fills the remaining band.
+        let retainedFraction: Double
+        if baseline.aggregateStats.totalAllocatedSize > 0 {
+            retainedFraction = min(
+                Double(completedCounters.bytesDiscovered)
+                    / Double(baseline.aggregateStats.totalAllocatedSize),
+                Self.rescanProgressCeiling
+            )
+        } else {
+            retainedFraction = 0
+        }
+        completedCounters.progressFraction = retainedFraction
         continuation.yield(.progress(completedCounters))
 
         for (index, rootID) in rootIDs.enumerated() {
@@ -284,6 +298,7 @@ public final class IncrementalScanService: Sendable {
                         continuation.yield(.progress(Self.renormalized(
                             metrics,
                             completedCounters: completedCounters,
+                            retainedFraction: retainedFraction,
                             completedSubtrees: index,
                             totalSubtrees: rootIDs.count
                         )))
@@ -443,11 +458,17 @@ public final class IncrementalScanService: Sendable {
         return metrics
     }
 
+    /// Cap of the bar's rescan band; the last stretch is reserved for the
+    /// splice, and completion snaps it to 1.
+    private nonisolated static let rescanProgressCeiling = 0.95
+
     /// One sub-scan's cumulative metrics mapped into the whole rescan's
-    /// 0–0.95 band, on top of the counters from subtrees already finished.
+    /// retained–0.95 band, on top of the counters from subtrees already
+    /// finished.
     private nonisolated static func renormalized(
         _ metrics: ScanMetrics,
         completedCounters: ScanMetrics,
+        retainedFraction: Double,
         completedSubtrees: Int,
         totalSubtrees: Int
     ) -> ScanMetrics {
@@ -457,9 +478,10 @@ public final class IncrementalScanService: Sendable {
         combined.bytesDiscovered = combined.bytesDiscovered.addingClamped(metrics.bytesDiscovered)
         combined.currentPath = metrics.currentPath
         let subtreeFraction = min(max(metrics.progressFraction, 0), 1)
+        let rescanFraction = (Double(completedSubtrees) + subtreeFraction) / Double(max(totalSubtrees, 1))
         combined.progressFraction = min(
-            (Double(completedSubtrees) + subtreeFraction) / Double(max(totalSubtrees, 1)) * 0.95,
-            0.95
+            retainedFraction + rescanFraction * (Self.rescanProgressCeiling - retainedFraction),
+            Self.rescanProgressCeiling
         )
         return combined
     }

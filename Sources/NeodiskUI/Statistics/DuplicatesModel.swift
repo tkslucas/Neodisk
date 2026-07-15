@@ -152,15 +152,21 @@ final class DuplicatesModel {
             }
         }
         scanTask = Task { [weak self, snapshotCache] in
+            // Per-file hashes from previous runs; unchanged files skip their
+            // reads. Saved on every exit — completed hashes are valid work
+            // whether the run finished, failed, or was superseded.
+            let hashCache = await snapshotCache.loadDuplicateHashCache()
             do {
                 let results = try await Task.detached(priority: .userInitiated) {
                     try await DuplicateFinder.findDuplicates(
                         in: store,
                         minimumFileSize: Self.minimumFileSize,
+                        hashCache: hashCache,
                         onProgress: reportProgress,
                         onPartial: reportPartial
                     )
                 }.value
+                await snapshotCache.saveDuplicateHashCache(hashCache)
                 guard let self, !Task.isCancelled,
                       self.scannedSnapshotID == snapshotID else { return }
                 let now = Date()
@@ -176,7 +182,9 @@ final class DuplicatesModel {
                 )
             } catch is CancellationError {
                 // cancelScan / snapshotDidChange already reset the phase.
+                await snapshotCache.saveDuplicateHashCache(hashCache)
             } catch {
+                await snapshotCache.saveDuplicateHashCache(hashCache)
                 guard let self, self.scannedSnapshotID == snapshotID else { return }
                 self.resetLiveState()
                 self.openGroup = nil

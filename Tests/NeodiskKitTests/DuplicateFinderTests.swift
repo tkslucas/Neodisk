@@ -427,6 +427,86 @@ import Testing
         }
     }
 
+    /// Pins a file's access+modification time to whole seconds so its
+    /// hash-cache stamp is reproducible after an in-place content swap.
+    private func setModificationTime(_ url: URL, secondsSinceEpoch: Int) throws {
+        var times = [
+            timeval(tv_sec: secondsSinceEpoch, tv_usec: 0),
+            timeval(tv_sec: secondsSinceEpoch, tv_usec: 0),
+        ]
+        guard utimes(url.path, &times) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+    }
+
+    /// Replaces a file's bytes without touching its size or inode, then
+    /// restores the given mtime — the one change the mtime+size+inode stamp
+    /// is documented not to catch.
+    private func swapContentsInPlace(_ url: URL, with data: Data, restoringMtime seconds: Int) throws {
+        let handle = try FileHandle(forWritingTo: url)
+        try handle.write(contentsOf: data)
+        try handle.close()
+        try setModificationTime(url, secondsSinceEpoch: seconds)
+    }
+
+    @Test func hashCacheSkipsReadsForUnchangedStamps() async throws {
+        try await withTempDirectory { directory in
+            let identical = bytes(seed: 0xA1, count: 2 * Self.megabyte)
+            let store = try makeStore(directory: directory, files: [
+                ("a.bin", identical),
+                ("b.bin", identical),
+            ])
+            let bURL = directory.appending(path: "b.bin")
+            let pinnedSeconds = 1_700_000_000
+            try setModificationTime(directory.appending(path: "a.bin"), secondsSinceEpoch: pinnedSeconds)
+            try setModificationTime(bURL, secondsSinceEpoch: pinnedSeconds)
+
+            let cache = DuplicateHashCache()
+            let first = try await DuplicateFinder.findDuplicates(in: store, hashCache: cache)
+            #expect(first.groups.count == 1)
+            #expect(cache.entryCount == 2)
+
+            // Swap b's bytes under an unchanged stamp: a cached run must
+            // trust the stored digests and skip the reads entirely — stale
+            // results are the proof the files weren't re-read.
+            try swapContentsInPlace(
+                bURL,
+                with: bytes(seed: 0xB2, count: 2 * Self.megabyte),
+                restoringMtime: pinnedSeconds
+            )
+            let cachedRun = try await DuplicateFinder.findDuplicates(in: store, hashCache: cache)
+            #expect(cachedRun.groups == first.groups)
+
+            // ...while a cache-less run reads the real bytes and splits them.
+            let freshRun = try await DuplicateFinder.findDuplicates(in: store)
+            #expect(freshRun.groups.isEmpty)
+        }
+    }
+
+    @Test func hashCacheMissesWhenFileActuallyChanges() async throws {
+        try await withTempDirectory { directory in
+            let identical = bytes(seed: 0xC3, count: 2 * Self.megabyte)
+            let store = try makeStore(directory: directory, files: [
+                ("a.bin", identical),
+                ("b.bin", identical),
+            ])
+
+            let cache = DuplicateHashCache()
+            let first = try await DuplicateFinder.findDuplicates(in: store, hashCache: cache)
+            #expect(first.groups.count == 1)
+
+            // A normal edit moves mtime: the stamp misses and the changed
+            // file re-hashes, so the pair correctly splits.
+            let bURL = directory.appending(path: "b.bin")
+            let handle = try FileHandle(forWritingTo: bURL)
+            try handle.write(contentsOf: bytes(seed: 0xD4, count: 2 * Self.megabyte))
+            try handle.close()
+
+            let second = try await DuplicateFinder.findDuplicates(in: store, hashCache: cache)
+            #expect(second.groups.isEmpty)
+        }
+    }
+
     @Test func testResultsCodableRoundTrip() throws {
         let results = DuplicateScanResults(
             groups: [

@@ -40,6 +40,33 @@ import Testing
         #expect(loadedStats.inaccessibleItemCount == originalStats.inaccessibleItemCount)
     }
 
+    @Test func testDuplicateHashCacheRoundTripAndRemoveAll() async throws {
+        let cacheDirectory = makeTemporaryCacheDirectory()
+        defer { try? FileManager.default.removeItem(at: cacheDirectory) }
+        let cache = ScanSnapshotCache(directoryURL: cacheDirectory, isLoggingEnabled: false)
+
+        // Missing file: a usable empty cache, never an error.
+        let empty = await cache.loadDuplicateHashCache()
+        #expect(empty.entryCount == 0)
+
+        let stamp = DuplicateHashCache.FileStamp(size: 10, modifiedAtNanoseconds: 20, inode: 30)
+        empty.storeDigest("abc", for: "/x", tier: .full, stamp: stamp)
+        await cache.saveDuplicateHashCache(empty)
+
+        let reloaded = await cache.loadDuplicateHashCache()
+        #expect(reloaded.cachedDigest(for: "/x", tier: .full, stamp: stamp) == "abc")
+
+        // A clean cache save is a no-op — the file keeps its contents.
+        await cache.saveDuplicateHashCache(DuplicateHashCache())
+        let untouched = await cache.loadDuplicateHashCache()
+        #expect(untouched.entryCount == 1)
+
+        // Clearing the cache from Settings removes the hashes too.
+        await cache.removeAll()
+        let cleared = await cache.loadDuplicateHashCache()
+        #expect(cleared.entryCount == 0)
+    }
+
     @Test func testSavingIncompleteSnapshotThrows() async throws {
         let cacheDirectory = makeTemporaryCacheDirectory()
         defer { try? FileManager.default.removeItem(at: cacheDirectory) }

@@ -91,6 +91,7 @@ public actor ScanSnapshotCache {
     private static let auxiliaryFileExtension = "ndaux"
     private static let changeListFileExtension = "nddiff"
     private static let duplicateResultsFileExtension = "nddup"
+    private static let duplicateHashCacheFileName = "duplicate-hashes.ndhash"
 
     private let directoryURL: URL
     private let isLoggingEnabled: Bool
@@ -417,6 +418,28 @@ public actor ScanSnapshotCache {
         try? data.write(to: duplicateResultsFileURL(forTargetID: targetID), options: .atomic)
     }
 
+    // MARK: - Cached per-file content hashes (`.ndhash`, one shared file)
+
+    /// Loads the per-file hash cache the duplicate finder consults to skip
+    /// re-reading unchanged files. Always returns a usable cache — missing
+    /// or unreadable just starts empty. One shared file, not a per-target
+    /// slot: entries are validated per file (size + mtime + inode), so any
+    /// target's scan can reuse them.
+    public func loadDuplicateHashCache() -> DuplicateHashCache {
+        guard let data = try? Data(contentsOf: duplicateHashCacheFileURL()) else {
+            return DuplicateHashCache()
+        }
+        return DuplicateHashCache(decoding: data)
+    }
+
+    /// Persists the hash cache; a no-op when the run neither added nor
+    /// freshened anything.
+    public func saveDuplicateHashCache(_ cache: DuplicateHashCache) {
+        guard cache.isDirty, let data = cache.encodedTrimmed() else { return }
+        try? FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        try? data.write(to: duplicateHashCacheFileURL(), options: .atomic)
+    }
+
     public func removeSnapshot(forTargetID targetID: String) {
         try? FileManager.default.removeItem(at: fileURL(forTargetID: targetID))
         try? FileManager.default.removeItem(at: previousFileURL(forTargetID: targetID))
@@ -426,14 +449,16 @@ public actor ScanSnapshotCache {
     }
 
     public func removeAll() {
-        for url in cacheFileURLs() + auxiliaryFileURLs() + changeListFileURLs() + duplicateResultsFileURLs() {
+        for url in cacheFileURLs() + auxiliaryFileURLs() + changeListFileURLs() + duplicateResultsFileURLs()
+            + [duplicateHashCacheFileURL()] {
             try? FileManager.default.removeItem(at: url)
         }
     }
 
     /// Total size of all cache files, for the Settings privacy tab.
     public func totalSizeOnDisk() -> Int64 {
-        (cacheFileURLs() + auxiliaryFileURLs() + changeListFileURLs() + duplicateResultsFileURLs())
+        (cacheFileURLs() + auxiliaryFileURLs() + changeListFileURLs() + duplicateResultsFileURLs()
+            + [duplicateHashCacheFileURL()])
             .reduce(into: Int64(0)) { total, url in
                 let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
                 total = total.addingClamped(Int64(size))
@@ -484,6 +509,10 @@ public actor ScanSnapshotCache {
             path: "\(Self.hashedName(forTargetID: targetID)).\(Self.duplicateResultsFileExtension)",
             directoryHint: .notDirectory
         )
+    }
+
+    private func duplicateHashCacheFileURL() -> URL {
+        directoryURL.appending(path: Self.duplicateHashCacheFileName, directoryHint: .notDirectory)
     }
 
     private static func hashedName(forTargetID targetID: String) -> String {

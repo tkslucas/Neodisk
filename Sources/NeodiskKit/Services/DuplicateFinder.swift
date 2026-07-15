@@ -16,6 +16,10 @@
 //  results while hashing continues; the returned results stay the single
 //  sorted source of truth.
 //
+//  An optional DuplicateHashCache carries per-file tier digests across
+//  runs, keyed by size + mtime + inode, so a re-scan only reads files that
+//  actually changed.
+//
 //  Read-only like everything else in the engine: files are opened for
 //  reading, nothing is modified.
 //
@@ -103,9 +107,15 @@ public enum DuplicateFinder {
     /// can render results while hashing continues. Batches are disjoint and
     /// their union equals the returned `groups` (which alone are sorted);
     /// like `onProgress` it runs on an arbitrary executor.
+    ///
+    /// `hashCache` (optional) supplies per-file digests from previous runs:
+    /// a file whose size + mtime + inode still match its cached stamp skips
+    /// the read for any tier it was hashed at before, and fresh digests are
+    /// recorded back. The caller owns loading and persisting the cache.
     public static func findDuplicates(
         in store: FileTreeStore,
         minimumFileSize: Int64 = defaultMinimumFileSize,
+        hashCache: DuplicateHashCache? = nil,
         onProgress: (@Sendable (DuplicateScanProgress) -> Void)? = nil,
         onPartial: (@Sendable ([DuplicateGroup]) -> Void)? = nil
     ) async throws -> DuplicateScanResults {
@@ -148,15 +158,19 @@ public enum DuplicateFinder {
         // metadata-only stat decides all three without opening the file, so a
         // stalled provider can never wedge a worker. A group needs two
         // distinct readable files left to stay interesting.
+        // The same stat also yields each candidate's freshness stamp (size +
+        // mtime + inode), which keys the hash-cache lookups below.
         var skippedUnhashable = 0
+        var stampByPath: [String: DuplicateHashCache.FileStamp] = [:]
         var readableCandidates: [(size: Int64, nodes: [FileNodeRecord])] = []
         readableCandidates.reserveCapacity(candidates.count)
         for (size, nodes) in candidates {
             try Task.checkCancellation()
             var readable: [FileNodeRecord] = []
             for node in nodes {
-                if isHashable(node.path) {
+                if let stamp = hashableStamp(node.path) {
                     readable.append(node)
+                    stampByPath[node.path] = stamp
                 } else {
                     skippedUnhashable += 1
                 }
@@ -166,6 +180,7 @@ public enum DuplicateFinder {
             }
         }
         candidates = readableCandidates
+        let stamps = stampByPath
 
         let candidateCount = candidates.reduce(0) { $0 + $1.nodes.count }
 
@@ -189,7 +204,9 @@ public enum DuplicateFinder {
         let headResults = try await hashConcurrently(
             candidates.flatMap { group in group.nodes.map { (node: $0, size: group.size) } }
         ) { node, size in
-            let digest = try hashHead(of: node.path, size: size)
+            let digest = try await cachingDigest(hashCache, .head, node.path, stamps[node.path]) {
+                try hashHead(of: node.path, size: size)
+            }
             await progress.add(bytes: headTierBytes(size))
             return digest
         }
@@ -229,7 +246,9 @@ public enum DuplicateFinder {
 
         // 4. Prefix-hash pass (256 KB head + 256 KB tail) over head colliders.
         let prefixResults = try await hashConcurrently(needPrefixHash) { node, size in
-            let digest = try hashHeadAndTail(of: node.path, size: size)
+            let digest = try await cachingDigest(hashCache, .prefix, node.path, stamps[node.path]) {
+                try hashHeadAndTail(of: node.path, size: size)
+            }
             await progress.add(bytes: prefixTierBytes(size))
             return digest
         }
@@ -279,10 +298,20 @@ public enum DuplicateFinder {
         // holds back the rest of its group.
         var finishedByPreKey: [String: [(node: FileNodeRecord, size: Int64, digest: String?)]] = [:]
         let fullResults = try await hashConcurrently(needFullHash, work: { node, size in
+            // Not routed through cachingDigest: a miss reports progress per
+            // chunk as the file streams, so only the hit charges tier bytes.
+            let stamp = stamps[node.path]
+            if let hashCache, let stamp,
+               let cached = hashCache.cachedDigest(for: node.path, tier: .full, stamp: stamp) {
+                await progress.add(bytes: fullTierBytes(size))
+                return cached
+            }
             let digest = try await hashFullContents(of: node.path) { chunkBytes in
                 await progress.add(bytes: chunkBytes)
             }
-            _ = size
+            if let hashCache, let stamp {
+                hashCache.storeDigest(digest, for: node.path, tier: .full, stamp: stamp)
+            }
             return digest
         }, onEntryFinished: { index, node, size, digest in
             let key = fullPreKeys[index]
@@ -409,11 +438,40 @@ public enum DuplicateFinder {
     /// inode metadata alone — it never opens the file, never blocks on a
     /// provider, and never triggers a download. Dataless (cloud-only) files
     /// are refused so a paused or offline provider can't stall the scan.
-    private static func isHashable(_ path: String) -> Bool {
+    /// A hashable file's stamp doubles as its hash-cache freshness key.
+    private static func hashableStamp(_ path: String) -> DuplicateHashCache.FileStamp? {
         var info = stat()
-        guard path.withCString({ stat($0, &info) }) == 0 else { return false }
-        guard (info.st_mode & mode_t(S_IFMT)) == mode_t(S_IFREG) else { return false }
-        return info.st_flags & BSDFileFlags.dataless == 0
+        guard path.withCString({ stat($0, &info) }) == 0 else { return nil }
+        guard (info.st_mode & mode_t(S_IFMT)) == mode_t(S_IFREG) else { return nil }
+        guard info.st_flags & BSDFileFlags.dataless == 0 else { return nil }
+        return DuplicateHashCache.FileStamp(
+            size: Int64(info.st_size),
+            modifiedAtNanoseconds: Int64(info.st_mtimespec.tv_sec) * 1_000_000_000
+                + Int64(info.st_mtimespec.tv_nsec),
+            inode: UInt64(info.st_ino)
+        )
+    }
+
+    /// Cache-through wrapper for one tier's digest: a hit under a fresh
+    /// stamp skips `compute` (and its disk read) entirely; a miss computes
+    /// and records the digest for the next run. With no cache or no stamp
+    /// it degrades to plain compute.
+    private static func cachingDigest(
+        _ cache: DuplicateHashCache?,
+        _ tier: DuplicateHashCache.Tier,
+        _ path: String,
+        _ stamp: DuplicateHashCache.FileStamp?,
+        compute: () async throws -> String
+    ) async throws -> String {
+        if let cache, let stamp,
+           let cached = cache.cachedDigest(for: path, tier: tier, stamp: stamp) {
+            return cached
+        }
+        let digest = try await compute()
+        if let cache, let stamp {
+            cache.storeDigest(digest, for: path, tier: tier, stamp: stamp)
+        }
+        return digest
     }
 
     /// Hashes the first `headHashLength` bytes (or the whole file if smaller).

@@ -93,7 +93,8 @@ Sources/
 ├── Neodisk/         # Thin executable shim → NeodiskApp.main()
 ├── NeodiskUI/       # The SwiftUI app, one folder per concern:
 │   ├── App/         #   app entry, root ContentView, settings, preferences
-│   ├── Model/       #   NeodiskViewModel, ScanCoordinator, diff state
+│   ├── Model/       #   NeodiskViewModel + its sub-models (scan session,
+│   │                #   warnings, free space, cloud accounts, diff), ScanCoordinator
 │   ├── Treemap/     #   treemap pane, scene, controller, breadcrumb
 │   ├── Sunburst/    #   sunburst pane, chart, geometry, legend
 │   ├── Outline/     #   file outline, locations sidebar, warnings panel
@@ -179,7 +180,10 @@ copies them into `Contents/Resources/` and `Info.plist` lists the languages.
   matching tests in `Tests/`.
 - Tree/index behavior bug: `Sources/NeodiskKit/Models/FileTreeStore.swift`.
 - Selection/navigation/UI state bug: `Sources/NeodiskUI/Model/NeodiskViewModel.swift`
-  and `Sources/NeodiskUI/Model/ScanCoordinator.swift`.
+  (+ its `NeodiskViewModel+*.swift` extensions) and
+  `Sources/NeodiskUI/Model/ScanCoordinator.swift`.
+- Scan start/rescan policy, snapshot cache/restore, or persistence bug:
+  `Sources/NeodiskUI/Model/ScanSessionModel.swift`.
 - Size or display formatting bug: `Sources/NeodiskKit/Services/FileSizeFormatter.swift`.
 - Treemap layout or rendering bug: `Sources/TreemapKit/CushionTreemapRenderer.swift`
   and `Sources/NeodiskUI/Treemap/TreemapScene.swift`.

@@ -164,49 +164,6 @@ nonisolated final class TreeStorage: Sendable {
         return (childStarts, childSlots)
     }
 
-    /// A copy with one synthetic child appended under the root and the root
-    /// record replaced (the volume-reconciliation case). The root's child
-    /// order is given explicitly because the new sibling changes it.
-    func insertingRootChild(
-        _ child: FileNodeRecord,
-        updatedRoot: FileNodeRecord,
-        rootChildOrder: [String]
-    ) -> TreeStorage {
-        var newNodes = nodes
-        newNodes[0] = updatedRoot
-        newNodes.append(child)
-        var newParents = parentIndices
-        newParents.append(0)
-        var newIndexByID = indexByID
-        newIndexByID[child.id] = Int32(nodes.count)
-
-        // The root's ID is unchanged, so its stored hash carries over; only
-        // the appended child needs a fresh hash. Drop to empty (rehash
-        // fallback) if the source store had no hashes to extend.
-        var newHashes = nodeHashes
-        if newHashes.count == nodes.count {
-            newHashes.append(FNV1a.hash(child.id))
-        } else {
-            newHashes = []
-        }
-
-        var (newStarts, newSlots) = Self.childLayout(parentIndices: newParents)
-        let rootRange = Int(newStarts[0])..<Int(newStarts[1])
-        let orderedRootChildren = rootChildOrder.compactMap { newIndexByID[$0] }
-        if orderedRootChildren.count == rootRange.count {
-            newSlots.replaceSubrange(rootRange, with: orderedRootChildren)
-        }
-
-        return TreeStorage(
-            nodes: newNodes,
-            parentIndices: newParents,
-            childStarts: newStarts,
-            childSlots: newSlots,
-            indexByID: newIndexByID,
-            nodeHashes: newHashes
-        )
-    }
-
     /// Materializes the dictionary topology view. Only the rare
     /// subtree-mutation operations use this — they run once per user action
     /// and reuse the dictionary algorithms, then rebuild trusted storage.

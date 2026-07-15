@@ -412,9 +412,9 @@ public final class IncrementalScanService: Sendable {
             return .scanOptionsChanged
         }
         guard baseline.incrementalCheckpoint != nil else { return .missingCheckpoint }
-        // The synthetic "System & Unattributed" reconcile node (non-APFS
-        // volumes) goes stale across a splice; those volumes take the full
-        // scan for now.
+        // Baselines cached by older versions can still carry the retired
+        // synthetic "System & Unattributed" reconcile node, which would go
+        // stale across a splice; one full scan replaces them for good.
         guard !baseline.treeStore.children(of: baseline.treeStore.rootID)
             .contains(where: \.isSynthetic) else {
             return .unattributedVolumeNode

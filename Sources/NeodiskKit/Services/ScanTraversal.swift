@@ -1064,19 +1064,21 @@ nonisolated final class ScanTraversal {
             || (isRoot && options.treatRootPackageAsDirectory)
     }
 
-    /// Capacity reconciliation is useful on non-APFS volumes where per-file allocated
-    /// sizes can miss reserved filesystem space. APFS container capacity is shared,
-    /// so its free-space delta can overstate the scanned volume.
+    /// A progress-only byte ceiling for volume scans (never a display
+    /// figure): useful on non-APFS volumes where the used-capacity delta
+    /// approximates what the traversal will visit. APFS container capacity
+    /// is shared, so its free-space delta can overstate the scanned volume —
+    /// those scans pace on traversal weight alone.
     private func estimatedTotalBytes(for target: ScanTarget, metadata: NodeMetadata) -> Int64 {
         guard target.kind == .volume,
               let volumeUsedCapacity = metadata.volumeUsedCapacity,
-              shouldReconcileVolumeCapacity(for: target.url) else {
+              shouldEstimateVolumeBytes(for: target.url) else {
             return 0
         }
         return max(volumeUsedCapacity, metadata.allocatedSize)
     }
 
-    private func shouldReconcileVolumeCapacity(for url: URL) -> Bool {
+    private func shouldEstimateVolumeBytes(for url: URL) -> Bool {
         guard let fileSystemType = volumeFileSystemTypeProvider(url) else {
             return false
         }

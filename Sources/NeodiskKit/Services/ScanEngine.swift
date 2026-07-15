@@ -342,8 +342,7 @@ public final class ScanEngine: Sendable {
             finishedAt: Date(),
             warnings: warnings,
             isComplete: true,
-            scanOptions: options,
-            expectedTotalBytes: exclusionMatcher.isEmpty ? metrics.estimatedTotalBytes : 0
+            scanOptions: options
         )
 
         metrics.isFinalizing = false
@@ -420,6 +419,9 @@ public final class ScanEngine: Sendable {
         return value < 1 ? Int.max : value
     }()
 
+    /// Volume snapshots carry only what the scan itself accounted for; the
+    /// gap up to the volume's used capacity is presented uniformly by the
+    /// UI as hidden space (VolumeSpaceInfo), never as a synthetic node.
     private nonisolated func makeSnapshot(
         target: ScanTarget,
         treeStore: FileTreeStore,
@@ -427,84 +429,17 @@ public final class ScanEngine: Sendable {
         finishedAt: Date?,
         warnings: [ScanWarning],
         isComplete: Bool,
-        scanOptions: ScanOptions?,
-        expectedTotalBytes: Int64 = 0
+        scanOptions: ScanOptions?
     ) -> ScanSnapshot {
-        let reconciledStore = reconcileVolumeRoot(treeStore, for: target, expectedTotalBytes: expectedTotalBytes)
-
-        return ScanSnapshot(
+        ScanSnapshot(
             target: target,
-            treeStore: reconciledStore,
+            treeStore: treeStore,
             startedAt: startedAt,
             finishedAt: finishedAt,
             scanWarnings: warnings,
-            aggregateStats: reconciledStore.aggregateStats,
+            aggregateStats: treeStore.aggregateStats,
             isComplete: isComplete,
             scanOptions: scanOptions
-        )
-    }
-
-    private nonisolated func reconcileVolumeRoot(_ treeStore: FileTreeStore, for target: ScanTarget, expectedTotalBytes: Int64) -> FileTreeStore {
-        let root = treeStore.root
-        guard target.kind == .volume, expectedTotalBytes > root.allocatedSize else {
-            return treeStore
-        }
-
-        let missingBytes = expectedTotalBytes - root.allocatedSize
-        guard missingBytes >= 64 * 1_024 * 1_024 else {
-            return treeStore
-        }
-
-        let unattributedNode = FileNodeRecord(
-            id: "\(root.id)#system-unattributed",
-            url: target.url,
-            name: "System & Unattributed",
-            isDirectory: false,
-            isSymbolicLink: false,
-            allocatedSize: missingBytes,
-            logicalSize: missingBytes,
-            descendantFileCount: 0,
-            lastModified: nil,
-            isPackage: false,
-            isAccessible: true,
-            isSelfAccessible: true,
-            isSynthetic: true,
-            isAutoSummarized: false
-        )
-
-        let rootChildren = treeStore.children(of: root.id) + [unattributedNode]
-        let sortedRootChildren = FileTreeStore.sortedChildren(rootChildren)
-        let reconciledRoot = FileNodeRecord.directory(
-            id: root.id,
-            url: root.url,
-            name: root.name,
-            children: sortedRootChildren,
-            lastModified: root.lastModified,
-            fileIdentity: root.fileIdentity,
-            linkCount: root.linkCount,
-            isPackage: root.isPackage,
-            isAccessible: root.isSelfAccessible,
-            childrenAreSorted: true
-        )
-
-        let baseStats = treeStore.aggregateStats
-        let reconciledStats = ScanAggregateStats(
-            totalAllocatedSize: reconciledRoot.allocatedSize,
-            totalLogicalSize: reconciledRoot.logicalSize,
-            fileCount: baseStats.fileCount,
-            directoryCount: baseStats.directoryCount,
-            accessibleItemCount: baseStats.accessibleItemCount + 1,
-            inaccessibleItemCount: baseStats.inaccessibleItemCount
-        )
-
-        return FileTreeStore(
-            trustedStorage: treeStore.storage.insertingRootChild(
-                unattributedNode,
-                updatedRoot: reconciledRoot,
-                rootChildOrder: sortedRootChildren.map(\.id)
-            ),
-            rootID: treeStore.rootID,
-            aggregateStats: reconciledStats
         )
     }
 

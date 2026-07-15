@@ -1304,7 +1304,7 @@ import Foundation
             ))
     }
 
-    @Test func testVolumeSnapshotAddsSystemAndUnattributedNode() async throws {
+    @Test func testVolumeSnapshotAddsNoSyntheticNode() async throws {
         let rootURL = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: rootURL) }
 
@@ -1329,14 +1329,13 @@ import Foundation
         }
 
         let snapshot = try #require(finalSnapshot)
-        let syntheticNode = try #require(rootChildren(in: snapshot).first(where: { $0.isSynthetic }))
 
-        #expect(syntheticNode.name == "System & Unattributed")
-        #expect(syntheticNode.isAccessible)
+        // Volume snapshots carry only scanned bytes on every filesystem;
+        // the gap up to used capacity is the UI's hidden space, never a
+        // synthetic node.
+        #expect(try !rootChildren(in: snapshot).contains(where: \.isSynthetic))
         #expect(snapshot.root.isAccessible)
-        #expect(!(syntheticNode.supportsFileActions))
         #expect(snapshot.aggregateStats.totalAllocatedSize == snapshot.root.allocatedSize)
-        #expect(snapshot.aggregateStats.totalAllocatedSize >= rootChildren(in: snapshot).filter { !$0.isSynthetic }.reduce(0) { $0 + $1.allocatedSize })
     }
 
     @Test func testAPFSVolumeSnapshotKeepsScannedAllocatedTotal() async throws {

@@ -25,6 +25,14 @@ final class FreeSpaceModel {
     /// `freeSpaceBytes`, plus a complete snapshot — mid-scan the unscanned
     /// remainder is unknown, not hidden. Drawn as a synthetic cell/arc.
     private(set) var hiddenSpaceBytes: Int64?
+    /// Used space the way Finder and Disk Utility report it (capacity minus
+    /// available): the total the window title and sunburst legend header
+    /// show for volume scans. Equals scanned + hidden once a scan finishes.
+    private(set) var finderUsedBytes: Int64?
+    /// The reclaimable part of the free space (nil when none) — surfaced as
+    /// detail alongside free space, never as its own segment, matching how
+    /// Finder folds purgeable into available.
+    private(set) var purgeableBytes: Int64?
 
     /// Settings backing the free-space cell; assigned by the view model's
     /// bindPreferences. Toggle reactivity rides on that binding's sink →
@@ -59,25 +67,26 @@ final class FreeSpaceModel {
             return
         }
         guard let target = coordinator.selectedTarget,
-              target.kind == .volume else {
+              target.kind == .volume,
+              let info = VolumeSpaceInfo.load(for: target.url) else {
             freeSpaceBytes = nil
             hiddenSpaceBytes = nil
+            finderUsedBytes = nil
+            purgeableBytes = nil
             return
         }
-        freeSpaceBytes = SystemIntegration.volumeAvailableCapacityForImportantUsage(for: target.url)
+        freeSpaceBytes = info.availableCapacity
+        finderUsedBytes = info.usedBytes
+        purgeableBytes = info.purgeableBytes > 0 ? info.purgeableBytes : nil
         // Hidden space needs a finished scan: a partial tree would misreport
         // the not-yet-visited remainder as hidden.
-        let scannedBytes: Int64?
         if let snapshot = coordinator.snapshot, snapshot.isComplete {
-            scannedBytes = snapshot.treeStore.root.allocatedSize
+            hiddenSpaceBytes = info.hiddenSpaceBytes(
+                scannedBytes: snapshot.treeStore.root.allocatedSize
+            )
         } else {
-            scannedBytes = nil
+            hiddenSpaceBytes = nil
         }
-        hiddenSpaceBytes = Self.hiddenSpaceBytes(
-            totalCapacity: SystemIntegration.volumeTotalCapacity(for: target.url),
-            availableCapacity: freeSpaceBytes,
-            scannedBytes: scannedBytes
-        )
     }
 
     /// Free space for a cloud account: quota capacity minus the account's
@@ -88,6 +97,8 @@ final class FreeSpaceModel {
     private func updateCloudFreeSpace() {
         guard let target = coordinator.selectedTarget, target.kind == .cloud else { return }
         hiddenSpaceBytes = nil
+        finderUsedBytes = nil
+        purgeableBytes = nil
         freeSpaceBytes = Self.cloudFreeSpaceBytes(quota: cloudQuotaByTargetID[target.id])
         guard let cloudScan else { return }
         Task { [weak self] in
@@ -108,18 +119,4 @@ final class FreeSpaceModel {
         return free > 0 ? free : nil
     }
 
-    /// DaisyDisk-style hidden space: total capacity minus available capacity
-    /// minus what the scan accounted for, clamped at zero (nil when any input
-    /// is missing or nothing remains). Uses the same available-capacity figure
-    /// as the free-space cell, so scanned + free + hidden tiles the volume
-    /// exactly instead of double-counting purgeable space.
-    nonisolated static func hiddenSpaceBytes(
-        totalCapacity: Int64?,
-        availableCapacity: Int64?,
-        scannedBytes: Int64?
-    ) -> Int64? {
-        guard let totalCapacity, let availableCapacity, let scannedBytes else { return nil }
-        let hidden = totalCapacity - availableCapacity - scannedBytes
-        return hidden > 0 ? hidden : nil
-    }
 }

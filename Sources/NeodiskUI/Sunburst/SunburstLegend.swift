@@ -170,7 +170,8 @@ enum SunburstLegend {
         in store: FileTreeStore,
         segments: [SunburstSegment],
         style: SunburstColorStyle,
-        includeCloudOnly: Bool = false
+        includeCloudOnly: Bool = false,
+        sizeOverride: Int64? = nil
     ) -> SunburstLegendRow {
         let dotColor: Color
         if let segment = segments.first(where: { $0.nodeID == folder.id }) {
@@ -182,11 +183,12 @@ enum SunburstLegend {
             id: "header-\(folder.id)",
             target: .node(id: folder.id, isDirectory: folder.isSunburstFolder(in: store)),
             label: folder.name,
-            size: folder.displayWeight(includingCloudOnly: includeCloudOnly),
+            size: sizeOverride ?? folder.displayWeight(includingCloudOnly: includeCloudOnly),
             dotColor: dotColor,
             isDimmed: false,
             itemCount: 0,
-            showsCloudGlyph: includeCloudOnly && folder.cloudOnlyLogicalSize > 0
+            // A disk-based override is never a cloud-inclusive figure.
+            showsCloudGlyph: sizeOverride == nil && includeCloudOnly && folder.cloudOnlyLogicalSize > 0
         )
     }
 

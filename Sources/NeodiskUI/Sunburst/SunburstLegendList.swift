@@ -50,7 +50,8 @@ struct SunburstLegendList: View {
                             in: store,
                             segments: chartModel.renderedSegments,
                             style: style,
-                            includeCloudOnly: model.showsCloudOnlyFiles
+                            includeCloudOnly: model.showsCloudOnlyFiles,
+                            sizeOverride: headerSizeOverride(store: store)
                         ),
                         isHeader: true,
                         isSelected: false,
@@ -119,6 +120,18 @@ struct SunburstLegendList: View {
     }
 
     // MARK: - Rows
+
+    /// For a volume scan showing the whole tree, the header states the
+    /// Finder/Disk Utility "used" figure — the same number as the window
+    /// title — so the legend tiles: children + hidden space = header, plus
+    /// free space = capacity. Drilled or hover-previewed folders keep their
+    /// own weight.
+    private func headerSizeOverride(store: FileTreeStore) -> Int64? {
+        guard displayedFolder.id == chartRootID,
+              chartRootID == store.rootID,
+              model.coordinator.selectedTarget?.kind == .volume else { return nil }
+        return model.freeSpace.finderUsedBytes
+    }
 
     private var legendRows: [SunburstLegendRow] {
         guard let store = model.store else { return [] }

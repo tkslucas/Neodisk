@@ -168,14 +168,32 @@ public struct ContentView: View {
     }
 
     private var windowTitle: String {
-        if let target = model.coordinator.selectedTarget {
-            let total = model.coordinator.snapshot?.aggregateStats.totalAllocatedSize
-            if let total {
-                return "\(target.displayName) (\(NeodiskFormatters.size(total)))"
-            }
-            return target.displayName
+        Self.windowTitle(
+            targetName: model.coordinator.selectedTarget?.displayName,
+            targetKind: model.coordinator.selectedTarget?.kind,
+            finderUsedBytes: model.freeSpace.finderUsedBytes,
+            scannedTotalBytes: model.coordinator.snapshot?.aggregateStats.totalAllocatedSize
+        )
+    }
+
+    /// Volume scans title the Finder/Disk Utility "used" figure (capacity
+    /// minus available), so the window agrees with the rest of the system
+    /// and with the sunburst legend header; folder and cloud scans title
+    /// what the scan itself accounted for.
+    nonisolated static func windowTitle(
+        targetName: String?,
+        targetKind: ScanTargetKind?,
+        finderUsedBytes: Int64?,
+        scannedTotalBytes: Int64?
+    ) -> String {
+        guard let targetName else { return "Neodisk" }
+        let total: Int64? = if targetKind == .volume, let finderUsedBytes {
+            finderUsedBytes
+        } else {
+            scannedTotalBytes
         }
-        return "Neodisk"
+        guard let total else { return targetName }
+        return "\(targetName) (\(NeodiskFormatters.size(total)))"
     }
 
     @ToolbarContentBuilder

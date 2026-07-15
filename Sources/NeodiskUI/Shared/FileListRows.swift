@@ -87,14 +87,16 @@ struct DeltaLabel: View {
 
     var body: some View {
         Group {
+            // Text comes from the shared formatter so the outline's
+            // width-measurement path can never drift from what renders.
             if delta == 0 {
-                Text("·")
+                Text(NeodiskFormatters.sizeDelta(delta))
                     .foregroundStyle(.tertiary)
             } else if delta > 0 {
-                Text("+\(NeodiskFormatters.size(delta))")
+                Text(NeodiskFormatters.sizeDelta(delta))
                     .foregroundStyle(.red)
             } else {
-                Text("−\(NeodiskFormatters.size(-delta))")
+                Text(NeodiskFormatters.sizeDelta(delta))
                     .foregroundStyle(.green)
             }
         }

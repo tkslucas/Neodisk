@@ -146,18 +146,12 @@ private enum OutlineRowMetrics {
         }
         if let baseline {
             width += cachedWidth(
-                of: deltaText(baseline.sizeDelta(for: row.node)),
+                of: NeodiskFormatters.sizeDelta(baseline.sizeDelta(for: row.node)),
                 font: sizeFont,
                 cachePrefix: "s:"
             ) + 4
         }
         return width
-    }
-
-    static func deltaText(_ delta: Int64) -> String {
-        if delta == 0 { return "·" }
-        if delta > 0 { return "+\(NeodiskFormatters.size(delta))" }
-        return "−\(NeodiskFormatters.size(-delta))"
     }
 
     private static func cachedWidth(of text: String, font: NSFont, cachePrefix: String) -> CGFloat {

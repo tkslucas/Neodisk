@@ -27,4 +27,12 @@ import Foundation
         // allocated-vs-logical accounting); the formatter reports the raw ratio.
         #expect(NeodiskFormatters.percentage(part: 3, total: 2) == "150.0%")
     }
+
+    @Test func testSizeDeltaSignsAndUnchangedDot() {
+        // The outline measures column widths from these exact strings and
+        // DeltaLabel renders them; the three shapes are the contract.
+        #expect(NeodiskFormatters.sizeDelta(0) == "·")
+        #expect(NeodiskFormatters.sizeDelta(1500) == "+\(NeodiskFormatters.size(1500))")
+        #expect(NeodiskFormatters.sizeDelta(-1500) == "−\(NeodiskFormatters.size(1500))")
+    }
 }

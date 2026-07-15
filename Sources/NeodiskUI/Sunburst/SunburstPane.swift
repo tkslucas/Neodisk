@@ -369,10 +369,6 @@ struct SunburstPane: View {
         model.select(target)
     }
 
-    private func beepUnless(_ handled: Bool) {
-        if !handled { NSSound.beep() }
-    }
-
     // MARK: - Legend list interaction
 
     /// List row hover feeds the chart highlight and the status bar but must

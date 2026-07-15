@@ -13,13 +13,6 @@ struct NeodiskCommands: Commands {
     let model: NeodiskViewModel
     @ObservedObject var updates: UpdateController
 
-    /// Drill actions beep when there is nowhere to go, matching the
-    /// treemap/sunburst key handlers (the menu enablement is a coarser
-    /// check than the drill's full preconditions).
-    private func beepUnless(_ handled: Bool) {
-        if !handled { NSSound.beep() }
-    }
-
     var body: some Commands {
         CommandGroup(replacing: .appInfo) {
             AboutMenuItem()

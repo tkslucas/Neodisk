@@ -9,6 +9,16 @@ import Foundation
 /// Display-only formatting (dates, durations) lives in the app
 /// (DisplayFormatters).
 public enum NeodiskFormatters {
+    /// Signed size delta for diff displays: "+1.2 GB", "−340 MB", or a
+    /// quiet "·" for unchanged. The outline's width-measurement path and the
+    /// rendered DeltaLabel must produce byte-identical strings, so both
+    /// call this.
+    public static func sizeDelta(_ delta: Int64) -> String {
+        if delta == 0 { return "·" }
+        if delta > 0 { return "+\(size(delta))" }
+        return "−\(size(-delta))"
+    }
+
     private static let formatterCache = FormatterCache()
 
     public static func size(_ bytes: Int64) -> String {

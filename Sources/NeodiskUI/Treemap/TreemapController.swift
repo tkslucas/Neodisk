@@ -356,10 +356,6 @@ final class TreemapController {
         model.revealSelection()
     }
 
-    private func beepUnless(_ handled: Bool) {
-        if !handled { NSSound.beep() }
-    }
-
     /// The cell under a live view point, mapped back into the rendered
     /// scene's coordinates so hit-testing stays correct while the display
     /// transform is active.

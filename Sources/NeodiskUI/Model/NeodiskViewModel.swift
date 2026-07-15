@@ -1192,6 +1192,18 @@ final class NeodiskViewModel {
         zoomRootID = parent.id == store.root.id ? nil : parent.id
     }
 
+    /// Whether the map is drilled below the scan root — enablement for the
+    /// Go menu's Enclosing Folder and Back to Scan Root items.
+    var canDrillOut: Bool {
+        guard let store, let effectiveRootID else { return false }
+        return effectiveRootID != store.root.id
+    }
+
+    /// Go > Back to Scan Root: undo all drilling in one step.
+    func zoomToRoot() {
+        zoomRootID = nil
+    }
+
     /// Keyboard drill-in (⌘↓): re-root the treemap into the selected folder,
     /// or into the folder containing the selected file, so "zoom into where I
     /// am" always makes progress. Returns false (caller beeps) when there is
@@ -1309,6 +1321,12 @@ final class NeodiskViewModel {
         node.supportsFileActions && snapshotSupportsFileActions
     }
 
+    /// Whether the selection's file actions apply — enablement for the
+    /// Inspect menu's Open / Reveal in Finder / Copy Path items.
+    var selectionSupportsFileActions: Bool {
+        selectedNode.map(supportsFileActions) ?? false
+    }
+
     /// Spacebar Quick Look shared by the treemap and sunburst: previews the
     /// selected node, so click-then-space works without ever focusing one of
     /// the sidebar lists. Beeps when nothing is selected.
@@ -1328,6 +1346,25 @@ final class NeodiskViewModel {
             return
         }
         reveal(node)
+    }
+
+    /// Inspect > Open for the selection. Beeps when the selection has no
+    /// on-disk counterpart (backstop; the menu item is disabled then).
+    func openSelection() {
+        guard let node = selectedNode, supportsFileActions(node) else {
+            NSSound.beep()
+            return
+        }
+        open(node)
+    }
+
+    /// Inspect > Copy Path for the selection, with the same beep backstop.
+    func copyPathOfSelection() {
+        guard let node = selectedNode, supportsFileActions(node) else {
+            NSSound.beep()
+            return
+        }
+        copyPath(node)
     }
 
     func reveal(_ node: FileNodeRecord) {

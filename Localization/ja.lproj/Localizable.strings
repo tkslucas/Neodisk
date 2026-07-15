@@ -246,6 +246,13 @@
 "Hide Locations Sidebar" = "ロケーションサイドバーを隠す";
 "Show Statistics" = "統計を表示";
 "Hide Statistics" = "統計を隠す";
+"Go" = "移動";
+"Enclosing Folder" = "内包しているフォルダ";
+"Zoom Into Selection" = "選択項目にズーム";
+"Back to Scan Root" = "スキャンのルートに戻る";
+"Deselect" = "選択解除";
+"Inspect" = "調べる";
+"Quick Look" = "クイックルック";
 
 /* MARK: - System dialogs & treemap */
 "Scan" = "スキャン";

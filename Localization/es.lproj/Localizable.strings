@@ -247,6 +247,13 @@
 "Hide Locations Sidebar" = "Ocultar barra lateral de ubicaciones";
 "Show Statistics" = "Mostrar estadísticas";
 "Hide Statistics" = "Ocultar estadísticas";
+"Go" = "Ir";
+"Enclosing Folder" = "Carpeta superior";
+"Zoom Into Selection" = "Acercar a la selección";
+"Back to Scan Root" = "Volver a la raíz del análisis";
+"Deselect" = "Anular selección";
+"Inspect" = "Inspeccionar";
+"Quick Look" = "Vista rápida";
 
 /* MARK: - Diálogos del sistema y mapa de árbol */
 "Scan" = "Analizar";

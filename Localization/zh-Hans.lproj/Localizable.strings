@@ -246,6 +246,13 @@
 "Hide Locations Sidebar" = "隐藏位置边栏";
 "Show Statistics" = "显示统计";
 "Hide Statistics" = "隐藏统计";
+"Go" = "前往";
+"Enclosing Folder" = "上层文件夹";
+"Zoom Into Selection" = "缩放到所选项目";
+"Back to Scan Root" = "返回扫描根目录";
+"Deselect" = "取消选择";
+"Inspect" = "检查";
+"Quick Look" = "快速查看";
 
 /* MARK: - 系统对话框与矩形树图 */
 "Scan" = "扫描";

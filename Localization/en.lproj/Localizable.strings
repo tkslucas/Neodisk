@@ -246,6 +246,13 @@
 "Hide Locations Sidebar" = "Hide Locations Sidebar";
 "Show Statistics" = "Show Statistics";
 "Hide Statistics" = "Hide Statistics";
+"Go" = "Go";
+"Enclosing Folder" = "Enclosing Folder";
+"Zoom Into Selection" = "Zoom Into Selection";
+"Back to Scan Root" = "Back to Scan Root";
+"Deselect" = "Deselect";
+"Inspect" = "Inspect";
+"Quick Look" = "Quick Look";
 
 /* MARK: - System dialogs & treemap */
 "Scan" = "Scan";

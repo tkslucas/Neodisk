@@ -13,6 +13,13 @@ struct NeodiskCommands: Commands {
     let model: NeodiskViewModel
     @ObservedObject var updates: UpdateController
 
+    /// Drill actions beep when there is nowhere to go, matching the
+    /// treemap/sunburst key handlers (the menu enablement is a coarser
+    /// check than the drill's full preconditions).
+    private func beepUnless(_ handled: Bool) {
+        if !handled { NSSound.beep() }
+    }
+
     var body: some Commands {
         CommandGroup(replacing: .appInfo) {
             AboutMenuItem()
@@ -88,6 +95,88 @@ struct NeodiskCommands: Commands {
             }
             .keyboardShortcut("k", modifiers: [.control, .command])
             .disabled(model.coordinator.snapshot == nil)
+        }
+
+        // Finder-style Go menu for the drill and selection axes. The same
+        // shortcuts also live in the treemap/sunburst key handlers; the menu
+        // intercepts them first and calls the same model actions, so behavior
+        // matches — the menu just adds discoverability and works without the
+        // visualization focused.
+        CommandMenu("Go") {
+            Button {
+                beepUnless(model.drillOut())
+            } label: {
+                Label("Enclosing Folder", systemImage: "arrow.up")
+            }
+            .keyboardShortcut(.upArrow)
+            .disabled(!model.canDrillOut)
+
+            Button {
+                beepUnless(model.drillIntoSelection())
+            } label: {
+                Label("Zoom Into Selection", systemImage: "plus.magnifyingglass")
+            }
+            .keyboardShortcut(.downArrow)
+            .disabled(model.selectedNode == nil)
+
+            Divider()
+
+            Button {
+                model.zoomToRoot()
+            } label: {
+                Label("Back to Scan Root", systemImage: "arrowshape.turn.up.backward")
+            }
+            .keyboardShortcut("\\", modifiers: [.command, .option])
+            .disabled(!model.canDrillOut)
+
+            Divider()
+
+            Button {
+                model.select(nil)
+            } label: {
+                Label("Deselect", systemImage: "clear")
+            }
+            .keyboardShortcut("a", modifiers: [.command, .option])
+            .disabled(model.selectedNodeID == nil)
+        }
+
+        // File actions for the selection — the context menus' items, made
+        // discoverable with shortcuts. No Move to Trash: Neodisk is read-only
+        // by design.
+        CommandMenu("Inspect") {
+            Button {
+                model.quickLookSelection()
+            } label: {
+                Label("Quick Look", systemImage: "eye")
+            }
+            .keyboardShortcut("y")
+            .disabled(model.selectedNode == nil)
+
+            Divider()
+
+            Button {
+                model.openSelection()
+            } label: {
+                Label("Open", systemImage: "arrow.up.forward.app")
+            }
+            .keyboardShortcut("o", modifiers: [.command, .shift])
+            .disabled(!model.selectionSupportsFileActions)
+
+            Button {
+                model.revealSelection()
+            } label: {
+                Label("Reveal in Finder", systemImage: "folder")
+            }
+            .keyboardShortcut("j", modifiers: [.command, .shift])
+            .disabled(!model.selectionSupportsFileActions)
+
+            Button {
+                model.copyPathOfSelection()
+            } label: {
+                Label("Copy Path", systemImage: "doc.on.doc")
+            }
+            .keyboardShortcut("c", modifiers: [.command, .option])
+            .disabled(!model.selectionSupportsFileActions)
         }
 
         // No help book; the app is meant to be self-explanatory. Help

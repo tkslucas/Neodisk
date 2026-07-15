@@ -246,6 +246,13 @@
 "Hide Locations Sidebar" = "Seitenleiste mit Orten ausblenden";
 "Show Statistics" = "Statistiken anzeigen";
 "Hide Statistics" = "Statistiken ausblenden";
+"Go" = "Gehe zu";
+"Enclosing Folder" = "Übergeordneter Ordner";
+"Zoom Into Selection" = "In Auswahl zoomen";
+"Back to Scan Root" = "Zurück zum Ausgangspunkt";
+"Deselect" = "Auswahl aufheben";
+"Inspect" = "Untersuchen";
+"Quick Look" = "Übersicht";
 
 /* MARK: - System dialogs & treemap */
 "Scan" = "Scan";

@@ -3,8 +3,9 @@
 //  Neodisk
 //
 //  The statistics panel's Duplicates tab: an explicit "Find Duplicates"
-//  action (hashing reads real bytes, so it never runs unasked), hashing
-//  progress, and the confirmed groups sorted by reclaimable space. Selecting
+//  action (hashing reads real bytes, so it never runs unasked), then the
+//  confirmed groups sorted by reclaimable space — streaming in live while
+//  the scan runs, complete once it finishes. Selecting
 //  a group lights its copies on the treemap; rows are read-only navigation —
 //  cleanup happens via Reveal in Finder.
 //
@@ -108,23 +109,75 @@ struct DuplicatesPane: View {
         )
     }
 
+    /// Results render as they confirm — the same header and rows as the
+    /// finished list, with a cancel action and a progress readout instead of
+    /// the computed-at banner and refresh — so scanning feels like the map:
+    /// live, not a loading bar.
     private var scanningView: some View {
-        VStack(spacing: 10) {
-            Spacer()
-            ProgressView(value: model.duplicates.progress)
-                .progressViewStyle(.linear)
-                .padding(.horizontal, 4)
-            Text("Searching for duplicates…")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-            Button("Cancel") {
-                model.duplicates.cancelScan()
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 6) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(liveSummaryText)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    Text(scanningStatusText)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer()
+                Button("Cancel") {
+                    model.duplicates.cancelScan()
+                }
+                .controlSize(.small)
             }
-            .controlSize(.small)
-            Spacer()
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+
+            Divider()
+
+            if model.duplicates.liveGroups.isEmpty {
+                Spacer()
+                Text("No duplicates found yet")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+                Spacer()
+            } else {
+                List(model.duplicates.liveGroups) { group in
+                    DuplicateGroupRow(model: model, group: group)
+                        .listRowSeparator(.hidden)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            model.duplicates.open(group)
+                        }
+                        .help("Show the copies in this group")
+                }
+                .environment(\.defaultMinListRowHeight, 20)
+            }
         }
-        .padding(.horizontal, 14)
-        .frame(maxWidth: .infinity)
+    }
+
+    private var liveSummaryText: String {
+        String(
+            format: NSLocalizedString(
+                "%@ groups · %@ wasted",
+                comment: "Duplicates results header: group count, reclaimable size"
+            ),
+            model.duplicates.liveGroups.count.formatted(),
+            NeodiskFormatters.size(model.duplicates.liveGroups.reduce(0) { $0 + $1.wastedBytes })
+        )
+    }
+
+    private var scanningStatusText: String {
+        String(
+            format: NSLocalizedString(
+                "Searching for duplicates… %@",
+                comment: "Duplicates tab header while scanning; %@ is a percentage"
+            ),
+            model.duplicates.progress.formatted(.percent.precision(.fractionLength(0)))
+        )
     }
 
     private func failedView(_ message: String) -> some View {

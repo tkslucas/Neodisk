@@ -169,11 +169,12 @@
 "Find files with identical content" = "查找内容完全相同的文件";
 "Compares files larger than %@ and groups identical copies." = "比较大于 %@ 的文件并将完全相同的副本分组。";
 "Find Duplicates" = "查找重复项";
-"Searching for duplicates…" = "正在搜索重复项…";
+"Searching for duplicates… %@" = "正在搜索重复项… %@";
 "Cancel" = "取消";
 "%@ groups · %@ wasted" = "%@ 组 · 浪费 %@";
 "Search for duplicates again" = "重新搜索重复项";
 "No duplicates found" = "未找到重复项";
+"No duplicates found yet" = "尚未找到重复项";
 "Show the copies in this group" = "显示此组中的副本";
 "%@ copies × %@" = "%@ 个副本 × %@";
 "%@ wasted" = "浪费 %@";

@@ -3,8 +3,9 @@
 //  Neodisk
 //
 //  Duplicate-finder state for the statistics panel's Duplicates tab: a
-//  content scan of the displayed snapshot, its results, and the drill-in
-//  into one duplicate group. Owned by NeodiskViewModel as
+//  content scan of the displayed snapshot, the groups it streams in while
+//  hashing (rendered live in the pane and on the map), its results, and the
+//  drill-in into one duplicate group. Owned by NeodiskViewModel as
 //  `model.duplicates`. Hashing costs real I/O, so it only runs asked-for:
 //  via the Find Duplicates button, or right after a scan when the opt-in
 //  "find duplicates automatically" preference is on.
@@ -35,6 +36,14 @@ final class DuplicatesModel {
     private(set) var phase: Phase = .idle
     /// Hashing progress, 0...1, while `phase == .scanning`.
     private(set) var progress = 0.0
+    /// Groups confirmed so far while `phase == .scanning`, biggest waste
+    /// first — the live results the pane and the map highlight render as
+    /// hashing progresses. Superseded by the final results on finish.
+    private(set) var liveGroups: [DuplicateGroup] = []
+    /// Union of every live group's copies, for the map-wide highlight while
+    /// scanning: empty at start (the whole map dims), growing as confirmed
+    /// copies light back up.
+    private(set) var liveDuplicateIDs: Set<String> = []
     /// When the finished result was computed (a live scan this session, or the
     /// cached run's timestamp), for the "Duplicates computed …" banner. Nil
     /// outside `.finished`.
@@ -55,6 +64,13 @@ final class DuplicatesModel {
     @ObservationIgnored private let coordinator: ScanCoordinator
     @ObservationIgnored private let snapshotCache: ScanSnapshotCache
     @ObservationIgnored private var scanTask: Task<Void, Never>?
+    /// Confirmed groups the finder has reported but the UI hasn't published
+    /// yet. Publishing re-renders the treemap highlight, so batches coalesce
+    /// on a fixed cadence (like the scan's partial trees) instead of landing
+    /// per confirmation.
+    @ObservationIgnored private var pendingLiveGroups: [DuplicateGroup] = []
+    @ObservationIgnored private var liveFlushTask: Task<Void, Never>?
+    private static let liveFlushInterval: Duration = .milliseconds(300)
     /// The snapshot the current phase belongs to; a scan finishing after
     /// the displayed tree changed must not publish stale results.
     @ObservationIgnored private var scannedSnapshotID: UUID?
@@ -86,12 +102,21 @@ final class DuplicatesModel {
             && !isScanning
     }
 
-    /// Nodes lit on the treemap: the open group's copies, or every
-    /// duplicate while the results list is showing.
+    /// Nodes lit on the treemap: the open group's copies, every duplicate
+    /// while the results list is showing, or — while scanning — the groups
+    /// confirmed so far (empty at first, so hashing starts by dimming the
+    /// whole map and confirmed copies light back up as they land).
     var highlightedNodeIDs: Set<String>? {
         if let openGroup { return Set(openGroup.nodeIDs) }
-        guard case .finished = phase, !allDuplicateIDs.isEmpty else { return nil }
-        return allDuplicateIDs
+        switch phase {
+        case .finished:
+            guard !allDuplicateIDs.isEmpty else { return nil }
+            return allDuplicateIDs
+        case .scanning:
+            return liveDuplicateIDs
+        case .idle, .failed:
+            return nil
+        }
     }
 
     func startScan() {
@@ -108,14 +133,22 @@ final class DuplicatesModel {
         openGroup = nil
         allDuplicateIDs = []
         groupIndexByNodeID = [:]
+        resetLiveState()
         scanTask?.cancel()
         // Built in method scope, not inside the detached work, so the
-        // sendable hashing closure never touches the model directly.
+        // sendable hashing closures never touch the model directly.
         let reportProgress: @Sendable (DuplicateScanProgress) -> Void = { [weak self] update in
             guard let self else { return }
             Task { @MainActor in
                 guard self.scannedSnapshotID == snapshotID else { return }
                 self.progress = max(self.progress, update.fractionCompleted)
+            }
+        }
+        let reportPartial: @Sendable ([DuplicateGroup]) -> Void = { [weak self] groups in
+            guard let self else { return }
+            Task { @MainActor in
+                guard self.scannedSnapshotID == snapshotID, self.isScanning else { return }
+                self.enqueueLiveGroups(groups)
             }
         }
         scanTask = Task { [weak self, snapshotCache] in
@@ -124,7 +157,8 @@ final class DuplicatesModel {
                     try await DuplicateFinder.findDuplicates(
                         in: store,
                         minimumFileSize: Self.minimumFileSize,
-                        onProgress: reportProgress
+                        onProgress: reportProgress,
+                        onPartial: reportPartial
                     )
                 }.value
                 guard let self, !Task.isCancelled,
@@ -144,6 +178,8 @@ final class DuplicatesModel {
                 // cancelScan / snapshotDidChange already reset the phase.
             } catch {
                 guard let self, self.scannedSnapshotID == snapshotID else { return }
+                self.resetLiveState()
+                self.openGroup = nil
                 self.phase = .failed(error.localizedDescription)
             }
         }
@@ -163,7 +199,49 @@ final class DuplicatesModel {
             }
         }
         groupIndexByNodeID = indexByNodeID
+        resetLiveState()
         phase = .finished(results)
+    }
+
+    /// Buffers finder-confirmed groups and publishes them on a fixed cadence.
+    /// The first batch publishes immediately so the sidebar reacts the moment
+    /// anything confirms; later batches wait out the interval together.
+    private func enqueueLiveGroups(_ groups: [DuplicateGroup]) {
+        pendingLiveGroups.append(contentsOf: groups)
+        guard liveFlushTask == nil else { return }
+        if liveGroups.isEmpty {
+            flushLiveGroups()
+            return
+        }
+        liveFlushTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.liveFlushInterval)
+            guard let self, !Task.isCancelled else { return }
+            self.liveFlushTask = nil
+            self.flushLiveGroups()
+        }
+    }
+
+    private func flushLiveGroups() {
+        guard !pendingLiveGroups.isEmpty else { return }
+        for group in pendingLiveGroups {
+            liveDuplicateIDs.formUnion(group.nodeIDs)
+        }
+        liveGroups.append(contentsOf: pendingLiveGroups)
+        pendingLiveGroups.removeAll()
+        // Same order as the final results, so finishing only appends context
+        // (banner, refresh) without reshuffling what the user is looking at.
+        liveGroups.sort {
+            if $0.wastedBytes != $1.wastedBytes { return $0.wastedBytes > $1.wastedBytes }
+            return $0.id < $1.id
+        }
+    }
+
+    private func resetLiveState() {
+        liveFlushTask?.cancel()
+        liveFlushTask = nil
+        pendingLiveGroups = []
+        liveGroups = []
+        liveDuplicateIDs = []
     }
 
     /// Fill an idle tab from a persisted result for the displayed snapshot, if
@@ -211,6 +289,8 @@ final class DuplicatesModel {
         phase = .idle
         progress = 0
         computedAt = nil
+        openGroup = nil
+        resetLiveState()
     }
 
     func open(_ group: DuplicateGroup) {
@@ -222,12 +302,24 @@ final class DuplicatesModel {
     /// row; selecting anything else while a group is open steps back out to
     /// the all-duplicates view, so clicking a dimmed cell is the intuitive
     /// "back". With no group open, non-duplicate selections change nothing.
+    /// Live groups behave the same while the scan is still running — a
+    /// confirmed group's membership is already final.
     func handleSelection(of nodeID: String) {
-        guard case .finished(let results) = phase else { return }
-        if let index = groupIndexByNodeID[nodeID] {
-            openGroup = results.groups[index]
-        } else if openGroup != nil {
-            openGroup = nil
+        switch phase {
+        case .finished(let results):
+            if let index = groupIndexByNodeID[nodeID] {
+                openGroup = results.groups[index]
+            } else if openGroup != nil {
+                openGroup = nil
+            }
+        case .scanning:
+            if let group = liveGroups.first(where: { $0.nodeIDs.contains(nodeID) }) {
+                openGroup = group
+            } else if openGroup != nil {
+                openGroup = nil
+            }
+        case .idle, .failed:
+            return
         }
     }
 
@@ -249,5 +341,6 @@ final class DuplicatesModel {
         openGroup = nil
         allDuplicateIDs = []
         groupIndexByNodeID = [:]
+        resetLiveState()
     }
 }

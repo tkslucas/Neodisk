@@ -169,11 +169,12 @@
 "Find files with identical content" = "Dateien mit identischem Inhalt finden";
 "Compares files larger than %@ and groups identical copies." = "Vergleicht Dateien über %@ und gruppiert identische Kopien.";
 "Find Duplicates" = "Duplikate suchen";
-"Searching for duplicates…" = "Suche nach Duplikaten…";
+"Searching for duplicates… %@" = "Suche nach Duplikaten… %@";
 "Cancel" = "Abbrechen";
 "%@ groups · %@ wasted" = "%@ Gruppen · %@ verschwendet";
 "Search for duplicates again" = "Erneut nach Duplikaten suchen";
 "No duplicates found" = "Keine Duplikate gefunden";
+"No duplicates found yet" = "Noch keine Duplikate gefunden";
 "Show the copies in this group" = "Die Kopien dieser Gruppe anzeigen";
 "%@ copies × %@" = "%@ Kopien × %@";
 "%@ wasted" = "%@ verschwendet";

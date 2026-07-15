@@ -169,11 +169,12 @@
 "Find files with identical content" = "内容が同一のファイルを見つける";
 "Compares files larger than %@ and groups identical copies." = "%@ を超えるファイルの内容を比較し、同一のコピーをグループ化します。";
 "Find Duplicates" = "重複を検索";
-"Searching for duplicates…" = "重複を検索中…";
+"Searching for duplicates… %@" = "重複を検索中… %@";
 "Cancel" = "キャンセル";
 "%@ groups · %@ wasted" = "%@ グループ · %@ の無駄";
 "Search for duplicates again" = "重複を再検索";
 "No duplicates found" = "重複は見つかりませんでした";
+"No duplicates found yet" = "重複はまだ見つかっていません";
 "Show the copies in this group" = "このグループのコピーを表示";
 "%@ copies × %@" = "%@ 個のコピー × %@";
 "%@ wasted" = "%@ の無駄";

@@ -11,6 +11,11 @@
 //  confirmation that two files are actually byte-identical. Hard links are
 //  one file, not duplicates, and are collapsed by file identity up front.
 //
+//  Confirmed groups stream out through `onPartial` as each tier (and, in
+//  the full pass, each collision group) resolves, so the UI can show
+//  results while hashing continues; the returned results stay the single
+//  sorted source of truth.
+//
 //  Read-only like everything else in the engine: files are opened for
 //  reading, nothing is modified.
 //
@@ -91,10 +96,18 @@ public enum DuplicateFinder {
     /// the snapshot plus fresh reads of the candidate files; cancellation
     /// (via the surrounding task) throws `CancellationError`. `onProgress`
     /// is called on an arbitrary executor with a monotonic fraction.
+    ///
+    /// `onPartial` streams confirmed groups as they land — a batch per
+    /// hashing tier for the small files it fully covers, then one batch per
+    /// resolved collision group during the full-content pass — so callers
+    /// can render results while hashing continues. Batches are disjoint and
+    /// their union equals the returned `groups` (which alone are sorted);
+    /// like `onProgress` it runs on an arbitrary executor.
     public static func findDuplicates(
         in store: FileTreeStore,
         minimumFileSize: Int64 = defaultMinimumFileSize,
-        onProgress: (@Sendable (DuplicateScanProgress) -> Void)? = nil
+        onProgress: (@Sendable (DuplicateScanProgress) -> Void)? = nil,
+        onPartial: (@Sendable ([DuplicateGroup]) -> Void)? = nil
     ) async throws -> DuplicateScanResults {
         // 1. Same-size grouping over the snapshot — no I/O yet. Only real,
         // readable files count: directories (incl. packages), symlinks, and
@@ -193,6 +206,7 @@ public enum DuplicateFinder {
         for entry in headResults.hashed {
             headGroups["\(entry.size)-\(entry.digest)", default: []].append((entry.node, entry.size))
         }
+        var headConfirmed: [DuplicateGroup] = []
         for (key, members) in headGroups {
             if members.count < 2 {
                 await progress.drop(bytes: members.reduce(Int64(0)) {
@@ -201,7 +215,7 @@ public enum DuplicateFinder {
                 continue
             }
             if members[0].size <= Int64(headHashLength) {
-                confirmed.append(DuplicateGroup(
+                headConfirmed.append(DuplicateGroup(
                     id: key,
                     fileSize: members[0].size,
                     nodeIDs: members.map(\.node.id).sorted()
@@ -210,6 +224,8 @@ public enum DuplicateFinder {
                 needPrefixHash.append(contentsOf: members)
             }
         }
+        confirmed.append(contentsOf: headConfirmed)
+        if !headConfirmed.isEmpty { onPartial?(headConfirmed) }
 
         // 4. Prefix-hash pass (256 KB head + 256 KB tail) over head colliders.
         let prefixResults = try await hashConcurrently(needPrefixHash) { node, size in
@@ -225,10 +241,16 @@ public enum DuplicateFinder {
         // Regroup by (size, head+tail hash). Files fully covered by the head
         // (size <= 256 KB) confirm here; the rest advance to the full pass.
         var needFullHash: [(node: FileNodeRecord, size: Int64)] = []
+        // Pre-group key (size + head+tail hash) per needFullHash entry, so
+        // the full pass can confirm each collision group the moment its last
+        // member finishes instead of waiting for the whole pass.
+        var fullPreKeys: [String] = []
+        var pendingByPreKey: [String: Int] = [:]
         var subgroups: [String: [(node: FileNodeRecord, size: Int64)]] = [:]
         for entry in prefixResults.hashed {
             subgroups["\(entry.size)-\(entry.digest)", default: []].append((entry.node, entry.size))
         }
+        var prefixConfirmed: [DuplicateGroup] = []
         for (key, members) in subgroups {
             if members.count < 2 {
                 await progress.drop(bytes: members.reduce(Int64(0)) {
@@ -237,37 +259,55 @@ public enum DuplicateFinder {
                 continue
             }
             if members[0].size <= Int64(prefixHashLength) {
-                confirmed.append(DuplicateGroup(
+                prefixConfirmed.append(DuplicateGroup(
                     id: key,
                     fileSize: members[0].size,
                     nodeIDs: members.map(\.node.id).sorted()
                 ))
             } else {
                 needFullHash.append(contentsOf: members)
+                fullPreKeys.append(contentsOf: repeatElement(key, count: members.count))
+                pendingByPreKey[key] = members.count
             }
         }
+        confirmed.append(contentsOf: prefixConfirmed)
+        if !prefixConfirmed.isEmpty { onPartial?(prefixConfirmed) }
 
         // 5. Full-content pass only where the head+tail sample still collided.
-        let fullResults = try await hashConcurrently(needFullHash) { node, size in
+        // Confirmation happens per pre-group as its members complete: an
+        // unreadable member still counts down, so a vanished file never
+        // holds back the rest of its group.
+        var finishedByPreKey: [String: [(node: FileNodeRecord, size: Int64, digest: String?)]] = [:]
+        let fullResults = try await hashConcurrently(needFullHash, work: { node, size in
             let digest = try await hashFullContents(of: node.path) { chunkBytes in
                 await progress.add(bytes: chunkBytes)
             }
             _ = size
             return digest
-        }
+        }, onEntryFinished: { index, node, size, digest in
+            let key = fullPreKeys[index]
+            finishedByPreKey[key, default: []].append((node, size, digest))
+            pendingByPreKey[key, default: 0] -= 1
+            guard pendingByPreKey[key] == 0 else { return }
+            let members = finishedByPreKey.removeValue(forKey: key) ?? []
+            var byDigest: [String: [(node: FileNodeRecord, size: Int64)]] = [:]
+            for member in members {
+                guard let digest = member.digest else { continue }
+                byDigest["\(member.size)-\(digest)", default: []].append((member.node, member.size))
+            }
+            var newGroups: [DuplicateGroup] = []
+            for (groupKey, copies) in byDigest where copies.count >= 2 {
+                newGroups.append(DuplicateGroup(
+                    id: groupKey,
+                    fileSize: copies[0].size,
+                    nodeIDs: copies.map(\.node.id).sorted()
+                ))
+            }
+            guard !newGroups.isEmpty else { return }
+            confirmed.append(contentsOf: newGroups)
+            onPartial?(newGroups)
+        })
         unreadableCount += fullResults.unreadable.count
-
-        var fullGroups: [String: [(node: FileNodeRecord, size: Int64)]] = [:]
-        for entry in fullResults.hashed {
-            fullGroups["\(entry.size)-\(entry.digest)", default: []].append((entry.node, entry.size))
-        }
-        for (key, members) in fullGroups where members.count >= 2 {
-            confirmed.append(DuplicateGroup(
-                id: key,
-                fileSize: members[0].size,
-                nodeIDs: members.map(\.node.id).sorted()
-            ))
-        }
 
         await progress.finish()
 
@@ -318,28 +358,31 @@ public enum DuplicateFinder {
 
     /// Runs `work` over the entries with bounded concurrency; a thrown
     /// non-cancellation error marks the entry unreadable instead of failing
-    /// the scan.
+    /// the scan. `onEntryFinished` (with the entry's index in `entries`, and
+    /// a nil digest for unreadable entries) is called serially from the
+    /// caller's context as each entry completes, in completion order.
     private static func hashConcurrently(
         _ entries: [(node: FileNodeRecord, size: Int64)],
-        work: @escaping @Sendable (FileNodeRecord, Int64) async throws -> String
+        work: @escaping @Sendable (FileNodeRecord, Int64) async throws -> String,
+        onEntryFinished: ((_ index: Int, _ node: FileNodeRecord, _ size: Int64, _ digest: String?) -> Void)? = nil
     ) async throws -> HashPassResults {
         var results = HashPassResults()
         try await withThrowingTaskGroup(
-            of: (node: FileNodeRecord, size: Int64, digest: String?).self
+            of: (index: Int, node: FileNodeRecord, size: Int64, digest: String?).self
         ) { group in
-            var iterator = entries.makeIterator()
+            var iterator = entries.enumerated().makeIterator()
             var inFlight = 0
 
             func addNext() -> Bool {
-                guard let entry = iterator.next() else { return false }
+                guard let (index, entry) = iterator.next() else { return false }
                 group.addTask {
                     do {
                         let digest = try await work(entry.node, entry.size)
-                        return (entry.node, entry.size, digest)
+                        return (index, entry.node, entry.size, digest)
                     } catch is CancellationError {
                         throw CancellationError()
                     } catch {
-                        return (entry.node, entry.size, nil)
+                        return (index, entry.node, entry.size, nil)
                     }
                 }
                 return true
@@ -353,6 +396,7 @@ public enum DuplicateFinder {
                 } else {
                     results.unreadable.append((finished.node, finished.size))
                 }
+                onEntryFinished?(finished.index, finished.node, finished.size, finished.digest)
                 try Task.checkCancellation()
                 if addNext() { inFlight += 1 }
             }

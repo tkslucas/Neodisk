@@ -392,6 +392,41 @@ import Testing
         }
     }
 
+    @Test func streamsPartialGroupsMatchingFinalResults() async throws {
+        try await withTempDirectory { directory in
+            // One pair per confirming tier: tiny (head hash covers the file),
+            // medium (prefix pass covers it), large (full-content pass), plus
+            // a same-size non-duplicate that must never stream.
+            let tiny = bytes(seed: 0x01, count: 2 * 1024)
+            let medium = bytes(seed: 0x02, count: 100 * 1024)
+            let large = bytes(seed: 0x03, count: 2 * Self.megabyte)
+            let store = try makeStore(directory: directory, files: [
+                ("tiny-1.bin", tiny), ("tiny-2.bin", tiny),
+                ("med-1.bin", medium), ("med-2.bin", medium),
+                ("large-1.bin", large), ("large-2.bin", large),
+                ("unique.bin", bytes(seed: 0x04, count: 2 * Self.megabyte)),
+            ])
+
+            let collector = PartialGroupsCollector()
+            let results = try await DuplicateFinder.findDuplicates(
+                in: store,
+                minimumFileSize: 1024,
+                onPartial: { collector.record($0) }
+            )
+
+            let batches = collector.batches()
+            // Each tier reports the groups it confirmed: head, prefix, then
+            // the full pass's collision group.
+            #expect(batches.count == 3)
+            #expect(batches.allSatisfy { !$0.isEmpty })
+            // Batches are disjoint and their union is exactly the final groups.
+            let streamed = batches.flatMap { $0 }
+            #expect(streamed.count == Set(streamed.map(\.id)).count)
+            #expect(streamed.sorted { $0.id < $1.id } == results.groups.sorted { $0.id < $1.id })
+            #expect(results.groups.count == 3)
+        }
+    }
+
     @Test func testResultsCodableRoundTrip() throws {
         let results = DuplicateScanResults(
             groups: [
@@ -407,6 +442,25 @@ import Testing
         #expect(decoded == results)
         // Derived accessors survive the round trip.
         #expect(decoded.groups.first?.wastedBytes == 2048)
+    }
+}
+
+/// Partial-group callbacks arrive from an arbitrary executor; collect behind
+/// a lock so the test can assert on the batches.
+private final class PartialGroupsCollector: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [[DuplicateGroup]] = []
+
+    func record(_ groups: [DuplicateGroup]) {
+        lock.lock()
+        values.append(groups)
+        lock.unlock()
+    }
+
+    func batches() -> [[DuplicateGroup]] {
+        lock.lock()
+        defer { lock.unlock() }
+        return values
     }
 }
 

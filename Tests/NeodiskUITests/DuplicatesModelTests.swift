@@ -90,6 +90,56 @@ import NeodiskKit
         #expect(model.duplicates.computedAt == nil)
     }
 
+    @Test func testLiveScanDimsMapImmediatelyAndFinishesWithHighlight() async throws {
+        let environment = try TestEnvironment()
+        defer { environment.tearDown() }
+
+        // Real files on disk, so the model's scan actually hashes them.
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: "NeodiskDupesLive-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let identical = Data(repeating: 0xAB, count: 2 << 20)
+        let copy1 = directory.appending(path: "copy-1.bin")
+        let copy2 = directory.appending(path: "copy-2.bin")
+        try identical.write(to: copy1)
+        try identical.write(to: copy2)
+
+        let target = makeTestTarget(directory.path)
+        environment.sidebarFolderStore.add(target)
+        let children = [
+            makeTestFileNode(id: copy1.path, name: "copy-1.bin", size: Int64(identical.count)),
+            makeTestFileNode(id: copy2.path, name: "copy-2.bin", size: Int64(identical.count)),
+        ]
+        let root = makeTestDirectoryNode(id: target.id, name: target.displayName, children: children)
+        let store = FileTreeStore(root: root, childrenByID: [root.id: children])
+        try await environment.cache.save(makeTestSnapshot(target: target, root: root, store: store))
+
+        let model = environment.makeModel()
+        try await waitUntilAsync("prune indexes the snapshot") {
+            model.cachedScanInfo[target.id] != nil
+        }
+        model.startScan(target)
+        try await waitUntilAsync("snapshot displayed without scanning") {
+            model.coordinator.phase == .displaying
+        }
+
+        model.duplicates.startScan()
+        // Hashing dims the whole map from the first frame: a non-nil empty
+        // highlight, distinct from the idle tab's nil.
+        #expect(model.duplicates.isScanning)
+        #expect(model.duplicates.highlightedNodeIDs == Set<String>())
+
+        try await waitUntilAsync("scan finishes with the pair") {
+            model.duplicates.results != nil
+        }
+        let results = try #require(model.duplicates.results)
+        #expect(results.groups.count == 1)
+        // Finishing supersedes the live state; every copy stays lit.
+        #expect(model.duplicates.liveGroups.isEmpty)
+        #expect(model.duplicates.highlightedNodeIDs == Set([copy1.path, copy2.path]))
+    }
+
     // MARK: - Fixtures
 
     private struct TestEnvironment {

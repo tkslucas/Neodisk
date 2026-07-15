@@ -27,8 +27,14 @@ struct StatusBar: View {
                 Text("Free space on this volume")
                 Spacer(minLength: 12)
                 if let freeSpaceBytes = model.freeSpace.freeSpaceBytes {
-                    Text(NeodiskFormatters.size(freeSpaceBytes))
-                        .monospacedDigit()
+                    // Finder-style available figure: purgeable space counts
+                    // as free, annotated so the number still matches Disk
+                    // Utility's "available" at a glance.
+                    Text(Self.freeSpaceText(
+                        freeSpaceBytes: freeSpaceBytes,
+                        purgeableBytes: model.freeSpace.purgeableBytes
+                    ))
+                    .monospacedDigit()
                 }
             } else if model.hoveredCellIsHiddenSpace {
                 RoundedRectangle(cornerRadius: 2)
@@ -79,6 +85,19 @@ struct StatusBar: View {
         .font(.system(size: 11))
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
+    }
+
+    /// The free-space figure with its purgeable share spelled out, so the
+    /// number visibly matches what Finder and Disk Utility call available.
+    static func freeSpaceText(freeSpaceBytes: Int64, purgeableBytes: Int64?) -> String {
+        guard let purgeableBytes, purgeableBytes > 0 else {
+            return NeodiskFormatters.size(freeSpaceBytes)
+        }
+        return String(
+            format: NSLocalizedString("%@ (%@ purgeable)", comment: "Status bar free-space size with purgeable share"),
+            NeodiskFormatters.size(freeSpaceBytes),
+            NeodiskFormatters.size(purgeableBytes)
+        )
     }
 
     /// Size for the inspected item, annotated when it carries cloud-only

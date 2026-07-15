@@ -331,6 +331,7 @@
 "Hide cloud-only files (files not downloaded from your cloud drives)" = "Ocultar archivos solo en la nube (archivos no descargados de tus unidades en la nube)";
 "Show cloud-only files (files not downloaded from your cloud drives)" = "Mostrar archivos solo en la nube (archivos no descargados de tus unidades en la nube)";
 "%@ · Cloud-only" = "%@ · Solo en la nube";
+"%@ (%@ purgeable)" = "%@ (%@ purgable)";
 "%@ on this Mac · %@ cloud-only" = "%@ en este Mac · %@ solo en la nube";
 "Cloud storage" = "Almacenamiento en la nube";
 "On this Mac" = "En este Mac";

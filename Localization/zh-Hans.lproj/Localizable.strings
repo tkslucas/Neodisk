@@ -330,6 +330,7 @@
 "Hide cloud-only files (files not downloaded from your cloud drives)" = "隐藏仅云端文件（未从你的云盘下载的文件）";
 "Show cloud-only files (files not downloaded from your cloud drives)" = "显示仅云端文件（未从你的云盘下载的文件）";
 "%@ · Cloud-only" = "%@ · 仅云端";
+"%@ (%@ purgeable)" = "%@（可清除 %@）";
 "%@ on this Mac · %@ cloud-only" = "%@ 本 Mac · %@ 仅云端";
 "Cloud storage" = "云存储";
 "On this Mac" = "本 Mac";

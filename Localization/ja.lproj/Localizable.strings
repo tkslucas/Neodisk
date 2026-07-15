@@ -330,6 +330,7 @@
 "Hide cloud-only files (files not downloaded from your cloud drives)" = "クラウドのみのファイルを非表示（クラウドドライブからダウンロードされていないファイル）";
 "Show cloud-only files (files not downloaded from your cloud drives)" = "クラウドのみのファイルを表示（クラウドドライブからダウンロードされていないファイル）";
 "%@ · Cloud-only" = "%@・クラウドのみ";
+"%@ (%@ purgeable)" = "%@（削除可能 %@）";
 "%@ on this Mac · %@ cloud-only" = "%@ このMac上・%@ クラウドのみ";
 "Cloud storage" = "クラウドストレージ";
 "On this Mac" = "このMac";

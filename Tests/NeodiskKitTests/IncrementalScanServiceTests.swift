@@ -84,6 +84,31 @@ struct IncrementalScanServiceTests {
         return root
     }
 
+    /// A tree whose one multiply-linked file has its two links in two
+    /// different top-level subtrees, so hard-link deduplication must
+    /// reconcile ownership ACROSS subtree boundaries — the case a splice can
+    /// get wrong when it re-scans one subtree in isolation. "A-Owner" sorts
+    /// before "Z-Changed", so dedup keeps the shared bytes on the owner link
+    /// in the untouched subtree and zeroes the changed subtree's link; a
+    /// splice that forgets to rebalance leaves that link double-counted.
+    private func makeHardLinkTree() throws -> URL {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: "incremental-hardlink-\(UUID().uuidString)", directoryHint: .isDirectory)
+            .resolvingSymlinksInPath()
+        let owner = root.appending(path: "A-Owner", directoryHint: .isDirectory)
+        let changed = root.appending(path: "Z-Changed", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: owner, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: changed, withIntermediateDirectories: true)
+        // Filler so neither subtree is just the shared file.
+        try Data(repeating: 0x61, count: 4_096).write(to: owner.appending(path: "owner-only.bin"))
+        try Data(repeating: 0x62, count: 2_048).write(to: changed.appending(path: "changed-only.bin"))
+        // The shared payload, hard-linked into both subtrees.
+        let shared = owner.appending(path: "shared.bin")
+        try Data(repeating: 0x63, count: 16_384).write(to: shared)
+        try FileManager.default.linkItem(at: shared, to: changed.appending(path: "shared.bin"))
+        return root
+    }
+
     private func finishedSnapshot(
         from stream: AsyncThrowingStream<ScanProgressEvent, Error>
     ) async throws -> ScanSnapshot? {
@@ -113,6 +138,55 @@ struct IncrementalScanServiceTests {
             #expect(a.allocatedSize == b.allocatedSize, "\(a.id)", sourceLocation: sourceLocation)
             #expect(a.logicalSize == b.logicalSize, "\(a.id)", sourceLocation: sourceLocation)
             #expect(a.descendantFileCount == b.descendantFileCount, "\(a.id)", sourceLocation: sourceLocation)
+        }
+    }
+
+    /// Node-for-node parity focused on hard-link accounting: identity, link
+    /// count, both the raw (`unduplicatedAllocatedSize`) and the
+    /// dedup-adjusted (`allocatedSize`) sizes, and child ordering. A splice
+    /// that mis-rebalances a cross-subtree hard link diverges here even when
+    /// the coarser `expectEquivalentTrees` fields happen to line up.
+    private func expectHardLinkParity(
+        _ lhs: FileTreeStore,
+        _ rhs: FileTreeStore,
+        sourceLocation: SourceLocation = #_sourceLocation
+    ) {
+        #expect(
+            lhs.indexedNodeIDs().sorted() == rhs.indexedNodeIDs().sorted(),
+            sourceLocation: sourceLocation
+        )
+        for id in rhs.indexedNodeIDs() {
+            guard let a = lhs.node(id: id), let b = rhs.node(id: id) else {
+                Issue.record("missing node \(id)", sourceLocation: sourceLocation)
+                continue
+            }
+            #expect(a.isDirectory == b.isDirectory, "\(id)", sourceLocation: sourceLocation)
+            #expect(a.isSymbolicLink == b.isSymbolicLink, "\(id)", sourceLocation: sourceLocation)
+            #expect(a.allocatedSize == b.allocatedSize, "\(id)", sourceLocation: sourceLocation)
+            #expect(
+                a.unduplicatedAllocatedSize == b.unduplicatedAllocatedSize,
+                "\(id)",
+                sourceLocation: sourceLocation
+            )
+            #expect(a.logicalSize == b.logicalSize, "\(id)", sourceLocation: sourceLocation)
+            #expect(a.descendantFileCount == b.descendantFileCount, "\(id)", sourceLocation: sourceLocation)
+            // File identity drives hard-link dedup and must match exactly.
+            // Directory identity is compared by the caller: a rescanned
+            // subtree's root directory has a known splice-vs-full divergence
+            // (the single-URL metadata loader does not capture directory
+            // identity the way the bulk child reader does), so asserting it
+            // here would flag that unrelated gap on every interior directory.
+            if !a.isDirectory {
+                #expect(a.fileIdentity == b.fileIdentity, "\(id)", sourceLocation: sourceLocation)
+            }
+            #expect(a.linkCount == b.linkCount, "\(id)", sourceLocation: sourceLocation)
+            #expect(a.isPackage == b.isPackage, "\(id)", sourceLocation: sourceLocation)
+            #expect(a.isSynthetic == b.isSynthetic, "\(id)", sourceLocation: sourceLocation)
+            #expect(
+                lhs.children(of: id).map(\.id) == rhs.children(of: id).map(\.id),
+                "\(id)",
+                sourceLocation: sourceLocation
+            )
         }
     }
 
@@ -153,6 +227,118 @@ struct IncrementalScanServiceTests {
         ))
 
         expectEquivalentTrees(rescanned.treeStore, fresh.treeStore)
+        #expect(rescanned.incrementalCheckpoint?.eventID == 20)
+        #expect(rescanned.isComplete)
+        #expect(rescanned.id != baseline.id)
+        let requests = provider.recordedRequests
+        #expect(requests.count == 1)
+        #expect(requests.first?.since == 10)
+        #expect(requests.first?.through == 20)
+    }
+
+    /// A hard link straddling two subtrees, where only one subtree changes.
+    /// The changed subtree is rescanned in isolation — where the shared file
+    /// looks like an unlinked file (its twin is out of scope) — so the splice
+    /// must re-run global hard-link deduplication to keep the accounting
+    /// identical to a from-scratch scan. Ported from Radix's
+    /// testIncrementalRescanMatchesFullScanForHardLinksAcrossSubtrees.
+    @Test func incrementalSpliceMatchesFreshFullScanForHardLinksAcrossSubtrees() async throws {
+        let root = try makeHardLinkTree()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let target = ScanTarget(url: root)
+        let options = ScanOptions()
+
+        let provider = StubEventHistoryProvider(checkpoints: [checkpoint(10), checkpoint(20)])
+        let service = IncrementalScanService(engine: ScanEngine(), historyProvider: provider)
+
+        let baseline = try #require(try await finishedSnapshot(
+            from: service.scan(target: target, options: options)
+        ))
+        #expect(baseline.incrementalCheckpoint?.eventID == 10)
+
+        // The fixture must actually exercise dedup, or the parity check below
+        // is vacuous: both links share one identity, and the baseline kept the
+        // bytes on the owner link (alphabetically-first subtree) while the
+        // changed subtree's link was reduced below its raw size.
+        let ownerLink = try #require(baseline.treeStore.node(id: target.id + "/A-Owner/shared.bin"))
+        let changedLink = try #require(baseline.treeStore.node(id: target.id + "/Z-Changed/shared.bin"))
+        #expect(ownerLink.linkCount == 2)
+        #expect(ownerLink.fileIdentity != nil)
+        #expect(ownerLink.fileIdentity == changedLink.fileIdentity)
+        #expect(ownerLink.allocatedSize == ownerLink.unduplicatedAllocatedSize)
+        #expect(changedLink.allocatedSize < changedLink.unduplicatedAllocatedSize)
+
+        // Grow the changed subtree so the journal names it. The planner then
+        // re-scans exactly that subtree — the one holding the deduped link.
+        let changedDir = root.appending(path: "Z-Changed", directoryHint: .isDirectory)
+        try Data(repeating: 0x64, count: 8_192).write(to: changedDir.appending(path: "added.bin"))
+        let events = [
+            FileSystemChangeEvent(path: target.id + "/Z-Changed/added.bin", eventID: 15, flags: [.itemCreated]),
+        ]
+        provider.setHistory(.success(FileSystemEventHistory(events: events)))
+
+        // Guarantee the splice path — not a silent full-scan fallback —
+        // handles these events: run the same planner the service runs and
+        // require it to resolve them to re-scanning only the changed subtree.
+        let behavior = ScanEngine.ScanBehavior(
+            excludesStartupVolumeInternals: target.kind == .volume && target.url.path == "/"
+        )
+        let matcher = ScanExclusionMatcher(
+            patterns: options.exclusionPatterns,
+            rootPath: options.exclusionRootPath ?? target.url.path,
+            includeCloudStorage: options.includeCloudStorage,
+            cloudStorageRootPath: options.cloudStorageRootPath,
+            iCloudDriveRootPath: options.iCloudDriveRootPath
+        )
+        let plan = IncrementalRescanPlanner.plan(
+            events: events,
+            target: target,
+            baseline: baseline.treeStore,
+            options: options,
+            behavior: behavior,
+            exclusionMatcher: matcher
+        )
+        #expect(plan == .rescanSubtrees([target.id + "/Z-Changed"]))
+
+        let rescanned = try #require(try await finishedSnapshot(
+            from: service.rescan(target: target, options: options, baselineProvider: { baseline })
+        ))
+        let fresh = try #require(try await finishedSnapshot(
+            from: ScanEngine().scan(target: target, options: options)
+        ))
+
+        // The spliced tree must match a from-scratch scan node-for-node,
+        // including the rebalanced cross-subtree hard link, and in totals.
+        expectHardLinkParity(rescanned.treeStore, fresh.treeStore)
+        #expect(rescanned.aggregateStats.totalAllocatedSize == fresh.aggregateStats.totalAllocatedSize)
+        #expect(rescanned.aggregateStats.totalLogicalSize == fresh.aggregateStats.totalLogicalSize)
+        #expect(rescanned.aggregateStats.fileCount == fresh.aggregateStats.fileCount)
+        #expect(rescanned.aggregateStats.directoryCount == fresh.aggregateStats.directoryCount)
+
+        // The changed subtree's link is deduped again after the splice: its
+        // isolated sub-scan saw it at full size, and the rebalance had to
+        // reduce it. A rebalance-less splice would leave it at raw size here.
+        let splicedChangedLink = try #require(rescanned.treeStore.node(id: target.id + "/Z-Changed/shared.bin"))
+        #expect(splicedChangedLink.allocatedSize < splicedChangedLink.unduplicatedAllocatedSize)
+
+        // Untouched interior directories keep their baseline identity, so it
+        // matches a fresh scan there.
+        #expect(
+            rescanned.treeStore.node(id: target.id + "/A-Owner")?.fileIdentity
+                == fresh.treeStore.node(id: target.id + "/A-Owner")?.fileIdentity
+        )
+        // Characterizes a known splice-vs-full divergence (see report): the
+        // rescanned subtree's ROOT directory is built from the single-URL
+        // metadata loader, which — unlike the bulk directory reader that
+        // enumerates it as a child in a full scan — does not capture directory
+        // identity. So the spliced Z-Changed directory carries no fileIdentity
+        // where a fresh full scan records its device+inode. This is also
+        // independent proof the splice path (not a full-scan fallback) ran.
+        #expect(rescanned.treeStore.node(id: target.id + "/Z-Changed")?.fileIdentity == nil)
+        #expect(fresh.treeStore.node(id: target.id + "/Z-Changed")?.fileIdentity != nil)
+
+        // And the incremental machinery actually ran: history was consulted
+        // exactly once over the baseline→cutoff window, advancing the checkpoint.
         #expect(rescanned.incrementalCheckpoint?.eventID == 20)
         #expect(rescanned.isComplete)
         #expect(rescanned.id != baseline.id)

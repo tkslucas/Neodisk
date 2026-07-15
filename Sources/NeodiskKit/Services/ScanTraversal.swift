@@ -125,6 +125,38 @@ nonisolated final class ScanTraversal {
         case failure(DirectoryTraversalFailure)
     }
 
+    /// A summarized package leaf produced off the loop by a pooled summary task.
+    private struct PackageSummaryOutcome: Sendable {
+        let item: ScanWorkItem
+        let itemKey: Int
+        let metadata: NodeMetadata
+        let leaf: LeafNodeResult
+    }
+
+    /// An enumerated directory that passed the cheap auto-summarize gate and is
+    /// awaiting its pooled probe/summary off the loop.
+    private struct AtomicDirectoryCandidate: Sendable {
+        let item: ScanWorkItem
+        let itemKey: Int
+        let metadata: NodeMetadata
+        let contents: ScanEngine.DirectoryContentsScanResult
+        let childDirectoryCount: Int
+        let isNodeDependencyLayout: Bool
+    }
+
+    private struct AtomicDirectoryOutcome: Sendable {
+        let candidate: AtomicDirectoryCandidate
+        /// nil when the probe decided the directory should be expanded normally.
+        let summary: AtomicDirectorySummary?
+    }
+
+    /// The result classes multiplexed through the scan's single task group.
+    private enum ScanTaskOutcome: Sendable {
+        case directory(DirectoryTraversalResult)
+        case package(PackageSummaryOutcome)
+        case atomicDirectory(AtomicDirectoryOutcome)
+    }
+
     /// Thresholds for automatically summarizing directories with many small files.
     /// Directories exceeding BOTH thresholds are treated as atomic (not expanded).
     private enum AtomicDirectoryThresholds {
@@ -148,7 +180,11 @@ nonisolated final class ScanTraversal {
     private let continuation: AsyncThrowingStream<ScanProgressEvent, Error>.Continuation
     private let metadataLoader: ScanMetadataLoader
     private let directoryContents: ScanEngine.DirectoryContentsProvider
-    private let atomicDirectorySummarizer: AtomicDirectorySummarizer
+    /// `var` because `run()` rebinds it to the run-scoped summary pool.
+    private var atomicDirectorySummarizer: AtomicDirectorySummarizer
+    /// The scan-wide pool that owns every package/atomic summary for this run.
+    /// Created and torn down in `run()`.
+    private var summaryPool: AtomicDirectorySummaryPool?
     private let volumeFileSystemTypeProvider: ScanEngine.VolumeFileSystemTypeProvider
     private let diagnostics: ScanDiagnosticsContext?
     private let bulkEnumerationEnabled: Bool
@@ -227,29 +263,62 @@ nonisolated final class ScanTraversal {
     /// Scans the target's directory iteratively (no recursion) and returns a
     /// fully assembled flat tree.
     func run() async throws -> FileTreeStore {
-        try Task.checkCancellation()
-
-        let rootMetadata = try metadataLoader.metadata(
-            for: target.url,
-            includeVolumeDetails: includeVolumeDetails,
-            captureDirectoryIdentity: true
+        // One shared worker pool per run owns every package/atomic summary, so a
+        // giant bundle fans across all workers instead of stalling the loop while
+        // siblings wait. Torn down on both the success and error paths.
+        let pool = AtomicDirectorySummaryPool(
+            workerLimit: atomicSummaryWorkerLimit,
+            continuation: continuation
         )
-        metrics.discoveredItems = 1
-        metrics.estimatedTotalBytes = estimatedTotalBytes(for: target, metadata: rootMetadata)
-        metrics.currentPath = target.url.path
-        metrics.recalculateProgress()
+        summaryPool = pool
+        atomicDirectorySummarizer = atomicDirectorySummarizer.withSummaryPool(pool)
+        pool.start()
 
-        // If the root itself shouldn't be traversed, return a leaf node.
-        guard shouldTraverseDirectory(metadata: rootMetadata, isRoot: true) else {
-            return try await makeRootLeafStore(rootMetadata: rootMetadata)
+        do {
+            try Task.checkCancellation()
+
+            let rootMetadata = try metadataLoader.metadata(
+                for: target.url,
+                includeVolumeDetails: includeVolumeDetails,
+                captureDirectoryIdentity: true
+            )
+            metrics.discoveredItems = 1
+            metrics.estimatedTotalBytes = estimatedTotalBytes(for: target, metadata: rootMetadata)
+            metrics.currentPath = target.url.path
+            metrics.recalculateProgress()
+            // Seeds the pool heartbeat's base metrics before any pooled work:
+            // a root-leaf scan (package root) otherwise runs its whole summary
+            // with the heartbeat dropping every emission.
+            maybeEmitProgress()
+
+            // If the root itself shouldn't be traversed, return a leaf node.
+            let store: FileTreeStore
+            if shouldTraverseDirectory(metadata: rootMetadata, isRoot: true) {
+                try await runTraversalPhase(rootMetadata: rootMetadata)
+                store = try assembleTree()
+            } else {
+                store = try await makeRootLeafStore(rootMetadata: rootMetadata)
+            }
+            await pool.finish()
+            return store
+        } catch {
+            await pool.cancelAndFinish(with: error)
+            throw error
         }
-
-        try await runTraversalPhase(rootMetadata: rootMetadata)
-        return try assembleTree()
     }
 
     private func makeRootLeafStore(rootMetadata: NodeMetadata) async throws -> FileTreeStore {
-        let leafResult = try await makeLeafNode(url: target.url, metadata: rootMetadata)
+        let leafResult = try await atomicDirectorySummarizer.makeLeafNode(
+            url: target.url,
+            metadata: rootMetadata,
+            options: options,
+            workerLimit: atomicSummaryWorkerLimit,
+            exclusionMatcher: exclusionMatcher,
+            cancellationCheck: cancellationCheck,
+            metrics: &metrics,
+            continuation: continuation,
+            emissionState: &emissionState
+        )
         hardLinkClaims.append(contentsOf: leafResult.hardLinkClaims)
         if let minimumAllocatedSize = leafResult.minimumAllocatedSize {
             minimumAllocatedSizeByNodeID[leafResult.node.id] = minimumAllocatedSize
@@ -316,9 +385,27 @@ nonisolated final class ScanTraversal {
         let directoryContentsProvider = directoryContents
         let directoryResourceKeys = ScanMetadataLoader.scanResourceKeys
         let usesBulkEnumeration = bulkEnumerationEnabled
+        let continuation = self.continuation
 
-        try await withThrowingTaskGroup(of: DirectoryTraversalResult.self) { group in
+        let summarizer = self.atomicDirectorySummarizer
+        let summaryWorkerLimit = self.atomicSummaryWorkerLimit
+        // Request cap for concurrent summary tasks. The shared pool bounds the
+        // actual CPU (its worker count); this only limits how many summaries are
+        // in flight so their probes and result plumbing don't pile up.
+        let summaryRequestLimit = max(1, summaryWorkerLimit * 2)
+        let autoSummarizeMinFileCount = options.tuning.autoSummarizeMinFileCount ?? AtomicDirectoryThresholds.minFileCount
+        let autoSummarizeMaxAverageFileSize = options.tuning.autoSummarizeMaxAverageFileSize ?? AtomicDirectoryThresholds.maxAverageFileSize
+
+        try await withThrowingTaskGroup(of: ScanTaskOutcome.self) { group in
             var activeDirectoryTasks = 0
+            // One counter for both package and atomic-directory summary tasks.
+            var activeSummaryTasks = 0
+            // Packages and atomic-summary candidates waiting for a request slot.
+            // They must not be summarized inline in the scheduling loop: awaiting a
+            // pool job there stops the group from draining, freezing progress
+            // bookkeeping until the stack unwinds.
+            var pendingPackageScans: [(item: ScanWorkItem, itemKey: Int, metadata: NodeMetadata)] = []
+            var pendingAtomicScans: [AtomicDirectoryCandidate] = []
 
             while true {
                 concurrency.refreshIfDue()
@@ -385,31 +472,31 @@ nonisolated final class ScanTraversal {
                                     usesBulkEnumeration: usesBulkEnumeration,
                                     cancellationCheck: cancellationCheck
                                 )
-                                return .success(DirectoryTraversalSuccess(
+                                return .directory(.success(DirectoryTraversalSuccess(
                                     item: taskItem,
                                     itemKey: taskItemKey,
                                     metadata: taskMetadata,
                                     contents: contents
-                                ))
+                                )))
                             } catch is CancellationError {
                                 throw CancellationError()
                             } catch {
                                 #if DEBUG
-                                return .failure(DirectoryTraversalFailure(
+                                return .directory(.failure(DirectoryTraversalFailure(
                                     item: taskItem,
                                     itemKey: taskItemKey,
                                     metadata: taskMetadata,
                                     warning: ScanWarningFactory.makeWarning(for: taskItem.url, error: error),
                                     elapsedNanoseconds: DispatchTime.now().uptimeNanoseconds - traversalStart,
                                     diagnosticDetail: "error=\(ScanWarningFactory.diagnosticErrorDescription(error))"
-                                ))
+                                )))
                                 #else
-                                return .failure(DirectoryTraversalFailure(
+                                return .directory(.failure(DirectoryTraversalFailure(
                                     item: taskItem,
                                     itemKey: taskItemKey,
                                     metadata: taskMetadata,
                                     warning: ScanWarningFactory.makeWarning(for: taskItem.url, error: error)
-                                ))
+                                )))
                                 #endif
                             }
                         }
@@ -417,19 +504,94 @@ nonisolated final class ScanTraversal {
                         // Leaf node (file, symlink, or package-as-directory). Discovery may
                         // have classified it as a pending directory; release that claim.
                         releasePendingDirectoryIfNeeded(for: item)
-                        try await completeLeaf(item: item, itemKey: itemKey, metadata: meta)
+                        if meta.isPackage, meta.isDirectory, !options.treatPackagesAsDirectories {
+                            // Defer the package summary to a request-limited task so
+                            // it summarizes through the shared pool off the loop.
+                            pendingPackageScans.append((item: item, itemKey: itemKey, metadata: meta))
+                        } else {
+                            try await completeLeaf(item: item, itemKey: itemKey, metadata: meta)
+                        }
                     }
                 }
 
-                guard activeDirectoryTasks > 0 else { break }
-                guard let traversalResult = try await group.next() else { break }
-                activeDirectoryTasks -= 1
+                while activeSummaryTasks < summaryRequestLimit,
+                      let pendingPackage = pendingPackageScans.popLast() {
+                    let taskItem = pendingPackage.item
+                    let taskItemKey = pendingPackage.itemKey
+                    let taskMetadata = pendingPackage.metadata
+                    let taskMetrics = metrics
+                    let taskEmissionState = emissionState
+                    activeSummaryTasks += 1
+                    group.addTask {
+                        var localMetrics = taskMetrics
+                        var localEmissionState = taskEmissionState
+                        let leaf = try await summarizer.makeLeafNode(
+                            url: taskItem.url,
+                            metadata: taskMetadata,
+                            options: options,
+                            workerLimit: summaryWorkerLimit,
+                            exclusionMatcher: exclusionMatcher,
+                            cancellationCheck: cancellationCheck,
+                            metrics: &localMetrics,
+                            continuation: continuation,
+                            emissionState: &localEmissionState
+                        )
+                        return .package(PackageSummaryOutcome(
+                            item: taskItem,
+                            itemKey: taskItemKey,
+                            metadata: taskMetadata,
+                            leaf: leaf
+                        ))
+                    }
+                }
 
-                switch traversalResult {
-                case .success(let success):
-                    try await handleTraversalSuccess(success)
-                case .failure(let failure):
+                while activeSummaryTasks < summaryRequestLimit,
+                      let candidate = pendingAtomicScans.popLast() {
+                    let taskMetrics = metrics
+                    let taskEmissionState = emissionState
+                    activeSummaryTasks += 1
+                    group.addTask {
+                        var localMetrics = taskMetrics
+                        var localEmissionState = taskEmissionState
+                        let summary = try await summarizer.summaryIfNeeded(
+                            url: candidate.item.url,
+                            childEntries: candidate.contents.entries,
+                            metadata: candidate.metadata,
+                            includeHiddenFiles: options.includeHiddenFiles,
+                            treatPackagesAsDirectories: options.treatPackagesAsDirectories,
+                            isNodeDependencyLayout: candidate.isNodeDependencyLayout,
+                            minFileCount: autoSummarizeMinFileCount,
+                            maxAverageFileSize: autoSummarizeMaxAverageFileSize,
+                            workerLimit: summaryWorkerLimit,
+                            exclusionMatcher: exclusionMatcher,
+                            cancellationCheck: cancellationCheck,
+                            metrics: &localMetrics,
+                            continuation: continuation,
+                            emissionState: &localEmissionState
+                        )
+                        return .atomicDirectory(AtomicDirectoryOutcome(
+                            candidate: candidate,
+                            summary: summary
+                        ))
+                    }
+                }
+
+                guard activeDirectoryTasks + activeSummaryTasks > 0 else { break }
+                guard let outcome = try await group.next() else { break }
+
+                switch outcome {
+                case .directory(.success(let success)):
+                    activeDirectoryTasks -= 1
+                    try handleTraversalSuccess(success, pendingAtomicScans: &pendingAtomicScans)
+                case .directory(.failure(let failure)):
+                    activeDirectoryTasks -= 1
                     handleTraversalFailure(failure)
+                case .package(let packageOutcome):
+                    activeSummaryTasks -= 1
+                    completePackage(packageOutcome)
+                case .atomicDirectory(let atomicOutcome):
+                    activeSummaryTasks -= 1
+                    try completeAtomicDirectory(atomicOutcome)
                 }
 
                 maybeEmitPartialTree()
@@ -438,7 +600,28 @@ nonisolated final class ScanTraversal {
     }
 
     private func completeLeaf(item: ScanWorkItem, itemKey: Int, metadata meta: NodeMetadata) async throws {
-        let leafResult = try await makeLeafNode(url: item.url, metadata: meta)
+        let leafResult = try await atomicDirectorySummarizer.makeLeafNode(
+            url: item.url,
+            metadata: meta,
+            options: options,
+            workerLimit: atomicSummaryWorkerLimit,
+            exclusionMatcher: exclusionMatcher,
+            cancellationCheck: cancellationCheck,
+            metrics: &metrics,
+            continuation: continuation,
+            emissionState: &emissionState
+        )
+        foldLeafResult(leafResult, item: item, itemKey: itemKey, metadata: meta)
+    }
+
+    /// Folds a completed leaf (plain file/symlink, or a summarized package) into
+    /// the loop-side accounting and registers it for phase 2 assembly.
+    private func foldLeafResult(
+        _ leafResult: LeafNodeResult,
+        item: ScanWorkItem,
+        itemKey: Int,
+        metadata meta: NodeMetadata
+    ) {
         hardLinkClaims.append(contentsOf: leafResult.hardLinkClaims)
         if let minimumAllocatedSize = leafResult.minimumAllocatedSize {
             minimumAllocatedSizeByNodeID[leafResult.node.id] = minimumAllocatedSize
@@ -461,7 +644,14 @@ nonisolated final class ScanTraversal {
         )
     }
 
-    private func handleTraversalSuccess(_ success: DirectoryTraversalSuccess) async throws {
+    /// Loop-side handling of an enumerated directory: frontier bookkeeping, then
+    /// either deferring the auto-summary probe to a pooled task (`pendingAtomicScans`)
+    /// or expanding the directory's children onto the work stack. The actual
+    /// summary decision lands later in `completeAtomicDirectory`.
+    private func handleTraversalSuccess(
+        _ success: DirectoryTraversalSuccess,
+        pendingAtomicScans: inout [AtomicDirectoryCandidate]
+    ) throws {
         let item = success.item
         let itemKey = success.itemKey
         let meta = success.metadata
@@ -498,8 +688,6 @@ nonisolated final class ScanTraversal {
         maybeEmitProgress()
 
         // Check if this directory should be summarized as atomic (many small files)
-        let minFileCount = options.tuning.autoSummarizeMinFileCount ?? AtomicDirectoryThresholds.minFileCount
-        let maxAvgSize = options.tuning.autoSummarizeMaxAverageFileSize ?? AtomicDirectoryThresholds.maxAverageFileSize
         let minDepth = options.tuning.autoSummarizeMinDepthForSummarization ?? AtomicDirectoryThresholds.minDepthForSummarization
         let isNodeDependencyLayout = AtomicDirectorySummarizer.isNodeDependencyLayoutDirectory(at: item.url)
         let isKnownGeneratedDirectory = AtomicDirectorySummarizer.isKnownGeneratedDirectory(at: item.url)
@@ -507,76 +695,40 @@ nonisolated final class ScanTraversal {
             item.depth >= minDepth ||
             (item.depth >= 1 && isNodeDependencyLayout) ||
             isKnownGeneratedDirectory
-        var completedAsAtomicDirectory = false
-        if options.autoSummarizeDirectories,
-           canProbeForAutoSummary,
-           let summary = try await atomicDirectorySummarizer.summaryIfNeeded(
-               url: item.url,
+        let minFileCount = options.tuning.autoSummarizeMinFileCount ?? AtomicDirectoryThresholds.minFileCount
+        if options.autoSummarizeDirectories, canProbeForAutoSummary,
+           atomicDirectorySummarizer.isPooledSummaryProbeWorthwhile(
                childEntries: childEntries,
-               metadata: meta,
-               includeHiddenFiles: options.includeHiddenFiles,
-               treatPackagesAsDirectories: options.treatPackagesAsDirectories,
-               isNodeDependencyLayout: isNodeDependencyLayout,
                minFileCount: minFileCount,
-               maxAverageFileSize: maxAvgSize,
-               workerLimit: atomicSummaryWorkerLimit,
-               exclusionMatcher: exclusionMatcher,
-               cancellationCheck: cancellationCheck,
-               metrics: &metrics,
-               continuation: continuation,
-               emissionState: &emissionState
+               isKnownGeneratedDirectory: isKnownGeneratedDirectory,
+               isNodeDependencyLayout: isNodeDependencyLayout
            ) {
-            // Treat as atomic: create a leaf node with summary stats.
-            let atomicNode = FileNodeRecord(
-                id: item.url.path,
-                url: item.url,
-                name: ScanTarget.displayName(for: item.url),
-                isDirectory: true,
-                isSymbolicLink: false,
-                allocatedSize: max(meta.allocatedSize, summary.allocatedSize),
-                logicalSize: max(meta.logicalSize, summary.logicalSize),
-                descendantFileCount: summary.descendantFileCount,
-                lastModified: meta.lastModified,
-                fileIdentity: meta.fileIdentity,
-                linkCount: meta.linkCount,
-                isPackage: false,
-                isAccessible: summary.isAccessible,
-                isSelfAccessible: meta.isReadable,
-                isSynthetic: false,
-                isAutoSummarized: true,
-                cloudOnlyLogicalSize: summary.cloudOnlyLogicalSize
+            // Defer probe + summary to a pooled task; the loop keeps draining.
+            pendingAtomicScans.append(
+                AtomicDirectoryCandidate(
+                    item: item,
+                    itemKey: itemKey,
+                    metadata: meta,
+                    contents: contents,
+                    childDirectoryCount: childDirectoryCount,
+                    isNodeDependencyLayout: isNodeDependencyLayout
+                )
             )
-            hardLinkClaims.append(contentsOf: summary.hardLinkClaims)
-            minimumAllocatedSizeByNodeID[atomicNode.id] = meta.allocatedSize
-            // The summarized children will never be enqueued: count them as
-            // completed and release their frontier claims.
-            metrics.completedItems += childEntries.count
-            metrics.discoveredDirectoryCount = max(
-                metrics.discoveredDirectoryCount - childDirectoryCount,
-                0
-            )
-            metrics.pendingDirectoryCount = max(metrics.pendingDirectoryCount - childDirectoryCount, 0)
-            applyLeafMetrics(atomicNode, weight: item.weight)
-            if !summary.warnings.isEmpty {
-                warnings.append(contentsOf: summary.warnings)
-                for warning in summary.warnings {
-                    continuation.yield(.warning(warning))
-                }
-            }
-            maybeEmitProgress()
-
-            completedByKey[itemKey] = CompletedDirScan(
-                node: atomicNode,
-                metadata: meta,
-                url: item.url,
-                isTraversable: false,
-                depth: item.depth
-            )
-            completedAsAtomicDirectory = true
+            return
         }
 
-        guard !completedAsAtomicDirectory else { return }
+        try expandDirectory(item: item, itemKey: itemKey, metadata: meta, childEntries: childEntries)
+    }
 
+    /// Fans a directory's children onto the work stack and registers the
+    /// directory for phase 2 assembly. Used both when auto-summary does not apply
+    /// and when a deferred probe declines to summarize.
+    private func expandDirectory(
+        item: ScanWorkItem,
+        itemKey: Int,
+        metadata meta: NodeMetadata,
+        childEntries: [DirectoryEntry]
+    ) throws {
         if childEntries.isEmpty {
             // Nothing below this directory: its whole weight is done.
             metrics.completedTraversalWeight += item.weight
@@ -612,6 +764,86 @@ nonisolated final class ScanTraversal {
             metadata: meta,
             url: item.url,
             isTraversable: true,
+            depth: item.depth
+        )
+    }
+
+    /// Folds a pooled package summary back onto the loop.
+    private func completePackage(_ outcome: PackageSummaryOutcome) {
+        foldLeafResult(
+            outcome.leaf,
+            item: outcome.item,
+            itemKey: outcome.itemKey,
+            metadata: outcome.metadata
+        )
+    }
+
+    /// Folds a deferred auto-summary result back onto the loop: builds the atomic
+    /// leaf when the probe summarized, or expands the directory when it declined.
+    private func completeAtomicDirectory(_ outcome: AtomicDirectoryOutcome) throws {
+        let candidate = outcome.candidate
+        let item = candidate.item
+        let meta = candidate.metadata
+        let childEntries = candidate.contents.entries
+
+        guard let summary = outcome.summary else {
+            // Probe declined: expand the directory normally.
+            try expandDirectory(
+                item: item,
+                itemKey: candidate.itemKey,
+                metadata: meta,
+                childEntries: childEntries
+            )
+            return
+        }
+
+        // Treat as atomic: create a leaf node with summary stats.
+        let atomicNode = FileNodeRecord(
+            id: item.url.path,
+            url: item.url,
+            name: ScanTarget.displayName(for: item.url),
+            isDirectory: true,
+            isSymbolicLink: false,
+            allocatedSize: max(meta.allocatedSize, summary.allocatedSize),
+            logicalSize: max(meta.logicalSize, summary.logicalSize),
+            descendantFileCount: summary.descendantFileCount,
+            lastModified: meta.lastModified,
+            fileIdentity: meta.fileIdentity,
+            linkCount: meta.linkCount,
+            isPackage: false,
+            isAccessible: summary.isAccessible,
+            isSelfAccessible: meta.isReadable,
+            isSynthetic: false,
+            isAutoSummarized: true,
+            cloudOnlyLogicalSize: summary.cloudOnlyLogicalSize
+        )
+        hardLinkClaims.append(contentsOf: summary.hardLinkClaims)
+        minimumAllocatedSizeByNodeID[atomicNode.id] = meta.allocatedSize
+        // The summarized children will never be enqueued: count them as
+        // completed and release their frontier claims.
+        metrics.completedItems += childEntries.count
+        metrics.discoveredDirectoryCount = max(
+            metrics.discoveredDirectoryCount - candidate.childDirectoryCount,
+            0
+        )
+        metrics.pendingDirectoryCount = max(
+            metrics.pendingDirectoryCount - candidate.childDirectoryCount,
+            0
+        )
+        applyLeafMetrics(atomicNode, weight: item.weight)
+        if !summary.warnings.isEmpty {
+            warnings.append(contentsOf: summary.warnings)
+            for warning in summary.warnings {
+                continuation.yield(.warning(warning))
+            }
+        }
+        maybeEmitProgress()
+
+        completedByKey[candidate.itemKey] = CompletedDirScan(
+            node: atomicNode,
+            metadata: meta,
+            url: item.url,
+            isTraversable: false,
             depth: item.depth
         )
     }
@@ -838,104 +1070,6 @@ nonisolated final class ScanTraversal {
 
     // MARK: - Leaf construction
 
-    private func makeFileNode(
-        url: URL,
-        metadata: NodeMetadata
-    ) -> FileNodeRecord {
-        FileNodeRecord(
-            id: url.path,
-            url: url,
-            name: ScanTarget.displayName(for: url),
-            isDirectory: metadata.isDirectory,
-            isSymbolicLink: metadata.isSymbolicLink,
-            allocatedSize: metadata.allocatedSize,
-            logicalSize: metadata.logicalSize,
-            descendantFileCount: metadata.isDirectory || metadata.isSymbolicLink ? 0 : 1,
-            lastModified: metadata.lastModified,
-            fileIdentity: metadata.fileIdentity,
-            linkCount: metadata.linkCount,
-            isPackage: metadata.isPackage,
-            isAccessible: metadata.isReadable,
-            isSelfAccessible: metadata.isReadable,
-            isSynthetic: false,
-            isAutoSummarized: false,
-            isDataless: metadata.isDataless
-        )
-    }
-
-    private func makeLeafNode(
-        url: URL,
-        metadata: NodeMetadata
-    ) async throws -> (
-        node: FileNodeRecord,
-        warnings: [ScanWarning],
-        hardLinkClaims: [HardLinkClaim],
-        minimumAllocatedSize: Int64?
-    ) {
-        try cancellationCheck()
-        guard metadata.isPackage, metadata.isDirectory, !options.treatPackagesAsDirectories else {
-            let node = makeFileNode(
-                url: url,
-                metadata: metadata
-            )
-            return (
-                node,
-                [],
-                HardLinkDeduplicator.claim(for: metadata, ownerNodeID: node.id, path: url.path).map { [$0] } ?? [],
-                nil
-            )
-        }
-
-        guard let summary = try await atomicDirectorySummarizer.summarize(
-            at: url,
-            includeHiddenFiles: options.includeHiddenFiles,
-            treatPackagesAsDirectories: true,
-            workerLimit: ScanConcurrencyPolicy.atomicSummaryWorkerLimit(for: options),
-            ownerNodeID: url.path,
-            exclusionMatcher: exclusionMatcher,
-            cancellationCheck: cancellationCheck,
-            metrics: &metrics,
-            continuation: continuation,
-            emissionState: &emissionState
-        ) else {
-            let node = makeFileNode(
-                url: url,
-                metadata: metadata
-            )
-            return (
-                node,
-                [],
-                HardLinkDeduplicator.claim(for: metadata, ownerNodeID: node.id, path: url.path).map { [$0] } ?? [],
-                nil
-            )
-        }
-
-        return (
-            FileNodeRecord(
-                id: url.path,
-                url: url,
-                name: ScanTarget.displayName(for: url),
-                isDirectory: true,
-                isSymbolicLink: false,
-                allocatedSize: max(metadata.allocatedSize, summary.allocatedSize),
-                logicalSize: max(metadata.logicalSize, summary.logicalSize),
-                descendantFileCount: summary.descendantFileCount,
-                lastModified: metadata.lastModified,
-                fileIdentity: metadata.fileIdentity,
-                linkCount: metadata.linkCount,
-                isPackage: true,
-                isAccessible: metadata.isReadable && summary.isAccessible,
-                isSelfAccessible: metadata.isReadable,
-                isSynthetic: false,
-                isAutoSummarized: false,
-                cloudOnlyLogicalSize: summary.cloudOnlyLogicalSize
-            ),
-            summary.warnings,
-            summary.hardLinkClaims,
-            metadata.allocatedSize
-        )
-    }
-
     private func makeUnavailableNode(for url: URL, isDirectory: Bool) -> FileNodeRecord {
         FileNodeRecord(
             id: url.path,
@@ -1059,6 +1193,10 @@ nonisolated final class ScanTraversal {
     }
 
     private func maybeEmitProgress() {
+        // Keep the pool heartbeat's base metrics fresh so its current-path
+        // emissions (from workers and probes) never regress the loop's progress.
+        summaryPool?.recordProgressBase(metrics)
+
         let visitedItems = metrics.filesVisited + metrics.directoriesVisited
         let now = Date()
         let elapsed = now.timeIntervalSince(emissionState.lastProgressEmission)

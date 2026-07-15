@@ -13,7 +13,7 @@ extension AtomicDirectorySummarizer {
         workerLimit: Int,
         ownerNodeID: String,
         exclusionMatcher: ScanExclusionMatcher,
-        cancellationCheck: CancellationCheck,
+        cancellationCheck: @escaping CancellationCheck,
         metrics: inout ScanMetrics,
         continuation: AsyncThrowingStream<ScanProgressEvent, Error>.Continuation,
         emissionState: inout ScanEmissionState
@@ -30,7 +30,7 @@ extension AtomicDirectorySummarizer {
                 url: url,
                 startedAt: summaryStart,
                 itemCount: visitedItems,
-                detail: "files=\(state.descendantFileCount)"
+                detail: "files=\(state.partial.descendantFileCount)"
             )
         }
         #endif
@@ -53,8 +53,7 @@ extension AtomicDirectorySummarizer {
             includingPropertiesForKeys: ScanMetadataLoader.atomicSummaryResourceKeys,
             options: enumeratorOptions,
             errorHandler: { childURL, error in
-                state.isAccessible = false
-                state.warnings.append(ScanWarningFactory.makeWarning(for: childURL, error: error))
+                state.partial.recordWarning(for: childURL, error: error)
                 return true
             }
         ) else {
@@ -127,7 +126,7 @@ extension AtomicDirectorySummarizer {
         workerLimit: Int,
         ownerNodeID: String,
         exclusionMatcher: ScanExclusionMatcher,
-        cancellationCheck: CancellationCheck,
+        cancellationCheck: @escaping CancellationCheck,
         metrics: inout ScanMetrics,
         continuation: AsyncThrowingStream<ScanProgressEvent, Error>.Continuation,
         emissionState: inout ScanEmissionState
@@ -145,7 +144,7 @@ extension AtomicDirectorySummarizer {
                 url: url,
                 startedAt: summaryStart,
                 itemCount: childEntries.count,
-                detail: "files=\(state.descendantFileCount)"
+                detail: "files=\(state.partial.descendantFileCount)"
             )
         }
         #endif
@@ -206,7 +205,7 @@ extension AtomicDirectorySummarizer {
         treatPackagesAsDirectories: Bool,
         workerLimit: Int,
         exclusionMatcher: ScanExclusionMatcher,
-        cancellationCheck: CancellationCheck,
+        cancellationCheck: @escaping CancellationCheck,
         metrics: inout ScanMetrics,
         continuation: AsyncThrowingStream<ScanProgressEvent, Error>.Continuation,
         emissionState: inout ScanEmissionState
@@ -240,13 +239,7 @@ extension AtomicDirectorySummarizer {
     }
 
     nonisolated private func merge(_ summary: AtomicDirectorySummary, into state: AtomicDirectorySummaryState) {
-        state.allocatedSize = state.allocatedSize.addingClamped(summary.allocatedSize)
-        state.logicalSize = state.logicalSize.addingClamped(summary.logicalSize)
-        state.cloudOnlyLogicalSize = state.cloudOnlyLogicalSize.addingClamped(summary.cloudOnlyLogicalSize)
-        state.descendantFileCount += summary.descendantFileCount
-        state.isAccessible = state.isAccessible && summary.isAccessible
-        state.warnings.append(contentsOf: summary.warnings)
-        state.hardLinkClaims.append(contentsOf: summary.hardLinkClaims)
+        state.partial.merge(summary)
     }
 
     nonisolated private func accumulateEnumeratedAtomicSummary(
@@ -257,7 +250,7 @@ extension AtomicDirectorySummarizer {
         treatPackagesAsDirectories: Bool,
         workerLimit: Int,
         exclusionMatcher: ScanExclusionMatcher,
-        cancellationCheck: CancellationCheck,
+        cancellationCheck: @escaping CancellationCheck,
         metrics: inout ScanMetrics,
         continuation: AsyncThrowingStream<ScanProgressEvent, Error>.Continuation,
         emissionState: inout ScanEmissionState,
@@ -297,7 +290,7 @@ extension AtomicDirectorySummarizer {
     }
 
     nonisolated private func updateAtomicAccessibility(_ isReadable: Bool, in state: AtomicDirectorySummaryState) {
-        state.isAccessible = state.isAccessible && isReadable
+        state.partial.updateAccessibility(isReadable)
     }
 
     nonisolated private func recordAtomicWarning(
@@ -305,36 +298,15 @@ extension AtomicDirectorySummarizer {
         error: Error,
         in state: AtomicDirectorySummaryState
     ) {
-        state.isAccessible = false
-        state.warnings.append(ScanWarningFactory.makeWarning(for: url, error: error))
+        state.partial.recordWarning(for: url, error: error)
     }
 
     nonisolated private func accumulateAtomicFile(_ metadata: NodeMetadata, url: URL, into state: AtomicDirectorySummaryState) {
-        state.allocatedSize = state.allocatedSize.addingClamped(metadata.allocatedSize)
-        state.logicalSize = state.logicalSize.addingClamped(metadata.logicalSize)
-        if metadata.isDataless {
-            state.cloudOnlyLogicalSize = state.cloudOnlyLogicalSize.addingClamped(metadata.logicalSize)
-        }
-
-        if !metadata.isSymbolicLink {
-            state.descendantFileCount += 1
-        }
-
-        if let claim = HardLinkDeduplicator.claim(for: metadata, ownerNodeID: state.ownerNodeID, path: url.path) {
-            state.hardLinkClaims.append(claim)
-        }
+        state.partial.accumulateFile(metadata, url: url, ownerNodeID: state.ownerNodeID)
     }
 
     nonisolated private func makeAtomicSummary(from state: AtomicDirectorySummaryState) -> AtomicDirectorySummary {
-        return AtomicDirectorySummary(
-            allocatedSize: state.allocatedSize,
-            logicalSize: state.logicalSize,
-            cloudOnlyLogicalSize: state.cloudOnlyLogicalSize,
-            descendantFileCount: state.descendantFileCount,
-            isAccessible: state.isAccessible,
-            warnings: state.warnings,
-            hardLinkClaims: state.hardLinkClaims
-        )
+        state.partial.makeSummary()
     }
 
     nonisolated func emitProgressHeartbeat(
@@ -343,6 +315,14 @@ extension AtomicDirectorySummarizer {
         continuation: AsyncThrowingStream<ScanProgressEvent, Error>.Continuation,
         emissionState: inout ScanEmissionState
     ) {
+        // Under a pool (probe running alongside pooled summaries), route through
+        // the shared heartbeat so emissions carry the scan loop's fresh,
+        // monotonic metrics instead of this task's stale local snapshot.
+        if let summaryPool {
+            summaryPool.emit(currentPath: currentURL.path)
+            return
+        }
+
         metrics.currentPath = currentURL.path
         let now = Date()
         guard now.timeIntervalSince(emissionState.lastProgressEmission) >= 0.15 else { return }

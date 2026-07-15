@@ -39,7 +39,26 @@ nonisolated struct AtomicDirectorySummary: Sendable {
     let hardLinkClaims: [HardLinkClaim]
 }
 
-nonisolated final class AtomicDirectorySummaryState {
+/// One directory level to summarize. Files at this level fold into the job's
+/// partial; each subdirectory becomes a new work item for the same job.
+nonisolated struct AtomicSummaryWorkItem: Sendable {
+    let url: URL
+    let treatPackagesAsDirectories: Bool
+    let ownerNodeID: String
+}
+
+/// The result of processing one directory level: the files folded into a
+/// partial, plus the subdirectories discovered for further processing.
+nonisolated struct AtomicSummaryWorkResult: Sendable {
+    var partial: AtomicDirectorySummaryPartial
+    var pendingItems: [AtomicSummaryWorkItem]
+}
+
+/// A running partial summary. `AtomicDirectorySummaryPool` keeps one per job and
+/// merges each processed directory level into it under its lock; the merge
+/// semantics match `AtomicSummaryAccumulator` (which the non-pool
+/// `summarizeInParallel` path still uses).
+nonisolated struct AtomicDirectorySummaryPartial: Sendable {
     var allocatedSize: Int64 = 0
     var logicalSize: Int64 = 0
     var cloudOnlyLogicalSize: Int64 = 0
@@ -47,6 +66,88 @@ nonisolated final class AtomicDirectorySummaryState {
     var isAccessible = true
     var warnings: [ScanWarning] = []
     var hardLinkClaims: [HardLinkClaim] = []
+
+    mutating func updateAccessibility(_ readable: Bool) {
+        isAccessible = isAccessible && readable
+    }
+
+    mutating func recordWarning(for url: URL, error: Error) {
+        isAccessible = false
+        warnings.append(ScanWarningFactory.makeWarning(for: url, error: error))
+    }
+
+    mutating func accumulateFile(_ metadata: NodeMetadata, url: URL, ownerNodeID: String) {
+        allocatedSize = allocatedSize.addingClamped(metadata.allocatedSize)
+        logicalSize = logicalSize.addingClamped(metadata.logicalSize)
+        if metadata.isDataless {
+            cloudOnlyLogicalSize = cloudOnlyLogicalSize.addingClamped(metadata.logicalSize)
+        }
+        if !metadata.isSymbolicLink {
+            descendantFileCount += 1
+        }
+        if let claim = HardLinkDeduplicator.claim(for: metadata, ownerNodeID: ownerNodeID, path: url.path) {
+            hardLinkClaims.append(claim)
+        }
+    }
+
+    mutating func merge(_ other: AtomicDirectorySummaryPartial) {
+        allocatedSize = allocatedSize.addingClamped(other.allocatedSize)
+        logicalSize = logicalSize.addingClamped(other.logicalSize)
+        cloudOnlyLogicalSize = cloudOnlyLogicalSize.addingClamped(other.cloudOnlyLogicalSize)
+        descendantFileCount += other.descendantFileCount
+        isAccessible = isAccessible && other.isAccessible
+        warnings.append(contentsOf: other.warnings)
+        hardLinkClaims.append(contentsOf: other.hardLinkClaims)
+    }
+
+    mutating func merge(_ summary: AtomicDirectorySummary) {
+        allocatedSize = allocatedSize.addingClamped(summary.allocatedSize)
+        logicalSize = logicalSize.addingClamped(summary.logicalSize)
+        cloudOnlyLogicalSize = cloudOnlyLogicalSize.addingClamped(summary.cloudOnlyLogicalSize)
+        descendantFileCount += summary.descendantFileCount
+        isAccessible = isAccessible && summary.isAccessible
+        warnings.append(contentsOf: summary.warnings)
+        hardLinkClaims.append(contentsOf: summary.hardLinkClaims)
+    }
+
+    func makeSummary() -> AtomicDirectorySummary {
+        AtomicDirectorySummary(
+            allocatedSize: allocatedSize,
+            logicalSize: logicalSize,
+            cloudOnlyLogicalSize: cloudOnlyLogicalSize,
+            descendantFileCount: descendantFileCount,
+            isAccessible: isAccessible,
+            warnings: warnings,
+            hardLinkClaims: hardLinkClaims
+        )
+    }
+}
+
+/// Callbacks a directory-level walk drives so the same per-child classification
+/// serves both the shared pool (folding into a partial) and the standalone
+/// `summarizeInParallel` path (folding into a locked accumulator + work queue).
+nonisolated struct AtomicSummaryLevelSink {
+    let onVisit: (URL) -> Void
+    let onAccessibility: (Bool) -> Void
+    let onWarning: (URL, Error) -> Void
+    let onFile: (NodeMetadata, URL) -> Void
+    let onSubdirectory: (AtomicSummaryWorkItem) -> Void
+}
+
+/// A completed leaf (file, symlink, or summarized package) awaiting insertion
+/// into the tree. `Sendable` so it can be returned from a scan task-group child.
+nonisolated struct LeafNodeResult: Sendable {
+    let node: FileNodeRecord
+    let warnings: [ScanWarning]
+    let hardLinkClaims: [HardLinkClaim]
+    let minimumAllocatedSize: Int64?
+}
+
+/// Reference-typed holder for the serial walker paths, which mutate one running
+/// partial from enumerator callbacks. Accumulation semantics live entirely in
+/// `AtomicDirectorySummaryPartial`.
+nonisolated final class AtomicDirectorySummaryState {
+    var partial = AtomicDirectorySummaryPartial()
     let ownerNodeID: String
 
     init(ownerNodeID: String) {

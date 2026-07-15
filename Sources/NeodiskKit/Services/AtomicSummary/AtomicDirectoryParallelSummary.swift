@@ -5,12 +5,6 @@
 
 import Foundation
 
-nonisolated private struct AtomicSummaryWorkItem: Sendable {
-    let url: URL
-    let treatPackagesAsDirectories: Bool
-    let ownerNodeID: String
-}
-
 nonisolated private final class AtomicSummaryWorkQueue: @unchecked Sendable {
     private let condition = NSCondition()
     private var pendingItems: [AtomicSummaryWorkItem]
@@ -71,15 +65,11 @@ nonisolated private final class AtomicSummaryWorkQueue: @unchecked Sendable {
     }
 }
 
+/// Lock-guarded wrapper over `AtomicDirectorySummaryPartial` for the non-pool
+/// path, where several workers fold into one shared accumulator.
 nonisolated private final class AtomicSummaryAccumulator: @unchecked Sendable {
     private let lock = NSLock()
-    private var allocatedSize: Int64 = 0
-    private var logicalSize: Int64 = 0
-    private var cloudOnlyLogicalSize: Int64 = 0
-    private var descendantFileCount = 0
-    private var isAccessible = true
-    private var warnings: [ScanWarning] = []
-    private var hardLinkClaims: [HardLinkClaim] = []
+    private var partial = AtomicDirectorySummaryPartial()
     private var visitedItemCount = 0
 
     func recordVisitedItem() -> Int {
@@ -92,45 +82,26 @@ nonisolated private final class AtomicSummaryAccumulator: @unchecked Sendable {
 
     func updateAccessibility(_ readable: Bool) {
         lock.lock()
-        isAccessible = isAccessible && readable
+        partial.updateAccessibility(readable)
         lock.unlock()
     }
 
     func recordWarning(for url: URL, error: Error) {
         lock.lock()
-        isAccessible = false
-        warnings.append(ScanWarningFactory.makeWarning(for: url, error: error))
+        partial.recordWarning(for: url, error: error)
         lock.unlock()
     }
 
     func accumulateFile(_ metadata: NodeMetadata, url: URL, ownerNodeID: String) {
         lock.lock()
-        allocatedSize = allocatedSize.addingClamped(metadata.allocatedSize)
-        logicalSize = logicalSize.addingClamped(metadata.logicalSize)
-        if metadata.isDataless {
-            cloudOnlyLogicalSize = cloudOnlyLogicalSize.addingClamped(metadata.logicalSize)
-        }
-        if !metadata.isSymbolicLink {
-            descendantFileCount += 1
-        }
-        if let claim = HardLinkDeduplicator.claim(for: metadata, ownerNodeID: ownerNodeID, path: url.path) {
-            hardLinkClaims.append(claim)
-        }
+        partial.accumulateFile(metadata, url: url, ownerNodeID: ownerNodeID)
         lock.unlock()
     }
 
     func makeSummary() -> AtomicDirectorySummary {
         lock.lock()
         defer { lock.unlock() }
-        return AtomicDirectorySummary(
-            allocatedSize: allocatedSize,
-            logicalSize: logicalSize,
-            cloudOnlyLogicalSize: cloudOnlyLogicalSize,
-            descendantFileCount: descendantFileCount,
-            isAccessible: isAccessible,
-            warnings: warnings,
-            hardLinkClaims: hardLinkClaims
-        )
+        return partial.makeSummary()
     }
 }
 
@@ -166,6 +137,11 @@ nonisolated private final class AtomicSummaryProgressReporter: @unchecked Sendab
 }
 
 extension AtomicDirectorySummarizer {
+    /// Standalone parallel summary used when no scan-wide `AtomicDirectorySummaryPool`
+    /// is available (injected-provider tests and any `summarize` call outside a
+    /// traversal). Spins up its own bounded worker group over a shared queue.
+    /// The traversal itself routes through the shared pool instead — see
+    /// `AtomicDirectorySummarizer.summarize`.
     nonisolated static func summarizeInParallel(
         at url: URL,
         includeHiddenFiles: Bool,
@@ -209,15 +185,26 @@ extension AtomicDirectorySummarizer {
                         guard let item = try queue.take() else { return }
 
                         do {
-                            try Self.processWorkItem(
+                            let sink = AtomicSummaryLevelSink(
+                                onVisit: { childURL in
+                                    let visitedItemCount = accumulator.recordVisitedItem()
+                                    if visitedItemCount == 1 || visitedItemCount.isMultiple(of: 64) {
+                                        progressReporter.emit(currentURL: childURL)
+                                    }
+                                },
+                                onAccessibility: { accumulator.updateAccessibility($0) },
+                                onWarning: { accumulator.recordWarning(for: $0, error: $1) },
+                                onFile: { accumulator.accumulateFile($0, url: $1, ownerNodeID: item.ownerNodeID) },
+                                onSubdirectory: { queue.enqueue($0) }
+                            )
+                            try Self.processDirectoryLevel(
                                 item,
                                 includeHiddenFiles: includeHiddenFiles,
                                 exclusionMatcher: exclusionMatcher,
-                                accumulator: accumulator,
-                                queue: queue,
                                 metadataLoader: metadataLoader,
                                 bulkEnumerationEnabled: bulkEnumerationEnabled,
-                                progressReporter: progressReporter
+                                cancellationCheck: { try Task.checkCancellation() },
+                                sink: sink
                             )
                             queue.finishCurrentItem()
                         } catch {
@@ -241,39 +228,82 @@ extension AtomicDirectorySummarizer {
         return accumulator.makeSummary()
     }
 
-    /// getattrlistbulk twin of the FileManager loop below: names and
-    /// metadata arrive together, so there is no per-child resourceValues call.
-    private nonisolated static func processWorkItemUsingBulkReader(
+    /// Processes ONE directory level. Every child is reported to `sink`: files
+    /// fold into the caller's partial/accumulator, subdirectories become new work
+    /// items. Tries the getattrlistbulk reader first and, on any non-cancellation
+    /// failure, restarts the level cleanly on the FileManager path — which owns
+    /// the warning semantics for unreadable directories. Bulk reads a directory's
+    /// full child list before folding any of it, so a fallback never double-counts.
+    nonisolated static func processDirectoryLevel(
         _ item: AtomicSummaryWorkItem,
         includeHiddenFiles: Bool,
         exclusionMatcher: ScanExclusionMatcher,
-        accumulator: AtomicSummaryAccumulator,
-        queue: AtomicSummaryWorkQueue,
-        progressReporter: AtomicSummaryProgressReporter
+        metadataLoader: ScanMetadataLoader,
+        bulkEnumerationEnabled: Bool,
+        cancellationCheck: CancellationCheck,
+        sink: AtomicSummaryLevelSink
+    ) throws {
+        try cancellationCheck()
+
+        if bulkEnumerationEnabled {
+            do {
+                try processDirectoryLevelUsingBulkReader(
+                    item,
+                    includeHiddenFiles: includeHiddenFiles,
+                    exclusionMatcher: exclusionMatcher,
+                    cancellationCheck: cancellationCheck,
+                    sink: sink
+                )
+                return
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch is AtomicSummaryJobCancelled {
+                throw AtomicSummaryJobCancelled()
+            } catch {
+                // Fall through to the FileManager path, which owns the
+                // warning semantics for unreadable directories.
+            }
+        }
+
+        try processDirectoryLevelUsingFoundation(
+            item,
+            includeHiddenFiles: includeHiddenFiles,
+            exclusionMatcher: exclusionMatcher,
+            metadataLoader: metadataLoader,
+            cancellationCheck: cancellationCheck,
+            sink: sink
+        )
+    }
+
+    /// getattrlistbulk twin of the FileManager loop below: names and
+    /// metadata arrive together, so there is no per-child resourceValues call.
+    private nonisolated static func processDirectoryLevelUsingBulkReader(
+        _ item: AtomicSummaryWorkItem,
+        includeHiddenFiles: Bool,
+        exclusionMatcher: ScanExclusionMatcher,
+        cancellationCheck: CancellationCheck,
+        sink: AtomicSummaryLevelSink
     ) throws {
         let bulkChildren = try BulkDirectoryReader.children(
             ofDirectory: item.url,
-            cancellationCheck: { try Task.checkCancellation() }
+            cancellationCheck: cancellationCheck
         )
 
         for child in bulkChildren {
-            try Task.checkCancellation()
+            try cancellationCheck()
             if !includeHiddenFiles && child.isHidden { continue }
 
             let childURL = item.url.appending(
                 path: child.name,
                 directoryHint: child.metadata?.isDirectory == true ? .isDirectory : .notDirectory
             )
-            let visitedItemCount = accumulator.recordVisitedItem()
-            if visitedItemCount == 1 || visitedItemCount.isMultiple(of: 64) {
-                progressReporter.emit(currentURL: childURL)
-            }
+            sink.onVisit(childURL)
 
             guard let childMetadata = child.metadata else {
                 if let entryErrno = child.entryErrno {
-                    accumulator.recordWarning(
-                        for: childURL,
-                        error: NSError(
+                    sink.onWarning(
+                        childURL,
+                        NSError(
                             domain: NSPOSIXErrorDomain,
                             code: Int(entryErrno),
                             userInfo: [NSURLErrorKey: childURL]
@@ -286,14 +316,14 @@ extension AtomicDirectorySummarizer {
                 continue
             }
 
-            accumulator.updateAccessibility(childMetadata.isReadable)
+            sink.onAccessibility(childMetadata.isReadable)
 
             guard childMetadata.isDirectory else {
-                accumulator.accumulateFile(childMetadata, url: childURL, ownerNodeID: item.ownerNodeID)
+                sink.onFile(childMetadata, childURL)
                 continue
             }
 
-            queue.enqueue(
+            sink.onSubdirectory(
                 AtomicSummaryWorkItem(
                     url: childURL,
                     treatPackagesAsDirectories: childMetadata.isPackage ? true : item.treatPackagesAsDirectories,
@@ -303,37 +333,14 @@ extension AtomicDirectorySummarizer {
         }
     }
 
-    private nonisolated static func processWorkItem(
+    private nonisolated static func processDirectoryLevelUsingFoundation(
         _ item: AtomicSummaryWorkItem,
         includeHiddenFiles: Bool,
         exclusionMatcher: ScanExclusionMatcher,
-        accumulator: AtomicSummaryAccumulator,
-        queue: AtomicSummaryWorkQueue,
         metadataLoader: ScanMetadataLoader,
-        bulkEnumerationEnabled: Bool,
-        progressReporter: AtomicSummaryProgressReporter
+        cancellationCheck: CancellationCheck,
+        sink: AtomicSummaryLevelSink
     ) throws {
-        try Task.checkCancellation()
-
-        if bulkEnumerationEnabled {
-            do {
-                try processWorkItemUsingBulkReader(
-                    item,
-                    includeHiddenFiles: includeHiddenFiles,
-                    exclusionMatcher: exclusionMatcher,
-                    accumulator: accumulator,
-                    queue: queue,
-                    progressReporter: progressReporter
-                )
-                return
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch {
-                // Fall through to the FileManager path, which owns the
-                // warning semantics for unreadable directories.
-            }
-        }
-
         var options: FileManager.DirectoryEnumerationOptions = [.skipsSubdirectoryDescendants]
         if !includeHiddenFiles {
             options.insert(.skipsHiddenFiles)
@@ -345,14 +352,14 @@ extension AtomicDirectorySummarizer {
                 url: item.url,
                 keys: ScanMetadataLoader.atomicSummaryResourceKeys,
                 options: options,
-                cancellationCheck: { try Task.checkCancellation() },
+                cancellationCheck: cancellationCheck,
                 makeEnumerator: { url, keys, options in
                     FileManager.default.enumerator(
                         at: url,
                         includingPropertiesForKeys: keys,
                         options: options,
                         errorHandler: { childURL, error in
-                            accumulator.recordWarning(for: childURL, error: error)
+                            sink.onWarning(childURL, error)
                             return true
                         }
                     )
@@ -362,16 +369,13 @@ extension AtomicDirectorySummarizer {
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            accumulator.recordWarning(for: item.url, error: error)
+            sink.onWarning(item.url, error)
             return
         }
 
         for childURL in childURLs {
-            try Task.checkCancellation()
-            let visitedItemCount = accumulator.recordVisitedItem()
-            if visitedItemCount == 1 || visitedItemCount.isMultiple(of: 64) {
-                progressReporter.emit(currentURL: childURL)
-            }
+            try cancellationCheck()
+            sink.onVisit(childURL)
 
             let hintedIsDirectory = childURL.hasDirectoryPath
             guard !exclusionMatcher.excludes(childURL, isDirectory: hintedIsDirectory) else {
@@ -383,7 +387,7 @@ extension AtomicDirectorySummarizer {
                 let values = try childURL.resourceValues(forKeys: ScanMetadataLoader.atomicSummaryResourceKeySet)
                 childMetadata = metadataLoader.metadata(for: childURL, prefetchedResourceValues: values)
             } catch {
-                accumulator.recordWarning(for: childURL, error: error)
+                sink.onWarning(childURL, error)
                 continue
             }
 
@@ -391,10 +395,10 @@ extension AtomicDirectorySummarizer {
                 continue
             }
 
-            accumulator.updateAccessibility(childMetadata.isReadable)
+            sink.onAccessibility(childMetadata.isReadable)
 
             guard childMetadata.isDirectory else {
-                accumulator.accumulateFile(childMetadata, url: childURL, ownerNodeID: item.ownerNodeID)
+                sink.onFile(childMetadata, childURL)
                 continue
             }
 
@@ -405,7 +409,7 @@ extension AtomicDirectorySummarizer {
                 continue
             }
 
-            queue.enqueue(
+            sink.onSubdirectory(
                 AtomicSummaryWorkItem(
                     url: childURL,
                     treatPackagesAsDirectories: childMetadata.isPackage ? true : item.treatPackagesAsDirectories,

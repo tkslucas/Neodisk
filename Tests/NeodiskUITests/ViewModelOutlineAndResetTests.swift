@@ -130,7 +130,7 @@ import NeodiskKit
         )
         environment.scanService.finish(scanIndex: 1)
         try await waitUntilAsync("previous snapshot available") {
-            model.cachedScanInfo[target.id]?.hasPreviousSnapshot == true
+            model.session.cachedScanInfo[target.id]?.hasPreviousSnapshot == true
         }
 
         // Opening the Changes tab arms the diff; siblings then order by
@@ -183,7 +183,7 @@ import NeodiskKit
         )
         environment.scanService.finish(scanIndex: 0)
         try await waitUntilAsync("scan A persisted") {
-            model.cachedScanInfo[targetA.id] != nil
+            model.session.cachedScanInfo[targetA.id] != nil
         }
 
         // Dirty every axis the reset is supposed to clear.

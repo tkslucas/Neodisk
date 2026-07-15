@@ -45,7 +45,7 @@ import NeodiskKit
         #expect(model.coordinator.isScanning)
         #expect(model.coordinator.snapshot?.target.id == targetA.id)
         #expect(model.coordinator.snapshot?.isComplete == true)
-        #expect(model.snapshotNotice == nil)
+        #expect(model.session.snapshotNotice == nil)
         model.stopScan()
     }
 
@@ -71,7 +71,7 @@ import NeodiskKit
         #expect(model.coordinator.isScanning)
         #expect(model.coordinator.snapshot?.target.id == target.id)
         #expect(model.coordinator.snapshot?.isComplete == true)
-        #expect(model.snapshotNotice == nil)
+        #expect(model.session.snapshotNotice == nil)
         #expect(environment.scanService.scanCount == 2)
         model.stopScan()
     }
@@ -93,7 +93,7 @@ import NeodiskKit
 
         let model = environment.makeModel(policy: .smart)
         try await waitUntilAsync("prune indexes the fast snapshot") {
-            model.cachedScanInfo[target.id] != nil
+            model.session.cachedScanInfo[target.id] != nil
         }
 
         model.startScan(target)
@@ -102,7 +102,7 @@ import NeodiskKit
             model.coordinator.isScanning && model.coordinator.snapshot?.isComplete == true
         }
         #expect(model.coordinator.snapshot?.target.id == target.id)
-        #expect(model.snapshotNotice == nil)
+        #expect(model.session.snapshotNotice == nil)
         #expect(environment.scanService.scanCount == 1)
         model.stopScan()
     }
@@ -119,7 +119,7 @@ import NeodiskKit
 
         let model = environment.makeModel(policy: .snapshotOnly)
         try await waitUntilAsync("prune indexes the snapshot") {
-            model.cachedScanInfo[target.id] != nil
+            model.session.cachedScanInfo[target.id] != nil
         }
 
         // Overwrite every cache file with garbage so the decode fails.
@@ -137,7 +137,7 @@ import NeodiskKit
             environment.scanService.scanCount == 1
         }
         try await waitUntilAsync("cache entry forgotten") {
-            model.cachedScanInfo[target.id] == nil
+            model.session.cachedScanInfo[target.id] == nil
         }
         model.stopScan()
     }
@@ -165,7 +165,7 @@ import NeodiskKit
         model.startScan(target)
 
         try await waitUntilAsync("refresh cancelled, snapshot restored with notice") {
-            model.snapshotNotice?.targetID == target.id
+            model.session.snapshotNotice?.targetID == target.id
                 && !model.coordinator.isScanning
                 && model.coordinator.snapshot?.isComplete == true
         }
@@ -190,7 +190,7 @@ import NeodiskKit
 
         let model = environment.makeModel(policy: .snapshotOnly)
         try await waitUntilAsync("prune indexes the old snapshot") {
-            model.cachedScanInfo[target.id] != nil
+            model.session.cachedScanInfo[target.id] != nil
         }
 
         // A newer scan lands on disk directly (a second process), leaving the
@@ -209,7 +209,7 @@ import NeodiskKit
             model.coordinator.phase == .displaying
         }
         try await waitUntilAsync("index date adopts the decoded snapshot's date") {
-            guard let info = model.cachedScanInfo[target.id] else { return false }
+            guard let info = model.session.cachedScanInfo[target.id] else { return false }
             return abs(info.lastScanDate.timeIntervalSince(newerFinishedAt)) < 1
         }
     }
@@ -228,33 +228,33 @@ import NeodiskKit
 
         // First scan: 10-byte file. No prior latest, so nothing rotates.
         model.startScan(target)
-        var gen = model.kindStatsSidecarGeneration
+        var gen = model.session.kindStatsSidecarGeneration
         environment.scanService.yield(.finished(makeSnapshot(target: target, fileSize: 10)), scanIndex: 0)
         environment.scanService.finish(scanIndex: 0)
         try await waitUntilAsync("first scan persisted") {
-            model.kindStatsSidecarGeneration > gen
+            model.session.kindStatsSidecarGeneration > gen
         }
-        #expect(model.cachedScanInfo[target.id]?.hasPreviousSnapshot == false)
+        #expect(model.session.cachedScanInfo[target.id]?.hasPreviousSnapshot == false)
 
         // Second scan: identical content. The save keeps the (absent) previous
         // baseline instead of rotating, so hasPreviousSnapshot stays false.
         model.startScan(target)
-        gen = model.kindStatsSidecarGeneration
+        gen = model.session.kindStatsSidecarGeneration
         environment.scanService.yield(.finished(makeSnapshot(target: target, fileSize: 10)), scanIndex: 1)
         environment.scanService.finish(scanIndex: 1)
         try await waitUntilAsync("unchanged rescan persisted") {
-            model.kindStatsSidecarGeneration > gen
+            model.session.kindStatsSidecarGeneration > gen
         }
-        #expect(model.cachedScanInfo[target.id]?.hasPreviousSnapshot == false)
+        #expect(model.session.cachedScanInfo[target.id]?.hasPreviousSnapshot == false)
 
         // Third scan: different content. Now the prior latest rotates into the
         // previous slot and a diffable predecessor exists.
         model.startScan(target)
-        gen = model.kindStatsSidecarGeneration
+        gen = model.session.kindStatsSidecarGeneration
         environment.scanService.yield(.finished(makeSnapshot(target: target, fileSize: 25)), scanIndex: 2)
         environment.scanService.finish(scanIndex: 2)
         try await waitUntilAsync("changed rescan rotates a previous snapshot") {
-            model.cachedScanInfo[target.id]?.hasPreviousSnapshot == true
+            model.session.cachedScanInfo[target.id]?.hasPreviousSnapshot == true
         }
     }
 
@@ -273,10 +273,10 @@ import NeodiskKit
         environment.scanService.finish(scanIndex: 0)
 
         try await waitUntilAsync("sidecar generation bumped after persist") {
-            model.kindStatsSidecarGeneration > 0
+            model.session.kindStatsSidecarGeneration > 0
         }
         try await waitUntilAsync("sidecar loads back from disk") {
-            await model.loadKindStatsSidecar(forTargetID: target.id) != nil
+            await model.session.loadKindStatsSidecar(forTargetID: target.id) != nil
         }
     }
 

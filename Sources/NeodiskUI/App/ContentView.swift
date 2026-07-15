@@ -492,7 +492,7 @@ private struct WorkspaceView: View {
                     WarningsPanel(model: model)
                 }
                 .animation(.easeInOut(duration: 0.2), value: model.warnings.visible.isEmpty)
-                .animation(.easeInOut(duration: 0.2), value: model.snapshotNotice)
+                .animation(.easeInOut(duration: 0.2), value: model.session.snapshotNotice)
             }
 
             if model.coordinator.isScanning || model.scanWasStopped {

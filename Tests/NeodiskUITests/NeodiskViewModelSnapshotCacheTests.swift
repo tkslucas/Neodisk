@@ -16,12 +16,12 @@ import NeodiskKit
 
         let model = environment.makeModel()
         try await waitUntilAsync("prune indexes the pinned snapshot") {
-            model.cachedScanInfo[target.id] != nil
+            model.session.cachedScanInfo[target.id] != nil
         }
 
         model.removeSidebarFolders(ids: [target.id])
 
-        #expect(model.cachedScanInfo[target.id] == nil)
+        #expect(model.session.cachedScanInfo[target.id] == nil)
         #expect(model.sidebarFolders.isEmpty)
         try await waitUntilAsync("snapshot file deleted") {
             await environment.cache.loadSnapshot(for: target) == nil
@@ -39,7 +39,7 @@ import NeodiskKit
         try await waitUntilAsync("orphan snapshot pruned") {
             await environment.cache.loadSnapshot(for: orphan) == nil
         }
-        #expect(model.cachedScanInfo[orphan.id] == nil)
+        #expect(model.session.cachedScanInfo[orphan.id] == nil)
     }
 
     @Test func testFinishedScanIsPersistedAndRestoredOnNextSelection() async throws {
@@ -59,7 +59,7 @@ import NeodiskKit
         try await waitUntilAsync("scan persisted to cache") {
             await environment.cache.loadSnapshot(for: target) != nil
         }
-        #expect(model.cachedScanInfo[target.id] != nil)
+        #expect(model.session.cachedScanInfo[target.id] != nil)
 
         // Move away, then reselect: the cached snapshot must appear while
         // the refresh scan is still running, with partials suppressed.
@@ -94,7 +94,7 @@ import NeodiskKit
 
         let model = environment.makeModel()
         try await waitUntilAsync("prune indexes the slow snapshot") {
-            model.cachedScanInfo[target.id] != nil
+            model.session.cachedScanInfo[target.id] != nil
         }
 
         model.startScan(target)
@@ -104,7 +104,7 @@ import NeodiskKit
         }
         #expect(!model.coordinator.isScanning)
         #expect(model.coordinator.snapshot?.target.id == target.id)
-        #expect(model.snapshotNotice?.targetID == target.id)
+        #expect(model.session.snapshotNotice?.targetID == target.id)
         #expect(environment.scanService.scanCount == 0)
 
         // A sidebar re-click on the undecided snapshot must not sneak the
@@ -115,7 +115,7 @@ import NeodiskKit
 
         // The explicit rescan clears the notice and refreshes behind the map.
         model.rescan()
-        #expect(model.snapshotNotice == nil)
+        #expect(model.session.snapshotNotice == nil)
         #expect(model.coordinator.isScanning)
         #expect(environment.scanService.scanCount == 1)
         model.stopScan()
@@ -135,7 +135,7 @@ import NeodiskKit
 
         let model = environment.makeModel()
         try await waitUntilAsync("prune indexes the snapshot") {
-            model.cachedScanInfo[target.id] != nil
+            model.session.cachedScanInfo[target.id] != nil
         }
 
         model.startScan(target)
@@ -144,7 +144,7 @@ import NeodiskKit
             model.coordinator.phase == .displaying
         }
         #expect(!model.coordinator.isScanning)
-        #expect(model.snapshotNotice?.targetID == target.id)
+        #expect(model.session.snapshotNotice?.targetID == target.id)
         #expect(environment.scanService.scanCount == 0)
     }
 
@@ -160,7 +160,7 @@ import NeodiskKit
 
         let model = environment.makeModel(policy: .snapshotOnly)
         try await waitUntilAsync("prune indexes the fast snapshot") {
-            model.cachedScanInfo[target.id] != nil
+            model.session.cachedScanInfo[target.id] != nil
         }
 
         model.startScan(target)
@@ -170,7 +170,7 @@ import NeodiskKit
         }
         #expect(!model.coordinator.isScanning)
         #expect(model.coordinator.snapshot?.target.id == target.id)
-        #expect(model.snapshotNotice?.targetID == target.id)
+        #expect(model.session.snapshotNotice?.targetID == target.id)
         #expect(environment.scanService.scanCount == 0)
 
         // Re-clicking the sidebar row must not sneak the skipped rescan in;
@@ -178,7 +178,7 @@ import NeodiskKit
         model.startScan(target)
         #expect(environment.scanService.scanCount == 0)
         model.rescan()
-        #expect(model.snapshotNotice == nil)
+        #expect(model.session.snapshotNotice == nil)
         #expect(model.coordinator.isScanning)
         #expect(environment.scanService.scanCount == 1)
         model.stopScan()
@@ -200,7 +200,7 @@ import NeodiskKit
 
         let model = environment.makeModel(policy: .automatic)
         try await waitUntilAsync("prune indexes the slow snapshot") {
-            model.cachedScanInfo[target.id] != nil
+            model.session.cachedScanInfo[target.id] != nil
         }
 
         model.startScan(target)
@@ -210,7 +210,7 @@ import NeodiskKit
         }
         #expect(model.coordinator.snapshot?.target.id == target.id)
         #expect(model.coordinator.displayedCachedScanDate != nil)
-        #expect(model.snapshotNotice == nil)
+        #expect(model.session.snapshotNotice == nil)
         #expect(environment.scanService.scanCount == 1)
         model.stopScan()
     }
@@ -243,7 +243,7 @@ import NeodiskKit
         )
         environment.scanService.finish(scanIndex: 1)
         try await waitUntilAsync("previous snapshot available") {
-            model.cachedScanInfo[target.id]?.hasPreviousSnapshot == true
+            model.session.cachedScanInfo[target.id]?.hasPreviousSnapshot == true
         }
 
         #expect(model.diff.canShow)
@@ -381,7 +381,7 @@ import NeodiskKit
         // prefetch result, not the first-paint deferral.
         model.diff.prefetchDelay = .zero
         try await waitUntilAsync("prune indexes the snapshot with a previous") {
-            model.cachedScanInfo[target.id]?.hasPreviousSnapshot == true
+            model.session.cachedScanInfo[target.id]?.hasPreviousSnapshot == true
         }
 
         model.startScan(target)
@@ -412,7 +412,7 @@ import NeodiskKit
         let model = environment.makeModel(policy: .snapshotOnly)
         model.preferences?.autoScanDuplicates = true
         try await waitUntilAsync("prune indexes the snapshot") {
-            model.cachedScanInfo[target.id] != nil
+            model.session.cachedScanInfo[target.id] != nil
         }
 
         model.startScan(target)
@@ -438,7 +438,7 @@ import NeodiskKit
         let model = environment.makeModel(policy: .snapshotOnly)
         model.preferences?.prepareChangesAfterScan = false
         try await waitUntilAsync("prune indexes the snapshot with a previous") {
-            model.cachedScanInfo[target.id]?.hasPreviousSnapshot == true
+            model.session.cachedScanInfo[target.id]?.hasPreviousSnapshot == true
         }
 
         model.startScan(target)

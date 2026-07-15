@@ -279,7 +279,7 @@ private struct PrivacySettingsTab: View {
                 }
                 Button("Clear Scan Snapshots") {
                     Task {
-                        await model.clearScanSnapshots()
+                        await model.session.clearScanSnapshots()
                         refreshSnapshotCacheSize()
                     }
                 }
@@ -295,7 +295,7 @@ private struct PrivacySettingsTab: View {
 
     private func refreshSnapshotCacheSize() {
         Task {
-            snapshotCacheSize = await model.scanSnapshotCacheSize()
+            snapshotCacheSize = await model.session.scanSnapshotCacheSize()
         }
     }
 

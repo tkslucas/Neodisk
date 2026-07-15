@@ -74,7 +74,7 @@ final class DiffModel {
     var canShow: Bool {
         guard let snapshot = coordinator.snapshot, snapshot.isComplete,
               snapshot.source.isPersistable else { return false }
-        return model?.cachedScanInfo[snapshot.target.id]?.hasPreviousSnapshot == true
+        return model?.session.cachedScanInfo[snapshot.target.id]?.hasPreviousSnapshot == true
     }
 
     /// Shows or hides the diff. Idempotent: the model resyncs on every tab
@@ -207,7 +207,7 @@ final class DiffModel {
                 // The previous snapshot is gone (corrupt and deleted, or
                 // cleared): reflect that so the toggle disables.
                 self.baseline = nil
-                self.model?.markPreviousSnapshotMissing(forTargetID: target.id)
+                self.model?.session.markPreviousSnapshotMissing(forTargetID: target.id)
             }
         }
     }

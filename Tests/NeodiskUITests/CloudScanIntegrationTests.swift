@@ -101,7 +101,7 @@ import NeodiskKit
 
         try await eventually { model.cloudAccounts.accounts.isEmpty }
         #expect(model.cloudAccounts.accounts.isEmpty)
-        #expect(model.cachedScanInfo[account.id] == nil)
+        #expect(model.session.cachedScanInfo[account.id] == nil)
     }
 }
 

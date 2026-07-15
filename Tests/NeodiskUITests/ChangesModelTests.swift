@@ -23,7 +23,7 @@ import NeodiskKit
 
         let model = environment.makeModel(policy: .snapshotOnly)
         try await waitUntilAsync("prune indexes the snapshot with a previous") {
-            model.cachedScanInfo[target.id]?.hasPreviousSnapshot == true
+            model.session.cachedScanInfo[target.id]?.hasPreviousSnapshot == true
         }
         model.startScan(target)
         try await waitUntilAsync("snapshot displayed without scanning") {
@@ -59,7 +59,7 @@ import NeodiskKit
 
         let model = environment.makeModel(policy: .snapshotOnly)
         try await waitUntilAsync("prune indexes the snapshot") {
-            model.cachedScanInfo[target.id] != nil
+            model.session.cachedScanInfo[target.id] != nil
         }
         model.startScan(target)
         try await waitUntilAsync("snapshot displayed without scanning") {
@@ -84,7 +84,7 @@ import NeodiskKit
 
         let model = environment.makeModel(policy: .snapshotOnly)
         try await waitUntilAsync("prune indexes the snapshot with a previous") {
-            model.cachedScanInfo[target.id]?.hasPreviousSnapshot == true
+            model.session.cachedScanInfo[target.id]?.hasPreviousSnapshot == true
         }
         model.startScan(target)
         try await waitUntilAsync("snapshot displayed without scanning") {
@@ -111,7 +111,7 @@ import NeodiskKit
 
         let model = environment.makeModel(policy: .snapshotOnly)
         try await waitUntilAsync("prune indexes the snapshot with a previous") {
-            model.cachedScanInfo[target.id]?.hasPreviousSnapshot == true
+            model.session.cachedScanInfo[target.id]?.hasPreviousSnapshot == true
         }
         model.startScan(target)
         try await waitUntilAsync("snapshot displayed without scanning") {

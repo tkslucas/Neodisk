@@ -18,7 +18,7 @@ struct SnapshotNoticePanel: View {
     let model: NeodiskViewModel
 
     var body: some View {
-        if let notice = model.snapshotNotice {
+        if let notice = model.session.snapshotNotice {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "clock.arrow.circlepath")
@@ -39,7 +39,7 @@ struct SnapshotNoticePanel: View {
                     Spacer(minLength: 4)
 
                     Button {
-                        model.snapshotNotice = nil
+                        model.session.snapshotNotice = nil
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundStyle(.secondary)

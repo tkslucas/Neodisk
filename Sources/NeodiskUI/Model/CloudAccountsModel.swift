@@ -80,7 +80,7 @@ final class CloudAccountsModel {
             await integration.signOut(targetID: targetID)
             await snapshotCache.removeSnapshot(forTargetID: targetID)
             guard let self else { return }
-            self.model?.removeCachedScanInfo(forTargetID: targetID)
+            self.model?.session.removeCachedScanInfo(forTargetID: targetID)
             self.coordinator.forgetRecentSnapshot(forTargetID: targetID)
             if wasDisplayed {
                 self.coordinator.clearScan()

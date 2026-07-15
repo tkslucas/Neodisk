@@ -63,7 +63,7 @@ struct SidebarPane: View {
                         SidebarTargetRow(
                             target: target,
                             subtitle: model.cloudAccounts.integration?.accountSubtitle(forTargetID: target.id) ?? target.id,
-                            lastScanned: model.cachedScanInfo[target.id]?.lastScanDate,
+                            lastScanned: model.session.cachedScanInfo[target.id]?.lastScanDate,
                             now: now
                         )
                         .tag(target.id)
@@ -81,7 +81,7 @@ struct SidebarPane: View {
                     SidebarTargetRow(
                         target: target,
                         subtitle: capacityByPath[target.id] ?? target.id,
-                        lastScanned: model.cachedScanInfo[target.id]?.lastScanDate,
+                        lastScanned: model.session.cachedScanInfo[target.id]?.lastScanDate,
                         now: now,
                         bar: cloudBar(for: target)
                     )
@@ -263,7 +263,7 @@ struct SidebarPane: View {
         SidebarTargetRow(
             target: target,
             subtitle: capacityByPath[target.id] ?? target.id,
-            lastScanned: model.cachedScanInfo[target.id]?.lastScanDate,
+            lastScanned: model.session.cachedScanInfo[target.id]?.lastScanDate,
             now: now,
             bar: bar
         )
@@ -303,7 +303,7 @@ struct SidebarPane: View {
     /// folders — straight from the cache index, no snapshot decode. Volume
     /// rows keep their kind-colored capacity bar instead.
     private func cloudBar(for target: ScanTarget) -> VolumeBarData? {
-        guard let info = model.cachedScanInfo[target.id] else { return nil }
+        guard let info = model.session.cachedScanInfo[target.id] else { return nil }
         return VolumeBarData.cloudProportions(
             onThisMac: info.totalAllocatedSize,
             cloudOnly: info.cloudOnlyLogicalSize
@@ -319,10 +319,10 @@ struct SidebarPane: View {
     /// no sidecar, and leave the bar empty until the next scan.
     private var volumeBarsTaskID: String {
         let scans = model.volumeLocations.map { target in
-            "\(target.id)|\(model.cachedScanInfo[target.id].map(\.lastScanDate.timeIntervalSince1970) ?? 0)"
+            "\(target.id)|\(model.session.cachedScanInfo[target.id].map(\.lastScanDate.timeIntervalSince1970) ?? 0)"
         }
         return scans.joined(separator: ",")
-            + "|\(model.kindStatsSidecarGeneration)"
+            + "|\(model.session.kindStatsSidecarGeneration)"
             + "|\(model.preferences?.useColorblindPalette == true)"
     }
 
@@ -332,8 +332,8 @@ struct SidebarPane: View {
         for target in model.volumeLocations {
             // Never scanned → the bar stays an empty track (no sidecar to
             // color it, and no misleading half-answer from volume stats).
-            guard model.cachedScanInfo[target.id] != nil else { continue }
-            guard let sidecar = await model.loadKindStatsSidecar(forTargetID: target.id) else {
+            guard model.session.cachedScanInfo[target.id] != nil else { continue }
+            guard let sidecar = await model.session.loadKindStatsSidecar(forTargetID: target.id) else {
                 continue
             }
             let url = target.url

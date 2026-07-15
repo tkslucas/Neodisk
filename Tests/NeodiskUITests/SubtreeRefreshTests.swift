@@ -158,7 +158,7 @@ import NeodiskKit
         try await waitUntilAsync("full scan persisted") {
             await environment.cache.loadSnapshot(for: target) != nil
         }
-        let fullScanInfo = try #require(model.cachedScanInfo[target.id])
+        let fullScanInfo = try #require(model.session.cachedScanInfo[target.id])
 
         // Expand one folder; the spliced snapshot must reach the cache.
         let summarized = try #require(model.store?.node(id: fixture.summarized.id))
@@ -179,7 +179,7 @@ import NeodiskKit
         // refresh predicts nothing about a full rescan); only the node count
         // reflects the splice, and the pre-splice snapshot rotated into the
         // previous slot.
-        let splicedInfo = try #require(model.cachedScanInfo[target.id])
+        let splicedInfo = try #require(model.session.cachedScanInfo[target.id])
         #expect(splicedInfo.lastScanDate == fullScanInfo.lastScanDate)
         #expect(splicedInfo.lastScanDuration == fullScanInfo.lastScanDuration)
         #expect(splicedInfo.nodeCount == 4)

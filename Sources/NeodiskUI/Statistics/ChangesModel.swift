@@ -130,7 +130,7 @@ final class ChangesModel {
                 self.list = nil
                 self.comparisonDate = nil
                 self.loadedSnapshotID = nil
-                self.model?.markPreviousSnapshotMissing(forTargetID: target.id)
+                self.model?.session.markPreviousSnapshotMissing(forTargetID: target.id)
             }
         }
     }

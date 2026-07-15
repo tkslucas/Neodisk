@@ -303,8 +303,7 @@ public actor ScanSnapshotCache {
     /// snapshot doesn't recompute them). Removed and pruned with the
     /// snapshot; content and staleness checks are the caller's business.
     public func saveAuxiliaryData(_ data: Data, forTargetID targetID: String) {
-        try? FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
-        try? data.write(to: auxiliaryFileURL(forTargetID: targetID), options: .atomic)
+        writeSlotData(data, to: auxiliaryFileURL(forTargetID: targetID))
     }
 
     public func loadAuxiliaryData(forTargetID targetID: String) -> Data? {
@@ -362,8 +361,7 @@ public actor ScanSnapshotCache {
         }
         let entry = ScanChangeListCacheEntry(key: key, comparisonDate: comparisonDate, list: list)
         guard let data = try? entry.encoded() else { return }
-        try? FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
-        try? data.write(to: changeListFileURL(forTargetID: targetID), options: .atomic)
+        writeSlotData(data, to: changeListFileURL(forTargetID: targetID))
     }
 
     // MARK: - Cached duplicate results (`.nddup` slot)
@@ -414,8 +412,7 @@ public actor ScanSnapshotCache {
         }
         let entry = DuplicateResultsCacheEntry(key: key, computedAt: computedAt, results: results)
         guard let data = try? entry.encoded() else { return }
-        try? FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
-        try? data.write(to: duplicateResultsFileURL(forTargetID: targetID), options: .atomic)
+        writeSlotData(data, to: duplicateResultsFileURL(forTargetID: targetID))
     }
 
     // MARK: - Cached per-file content hashes (`.ndhash`, one shared file)
@@ -436,8 +433,15 @@ public actor ScanSnapshotCache {
     /// freshened anything.
     public func saveDuplicateHashCache(_ cache: DuplicateHashCache) {
         guard cache.isDirty, let data = cache.encodedTrimmed() else { return }
+        writeSlotData(data, to: duplicateHashCacheFileURL())
+    }
+
+    /// Best-effort atomic write shared by every cache slot: ensures the
+    /// cache directory exists, then writes or silently drops the payload
+    /// (a failed slot write is a cache miss on the next read, never an error).
+    private func writeSlotData(_ data: Data, to url: URL) {
         try? FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
-        try? data.write(to: duplicateHashCacheFileURL(), options: .atomic)
+        try? data.write(to: url, options: .atomic)
     }
 
     public func removeSnapshot(forTargetID targetID: String) {

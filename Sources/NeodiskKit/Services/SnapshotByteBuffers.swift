@@ -9,10 +9,45 @@
 
 import Foundation
 
+
+/// The little-endian decode surface PayloadReader and ByteReader share: each
+/// type provides the bounds-checked primitives for its backing storage (raw
+/// pointer vs Data), and the fixed-width reads are derived here once so the
+/// two decoders cannot drift.
+nonisolated protocol LittleEndianByteReading {
+    var isAtEnd: Bool { get }
+    var remainingByteCount: Int { get }
+    mutating func readUInt8() throws -> UInt8
+    mutating func readBytes(count: Int) throws -> Data
+    mutating func load<T>(_ type: T.Type) throws -> T
+}
+
+extension LittleEndianByteReading {
+    mutating func readUInt16() throws -> UInt16 {
+        UInt16(littleEndian: try load(UInt16.self))
+    }
+
+    mutating func readUInt32() throws -> UInt32 {
+        UInt32(littleEndian: try load(UInt32.self))
+    }
+
+    mutating func readUInt64() throws -> UInt64 {
+        UInt64(littleEndian: try load(UInt64.self))
+    }
+
+    mutating func readInt64() throws -> Int64 {
+        Int64(bitPattern: try readUInt64())
+    }
+
+    mutating func readDouble() throws -> Double {
+        Double(bitPattern: try readUInt64())
+    }
+}
+
 /// Raw-pointer counterpart of ByteReader for the (possibly decompressed)
 /// node payload: no per-read Data subscripting, and strings decode straight
 /// from the buffer. Only valid inside the payload's withUnsafeBytes scope.
-nonisolated struct PayloadReader {
+nonisolated struct PayloadReader: LittleEndianByteReading {
     let buffer: UnsafeRawBufferPointer
     private var offset = 0
 
@@ -36,26 +71,6 @@ nonisolated struct PayloadReader {
         return buffer[offset]
     }
 
-    mutating func readUInt16() throws -> UInt16 {
-        UInt16(littleEndian: try load(UInt16.self))
-    }
-
-    mutating func readUInt32() throws -> UInt32 {
-        UInt32(littleEndian: try load(UInt32.self))
-    }
-
-    mutating func readUInt64() throws -> UInt64 {
-        UInt64(littleEndian: try load(UInt64.self))
-    }
-
-    mutating func readInt64() throws -> Int64 {
-        Int64(bitPattern: try readUInt64())
-    }
-
-    mutating func readDouble() throws -> Double {
-        Double(bitPattern: try readUInt64())
-    }
-
     mutating func readString() throws -> String {
         let count = Int(try readUInt32())
         guard remainingByteCount >= count else {
@@ -76,7 +91,7 @@ nonisolated struct PayloadReader {
         return Data(buffer[offset..<(offset + count)])
     }
 
-    private mutating func load<T>(_ type: T.Type) throws -> T {
+    mutating func load<T>(_ type: T.Type) throws -> T {
         let size = MemoryLayout<T>.size
         guard remainingByteCount >= size else {
             throw ScanSnapshotCacheError.corruptData("unexpected end of data")
@@ -122,7 +137,7 @@ nonisolated struct ByteWriter {
     }
 }
 
-nonisolated struct ByteReader {
+nonisolated struct ByteReader: LittleEndianByteReading {
     let data: Data
     private var offset: Int
 
@@ -147,26 +162,6 @@ nonisolated struct ByteReader {
         return data[data.startIndex + offset]
     }
 
-    mutating func readUInt16() throws -> UInt16 {
-        UInt16(littleEndian: try load(UInt16.self))
-    }
-
-    mutating func readUInt32() throws -> UInt32 {
-        UInt32(littleEndian: try load(UInt32.self))
-    }
-
-    mutating func readUInt64() throws -> UInt64 {
-        UInt64(littleEndian: try load(UInt64.self))
-    }
-
-    mutating func readInt64() throws -> Int64 {
-        Int64(bitPattern: try readUInt64())
-    }
-
-    mutating func readDouble() throws -> Double {
-        Double(bitPattern: try readUInt64())
-    }
-
     mutating func readString() throws -> String {
         let length = Int(try readUInt32())
         let bytes = try readBytes(count: length)
@@ -182,7 +177,7 @@ nonisolated struct ByteReader {
         return data.subdata(in: start..<(start + count))
     }
 
-    private mutating func load<T>(_ type: T.Type) throws -> T {
+    mutating func load<T>(_ type: T.Type) throws -> T {
         let size = MemoryLayout<T>.size
         guard remainingByteCount >= size else {
             throw ScanSnapshotCacheError.corruptData("unexpected end of data")

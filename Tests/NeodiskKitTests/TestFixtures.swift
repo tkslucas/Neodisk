@@ -12,7 +12,8 @@ func makeTestFileNode(
     unduplicatedAllocatedSize: Int64? = nil,
     lastModified: Date? = nil,
     fileIdentity: FileIdentity? = nil,
-    linkCount: UInt64 = 1
+    linkCount: UInt64 = 1,
+    cloneInfo: CloneInfo? = nil
 ) -> FileNodeRecord {
     FileNodeRecord(
         id: id,
@@ -31,7 +32,8 @@ func makeTestFileNode(
         isAccessible: true,
         isSelfAccessible: true,
         isSynthetic: false,
-        isAutoSummarized: false
+        isAutoSummarized: false,
+        cloneInfo: cloneInfo
     )
 }
 

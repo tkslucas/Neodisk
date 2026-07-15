@@ -145,7 +145,8 @@ import Testing
         try ScanSnapshotCodec.encode(snapshot, version: 1).write(to: fileURL)
 
         let loaded = try #require(await cache.loadSnapshot(for: snapshot.target))
-        expectEqualTrees(loaded.treeStore, snapshot.treeStore)
+        // v1 predates clone info; everything else survives.
+        expectEqualTrees(loaded.treeStore, snapshot.treeStore, carriesCloneInfo: false)
         #expect(loaded.scanWarnings.count == snapshot.scanWarnings.count)
     }
 
@@ -721,7 +722,17 @@ import Testing
             isAccessible: true,
             isSelfAccessible: true,
             isSynthetic: false,
-            isAutoSummarized: false
+            isAutoSummarized: false,
+            // Kept clone-family member: identity captured, private size
+            // never fetched.
+            cloneInfo: CloneInfo(device: 42, cloneID: 0xC10, refCount: 2)
+        )
+        let chargedClone = makeTestFileNode(
+            id: "\(rootPath)/sparse copy.bin",
+            name: "sparse copy.bin",
+            size: 0,
+            unduplicatedAllocatedSize: 512,
+            cloneInfo: CloneInfo(device: 42, cloneID: 0xC10, refCount: 2, privateSize: 0)
         )
         let symlink = FileNodeRecord(
             id: "\(rootPath)/alias",
@@ -788,7 +799,7 @@ import Testing
             children: [],
             isAccessible: false
         )
-        let children = [hardLinked, sparse, symlink, synthetic, summarized, package, restricted]
+        let children = [hardLinked, sparse, chargedClone, symlink, synthetic, summarized, package, restricted]
         let root = makeTestDirectoryNode(
             id: rootPath,
             name: (rootPath as NSString).lastPathComponent,
@@ -805,7 +816,11 @@ import Testing
         return makeTestSnapshot(target: makeTestTarget(rootPath), root: root, store: store, warnings: warnings)
     }
 
-    private func expectEqualTrees(_ loaded: FileTreeStore, _ original: FileTreeStore) {
+    private func expectEqualTrees(
+        _ loaded: FileTreeStore,
+        _ original: FileTreeStore,
+        carriesCloneInfo: Bool = true
+    ) {
         #expect(loaded.rootID == original.rootID)
         #expect(loaded.nodeCount == original.nodeCount)
         #expect(loaded.indexedNodeIDs() == original.indexedNodeIDs())
@@ -819,11 +834,15 @@ import Testing
                 continue
             }
             #expect(loaded.children(of: nodeID).map(\.id) == original.children(of: nodeID).map(\.id))
-            expectEqualNodes(loadedNode, originalNode)
+            expectEqualNodes(loadedNode, originalNode, carriesCloneInfo: carriesCloneInfo)
         }
     }
 
-    private func expectEqualNodes(_ loaded: FileNodeRecord, _ original: FileNodeRecord) {
+    private func expectEqualNodes(
+        _ loaded: FileNodeRecord,
+        _ original: FileNodeRecord,
+        carriesCloneInfo: Bool = true
+    ) {
         #expect(loaded.id == original.id)
         #expect(loaded.url.path == original.url.path)
         #expect(loaded.name == original.name)
@@ -841,5 +860,6 @@ import Testing
         #expect(loaded.isSelfAccessible == original.isSelfAccessible)
         #expect(loaded.isSynthetic == original.isSynthetic)
         #expect(loaded.isAutoSummarized == original.isAutoSummarized)
+        #expect(loaded.cloneInfo == (carriesCloneInfo ? original.cloneInfo : nil))
     }
 }

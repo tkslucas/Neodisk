@@ -196,7 +196,8 @@ nonisolated struct AtomicDirectorySummarizer: Sendable {
             isSelfAccessible: metadata.isReadable,
             isSynthetic: false,
             isAutoSummarized: false,
-            isDataless: metadata.isDataless
+            isDataless: metadata.isDataless,
+            cloneInfo: metadata.cloneInfo
         )
     }
 

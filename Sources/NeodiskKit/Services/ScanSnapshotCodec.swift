@@ -84,6 +84,16 @@ nonisolated enum ScanSnapshotCodec {
         static let cloudOnly = NodeFlags(rawValue: 1 << 15)
     }
 
+    /// v4+: a second flags byte after the fixed fields — the UInt16 above is
+    /// full. Gates the optional trailing payloads added since v3.
+    private struct NodeExtraFlags: OptionSet {
+        let rawValue: UInt8
+
+        /// Trailing clone-family payload: device u64 · cloneID u64 ·
+        /// refCount u32 · privateSize i64 (−1 when unknown).
+        static let hasCloneInfo = NodeExtraFlags(rawValue: 1 << 0)
+    }
+
     private static let magic: UInt32 = 0x4E44_5343 // "NDSC"
 
     // MARK: Encode
@@ -224,6 +234,17 @@ nonisolated enum ScanSnapshotCodec {
             }
         }
         if flags.contains(.hasLinkCount) { writer.append(node.linkCount) }
+        if version >= 4 {
+            var extraFlags: NodeExtraFlags = []
+            if node.cloneInfo != nil { extraFlags.insert(.hasCloneInfo) }
+            writer.append(extraFlags.rawValue)
+            if let cloneInfo = node.cloneInfo {
+                writer.append(cloneInfo.device)
+                writer.append(cloneInfo.cloneID)
+                writer.append(cloneInfo.refCount)
+                writer.append(cloneInfo.privateSize ?? -1)
+            }
+        }
         writer.append(UInt32(childCount))
     }
 
@@ -519,6 +540,22 @@ nonisolated enum ScanSnapshotCodec {
         }
 
         let linkCount = flags.contains(.hasLinkCount) ? try reader.readUInt64() : 1
+        var cloneInfo: CloneInfo?
+        if version >= 4 {
+            let extraFlags = NodeExtraFlags(rawValue: try reader.readUInt8())
+            if extraFlags.contains(.hasCloneInfo) {
+                let device = try reader.readUInt64()
+                let cloneID = try reader.readUInt64()
+                let refCount = try reader.readUInt32()
+                let privateSize = try reader.readInt64()
+                cloneInfo = CloneInfo(
+                    device: device,
+                    cloneID: cloneID,
+                    refCount: max(refCount, 1),
+                    privateSize: privateSize >= 0 ? privateSize : nil
+                )
+            }
+        }
         let childCount = Int(try reader.readUInt32())
         guard childCount <= reader.remainingByteCount else {
             throw ScanSnapshotCacheError.corruptData("implausible child count \(childCount) for \(id)")
@@ -544,7 +581,8 @@ nonisolated enum ScanSnapshotCodec {
             isSynthetic: flags.contains(.isSynthetic),
             isAutoSummarized: flags.contains(.isAutoSummarized),
             isDataless: hasCloudOnly && !isDirectory,
-            cloudOnlyLogicalSize: isDirectory ? directoryCloudOnlySize : nil
+            cloudOnlyLogicalSize: isDirectory ? directoryCloudOnlySize : nil,
+            cloneInfo: cloneInfo
         )
         return (node, childCount)
     }

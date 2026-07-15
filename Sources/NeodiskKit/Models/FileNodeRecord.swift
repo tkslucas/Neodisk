@@ -36,6 +36,10 @@ public struct FileNodeRecord: Identifiable, Sendable {
     /// sum. Display weight = `allocatedSize + cloudOnlyLogicalSize` when the
     /// cloud-only toggle is on.
     public let cloudOnlyLogicalSize: Int64
+    /// APFS clone-family membership, captured only when the kernel reports
+    /// the file shares blocks with others (refCount > 1). Drives clone
+    /// deduplication so scanned totals track real disk usage.
+    public let cloneInfo: CloneInfo?
 
     /// URL form of `path`. Computed on demand — see `path`.
     public nonisolated var url: URL {
@@ -67,7 +71,8 @@ public struct FileNodeRecord: Identifiable, Sendable {
         isSynthetic: Bool,
         isAutoSummarized: Bool,
         isDataless: Bool = false,
-        cloudOnlyLogicalSize: Int64? = nil
+        cloudOnlyLogicalSize: Int64? = nil,
+        cloneInfo: CloneInfo? = nil
     ) {
         self.init(
             id: id,
@@ -88,7 +93,8 @@ public struct FileNodeRecord: Identifiable, Sendable {
             isSynthetic: isSynthetic,
             isAutoSummarized: isAutoSummarized,
             isDataless: isDataless,
-            cloudOnlyLogicalSize: cloudOnlyLogicalSize
+            cloudOnlyLogicalSize: cloudOnlyLogicalSize,
+            cloneInfo: cloneInfo
         )
     }
 
@@ -111,7 +117,8 @@ public struct FileNodeRecord: Identifiable, Sendable {
         isSynthetic: Bool,
         isAutoSummarized: Bool,
         isDataless: Bool = false,
-        cloudOnlyLogicalSize: Int64? = nil
+        cloudOnlyLogicalSize: Int64? = nil,
+        cloneInfo: CloneInfo? = nil
     ) {
         self.id = id
         self.path = path
@@ -133,6 +140,7 @@ public struct FileNodeRecord: Identifiable, Sendable {
         self.isDataless = isDataless && !isDirectory
         self.cloudOnlyLogicalSize = cloudOnlyLogicalSize
             ?? (isDataless && !isDirectory ? logicalSize : 0)
+        self.cloneInfo = isDirectory ? nil : cloneInfo
     }
 
     /// Weight used by the visualizations: on-disk bytes, plus the bytes that

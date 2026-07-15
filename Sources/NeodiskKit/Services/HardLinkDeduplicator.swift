@@ -138,7 +138,8 @@ nonisolated struct HardLinkDeduplicator {
     /// totals re-sum their children and the child display order is
     /// re-sorted in place. Descending index order is bottom-up because a
     /// preorder parent always has a smaller index than its descendants.
-    private nonisolated static func rebuildAffectedAncestors(
+    /// Shared with CloneDeduplicator, whose passes end the same way.
+    nonisolated static func rebuildAffectedAncestors(
         of changedIndices: Set<Int32>,
         nodes: inout [FileNodeRecord],
         parentIndices: [Int32],
@@ -317,10 +318,13 @@ nonisolated struct HardLinkClaim: Sendable {
 }
 
 extension FileNodeRecord {
-    nonisolated func replacingAllocatedSize(_ allocatedSize: Int64) -> FileNodeRecord {
+    nonisolated func replacingAllocatedSize(
+        _ allocatedSize: Int64,
+        cloneInfo: CloneInfo?? = nil
+    ) -> FileNodeRecord {
         FileNodeRecord(
             id: id,
-            url: url,
+            path: path,
             name: name,
             isDirectory: isDirectory,
             isSymbolicLink: isSymbolicLink,
@@ -335,7 +339,10 @@ extension FileNodeRecord {
             isAccessible: isAccessible,
             isSelfAccessible: isSelfAccessible,
             isSynthetic: isSynthetic,
-            isAutoSummarized: isAutoSummarized
+            isAutoSummarized: isAutoSummarized,
+            isDataless: isDataless,
+            cloudOnlyLogicalSize: cloudOnlyLogicalSize,
+            cloneInfo: cloneInfo ?? self.cloneInfo
         )
     }
 }

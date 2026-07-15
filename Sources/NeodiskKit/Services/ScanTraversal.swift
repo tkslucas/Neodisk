@@ -885,6 +885,13 @@ nonisolated final class ScanTraversal {
             hardLinkClaims: hardLinkClaims,
             minimumAllocatedSizeByNodeID: minimumAllocatedSizeByNodeID
         )
+        CloneDeduplicator.applyDeduplication(
+            nodes: &nodes,
+            parentIndices: parentIndices,
+            childStarts: childStarts,
+            childSlots: &childSlots,
+            indexByID: indexByID
+        )
         #if DEBUG
         diagnostics?.record(
             operation: "scan.finalize",

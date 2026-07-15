@@ -86,6 +86,11 @@ nonisolated enum BulkDirectoryReader {
         request.bitmapcount = u_short(ATTR_BIT_MAP_COUNT)
         request.commonattr = commonAttributes
         request.fileattr = fileAttributes
+        // With FSOPT_ATTR_CMN_EXTENDED the forkattr field carries the
+        // common-extended attributes (we request no real fork attributes):
+        // clone-family identity, so shared-block files can be deduplicated.
+        // Filesystems without clone tracking simply omit them per entry.
+        request.forkattr = RequestedAttributes.cloneID | RequestedAttributes.cloneRefCount
 
         let bufferSize = 128 * 1024
         let buffer = UnsafeMutableRawPointer.allocate(byteCount: bufferSize, alignment: 16)
@@ -94,7 +99,7 @@ nonisolated enum BulkDirectoryReader {
         var children: [BulkDirectoryChild] = []
         while true {
             try cancellationCheck()
-            let batchCount = getattrlistbulk(fd, &request, buffer, bufferSize, 0)
+            let batchCount = getattrlistbulk(fd, &request, buffer, bufferSize, UInt64(FSOPT_ATTR_CMN_EXTENDED))
             if batchCount < 0 {
                 throw BulkDirectoryReadError.bulkListFailed(errno)
             }
@@ -125,6 +130,10 @@ nonisolated enum BulkDirectoryReader {
         static let fileLinkCount = UInt32(bitPattern: ATTR_FILE_LINKCOUNT)
         static let fileAllocatedSize = UInt32(bitPattern: ATTR_FILE_ALLOCSIZE)
         static let fileDataLength = UInt32(bitPattern: ATTR_FILE_DATALENGTH)
+        // Common-extended attributes ride the forkattr field under
+        // FSOPT_ATTR_CMN_EXTENDED (sys/attr.h).
+        static let cloneID = UInt32(bitPattern: ATTR_CMNEXT_CLONEID)
+        static let cloneRefCount = UInt32(bitPattern: ATTR_CMNEXT_CLONE_REFCNT)
     }
 
     // MARK: - Entry parsing
@@ -144,6 +153,9 @@ nonisolated enum BulkDirectoryReader {
         field += MemoryLayout<attribute_set_t>.size
         let common = returned.commonattr
         let file = returned.fileattr
+        // Common-extended attributes are reported through forkattr — see
+        // the request setup.
+        let commonExtended = returned.forkattr
 
         var entryErrno: Int32?
         if common & RequestedAttributes.error != 0 {
@@ -220,6 +232,18 @@ nonisolated enum BulkDirectoryReader {
             field += MemoryLayout<off_t>.size
         }
 
+        // Extended attributes pack after the file group.
+        var cloneID: UInt64?
+        if commonExtended & RequestedAttributes.cloneID != 0 {
+            cloneID = field.loadUnaligned(as: UInt64.self)
+            field += MemoryLayout<UInt64>.size
+        }
+        var cloneRefCount: UInt32 = 1
+        if commonExtended & RequestedAttributes.cloneRefCount != 0 {
+            cloneRefCount = field.loadUnaligned(as: UInt32.self)
+            field += MemoryLayout<UInt32>.size
+        }
+
         guard let name else { return }
 
         if let entryErrno {
@@ -264,6 +288,12 @@ nonisolated enum BulkDirectoryReader {
         let fileIdentity: FileIdentity? = capturesIdentity
             ? .fileSystem(device: device, inode: inode)
             : nil
+        // Clone-family membership matters only when blocks are actually
+        // shared (refCount > 1), so the non-cloned majority carries nothing.
+        let cloneInfo: CloneInfo? = !isDirectory && !isSymbolicLink
+            && cloneRefCount > 1
+            ? cloneID.map { CloneInfo(device: device, cloneID: $0, refCount: cloneRefCount) }
+            : nil
 
         children.append(BulkDirectoryChild(
             name: name,
@@ -278,7 +308,8 @@ nonisolated enum BulkDirectoryReader {
                 volumeUsedCapacity: nil,
                 fileIdentity: fileIdentity,
                 linkCount: isDirectory ? 1 : linkCount,
-                isDataless: !isDirectory && bsdFlags & BSDFileFlags.dataless != 0
+                isDataless: !isDirectory && bsdFlags & BSDFileFlags.dataless != 0,
+                cloneInfo: cloneInfo
             ),
             entryErrno: nil,
             isHidden: isHidden

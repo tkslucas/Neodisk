@@ -87,7 +87,7 @@ extension FileTreeStore {
             childIDsByID: updatedChildIDs,
             parentIDByID: updatedParentIDs
         )
-        return try HardLinkDeduplicator.rebalancedStore(updatedStore, cancellationCheck: cancellationCheck)
+        return try SharedSizeDeduplication.rebalancedStore(updatedStore, cancellationCheck: cancellationCheck)
     }
 
     public nonisolated func removingSubtree(id targetID: String) -> FileTreeStore? {
@@ -159,7 +159,7 @@ extension FileTreeStore {
             childIDsByID: updatedChildIDs,
             parentIDByID: updatedParentIDs
         )
-        return try HardLinkDeduplicator.rebalancedStore(updatedStore, cancellationCheck: cancellationCheck)
+        return try SharedSizeDeduplication.rebalancedStore(updatedStore, cancellationCheck: cancellationCheck)
     }
 
     private nonisolated func emptyRootNode() -> FileNodeRecord {
@@ -281,7 +281,7 @@ extension FileTreeStore {
             childIDsByID: updatedChildIDs,
             parentIDByID: updatedParentIDs
         )
-        return try HardLinkDeduplicator.rebalancedStore(updatedStore, cancellationCheck: cancellationCheck)
+        return try SharedSizeDeduplication.rebalancedStore(updatedStore, cancellationCheck: cancellationCheck)
     }
 
     private nonisolated func preflightReplacement(
@@ -479,7 +479,7 @@ extension FileTreeStore {
             childIDsByID: updatedChildIDs,
             parentIDByID: updatedParentIDs
         )
-        return try HardLinkDeduplicator.rebalancedStore(updatedStore, cancellationCheck: cancellationCheck)
+        return try SharedSizeDeduplication.rebalancedStore(updatedStore, cancellationCheck: cancellationCheck)
     }
 
     public nonisolated func subtree(rootedAt targetID: String) -> FileTreeStore? {
@@ -522,7 +522,7 @@ extension FileTreeStore {
             ),
             rootID: targetID
         )
-        return try HardLinkDeduplicator.rebalancedStore(scopedStore, cancellationCheck: cancellationCheck)
+        return try SharedSizeDeduplication.rebalancedStore(scopedStore, cancellationCheck: cancellationCheck)
     }
 
     private nonisolated func subtreeNodeIDs(

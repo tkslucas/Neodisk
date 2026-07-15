@@ -446,6 +446,10 @@ nonisolated struct NodeMetadata: Sendable {
     /// (no key exposes it, and cloud volumes are APFS so they take the bulk
     /// path anyway).
     var isDataless: Bool = false
+    /// APFS clone-family membership (refCount > 1 only). Captured on the
+    /// getattrlistbulk path; the URLResourceValues fallback has no clone
+    /// keys, and non-APFS volumes have no clones to report.
+    var cloneInfo: CloneInfo? = nil
 }
 
 /// BSD st_flags bits the scanner cares about (sys/stat.h).

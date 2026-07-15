@@ -531,18 +531,7 @@ private struct OutlineTreeTable: NSViewRepresentable {
                   case let row = tableView.clickedRow, row >= 0, row < rows.count else { return }
             let node = rows[row].node
             guard model.supportsFileActions(node) else { return }
-            let model = self.model
-            menu.addItem(ActionMenuItem(titleKey: "Reveal in Finder") { model.reveal(node) })
-            menu.addItem(ActionMenuItem(titleKey: "Open") { model.open(node) })
-            menu.addItem(ActionMenuItem(titleKey: "Copy Path") { model.copyPath(node) })
-            if let expansion = model.contentsExpansion(for: node) {
-                menu.addItem(.separator())
-                let expand = ActionMenuItem(titleKey: expansion.menuTitleKey) {
-                    model.expandNodeContents(node)
-                }
-                expand.isEnabled = model.canRefreshSubtree
-                menu.addItem(expand)
-            }
+            menu.addFileNodeActionItems(for: node, model: model)
         }
 
         func toggleQuickLook() -> Bool {
@@ -715,7 +704,6 @@ private final class OutlineRowSelectionState {
     var showsAccentSelection: Bool { isSelected && isEmphasized }
 }
 
-
 /// NSTableView that toggles Quick Look on space, like the SwiftUI lists'
 /// `quickLookOnSpace`. Key events only reach the table while it is first
 /// responder, so typing spaces into the search field is unaffected.
@@ -740,31 +728,6 @@ private final class OutlineNSTableView: NSTableView {
         super.mouseDown(with: event)
         isTrackingClick = false
         clickTrackingEnded()
-    }
-}
-
-/// NSMenuItem carrying its action as a closure, so menu items can capture
-/// the clicked node directly (same shape as the SwiftUI context menu).
-private final class ActionMenuItem: NSMenuItem {
-    private let handler: () -> Void
-
-    init(titleKey: String, handler: @escaping () -> Void) {
-        self.handler = handler
-        super.init(
-            title: NSLocalizedString(titleKey, comment: "Outline row context menu item"),
-            action: #selector(invoke),
-            keyEquivalent: ""
-        )
-        target = self
-    }
-
-    @available(*, unavailable)
-    required init(coder: NSCoder) {
-        fatalError("init(coder:) is not supported")
-    }
-
-    @objc private func invoke() {
-        handler()
     }
 }
 

@@ -13,6 +13,7 @@
 //  double-click instead.
 //
 
+import AppKit
 import SwiftUI
 import NeodiskKit
 
@@ -47,6 +48,60 @@ extension View {
                   model.supportsFileActions(node) else { return }
             model.select(id)
             model.reveal(node)
+        }
+    }
+}
+
+// MARK: - AppKit variant
+
+/// NSMenuItem that runs a closure; NSMenu's target/action plumbing needs an
+/// object to point at, and the item itself is the natural owner.
+final class ClosureMenuItem: NSMenuItem {
+    private let handler: () -> Void
+
+    init(title: String, handler: @escaping () -> Void) {
+        self.handler = handler
+        super.init(title: title, action: #selector(invoke), keyEquivalent: "")
+        target = self
+    }
+
+    @available(*, unavailable)
+    required init(coder: NSCoder) {
+        fatalError("ClosureMenuItem does not support NSCoder")
+    }
+
+    @objc private func invoke() {
+        handler()
+    }
+}
+
+extension NSMenu {
+    /// The AppKit file-node context menu shared by the outline table, the
+    /// treemap, and the sunburst — the same item list as `fileNodeActions`
+    /// above (keep the two in lockstep): Reveal in Finder / Open / Copy
+    /// Path, plus the contents-expansion item for summarized folders and
+    /// opaque packages. Returns nil for nodes without file actions.
+    @MainActor
+    static func fileNodeActions(for node: FileNodeRecord, model: NeodiskViewModel) -> NSMenu? {
+        guard model.supportsFileActions(node) else { return nil }
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        menu.addFileNodeActionItems(for: node, model: model)
+        return menu
+    }
+
+    /// Delegate-driven menus (the outline's menuNeedsUpdate) populate an
+    /// existing menu with the same items instead of building a fresh one.
+    @MainActor
+    func addFileNodeActionItems(for node: FileNodeRecord, model: NeodiskViewModel) {
+        addItem(ClosureMenuItem(title: NSLocalizedString("Reveal in Finder", comment: "File node context menu")) { model.reveal(node) })
+        addItem(ClosureMenuItem(title: NSLocalizedString("Open", comment: "File node context menu")) { model.open(node) })
+        addItem(ClosureMenuItem(title: NSLocalizedString("Copy Path", comment: "File node context menu")) { model.copyPath(node) })
+        if let expansion = model.contentsExpansion(for: node) {
+            addItem(.separator())
+            let item = ClosureMenuItem(title: NSLocalizedString(expansion.menuTitleKey, comment: "File node context menu")) { model.expandNodeContents(node) }
+            item.isEnabled = model.canRefreshSubtree
+            addItem(item)
         }
     }
 }

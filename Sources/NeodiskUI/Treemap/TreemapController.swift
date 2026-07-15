@@ -269,24 +269,8 @@ final class TreemapController {
 
     func contextMenu(at point: CGPoint) -> NSMenu? {
         guard let model, let cell = cell(at: point),
-              let node = model.store?.node(id: cell.nodeID),
-              model.supportsFileActions(node) else { return nil }
-
-        let menu = NSMenu()
-        menu.autoenablesItems = false
-        menu.addItem(ClosureMenuItem(title: NSLocalizedString("Reveal in Finder", comment: "Treemap context menu")) { model.reveal(node) })
-        menu.addItem(ClosureMenuItem(title: NSLocalizedString("Open", comment: "Treemap context menu")) { model.open(node) })
-        menu.addItem(ClosureMenuItem(title: NSLocalizedString("Copy Path", comment: "Treemap context menu")) { model.copyPath(node) })
-
-        // Same subtree action as the outline's context menu: summarized
-        // folders and opaque packages expand their contents in place.
-        if let expansion = model.contentsExpansion(for: node) {
-            menu.addItem(.separator())
-            let item = ClosureMenuItem(title: NSLocalizedString(expansion.menuTitleKey, comment: "Treemap context menu")) { model.expandNodeContents(node) }
-            item.isEnabled = model.canRefreshSubtree
-            menu.addItem(item)
-        }
-        return menu
+              let node = model.store?.node(id: cell.nodeID) else { return nil }
+        return NSMenu.fileNodeActions(for: node, model: model)
     }
 
     /// Spacebar Quick Look for the treemap: previews the selected node, so
@@ -473,27 +457,6 @@ final class TreemapController {
 
     private func pushDisplay(contentsChanged: Bool = false) {
         view?.refreshDisplay(contentsChanged: contentsChanged)
-    }
-}
-
-/// NSMenuItem that runs a closure; NSMenu's target/action plumbing needs an
-/// object to point at, and the item itself is the natural owner.
-private final class ClosureMenuItem: NSMenuItem {
-    private let handler: () -> Void
-
-    init(title: String, handler: @escaping () -> Void) {
-        self.handler = handler
-        super.init(title: title, action: #selector(invoke), keyEquivalent: "")
-        target = self
-    }
-
-    @available(*, unavailable)
-    required init(coder: NSCoder) {
-        fatalError("ClosureMenuItem does not support NSCoder")
-    }
-
-    @objc private func invoke() {
-        handler()
     }
 }
 

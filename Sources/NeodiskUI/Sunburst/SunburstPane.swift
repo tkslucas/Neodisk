@@ -476,43 +476,8 @@ struct SunburstPane: View {
     /// summarized folders and opaque packages.
     private func contextMenu(for segment: SunburstSegment) -> NSMenu? {
         guard let nodeID = segment.nodeID,
-              let node = model.store?.node(id: nodeID),
-              model.supportsFileActions(node) else { return nil }
-
-        let model = model
-        let menu = NSMenu()
-        menu.autoenablesItems = false
-        menu.addItem(SunburstMenuItem(title: NSLocalizedString("Reveal in Finder", comment: "Sunburst context menu")) { model.reveal(node) })
-        menu.addItem(SunburstMenuItem(title: NSLocalizedString("Open", comment: "Sunburst context menu")) { model.open(node) })
-        menu.addItem(SunburstMenuItem(title: NSLocalizedString("Copy Path", comment: "Sunburst context menu")) { model.copyPath(node) })
-
-        if let expansion = model.contentsExpansion(for: node) {
-            menu.addItem(.separator())
-            let item = SunburstMenuItem(title: NSLocalizedString(expansion.menuTitleKey, comment: "Sunburst context menu")) { model.expandNodeContents(node) }
-            item.isEnabled = model.canRefreshSubtree
-            menu.addItem(item)
-        }
-        return menu
+              let node = model.store?.node(id: nodeID) else { return nil }
+        return NSMenu.fileNodeActions(for: node, model: model)
     }
 }
 
-/// NSMenuItem that runs a closure; NSMenu's target/action plumbing needs an
-/// object to point at, and the item itself is the natural owner.
-private final class SunburstMenuItem: NSMenuItem {
-    private let handler: () -> Void
-
-    init(title: String, handler: @escaping () -> Void) {
-        self.handler = handler
-        super.init(title: title, action: #selector(invoke), keyEquivalent: "")
-        target = self
-    }
-
-    @available(*, unavailable)
-    required init(coder: NSCoder) {
-        fatalError("SunburstMenuItem does not support NSCoder")
-    }
-
-    @objc private func invoke() {
-        handler()
-    }
-}

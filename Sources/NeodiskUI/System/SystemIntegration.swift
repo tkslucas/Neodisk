@@ -148,28 +148,6 @@ enum SystemIntegration {
         return descriptions
     }
 
-    nonisolated static func volumeAvailableCapacityForImportantUsage(for url: URL) -> Int64? {
-        do {
-            let values = try url.resourceValues(forKeys: [
-                .volumeAvailableCapacityForImportantUsageKey
-            ])
-            return values.volumeAvailableCapacityForImportantUsage
-        } catch {
-            return nil
-        }
-    }
-
-    nonisolated static func volumeTotalCapacity(for url: URL) -> Int64? {
-        do {
-            let values = try url.resourceValues(forKeys: [
-                .volumeTotalCapacityKey
-            ])
-            return values.volumeTotalCapacity.map(Int64.init)
-        } catch {
-            return nil
-        }
-    }
-
     static func reveal(_ url: URL, workspace: SystemWorkspace = NSWorkspace.shared) {
         reveal([url], workspace: workspace)
     }

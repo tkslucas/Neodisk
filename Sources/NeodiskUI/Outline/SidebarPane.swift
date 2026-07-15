@@ -332,13 +332,19 @@ struct SidebarPane: View {
         for target in model.volumeLocations {
             // Never scanned → the bar stays an empty track (no sidecar to
             // color it, and no misleading half-answer from volume stats).
-            guard model.session.cachedScanInfo[target.id] != nil else { continue }
+            guard let info = model.session.cachedScanInfo[target.id] else { continue }
             guard let sidecar = await model.session.loadKindStatsSidecar(forTargetID: target.id) else {
                 continue
             }
             let url = target.url
+            let scannedBytes = info.totalAllocatedSize
             bars[target.id] = await Task.detached(priority: .utility) {
-                VolumeBarData.make(volumeURL: url, sidecar: sidecar, palette: palette)
+                VolumeBarData.make(
+                    space: VolumeSpaceInfo.load(for: url),
+                    sidecar: sidecar,
+                    scannedBytes: scannedBytes,
+                    palette: palette
+                )
             }.value
         }
         volumeBars = bars

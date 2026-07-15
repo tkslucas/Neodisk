@@ -318,7 +318,7 @@ import NeodiskKit
             model.coordinator.snapshot?.isComplete == true
         }
 
-        // updateFreeSpace only fills these for volume/cloud targets.
+        // FreeSpaceModel.update() only fills these for volume/cloud targets.
         #expect(model.freeSpace.freeSpaceBytes == nil)
         #expect(model.freeSpace.hiddenSpaceBytes == nil)
     }

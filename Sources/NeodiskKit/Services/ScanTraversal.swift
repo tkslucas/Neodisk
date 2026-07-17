@@ -286,6 +286,10 @@ nonisolated final class ScanTraversal {
         let usesBulkEnumeration = bulkEnumerationEnabled
         let directoryIOExecutor = self.directoryIOExecutor
         let continuation = self.continuation
+        // Set once in `run()` before this task group starts and never mutated
+        // during traversal, so the workers capture an immutable Sendable copy
+        // to resolve each child's mount-boundary flag off the coordinator.
+        let ownedDeviceIDs = self.ownedDeviceIDs
 
         let summarizer = self.atomicDirectorySummarizer
         let summaryWorkerLimit = self.atomicSummaryWorkerLimit
@@ -383,6 +387,7 @@ nonisolated final class ScanTraversal {
                                 )
                                 let leafBatch = try Self.makeDirectoryLeafBatch(
                                     from: contents.entries,
+                                    ownedDeviceIDs: ownedDeviceIDs,
                                     summarizer: summarizer,
                                     cancellationCheck: cancellationCheck
                                 )
@@ -526,31 +531,58 @@ nonisolated final class ScanTraversal {
     /// work-stack duplicate rule (the last enumerated path wins).
     private static func makeDirectoryLeafBatch(
         from entries: [DirectoryEntry],
+        ownedDeviceIDs: Set<UInt64>,
         summarizer: AtomicDirectorySummarizer,
         cancellationCheck: @escaping CancellationCheck
     ) throws -> DirectoryLeafBatch {
         var batch = DirectoryLeafBatch()
         batch.nodes.reserveCapacity(entries.count)
-        batch.remainingEntries.reserveCapacity(min(entries.count, 64))
+        batch.pendingChildWorkItems.reserveCapacity(min(entries.count, 64))
         var seenNodeIDs = Set<String>()
 
         for (offset, entry) in entries.reversed().enumerated() {
             if offset.isMultiple(of: 256) {
                 try cancellationCheck()
             }
+
+            // Frontier + weight bookkeeping the coordinator used to redo
+            // serially, folded into the pass that already visits every entry.
+            // Accumulated across the whole listing (duplicates included) to
+            // match the coordinator's former loops over `childEntries`.
+            let entryIsDirectory = isLikelyTraversableDirectory(entry: entry)
+            let weightUnits = entryIsDirectory ? directoryChildWeightUnits : 1
+            batch.totalWeightUnits += weightUnits
+            if entryIsDirectory {
+                batch.childDirectoryCount += 1
+            }
+
             let nodeID = entry.path
             guard seenNodeIDs.insert(nodeID).inserted else {
                 batch.duplicateWarnings.append(
                     ScanWarningFactory.makeDuplicateNodeWarning(for: entry.url)
                 )
-                batch.duplicateWeightUnits += traversalWeightUnits(for: entry)
+                batch.duplicateWeightUnits += weightUnits
                 continue
             }
 
             guard entry.localizedEnumerationError == nil,
                   let metadata = entry.metadata,
                   !metadata.isDirectory || metadata.isSymbolicLink else {
-                batch.remainingEntries.append(entry)
+                batch.pendingChildWorkItems.append(
+                    PendingChildWorkItem(
+                        url: entry.url,
+                        path: entry.path,
+                        metadata: entry.metadata,
+                        localizedEnumerationError: entry.localizedEnumerationError,
+                        isDirectoryHint: entry.isDirectoryHint,
+                        blocksTraversalAtMountBoundary: MountBoundaryPolicy.isNestedMount(
+                            deviceID: entry.deviceID,
+                            ownedDeviceIDs: ownedDeviceIDs,
+                            directoryMountStatus: entry.directoryMountStatus
+                        ),
+                        weightUnits: weightUnits
+                    )
+                )
                 continue
             }
 
@@ -573,9 +605,12 @@ nonisolated final class ScanTraversal {
         }
 
         // Restore enumeration order for deterministic fixtures. Final display
-        // order is size/name sorted during assembly.
+        // order is size/name sorted during assembly. Push order is behavioral:
+        // the coordinator's global `seenScannedNodeIDs` is first-seen-wins, so
+        // `pendingChildWorkItems` must reach the work stack in the same order
+        // the old `remainingEntries` did.
         batch.nodes.reverse()
-        batch.remainingEntries.reverse()
+        batch.pendingChildWorkItems.reverse()
         batch.duplicateWarnings.reverse()
         return batch
     }
@@ -704,11 +739,10 @@ nonisolated final class ScanTraversal {
         metrics.discoveredItems += childEntries.count
         metrics.enumeratedDirectoryCount += 1
         releasePendingDirectoryIfNeeded(for: item)
-        var childDirectoryCount = 0
-        for childEntry in childEntries
-        where Self.isLikelyTraversableDirectory(entry: childEntry) {
-            childDirectoryCount += 1
-        }
+        // Counted on the worker during `makeDirectoryLeafBatch`; the
+        // coordinator no longer re-walks the listing (which rebuilt each
+        // child `URL` just to classify it).
+        let childDirectoryCount = leafBatch.childDirectoryCount
         metrics.discoveredDirectoryCount += childDirectoryCount
         metrics.pendingDirectoryCount += childDirectoryCount
         metrics.recalculateProgress()
@@ -770,11 +804,9 @@ nonisolated final class ScanTraversal {
             metrics.recalculateProgress()
         }
 
-        // Split this directory's progress weight among its children.
-        var totalWeightUnits = 0.0
-        for childEntry in childEntries {
-            totalWeightUnits += Self.traversalWeightUnits(for: childEntry)
-        }
+        // Weight-split denominator was summed on the worker (bit-identical: the
+        // terms are 1 or `directoryChildWeightUnits`, exactly representable).
+        let totalWeightUnits = leafBatch.totalWeightUnits
 
         let directLeafWeight = totalWeightUnits > 0
             ? item.weight / totalWeightUnits
@@ -782,26 +814,26 @@ nonisolated final class ScanTraversal {
         foldDirectoryLeafBatch(leafBatch, weightPerEntry: directLeafWeight)
 
         // Enqueue only directories, packages, and unavailable entries. Plain
-        // files and symlinks were already completed by the directory worker.
-        for (offset, childEntry) in leafBatch.remainingEntries.enumerated() {
+        // files and symlinks were already completed by the directory worker,
+        // which also resolved each child's URL, mount-boundary flag, and weight
+        // units — the coordinator only stamps the parent-relative fields. The
+        // `item.weight * weightUnits / totalWeightUnits` association is
+        // unchanged, so pushed weights stay bit-identical.
+        for (offset, pending) in leafBatch.pendingChildWorkItems.enumerated() {
             if offset.isMultiple(of: 256) {
                 try Task.checkCancellation()
             }
             workStack.append(
                 ScanWorkItem(
-                    url: childEntry.url,
-                    path: childEntry.path,
-                    metadata: childEntry.metadata,
-                    localizedEnumerationError: childEntry.localizedEnumerationError,
-                    isDirectoryHint: childEntry.isDirectoryHint,
-                    blocksTraversalAtMountBoundary: MountBoundaryPolicy.isNestedMount(
-                        deviceID: childEntry.deviceID,
-                        ownedDeviceIDs: ownedDeviceIDs,
-                        directoryMountStatus: childEntry.directoryMountStatus
-                    ),
+                    url: pending.url,
+                    path: pending.path,
+                    metadata: pending.metadata,
+                    localizedEnumerationError: pending.localizedEnumerationError,
+                    isDirectoryHint: pending.isDirectoryHint,
+                    blocksTraversalAtMountBoundary: pending.blocksTraversalAtMountBoundary,
                     parentKey: itemKey,
                     depth: item.depth + 1,
-                    weight: item.weight * Self.traversalWeightUnits(for: childEntry) / totalWeightUnits
+                    weight: item.weight * pending.weightUnits / totalWeightUnits
                 )
             )
         }
@@ -1084,16 +1116,19 @@ nonisolated final class ScanTraversal {
         return metadata.isDirectory && !metadata.isSymbolicLink
     }
 
-    private static func traversalWeightUnits(for entry: DirectoryEntry) -> Double {
-        isLikelyTraversableDirectory(entry: entry) ? directoryChildWeightUnits : 1
-    }
-
     private static func isLikelyTraversableDirectory(entry: DirectoryEntry) -> Bool {
-        isLikelyTraversableDirectory(
-            metadata: entry.metadata,
-            url: entry.url,
-            isDirectoryHint: entry.isDirectoryHint
-        )
+        // Same classification as the `metadata:url:isDirectoryHint:` overload,
+        // but only builds `entry.url` (a lazy RFC3986 parse) in the rare
+        // metadata-and-hint-absent fallback. Passing `entry.url` as an eager
+        // argument rebuilt that URL for every child on the coordinator's hot
+        // count/weight loops even though the metadata branch never reads it.
+        if let metadata = entry.metadata {
+            return metadata.isDirectory && !metadata.isSymbolicLink
+        }
+        if let isDirectoryHint = entry.isDirectoryHint {
+            return isDirectoryHint
+        }
+        return entry.url.hasDirectoryPath
     }
 
     /// Removes an item's frontier claim once its fate is known (enumerated, leaf,

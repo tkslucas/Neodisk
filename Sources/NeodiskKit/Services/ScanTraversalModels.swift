@@ -81,12 +81,33 @@ extension ScanTraversal {
         let leafBatch: DirectoryLeafBatch
     }
 
-    /// Ordinary files and symlinks built by a directory worker. Directories,
-    /// packages, and entries whose metadata could not be read remain in
-    /// `remainingEntries` and keep the coordinator's existing path.
+    /// A directory/package/unavailable child the coordinator still has to push
+    /// onto the work stack, with every per-entry value the worker could compute
+    /// already resolved. The coordinator only stamps the parent-relative fields
+    /// (`parentKey`, `depth`, and the weight scaled by `parent.weight`), turning
+    /// its former O(children) expansion pass — which rebuilt each child `URL`
+    /// and re-classified every entry — into O(1)-per-child field copies.
+    struct PendingChildWorkItem: Sendable {
+        let url: URL
+        let path: String
+        let metadata: NodeMetadata?
+        let localizedEnumerationError: Error?
+        let isDirectoryHint: Bool?
+        let blocksTraversalAtMountBoundary: Bool
+        /// This child's raw share of its parent's traversal weight (1 for a
+        /// leaf-shaped entry, `directoryChildWeightUnits` for a directory).
+        /// The coordinator divides by `totalWeightUnits` and scales by the
+        /// parent's own weight.
+        let weightUnits: Double
+    }
+
+    /// Ordinary files and symlinks built by a directory worker, plus the
+    /// per-child expansion math the coordinator used to recompute serially.
+    /// Directories, packages, and entries whose metadata could not be read
+    /// become `pendingChildWorkItems` and keep the coordinator's existing path.
     struct DirectoryLeafBatch: Sendable {
         var nodes: [FileNodeRecord] = []
-        var remainingEntries: [DirectoryEntry] = []
+        var pendingChildWorkItems: [PendingChildWorkItem] = []
         var hardLinkClaims: [HardLinkClaim] = []
         var duplicateWarnings: [ScanWarning] = []
         /// Paths of this directory's clone-family members (refCount > 1), so the
@@ -96,6 +117,17 @@ extension ScanTraversal {
         var duplicateWeightUnits = 0.0
         var fileCount = 0
         var allocatedSize: Int64 = 0
+        /// Count of likely-traversable directory entries across the whole
+        /// directory listing (duplicates included), computed on the worker so
+        /// the coordinator's frontier bookkeeping is O(1). Matches the old
+        /// `childDirectoryCount` loop in `handleTraversalSuccess`.
+        var childDirectoryCount = 0
+        /// Sum of every child entry's traversal weight units (duplicates
+        /// included), the denominator the coordinator splits `item.weight` by.
+        /// Values are 1 or `directoryChildWeightUnits` (both exactly
+        /// representable), so the sum is order-independent and bit-identical to
+        /// the coordinator's former forward-order loop.
+        var totalWeightUnits = 0.0
 
         var completedEntryCount: Int {
             nodes.count + duplicateWarnings.count

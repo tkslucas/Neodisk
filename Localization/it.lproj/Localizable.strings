@@ -27,6 +27,9 @@
 
 /* MARK: - Scanning progress */
 "Assembling results for %@…" = "Elaborazione dei risultati per %@…";
+"Applying changes…" = "Applicazione delle modifiche…";
+"Checking for changes…" = "Ricerca delle modifiche…";
+"Changes too extensive — running a full scan…" = "Troppe modifiche — scansione completa in corso…";
 "Scanning %@…" = "Scansione di %@…";
 "%@ files · %@" = "%@ file · %@";
 "Stop Scan" = "Interrompi scansione";

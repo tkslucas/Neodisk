@@ -5,6 +5,120 @@ import Foundation
 /// The bulk reader must classify children the same way the
 /// FileManager + URLResourceValues path does — these tests pin that parity.
 @Suite struct BulkDirectoryReaderTests {
+    @Test func workerOwnedBuffersAreReusedAcrossConcurrentReads() async throws {
+        let rootURL = try makeBulkTestDirectory()
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+        for index in 0..<32 {
+            try Data("\(index)".utf8).write(to: rootURL.appending(path: "file-\(index)"))
+        }
+
+        let executor = DirectoryIOExecutor(workerCount: 2)
+        var contextIDs = Set<String>()
+        try await withThrowingTaskGroup(of: String.self) { group in
+            for _ in 0..<12 {
+                group.addTask {
+                    try await executor.run { context, cancellationCheck in
+                        var names: [String] = []
+                        let count = try BulkDirectoryReader.readChildren(
+                            ofDirectory: rootURL,
+                            using: context,
+                            cancellationCheck: cancellationCheck
+                        ) { child in
+                            names.append(child.name)
+                        }
+                        #expect(count == 32)
+                        #expect(names.count == 32)
+                        return String(describing: ObjectIdentifier(context))
+                    }
+                }
+            }
+            for try await contextID in group {
+                contextIDs.insert(contextID)
+            }
+        }
+
+        #expect(executor.workerCount == 2)
+        #expect(contextIDs.count == 2)
+    }
+
+    @Test func scannerBulkPathDecodesDirectlyIntoDirectoryEntries() throws {
+        let rootURL = try makeBulkTestDirectory()
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+        try Data("payload".utf8).write(to: rootURL.appending(path: "file"))
+        try FileManager.default.createDirectory(
+            at: rootURL.appending(path: "folder", directoryHint: .isDirectory),
+            withIntermediateDirectories: false
+        )
+
+        let result = try ScanEngine.bulkDirectoryEntries(
+            of: rootURL,
+            includeHiddenFiles: true,
+            behavior: .standard,
+            exclusionMatcher: ScanExclusionMatcher(
+                patterns: [],
+                rootURL: rootURL,
+                includeCloudStorage: true
+            ),
+            context: BulkDirectoryReader.Context(),
+            cancellationCheck: {}
+        )
+
+        #expect(result.enumeratedItemCount == 2)
+        #expect(Set(result.entries.map(\.url.lastPathComponent)) == ["file", "folder"])
+        let folder = try #require(result.entries.first { $0.url.lastPathComponent == "folder" })
+        #expect(folder.metadata?.isDirectory == true)
+        #expect(folder.deviceID != nil)
+        #expect(folder.deviceID == folder.metadata?.fileIdentity?.fileSystemDeviceID)
+    }
+
+    @Test func bulkOpenFailureFallsBackToInjectedEnumerator() async throws {
+        let missingURL = FileManager.default.temporaryDirectory
+            .appending(path: "bulk-fallback-\(UUID().uuidString)", directoryHint: .isDirectory)
+        let calls = LockedCounter()
+
+        let result = try await ScanEngine.directoryEntries(
+            of: missingURL,
+            includeHiddenFiles: true,
+            behavior: .standard,
+            exclusionMatcher: ScanExclusionMatcher(
+                patterns: [],
+                rootURL: missingURL,
+                includeCloudStorage: true
+            ),
+            resourceKeys: ScanMetadataLoader.scanResourceKeys,
+            metadataLoader: ScanMetadataLoader(),
+            directoryContents: { _, _, _, _ in
+                calls.increment()
+                return ScanEngine.DirectoryEnumerationResult(urls: [])
+            },
+            classificationWorkerLimit: 1,
+            usesBulkEnumeration: true,
+            directoryIOExecutor: DirectoryIOExecutor(workerCount: 1),
+            cancellationCheck: { try Task.checkCancellation() }
+        )
+
+        #expect(result.entries.isEmpty)
+        #expect(calls.value == 1)
+    }
+
+    @Test func dedicatedIOWorkerObservesTaskCancellation() async throws {
+        let executor = DirectoryIOExecutor(workerCount: 1)
+        let readTask = Task<Int, Error> {
+            try await executor.run { _, cancellationCheck in
+                while true {
+                    try cancellationCheck()
+                    Thread.sleep(forTimeInterval: 0.001)
+                }
+            }
+        }
+
+        try await Task.sleep(for: .milliseconds(10))
+        readTask.cancel()
+        await #expect(throws: CancellationError.self) {
+            try await readTask.value
+        }
+    }
+
     @Test func testReadsBasicEntriesWithMetadata() throws {
         let rootURL = try makeBulkTestDirectory()
         defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -141,7 +255,7 @@ import Foundation
         for name in ["Sample.app", "Thing.bundle", "Plain.d", "NoExtension", "Fake.framework"] {
             let childURL = rootURL.appending(path: name, directoryHint: .isDirectory)
             let expected = try childURL.resourceValues(forKeys: [.isPackageKey]).isPackage ?? false
-            let bulkVerdict = try #require(children[name]?.metadata?.isPackage)
+            let bulkVerdict = try #require(children[name]?.metadata?.isPackage as Bool?)
             #expect(bulkVerdict == expected, "package mismatch for \(name)")
         }
     }
@@ -292,6 +406,23 @@ import Foundation
                 cancellationCheck: { throw TestCancellation() }
             )
         }
+    }
+}
+
+private final class LockedCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    var value: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return count
+    }
+
+    func increment() {
+        lock.lock()
+        count += 1
+        lock.unlock()
     }
 }
 

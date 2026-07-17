@@ -1662,7 +1662,7 @@ import Foundation
 
         metrics.recalculateProgress()
 
-        #expect(abs((metrics.progressFraction) - (0.5 * 0.95)) <= 0.0001)
+        #expect(abs((metrics.progressFraction) - (0.5 * 0.9)) <= 0.0001)
     }
 
     @Test func testDirectoryScanProgressStaysLowWhenLittleWeightIsCompleted() {
@@ -1725,7 +1725,7 @@ import Foundation
 
         metrics.recalculateProgress()
 
-        #expect(abs((metrics.progressFraction) - (((0.3 + 0.5) / 2) * 0.95)) <= 0.0001)
+        #expect(abs((metrics.progressFraction) - (((0.3 + 0.5) / 2) * 0.9)) <= 0.0001)
     }
 
     @Test func testFinalizationProgressMapsAboveTraversalSpan() {
@@ -1737,7 +1737,7 @@ import Foundation
         metrics.isFinalizing = true
         metrics.finalizationFraction = 0.5
         metrics.recalculateProgress()
-        #expect(abs((metrics.progressFraction) - (0.97)) <= 0.0001)
+        #expect(abs((metrics.progressFraction) - (0.945)) <= 0.0001)
 
         metrics.finalizationFraction = 1
         metrics.recalculateProgress()

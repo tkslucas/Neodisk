@@ -28,6 +28,13 @@ nonisolated enum IncrementalRescanPlanner {
         let targetPath = target.id
         var matchedRootIDs: [String] = []
         var matchedRootIDSet = Set<String>()
+        /// Set when an event names the scan root itself or a membership change
+        /// directly under it. Rather than discard the baseline (the old
+        /// `.fullScan(.changedScanRoot)` bail, which fired constantly from
+        /// ambient churn in `~` / volume roots), the service shallow-relists
+        /// the root directory. Deep changes in the same window still map to
+        /// their subtrees and ride along in the same plan.
+        var needsRootRelist = false
         /// Candidate paths whose ancestor walk already ran — event bursts
         /// name the same few directories thousands of times.
         var resolvedCandidates = Set<String>()
@@ -42,7 +49,14 @@ nonisolated enum IncrementalRescanPlanner {
                 return .fullScan(.eventOutsideTarget)
             }
             guard path != targetPath else {
-                return .fullScan(.changedScanRoot)
+                // A hierarchical coalesce on the root itself means the whole
+                // tree lost granularity — only a full scan is trustworthy. Any
+                // other root event (record/membership move) is a shallow relist.
+                if event.flags.contains(.mustScanSubdirectories) {
+                    return .fullScan(.changedScanRoot)
+                }
+                needsRootRelist = true
+                continue
             }
 
             // Content the baseline scan never covered can't invalidate it:
@@ -78,9 +92,15 @@ nonisolated enum IncrementalRescanPlanner {
                 return .fullScan(.noMaterializedAncestor)
             }
             guard matched != baseline.rootID, matched != targetPath else {
-                // Rescanning the root IS the full scan; a membership change
-                // directly under the scan root lands here.
-                return .fullScan(.changedScanRoot)
+                // A membership change directly under the scan root (or a
+                // direct-child file's own change) lands here. A hierarchical
+                // coalesce still demands a full scan; otherwise relist the root
+                // shallowly instead of discarding the baseline.
+                if event.flags.contains(.mustScanSubdirectories) {
+                    return .fullScan(.changedScanRoot)
+                }
+                needsRootRelist = true
+                continue
             }
             if matchedRootIDSet.insert(matched).inserted {
                 matchedRootIDs.append(matched)
@@ -92,14 +112,20 @@ nonisolated enum IncrementalRescanPlanner {
             }
         }
 
-        guard !matchedRootIDs.isEmpty else { return .noChanges }
+        guard !matchedRootIDs.isEmpty else {
+            return needsRootRelist ? .relistRoot(subtreeRootIDs: []) : .noChanges
+        }
 
         let collapsedRootIDs = baseline.topLevelNodeIDs(from: matchedRootIDs)
-        guard !collapsedRootIDs.isEmpty else { return .noChanges }
+        guard !collapsedRootIDs.isEmpty else {
+            return needsRootRelist ? .relistRoot(subtreeRootIDs: []) : .noChanges
+        }
         guard collapsedRootIDs.count <= maxSubtrees else {
             return .fullScan(.tooManyChangedSubtrees)
         }
-        return .rescanSubtrees(collapsedRootIDs)
+        return needsRootRelist
+            ? .relistRoot(subtreeRootIDs: collapsedRootIDs)
+            : .rescanSubtrees(collapsedRootIDs)
     }
 
     // MARK: - Event interpretation

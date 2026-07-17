@@ -159,6 +159,9 @@ extension AtomicDirectorySummarizer {
 
                 guard !childMetadata.isDirectory else {
                     profile.observedDirectoryCount += 1
+                    if child.directoryMountStatus & MountBoundaryPolicy.mountPointFlag != 0 {
+                        continue
+                    }
                     if !isNodeDependencyLayout,
                        profile.observedFileCount == 0,
                        profile.observedDirectoryCount >= Self.directoryOnlyProbeLimit(minFileCount: minFileCount) {

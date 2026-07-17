@@ -232,6 +232,51 @@ struct IncrementalScanServiceTests {
         #expect(requests.first?.through == 20)
     }
 
+    @Test func independentSubtreesRescanTogetherAndSpliceDeterministically() async throws {
+        let root = try makeTemporaryTree()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let target = ScanTarget(url: root)
+        let options = ScanOptions()
+        let provider = StubEventHistoryProvider(checkpoints: [checkpoint(10), checkpoint(20)])
+        let service = IncrementalScanService(engine: ScanEngine(), historyProvider: provider)
+
+        let baseline = try #require(try await finishedSnapshot(
+            from: service.scan(target: target, options: options)
+        ))
+        try Data(repeating: 0x71, count: 7_000).write(
+            to: root.appending(path: "alpha/parallel-a.bin")
+        )
+        try Data(repeating: 0x72, count: 9_000).write(
+            to: root.appending(path: "beta/parallel-b.bin")
+        )
+        provider.setHistory(.success(FileSystemEventHistory(events: [
+            FileSystemChangeEvent(path: target.id + "/alpha/parallel-a.bin", eventID: 15, flags: [.itemCreated]),
+            FileSystemChangeEvent(path: target.id + "/beta/parallel-b.bin", eventID: 16, flags: [.itemCreated]),
+        ])))
+
+        var progressFractions: [Double] = []
+        var rescanned: ScanSnapshot?
+        for try await event in service.rescan(
+            target: target,
+            options: options,
+            baselineProvider: { baseline }
+        ) {
+            if case .progress(let metrics) = event {
+                progressFractions.append(metrics.progressFraction)
+            } else if case .finished(let snapshot) = event {
+                rescanned = snapshot
+            }
+        }
+        let fresh = try #require(try await finishedSnapshot(
+            from: ScanEngine().scan(target: target, options: options)
+        ))
+        let result = try #require(rescanned)
+
+        expectEquivalentTrees(result.treeStore, fresh.treeStore)
+        #expect(result.incrementalCheckpoint?.eventID == 20)
+        #expect(progressFractions == progressFractions.sorted())
+    }
+
     /// A hard link straddling two subtrees, where only one subtree changes.
     /// The changed subtree is rescanned in isolation — where the shared file
     /// looks like an unlinked file (its twin is out of scope) — so the splice
@@ -380,21 +425,36 @@ struct IncrementalScanServiceTests {
             }
         }
 
-        // The strip opens at the baseline totals minus the subtree being
-        // rescanned, not at zero.
-        let betaNode = try #require(baseline.treeStore.node(id: target.id + "/beta"))
+        // The stream opens with the silent preparation phase flagged, so the
+        // strip can show "Checking for changes…" instead of a dead bar.
         let first = try #require(progress.first)
-        #expect(first.filesVisited == baseline.aggregateStats.fileCount - betaNode.descendantFileCount)
-        #expect(first.bytesDiscovered == baseline.aggregateStats.totalAllocatedSize - betaNode.allocatedSize)
+        #expect(first.isCheckingChanges)
+        #expect(progress.drop(while: \.isCheckingChanges).allSatisfy { !$0.isCheckingChanges })
+
+        // The counters then open at the baseline totals minus the subtree
+        // being rescanned, not at zero.
+        let betaNode = try #require(baseline.treeStore.node(id: target.id + "/beta"))
+        let seed = try #require(progress.first { !$0.isCheckingChanges })
+        #expect(seed.filesVisited == baseline.aggregateStats.fileCount - betaNode.descendantFileCount)
+        #expect(seed.bytesDiscovered == baseline.aggregateStats.totalAllocatedSize - betaNode.allocatedSize)
 
         // The bar opens at the retained share of the baseline's bytes and
         // never moves backward from there.
-        let retained = Double(first.bytesDiscovered)
+        let retained = Double(seed.bytesDiscovered)
             / Double(baseline.aggregateStats.totalAllocatedSize)
-        #expect(abs(first.progressFraction - min(retained, 0.95)) < 0.0001)
-        #expect(first.progressFraction > 0)
+        #expect(abs(seed.progressFraction - min(retained, ScanMetrics.traversalSpan)) < 0.0001)
+        #expect(seed.progressFraction > 0)
         let fractions = progress.map(\.progressFraction)
         #expect(fractions == fractions.sorted())
+        #expect(progress.contains { $0.isMergingChanges && $0.isFinalizing })
+        // The merge phase reports real sub-phase progress (determinate and
+        // moving), not a static hold at the rescan ceiling: at least one
+        // merging metric sits strictly between the ceiling and completion.
+        #expect(progress.contains {
+            $0.isMergingChanges
+                && $0.progressFraction > ScanMetrics.traversalSpan
+                && $0.progressFraction < 1
+        })
 
         // And closes at exactly the spliced snapshot's totals.
         let last = try #require(progress.last)
@@ -402,6 +462,211 @@ struct IncrementalScanServiceTests {
         #expect(last.filesVisited == snapshot.aggregateStats.fileCount)
         #expect(last.bytesDiscovered == snapshot.aggregateStats.totalAllocatedSize)
         #expect(last.progressFraction == 1)
+        #expect(!last.isMergingChanges)
+    }
+
+    /// Runs the same planner the service runs, so a relist test proves it took
+    /// the relist path rather than a silent full-scan fallback.
+    private func plannedResult(
+        events: [FileSystemChangeEvent],
+        target: ScanTarget,
+        baseline: FileTreeStore,
+        options: ScanOptions
+    ) -> IncrementalRescanPlan {
+        IncrementalRescanPlanner.plan(
+            events: events,
+            target: target,
+            baseline: baseline,
+            options: options,
+            behavior: ScanEngine.ScanBehavior(
+                excludesStartupVolumeInternals: target.kind == .volume && target.url.path == "/"
+            ),
+            exclusionMatcher: ScanExclusionMatcher(
+                patterns: options.exclusionPatterns,
+                rootPath: options.exclusionRootPath ?? target.url.path,
+                includeCloudStorage: options.includeCloudStorage,
+                cloudStorageRootPath: options.cloudStorageRootPath,
+                iCloudDriveRootPath: options.iCloudDriveRootPath
+            )
+        )
+    }
+
+    /// A new top-level file and a new top-level directory appear under the scan
+    /// root. The planner relists the root (not a full scan); the spliced tree
+    /// must match a from-scratch scan node-for-node — the correctness proof that
+    /// the shallow relist reproduces a fresh scan's root membership.
+    @Test func rootMembershipAdditionRelistsAndMatchesFullScan() async throws {
+        let root = try makeTemporaryTree()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let target = ScanTarget(url: root)
+        let options = ScanOptions()
+        let provider = StubEventHistoryProvider(checkpoints: [checkpoint(10), checkpoint(20)])
+        let service = IncrementalScanService(engine: ScanEngine(), historyProvider: provider)
+
+        let baseline = try #require(try await finishedSnapshot(
+            from: service.scan(target: target, options: options)
+        ))
+
+        try Data(repeating: 0x7A, count: 5_000).write(to: root.appending(path: "newtop.bin"))
+        let gamma = root.appending(path: "gamma", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: gamma, withIntermediateDirectories: true)
+        try Data(repeating: 0x7B, count: 9_000).write(to: gamma.appending(path: "g.bin"))
+        let events = [
+            FileSystemChangeEvent(path: target.id + "/newtop.bin", eventID: 15, flags: [.itemCreated]),
+            FileSystemChangeEvent(path: target.id + "/gamma", eventID: 16, flags: [.itemCreated, .itemIsDirectory]),
+        ]
+        provider.setHistory(.success(FileSystemEventHistory(events: events)))
+
+        // The event window resolves to a root relist, never a full scan.
+        guard case .relistRoot = plannedResult(
+            events: events, target: target, baseline: baseline.treeStore, options: options
+        ) else {
+            Issue.record("expected a root relist plan")
+            return
+        }
+
+        let rescanned = try #require(try await finishedSnapshot(
+            from: service.rescan(target: target, options: options, baselineProvider: { baseline })
+        ))
+        let fresh = try #require(try await finishedSnapshot(
+            from: ScanEngine().scan(target: target, options: options)
+        ))
+
+        expectEquivalentTrees(rescanned.treeStore, fresh.treeStore)
+        #expect(rescanned.aggregateStats.totalAllocatedSize == fresh.aggregateStats.totalAllocatedSize)
+        #expect(rescanned.aggregateStats.fileCount == fresh.aggregateStats.fileCount)
+        #expect(rescanned.treeStore.node(id: target.id + "/newtop.bin") != nil)
+        #expect(rescanned.treeStore.node(id: target.id + "/gamma/g.bin") != nil)
+        #expect(rescanned.incrementalCheckpoint?.eventID == 20)
+        #expect(provider.recordedRequests.count == 1)
+    }
+
+    /// A top-level directory is deleted; the relist removes its subtree and the
+    /// result matches a fresh scan (the removed subtree is gone from both).
+    @Test func rootMembershipRemovalRelistsAndMatchesFullScan() async throws {
+        let root = try makeTemporaryTree()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let target = ScanTarget(url: root)
+        let options = ScanOptions()
+        let provider = StubEventHistoryProvider(checkpoints: [checkpoint(10), checkpoint(20)])
+        let service = IncrementalScanService(engine: ScanEngine(), historyProvider: provider)
+
+        let baseline = try #require(try await finishedSnapshot(
+            from: service.scan(target: target, options: options)
+        ))
+        #expect(baseline.treeStore.node(id: target.id + "/beta") != nil)
+
+        try FileManager.default.removeItem(at: root.appending(path: "beta", directoryHint: .isDirectory))
+        let events = [
+            FileSystemChangeEvent(path: target.id + "/beta", eventID: 15, flags: [.itemRemoved, .itemIsDirectory]),
+        ]
+        provider.setHistory(.success(FileSystemEventHistory(events: events)))
+
+        guard case .relistRoot = plannedResult(
+            events: events, target: target, baseline: baseline.treeStore, options: options
+        ) else {
+            Issue.record("expected a root relist plan")
+            return
+        }
+
+        let rescanned = try #require(try await finishedSnapshot(
+            from: service.rescan(target: target, options: options, baselineProvider: { baseline })
+        ))
+        let fresh = try #require(try await finishedSnapshot(
+            from: ScanEngine().scan(target: target, options: options)
+        ))
+        expectEquivalentTrees(rescanned.treeStore, fresh.treeStore)
+        #expect(rescanned.treeStore.node(id: target.id + "/beta") == nil)
+        #expect(rescanned.aggregateStats.totalAllocatedSize == fresh.aggregateStats.totalAllocatedSize)
+    }
+
+    /// A direct-child file of the scan root grows. Its own event maps to the
+    /// root (the change is directly under it), so the relist replaces just that
+    /// file's record — matching a fresh scan without re-reading anything else.
+    @Test func directChildFileChangeRelistsAndMatchesFullScan() async throws {
+        let root = try makeTemporaryTree()
+        defer { try? FileManager.default.removeItem(at: root) }
+        // Seed a top-level file so the baseline has a direct-child leaf.
+        try Data(repeating: 0x31, count: 2_048).write(to: root.appending(path: "topfile.bin"))
+        let target = ScanTarget(url: root)
+        let options = ScanOptions()
+        let provider = StubEventHistoryProvider(checkpoints: [checkpoint(10), checkpoint(20)])
+        let service = IncrementalScanService(engine: ScanEngine(), historyProvider: provider)
+
+        let baseline = try #require(try await finishedSnapshot(
+            from: service.scan(target: target, options: options)
+        ))
+        let baselineTop = try #require(baseline.treeStore.node(id: target.id + "/topfile.bin"))
+
+        try Data(repeating: 0x32, count: 20_480).write(to: root.appending(path: "topfile.bin"))
+        let events = [
+            FileSystemChangeEvent(path: target.id + "/topfile.bin", eventID: 15, flags: []),
+        ]
+        provider.setHistory(.success(FileSystemEventHistory(events: events)))
+
+        guard case .relistRoot = plannedResult(
+            events: events, target: target, baseline: baseline.treeStore, options: options
+        ) else {
+            Issue.record("expected a root relist plan")
+            return
+        }
+
+        let rescanned = try #require(try await finishedSnapshot(
+            from: service.rescan(target: target, options: options, baselineProvider: { baseline })
+        ))
+        let fresh = try #require(try await finishedSnapshot(
+            from: ScanEngine().scan(target: target, options: options)
+        ))
+        expectEquivalentTrees(rescanned.treeStore, fresh.treeStore)
+        let rescannedTop = try #require(rescanned.treeStore.node(id: target.id + "/topfile.bin"))
+        #expect(rescannedTop.allocatedSize > baselineTop.allocatedSize)
+        #expect(rescannedTop.allocatedSize == fresh.treeStore.node(id: target.id + "/topfile.bin")?.allocatedSize)
+    }
+
+    /// When an incremental rescan degrades to a full scan mid-flight (a mapped
+    /// subtree vanished), the bar must not step backward and the metrics must
+    /// flag the fallback so the strip can say a full scan is running.
+    @Test func fallbackFullScanKeepsBarMonotonicAndIsFlagged() async throws {
+        let root = try makeTemporaryTree()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let target = ScanTarget(url: root)
+        let options = ScanOptions()
+        let provider = StubEventHistoryProvider(checkpoints: [checkpoint(10), checkpoint(20)])
+        let service = IncrementalScanService(engine: ScanEngine(), historyProvider: provider)
+
+        let baseline = try #require(try await finishedSnapshot(
+            from: service.scan(target: target, options: options)
+        ))
+        // beta is deleted, but the journal only names a change INSIDE it, so the
+        // planner targets beta as a subtree rescan; its sub-scan then fails and
+        // the service falls back to a full scan after progress has advanced.
+        try FileManager.default.removeItem(at: root.appending(path: "beta", directoryHint: .isDirectory))
+        provider.setHistory(.success(FileSystemEventHistory(events: [
+            FileSystemChangeEvent(path: target.id + "/beta/b.bin", eventID: 15, flags: []),
+        ])))
+
+        var progress: [ScanMetrics] = []
+        var finished: ScanSnapshot?
+        for try await event in service.rescan(target: target, options: options, baselineProvider: { baseline }) {
+            switch event {
+            case .progress(let metrics): progress.append(metrics)
+            case .finished(let snapshot): finished = snapshot
+            default: break
+            }
+        }
+        _ = try #require(finished)
+
+        let fractions = progress.map(\.progressFraction)
+        #expect(fractions == fractions.sorted())
+        #expect(progress.contains { $0.isFullScanFallback })
+        // The retained seed opens the bar above zero, and the fallback resumes
+        // forward from there rather than resetting.
+        let firstFallback = try #require(progress.first { $0.isFullScanFallback })
+        let lastBeforeFallback = progress.prefix(while: { !$0.isFullScanFallback }).last
+        if let lastBeforeFallback {
+            #expect(firstFallback.progressFraction >= lastBeforeFallback.progressFraction)
+        }
+        #expect(abs((progress.last?.progressFraction ?? 0) - 1) < 0.0001)
     }
 
     @Test func providerValidationFailureFallsBackToFullScan() async throws {

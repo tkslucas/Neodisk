@@ -73,7 +73,7 @@ private struct ScanProgressContent: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            ProgressView(value: progress.metrics.progressFraction)
+            StripedProgressBar(value: progress.metrics.progressFraction)
                 .frame(width: 340)
 
             Text(progress.metrics.progressFraction.formatted(.percent.precision(.fractionLength(0))))
@@ -81,9 +81,7 @@ private struct ScanProgressContent: View {
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
 
-            Text(progress.metrics.isFinalizing
-                 ? "Assembling results for \(targetName)…"
-                 : "Scanning \(targetName)…")
+            Text(phaseTitle)
                 .font(.headline)
 
             VStack(spacing: 4) {
@@ -103,6 +101,16 @@ private struct ScanProgressContent: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var phaseTitle: LocalizedStringKey {
+        if progress.metrics.isMergingChanges {
+            return "Applying changes…"
+        }
+        if progress.metrics.isFinalizing {
+            return "Assembling results for \(targetName)…"
+        }
+        return "Scanning \(targetName)…"
     }
 }
 

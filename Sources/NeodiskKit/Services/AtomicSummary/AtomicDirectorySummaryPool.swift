@@ -47,12 +47,18 @@ nonisolated struct AtomicSummaryPoolRequest: @unchecked Sendable {
 /// scan loop, which recalculates them monotonically, so heartbeats never regress
 /// the progress fraction the way a stale per-job snapshot could.
 nonisolated private final class AtomicSummaryProgressHeartbeat: @unchecked Sendable {
+    private struct Contribution {
+        var files = 0
+        var bytes: Int64 = 0
+    }
+
     private let lock = NSLock()
     private let continuation: AsyncThrowingStream<ScanProgressEvent, Error>.Continuation
     private let emissionInterval: TimeInterval
     private var base = ScanMetrics()
     private var hasBase = false
     private var lastEmission = Date.distantPast
+    private var liveContributionByJobID: [Int: Contribution] = [:]
 
     init(
         continuation: AsyncThrowingStream<ScanProgressEvent, Error>.Continuation,
@@ -69,6 +75,17 @@ nonisolated private final class AtomicSummaryProgressHeartbeat: @unchecked Senda
         lock.unlock()
     }
 
+    /// Publishes coordinator progress through the same lock and live-delta
+    /// composition as worker heartbeats. A raw base event must never land
+    /// after a heartbeat that already included active summary work.
+    func publishBase(_ metrics: ScanMetrics) {
+        lock.lock()
+        base = metrics
+        hasBase = true
+        continuation.yield(.progress(metricsIncludingLiveContributionsLocked()))
+        lock.unlock()
+    }
+
     func emit(currentPath: String) {
         lock.lock()
         guard hasBase else {
@@ -81,11 +98,63 @@ nonisolated private final class AtomicSummaryProgressHeartbeat: @unchecked Senda
             return
         }
         lastEmission = now
-        var snapshot = base
+        var snapshot = metricsIncludingLiveContributionsLocked()
         snapshot.currentPath = currentPath
-        lock.unlock()
         // AsyncThrowingStream continuations are thread-safe.
         continuation.yield(.progress(snapshot))
+        lock.unlock()
+    }
+
+    /// Adds a worker's throttled delta and emits it against the latest scan
+    /// base. Contributions remain live after the job completes until the
+    /// coordinator folds and acknowledges its summary.
+    func recordContribution(
+        jobID: Int,
+        files: Int,
+        bytes: Int64,
+        currentPath: String
+    ) {
+        lock.lock()
+        var contribution = liveContributionByJobID[jobID] ?? Contribution()
+        contribution.files += files
+        contribution.bytes = contribution.bytes.addingClamped(bytes)
+        liveContributionByJobID[jobID] = contribution
+
+        guard hasBase else {
+            lock.unlock()
+            return
+        }
+        let now = Date()
+        guard now.timeIntervalSince(lastEmission) >= emissionInterval else {
+            lock.unlock()
+            return
+        }
+        lastEmission = now
+        var snapshot = metricsIncludingLiveContributionsLocked()
+        snapshot.currentPath = currentPath
+        continuation.yield(.progress(snapshot))
+        lock.unlock()
+    }
+
+    /// Replaces the authoritative base and removes the exact live jobs it now
+    /// contains under one lock, so no heartbeat can observe a double count.
+    func acknowledge(jobIDs: [Int], foldedInto metrics: ScanMetrics) {
+        lock.lock()
+        base = metrics
+        hasBase = true
+        for jobID in jobIDs {
+            liveContributionByJobID.removeValue(forKey: jobID)
+        }
+        lock.unlock()
+    }
+
+    private func metricsIncludingLiveContributionsLocked() -> ScanMetrics {
+        var snapshot = base
+        for contribution in liveContributionByJobID.values {
+            snapshot.filesVisited += contribution.files
+            snapshot.bytesDiscovered = snapshot.bytesDiscovered.addingClamped(contribution.bytes)
+        }
+        return snapshot
     }
 }
 
@@ -180,6 +249,18 @@ nonisolated final class AtomicDirectorySummaryPool: @unchecked Sendable {
     /// which runs off the pool but alongside pooled summaries.
     func emit(currentPath: String) {
         heartbeat.emit(currentPath: currentPath)
+    }
+
+    func acknowledgeProgress(jobIDs: [Int], foldedInto metrics: ScanMetrics) {
+        guard !jobIDs.isEmpty else {
+            heartbeat.recordBase(metrics)
+            return
+        }
+        heartbeat.acknowledge(jobIDs: jobIDs, foldedInto: metrics)
+    }
+
+    func publishProgressBase(_ metrics: ScanMetrics) {
+        heartbeat.publishBase(metrics)
     }
 
     /// Starts the fixed worker set. Calling this more than once has no effect.
@@ -303,6 +384,9 @@ nonisolated final class AtomicDirectorySummaryPool: @unchecked Sendable {
                     partial: AtomicDirectorySummaryPartial(),
                     pendingItems: []
                 )
+                var visitedFileCount = 0
+                var reportedFileCount = 0
+                var reportedBytes: Int64 = 0
                 let sink = AtomicSummaryLevelSink(
                     onVisit: { url in
                         visitCount += 1
@@ -312,7 +396,22 @@ nonisolated final class AtomicDirectorySummaryPool: @unchecked Sendable {
                     },
                     onAccessibility: { result.partial.updateAccessibility($0) },
                     onWarning: { result.partial.recordWarning(for: $0, error: $1) },
-                    onFile: { result.partial.accumulateFile($0, url: $1, ownerNodeID: lease.item.ownerNodeID) },
+                    onFile: { metadata, url in
+                        result.partial.accumulateFile(metadata, url: url, ownerNodeID: lease.item.ownerNodeID)
+                        visitedFileCount += 1
+                        if visitedFileCount.isMultiple(of: 64) {
+                            let files = result.partial.descendantFileCount - reportedFileCount
+                            let bytes = result.partial.allocatedSize - reportedBytes
+                            self.heartbeat.recordContribution(
+                                jobID: lease.jobID,
+                                files: files,
+                                bytes: bytes,
+                                currentPath: url.path
+                            )
+                            reportedFileCount = result.partial.descendantFileCount
+                            reportedBytes = result.partial.allocatedSize
+                        }
+                    },
                     onSubdirectory: { result.pendingItems.append($0) }
                 )
                 try AtomicDirectorySummarizer.processDirectoryLevel(
@@ -327,6 +426,16 @@ nonisolated final class AtomicDirectorySummaryPool: @unchecked Sendable {
                     },
                     sink: sink
                 )
+                let remainingFiles = result.partial.descendantFileCount - reportedFileCount
+                let remainingBytes = result.partial.allocatedSize - reportedBytes
+                if remainingFiles != 0 || remainingBytes != 0 {
+                    self.heartbeat.recordContribution(
+                        jobID: lease.jobID,
+                        files: remainingFiles,
+                        bytes: remainingBytes,
+                        currentPath: lease.item.url.path
+                    )
+                }
                 complete(lease, result: result)
             } catch is AtomicSummaryJobCancelled {
                 discard(lease)
@@ -458,7 +567,10 @@ nonisolated final class AtomicDirectorySummaryPool: @unchecked Sendable {
         }
         jobs.removeValue(forKey: job.id)
         runnableJobIDs.removeAll { $0 == job.id }
-        return .success(job.continuation, job.partial.makeSummary())
+        return .success(
+            job.continuation,
+            job.partial.makeSummary(additionalProgressJobIDs: [job.id])
+        )
     }
 
     /// Round-robins one directory level off the front-most runnable job (FIFO of

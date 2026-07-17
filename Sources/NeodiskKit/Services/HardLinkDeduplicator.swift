@@ -26,6 +26,25 @@ nonisolated struct HardLinkDeduplicator {
         )
     }
 
+    /// The ancestor-rebuild step as an injectable function. Production passes
+    /// `numericAncestorRebuild`; the equivalence tests pass a closure over
+    /// `legacyRebuildAffectedAncestors` to prove the post-assembly dedup entry
+    /// points produce field-identical stores either way.
+    typealias AncestorRebuild = (
+        Set<Int32>, inout [FileNodeRecord], [Int32], [Int32], inout [Int32]
+    ) -> Void
+
+    nonisolated static func numericAncestorRebuild(
+        _ changed: Set<Int32>, _ nodes: inout [FileNodeRecord],
+        _ parentIndices: [Int32], _ childStarts: [Int32], _ childSlots: inout [Int32]
+    ) {
+        rebuildAffectedAncestors(
+            of: changed, nodes: &nodes,
+            parentIndices: parentIndices, childStarts: childStarts, childSlots: &childSlots,
+            cancellationCheck: {}
+        )
+    }
+
     /// Applies hard-link deduplication to prebuilt mutable tree arrays (the
     /// engine's finalize handoff): each duplicate claim's size is subtracted
     /// from its owner, affected ancestor directories are rebuilt bottom-up,
@@ -37,7 +56,8 @@ nonisolated struct HardLinkDeduplicator {
         childSlots: inout [Int32],
         indexByID: NodeIDIndex,
         hardLinkClaims: [HardLinkClaim],
-        minimumAllocatedSizeByNodeID: [String: Int64]
+        minimumAllocatedSizeByNodeID: [String: Int64],
+        rebuild: AncestorRebuild = numericAncestorRebuild
     ) {
         let duplicateAllocatedSizeByOwner = duplicateHardLinkAllocatedSizeByOwner(from: hardLinkClaims)
         guard !duplicateAllocatedSizeByOwner.isEmpty else { return }
@@ -53,14 +73,7 @@ nonisolated struct HardLinkDeduplicator {
             changedIndices.insert(index)
         }
 
-        rebuildAffectedAncestors(
-            of: changedIndices,
-            nodes: &nodes,
-            parentIndices: parentIndices,
-            childStarts: childStarts,
-            childSlots: &childSlots,
-            cancellationCheck: {}
-        )
+        rebuild(changedIndices, &nodes, parentIndices, childStarts, &childSlots)
     }
 
     /// Re-derives hard-link claims from the store's own nodes and reapplies
@@ -139,6 +152,15 @@ nonisolated struct HardLinkDeduplicator {
     /// re-sorted in place. Descending index order is bottom-up because a
     /// preorder parent always has a smaller index than its descendants.
     /// Shared with CloneDeduplicator, whose passes end the same way.
+    ///
+    /// Numeric in-place rebuild: totals are summed by reading child fields
+    /// directly from `nodes` (no `orderedChildIndices.map { nodes[$0] }`
+    /// whole-record copies) and the parent record is rebuilt from `path`
+    /// (no per-directory `URL` construction). On hardlink/clone-heavy trees
+    /// the affected-ancestor set covers most of the tree, so the fat copies
+    /// and URL builds `legacyRebuildAffectedAncestors` did dominated
+    /// assembly (~38s of a ~42s home-dir assemble); this reproduces its
+    /// output field-for-field — see `DedupRebuildEquivalenceTests`.
     nonisolated static func rebuildAffectedAncestors(
         of changedIndices: Set<Int32>,
         nodes: inout [FileNodeRecord],
@@ -149,6 +171,101 @@ nonisolated struct HardLinkDeduplicator {
     ) rethrows {
         guard !changedIndices.isEmpty else { return }
 
+        try rebuildDirectories(
+            affectedAncestorIndices(of: changedIndices, parentIndices: parentIndices),
+            nodes: &nodes,
+            parentIndices: parentIndices,
+            childStarts: childStarts,
+            childSlots: &childSlots,
+            cancellationCheck: cancellationCheck
+        )
+    }
+
+    /// Re-aggregates and re-sorts an explicit set of directory indices
+    /// bottom-up (descending index = deepest first, so a parent re-sums
+    /// already-rebuilt children). `rebuildAffectedAncestors` passes the
+    /// ancestor closure of changed nodes; the splice-with-removals path passes
+    /// the affected parents directly, because a removed child leaves no node in
+    /// the new array to seed an ancestor walk from.
+    nonisolated static func rebuildDirectories(
+        _ directoryIndices: Set<Int32>,
+        nodes: inout [FileNodeRecord],
+        parentIndices: [Int32],
+        childStarts: [Int32],
+        childSlots: inout [Int32],
+        cancellationCheck: () throws -> Void = {}
+    ) rethrows {
+        guard !directoryIndices.isEmpty else { return }
+
+        for directoryIndex in directoryIndices.sorted(by: >) {
+            try cancellationCheck()
+            let dir = Int(directoryIndex)
+            guard nodes[dir].isDirectory else { continue }
+
+            let range = Int(childStarts[dir])..<Int(childStarts[dir + 1])
+            // Re-sort the child index list by the display comparator, reading
+            // sizes/names in place rather than through childDisplayOrder's
+            // by-value FileNodeRecord parameters (which copy each record).
+            var orderedChildIndices = Array(childSlots[range])
+            orderedChildIndices.sort { lhs, rhs in
+                let lhsAllocated = nodes[Int(lhs)].allocatedSize
+                let rhsAllocated = nodes[Int(rhs)].allocatedSize
+                if lhsAllocated == rhsAllocated {
+                    return nodes[Int(lhs)].name.localizedStandardCompare(nodes[Int(rhs)].name) == .orderedAscending
+                }
+                return lhsAllocated > rhsAllocated
+            }
+            childSlots.replaceSubrange(range, with: orderedChildIndices)
+
+            // Re-aggregate totals from the child records in place, matching
+            // FileNodeRecord.directory's field choices exactly.
+            var allocatedSize: Int64 = 0
+            var logicalSize: Int64 = 0
+            var cloudOnlyLogicalSize: Int64 = 0
+            var descendantFileCount = 0
+            var childrenAreAccessible = true
+            for childIndex in orderedChildIndices {
+                let ci = Int(childIndex)
+                allocatedSize = allocatedSize.addingClamped(nodes[ci].allocatedSize)
+                logicalSize = logicalSize.addingClamped(nodes[ci].logicalSize)
+                cloudOnlyLogicalSize = cloudOnlyLogicalSize.addingClamped(nodes[ci].cloudOnlyLogicalSize)
+                if nodes[ci].isDirectory {
+                    descendantFileCount += nodes[ci].descendantFileCount
+                } else if !nodes[ci].isSymbolicLink && !nodes[ci].isSynthetic {
+                    descendantFileCount += 1
+                }
+                childrenAreAccessible = childrenAreAccessible && nodes[ci].isAccessible
+            }
+
+            let current = nodes[dir]
+            nodes[dir] = FileNodeRecord(
+                id: current.id,
+                path: current.path,
+                name: current.name,
+                isDirectory: true,
+                isSymbolicLink: false,
+                allocatedSize: allocatedSize,
+                logicalSize: logicalSize,
+                descendantFileCount: descendantFileCount,
+                lastModified: current.lastModified,
+                fileIdentity: current.fileIdentity,
+                linkCount: current.linkCount,
+                isPackage: current.isPackage,
+                isAccessible: current.isSelfAccessible && childrenAreAccessible,
+                isSelfAccessible: current.isSelfAccessible,
+                isSynthetic: false,
+                isAutoSummarized: false,
+                cloudOnlyLogicalSize: cloudOnlyLogicalSize
+            )
+        }
+    }
+
+    /// The ancestor directories of `changedIndices`, walking parent links up
+    /// to the root. Shared by the numeric rebuild and its reference oracle.
+    nonisolated static func affectedAncestorIndices(
+        of changedIndices: Set<Int32>,
+        parentIndices: [Int32]
+    ) -> Set<Int32> {
         var affectedDirectoryIndices = Set<Int32>()
         for index in changedIndices {
             var cursor = parentIndices[Int(index)]
@@ -156,6 +273,27 @@ nonisolated struct HardLinkDeduplicator {
                 cursor = parentIndices[Int(cursor)]
             }
         }
+        return affectedDirectoryIndices
+    }
+
+    /// The pre-numeric rebuild, kept verbatim as the byte-identical oracle for
+    /// `rebuildAffectedAncestors` (see `DedupRebuildEquivalenceTests`). Not used
+    /// in production; retained so the equivalence tests can prove the numeric
+    /// rebuild reproduces it exactly.
+    nonisolated static func legacyRebuildAffectedAncestors(
+        of changedIndices: Set<Int32>,
+        nodes: inout [FileNodeRecord],
+        parentIndices: [Int32],
+        childStarts: [Int32],
+        childSlots: inout [Int32],
+        cancellationCheck: () throws -> Void = {}
+    ) rethrows {
+        guard !changedIndices.isEmpty else { return }
+
+        let affectedDirectoryIndices = affectedAncestorIndices(
+            of: changedIndices,
+            parentIndices: parentIndices
+        )
 
         for directoryIndex in affectedDirectoryIndices.sorted(by: >) {
             try cancellationCheck()
@@ -318,6 +456,33 @@ nonisolated struct HardLinkClaim: Sendable {
 }
 
 extension FileNodeRecord {
+    /// The same record with a refreshed modification date — used by the root
+    /// relist to move the scan root's own mtime without disturbing its totals.
+    nonisolated func replacingLastModified(_ lastModified: Date?) -> FileNodeRecord {
+        FileNodeRecord(
+            id: id,
+            path: path,
+            name: name,
+            isDirectory: isDirectory,
+            isSymbolicLink: isSymbolicLink,
+            allocatedSize: allocatedSize,
+            unduplicatedAllocatedSize: unduplicatedAllocatedSize,
+            logicalSize: logicalSize,
+            descendantFileCount: descendantFileCount,
+            lastModified: lastModified,
+            fileIdentity: fileIdentity,
+            linkCount: linkCount,
+            isPackage: isPackage,
+            isAccessible: isAccessible,
+            isSelfAccessible: isSelfAccessible,
+            isSynthetic: isSynthetic,
+            isAutoSummarized: isAutoSummarized,
+            isDataless: isDataless,
+            cloudOnlyLogicalSize: cloudOnlyLogicalSize,
+            cloneInfo: cloneInfo
+        )
+    }
+
     nonisolated func replacingAllocatedSize(
         _ allocatedSize: Int64,
         cloneInfo: CloneInfo?? = nil

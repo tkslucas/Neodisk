@@ -128,6 +128,53 @@ import Foundation
         #expect(identities.count == 1)
     }
 
+    @Test func liveCountersAdvanceAndDoNotDoubleCountWhenFolded() async throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try populateTree(at: root, subdirectoryCount: 2, filesPerSubdirectory: 100, bytesPerFile: 128)
+
+        let (stream, continuation) = AsyncThrowingStream<ScanProgressEvent, Error>.makeStream()
+        let pool = AtomicDirectorySummaryPool(
+            workerLimit: 2,
+            continuation: continuation,
+            progressEmissionInterval: 0
+        )
+        pool.recordProgressBase(ScanMetrics())
+        pool.start()
+
+        let collector = Task { () throws -> [ScanMetrics] in
+            var metrics: [ScanMetrics] = []
+            for try await event in stream {
+                if case .progress(let progress) = event {
+                    metrics.append(progress)
+                }
+            }
+            return metrics
+        }
+
+        let summary = try #require(try await pool.summarize(makeRequest(url: root)))
+        #expect(!summary.progressJobIDs.isEmpty)
+        // A coordinator base publish while the completed job is still live
+        // must include its contribution rather than making counters fall.
+        pool.publishProgressBase(ScanMetrics())
+        var folded = ScanMetrics()
+        folded.filesVisited = summary.descendantFileCount
+        folded.bytesDiscovered = summary.allocatedSize
+        pool.acknowledgeProgress(jobIDs: summary.progressJobIDs, foldedInto: folded)
+        pool.emit(currentPath: root.path)
+        await pool.finish()
+        continuation.finish()
+
+        let emitted = try await collector.value
+        #expect(emitted.contains { $0.filesVisited > 0 && $0.filesVisited < summary.descendantFileCount })
+        #expect(emitted.map(\.filesVisited).max() == summary.descendantFileCount)
+        #expect(emitted.map(\.bytesDiscovered).max() == summary.allocatedSize)
+        #expect(emitted.map(\.filesVisited) == emitted.map(\.filesVisited).sorted())
+        #expect(emitted.map(\.bytesDiscovered) == emitted.map(\.bytesDiscovered).sorted())
+        #expect(emitted.last?.filesVisited == summary.descendantFileCount)
+        #expect(emitted.last?.bytesDiscovered == summary.allocatedSize)
+    }
+
     @Test func cancellingMidJobResumesCallerWithCancellationError() async throws {
         let root = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }

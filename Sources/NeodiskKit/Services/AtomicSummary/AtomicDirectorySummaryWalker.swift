@@ -179,6 +179,11 @@ extension AtomicDirectorySummarizer {
                 }
             }
 
+            if childMetadata.isDirectory,
+               childEntry.directoryMountStatus & MountBoundaryPolicy.mountPointFlag != 0 {
+                continue
+            }
+
             try await accumulateAtomicSummary(
                 for: childEntry.url,
                 metadata: childMetadata,

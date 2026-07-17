@@ -54,6 +54,12 @@ Swift/SwiftUI practices and keep the scanning core UI-free.
   - `NEODISK_INCREMENTAL=0` — disable incremental FSEvents rescans; every
     rescan runs the full traversal (fallback safety valve, and the honest
     baseline when benchmarking scan changes).
+  - `NEODISK_SCAN_TIMING=1` — print per-phase scan timings to stderr as
+    `NEODISK_SCAN_TIMING phase=<name> ms=<value> …` lines (traversal,
+    assembly, first partial, replay, splice, snapshot encode/decode). The
+    format is a parsing contract for measurement tooling; `diskscan
+    --bench-rescan [--bench-touch <file>]` exercises the full
+    incremental-rescan pipeline under it.
   - `Neodisk --render-png <scan-path> <out.png> [scale fx fy]` — headless
     treemap render for verifying visual changes.
   - `NEODISK_UI_SNAPSHOT=<out.png>` — offscreen window capture with zoom.
@@ -129,6 +135,13 @@ Neodisk makes user-facing promises. Do not casually violate them:
   embellishments.
 - Toolbar buttons stay persistent and disable when unusable, rather than
   appearing and disappearing.
+- The scan progress bar is determinate always, monotonically non-decreasing
+  within a scan session, and full exactly when the scan is done. Never an
+  indeterminate/bouncing linear bar; quiet phases hold their value under a
+  caption. A fallback or phase change may never move the bar backward.
+  Liveness is signaled by the drifting diagonal-stripe sheen on the fill
+  (`StripedProgressBar`) — it drifts while work runs, freezes when stopped,
+  and is intentional, not decoration to be cleaned up.
 
 ## Localization
 

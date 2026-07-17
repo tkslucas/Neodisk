@@ -323,6 +323,10 @@ extension AtomicDirectorySummarizer {
                 continue
             }
 
+            guard child.directoryMountStatus & MountBoundaryPolicy.mountPointFlag == 0 else {
+                continue
+            }
+
             sink.onSubdirectory(
                 AtomicSummaryWorkItem(
                     url: childURL,

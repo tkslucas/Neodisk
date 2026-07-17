@@ -53,11 +53,18 @@ nonisolated final class ScanTraversal {
     private var hardLinkClaims: [HardLinkClaim] = []
     private var minimumAllocatedSizeByNodeID: [String: Int64] = [:]
     private var concurrency: AdaptiveScanConcurrency
+    private let directoryIOExecutor: DirectoryIOExecutor
+    private var ownedDeviceIDs: Set<UInt64> = []
     private var workStack: [ScanWorkItem] = []
     /// Maps a key to its completed result (leaf or assembled directory).
-    private var completedByKey: [Int: CompletedDirScan] = [:]
-    /// Maps parent key → child keys, built during phase 1.
-    private var childrenKeysByKey: [Int: [Int]] = [:]
+    /// Keys are dense (0..<nextKey), allocated in the coordinator loop, so a
+    /// flat array indexed by key beats a hash map: a nil slot is a key
+    /// allocated but not yet completed (only observable during partial
+    /// emission — every slot is filled by the time assembly runs).
+    private var completedByKey: [CompletedDirScan?] = []
+    /// Maps parent key → child keys, built during phase 1. Same dense-key
+    /// array shape as `completedByKey`; a key with no children keeps `[]`.
+    private var childrenKeysByKey: [[Int]] = []
     private var seenScannedNodeIDs = Set<String>()
     private var nextKey = 0
     // Live partial-tree emission: the first partial goes out as soon as
@@ -65,6 +72,10 @@ nonisolated final class ScanTraversal {
     // cost so partial builds never consume more than ~10% of scan time.
     private var lastPartialEmission = ContinuousClock.now - .milliseconds(300)
     private var partialEmissionInterval: Duration = .milliseconds(300)
+    /// Scan start reference for the time-to-first-partial timing; nilled
+    /// after the first partial goes out.
+    private var firstPartialReference: ContinuousClock.Instant? =
+        ScanTiming.isEnabled ? .now : nil
 
     init(
         target: ScanTarget,
@@ -98,9 +109,18 @@ nonisolated final class ScanTraversal {
         self.bulkEnumerationEnabled = bulkEnumerationEnabled
         self.baseDepth = baseDepth
         self.atomicSummaryWorkerLimit = ScanConcurrencyPolicy.atomicSummaryWorkerLimit(for: options)
-        self.concurrency = AdaptiveScanConcurrency(
+        let concurrency = AdaptiveScanConcurrency(
             options: options,
-            bulkEnumeration: bulkEnumerationEnabled
+            bulkEnumeration: bulkEnumerationEnabled,
+            sourceProfile: ScanSourceProfile.detect(for: target.url)
+        )
+        self.concurrency = concurrency
+        // Sized to the nominal ceiling, not the current sample: the executor
+        // pool is fixed for the scan's life, and a scan started under
+        // thermal/low-power pressure must be able to speed back up when the
+        // pressure clears. The adaptive in-flight limit does the throttling.
+        self.directoryIOExecutor = DirectoryIOExecutor(
+            workerCount: concurrency.undegradedTraversalWorkerLimit
         )
         self.metrics = metrics
         self.warnings = warnings
@@ -131,6 +151,10 @@ nonisolated final class ScanTraversal {
                 includeVolumeDetails: includeVolumeDetails,
                 captureDirectoryIdentity: true
             )
+            ownedDeviceIDs = MountBoundaryPolicy.ownedDeviceIDs(
+                rootPath: target.url.path,
+                rootDeviceID: rootMetadata.fileIdentity?.fileSystemDeviceID
+            )
             metrics.discoveredItems = 1
             metrics.estimatedTotalBytes = estimatedTotalBytes(for: target, metadata: rootMetadata)
             metrics.currentPath = target.url.path
@@ -140,11 +164,22 @@ nonisolated final class ScanTraversal {
             // with the heartbeat dropping every emission.
             maybeEmitProgress()
 
+            ScanTiming.note(
+                "workers traversal=\(concurrency.traversalWorkerLimit) "
+                + "classification=\(concurrency.classificationWorkerLimit) "
+                + "nominal=\(concurrency.undegradedTraversalWorkerLimit) "
+                + "summary=\(atomicSummaryWorkerLimit) bulk=\(bulkEnumerationEnabled)"
+            )
+
             // If the root itself shouldn't be traversed, return a leaf node.
             let store: FileTreeStore
             if shouldTraverseDirectory(metadata: rootMetadata, isRoot: true) {
-                try await runTraversalPhase(rootMetadata: rootMetadata)
-                store = try assembleTree()
+                try await ScanTiming.measure("scan.traversal", detail: "target=\(target.url.path)") {
+                    try await runTraversalPhase(rootMetadata: rootMetadata)
+                }
+                store = try ScanTiming.measure("scan.assemble", detail: "keys=\(nextKey)") {
+                    try assembleTree()
+                }
             } else {
                 store = try await makeRootLeafStore(rootMetadata: rootMetadata)
             }
@@ -173,6 +208,10 @@ nonisolated final class ScanTraversal {
             minimumAllocatedSizeByNodeID[leafResult.node.id] = minimumAllocatedSize
         }
         applyLeafMetrics(leafResult.node, weight: 1)
+        summaryPool?.acknowledgeProgress(
+            jobIDs: leafResult.progressJobIDs,
+            foldedInto: metrics
+        )
         if !leafResult.warnings.isEmpty {
             warnings.append(contentsOf: leafResult.warnings)
             for warning in leafResult.warnings {
@@ -217,6 +256,7 @@ nonisolated final class ScanTraversal {
                 metadata: rootMetadata,
                 localizedEnumerationError: nil,
                 isDirectoryHint: nil,
+                blocksTraversalAtMountBoundary: false,
                 parentKey: -1,
                 depth: baseDepth,
                 weight: 1
@@ -234,6 +274,7 @@ nonisolated final class ScanTraversal {
         let directoryContentsProvider = directoryContents
         let directoryResourceKeys = ScanMetadataLoader.scanResourceKeys
         let usesBulkEnumeration = bulkEnumerationEnabled
+        let directoryIOExecutor = self.directoryIOExecutor
         let continuation = self.continuation
 
         let summarizer = self.atomicDirectorySummarizer
@@ -270,10 +311,14 @@ nonisolated final class ScanTraversal {
 
                     let itemKey = nextKey
                     nextKey += 1
+                    // Grow the dense key arrays in lockstep with `nextKey`; the
+                    // completed slot fills later at one of the completion sites.
+                    completedByKey.append(nil)
+                    childrenKeysByKey.append([])
 
                     // Register this child with its parent (skip root which has parentKey -1).
                     if item.parentKey >= 0 {
-                        childrenKeysByKey[item.parentKey, default: []].append(itemKey)
+                        childrenKeysByKey[item.parentKey].append(itemKey)
                     }
 
                     let meta: NodeMetadata
@@ -294,7 +339,11 @@ nonisolated final class ScanTraversal {
                     }
                     metrics.currentPath = item.url.path
 
-                    if shouldTraverseDirectory(metadata: meta, isRoot: item.depth == baseDepth) {
+                    if shouldTraverseDirectory(
+                        metadata: meta,
+                        isRoot: item.depth == baseDepth,
+                        blocksTraversalAtMountBoundary: item.blocksTraversalAtMountBoundary
+                    ) {
                         metrics.directoriesVisited += 1
                         metrics.recalculateProgress()
                         maybeEmitProgress()
@@ -319,13 +368,20 @@ nonisolated final class ScanTraversal {
                                     directoryContents: directoryContentsProvider,
                                     classificationWorkerLimit: taskClassificationWorkerLimit,
                                     usesBulkEnumeration: usesBulkEnumeration,
+                                    directoryIOExecutor: directoryIOExecutor,
+                                    cancellationCheck: cancellationCheck
+                                )
+                                let leafBatch = try Self.makeDirectoryLeafBatch(
+                                    from: contents.entries,
+                                    summarizer: summarizer,
                                     cancellationCheck: cancellationCheck
                                 )
                                 return .directory(.success(DirectoryTraversalSuccess(
                                     item: taskItem,
                                     itemKey: taskItemKey,
                                     metadata: taskMetadata,
-                                    contents: contents
+                                    contents: contents,
+                                    leafBatch: leafBatch
                                 )))
                             } catch is CancellationError {
                                 throw CancellationError()
@@ -353,7 +409,14 @@ nonisolated final class ScanTraversal {
                         // Leaf node (file, symlink, or package-as-directory). Discovery may
                         // have classified it as a pending directory; release that claim.
                         releasePendingDirectoryIfNeeded(for: item)
-                        if meta.isPackage, meta.isDirectory, !options.treatPackagesAsDirectories {
+                        if item.blocksTraversalAtMountBoundary, meta.isDirectory {
+                            completeMountBoundary(
+                                item: item,
+                                itemKey: itemKey,
+                                metadata: meta,
+                                node: summarizer.makeFileNode(url: item.url, metadata: meta)
+                            )
+                        } else if meta.isPackage, meta.isDirectory, !options.treatPackagesAsDirectories {
                             // Defer the package summary to a request-limited task so
                             // it summarizes through the shared pool off the loop.
                             pendingPackageScans.append((item: item, itemKey: itemKey, metadata: meta))
@@ -448,6 +511,83 @@ nonisolated final class ScanTraversal {
         }
     }
 
+    /// Builds ordinary leaf records on the directory worker that already owns
+    /// the enumerated child metadata. Iterating in reverse preserves the old
+    /// work-stack duplicate rule (the last enumerated path wins).
+    private static func makeDirectoryLeafBatch(
+        from entries: [DirectoryEntry],
+        summarizer: AtomicDirectorySummarizer,
+        cancellationCheck: @escaping CancellationCheck
+    ) throws -> DirectoryLeafBatch {
+        var batch = DirectoryLeafBatch()
+        batch.nodes.reserveCapacity(entries.count)
+        batch.remainingEntries.reserveCapacity(min(entries.count, 64))
+        var seenNodeIDs = Set<String>()
+
+        for (offset, entry) in entries.reversed().enumerated() {
+            if offset.isMultiple(of: 256) {
+                try cancellationCheck()
+            }
+            let nodeID = entry.url.path
+            guard seenNodeIDs.insert(nodeID).inserted else {
+                batch.duplicateWarnings.append(
+                    ScanWarningFactory.makeDuplicateNodeWarning(for: entry.url)
+                )
+                batch.duplicateWeightUnits += traversalWeightUnits(for: entry)
+                continue
+            }
+
+            guard entry.localizedEnumerationError == nil,
+                  let metadata = entry.metadata,
+                  !metadata.isDirectory || metadata.isSymbolicLink else {
+                batch.remainingEntries.append(entry)
+                continue
+            }
+
+            let node = summarizer.makeFileNode(url: entry.url, metadata: metadata)
+            batch.nodes.append(node)
+            if !node.isSymbolicLink {
+                batch.fileCount += 1
+            }
+            batch.allocatedSize = batch.allocatedSize.addingClamped(node.allocatedSize)
+            if let claim = HardLinkDeduplicator.claim(
+                for: metadata,
+                ownerNodeID: node.id,
+                path: node.path
+            ) {
+                batch.hardLinkClaims.append(claim)
+            }
+        }
+
+        // Restore enumeration order for deterministic fixtures. Final display
+        // order is size/name sorted during assembly.
+        batch.nodes.reverse()
+        batch.remainingEntries.reverse()
+        batch.duplicateWarnings.reverse()
+        return batch
+    }
+
+    /// Applies one directory worker's aggregate leaf accounting in O(1) loop
+    /// interactions, then emits any exceptional duplicate warnings.
+    private func foldDirectoryLeafBatch(
+        _ batch: DirectoryLeafBatch,
+        weightPerEntry: Double
+    ) {
+        hardLinkClaims.append(contentsOf: batch.hardLinkClaims)
+        metrics.filesVisited += batch.fileCount
+        metrics.bytesDiscovered = metrics.bytesDiscovered.addingClamped(batch.allocatedSize)
+        metrics.completedItems += batch.completedEntryCount
+        metrics.completedTraversalWeight += weightPerEntry * batch.completedWeightUnits
+        if !batch.duplicateWarnings.isEmpty {
+            warnings.append(contentsOf: batch.duplicateWarnings)
+            for warning in batch.duplicateWarnings {
+                continuation.yield(.warning(warning))
+            }
+        }
+        metrics.recalculateProgress()
+        maybeEmitProgress()
+    }
+
     private func completeLeaf(item: ScanWorkItem, itemKey: Int, metadata meta: NodeMetadata) async throws {
         let leafResult = try await atomicDirectorySummarizer.makeLeafNode(
             url: item.url,
@@ -463,6 +603,25 @@ nonisolated final class ScanTraversal {
         foldLeafResult(leafResult, item: item, itemKey: itemKey, metadata: meta)
     }
 
+    /// Keeps an unintended nested mount visible without recursing into it or
+    /// routing a package-shaped mount through recursive summary work.
+    private func completeMountBoundary(
+        item: ScanWorkItem,
+        itemKey: Int,
+        metadata: NodeMetadata,
+        node: FileNodeRecord
+    ) {
+        applyLeafMetrics(node, weight: item.weight)
+        maybeEmitProgress()
+        completedByKey[itemKey] = CompletedDirScan(
+            node: node,
+            metadata: metadata,
+            url: item.url,
+            isTraversable: false,
+            depth: item.depth
+        )
+    }
+
     /// Folds a completed leaf (plain file/symlink, or a summarized package) into
     /// the loop-side accounting and registers it for phase 2 assembly.
     private func foldLeafResult(
@@ -476,6 +635,10 @@ nonisolated final class ScanTraversal {
             minimumAllocatedSizeByNodeID[leafResult.node.id] = minimumAllocatedSize
         }
         applyLeafMetrics(leafResult.node, weight: item.weight)
+        summaryPool?.acknowledgeProgress(
+            jobIDs: leafResult.progressJobIDs,
+            foldedInto: metrics
+        )
         if !leafResult.warnings.isEmpty {
             warnings.append(contentsOf: leafResult.warnings)
             for warning in leafResult.warnings {
@@ -506,6 +669,7 @@ nonisolated final class ScanTraversal {
         let meta = success.metadata
         let contents = success.contents
         let childEntries = contents.entries
+        let leafBatch = success.leafBatch
         #if DEBUG
         diagnostics?.recordElapsed(
             operation: "directory.enumerate",
@@ -559,6 +723,7 @@ nonisolated final class ScanTraversal {
                     itemKey: itemKey,
                     metadata: meta,
                     contents: contents,
+                    leafBatch: leafBatch,
                     childDirectoryCount: childDirectoryCount,
                     isNodeDependencyLayout: isNodeDependencyLayout
                 )
@@ -566,7 +731,13 @@ nonisolated final class ScanTraversal {
             return
         }
 
-        try expandDirectory(item: item, itemKey: itemKey, metadata: meta, childEntries: childEntries)
+        try expandDirectory(
+            item: item,
+            itemKey: itemKey,
+            metadata: meta,
+            childEntries: childEntries,
+            leafBatch: leafBatch
+        )
     }
 
     /// Fans a directory's children onto the work stack and registers the
@@ -576,7 +747,8 @@ nonisolated final class ScanTraversal {
         item: ScanWorkItem,
         itemKey: Int,
         metadata meta: NodeMetadata,
-        childEntries: [DirectoryEntry]
+        childEntries: [DirectoryEntry],
+        leafBatch: DirectoryLeafBatch
     ) throws {
         if childEntries.isEmpty {
             // Nothing below this directory: its whole weight is done.
@@ -590,8 +762,14 @@ nonisolated final class ScanTraversal {
             totalWeightUnits += Self.traversalWeightUnits(for: childEntry)
         }
 
-        // Enqueue children onto the stack. Each child records its parent key.
-        for (offset, childEntry) in childEntries.enumerated() {
+        let directLeafWeight = totalWeightUnits > 0
+            ? item.weight / totalWeightUnits
+            : 0
+        foldDirectoryLeafBatch(leafBatch, weightPerEntry: directLeafWeight)
+
+        // Enqueue only directories, packages, and unavailable entries. Plain
+        // files and symlinks were already completed by the directory worker.
+        for (offset, childEntry) in leafBatch.remainingEntries.enumerated() {
             if offset.isMultiple(of: 256) {
                 try Task.checkCancellation()
             }
@@ -601,6 +779,11 @@ nonisolated final class ScanTraversal {
                     metadata: childEntry.metadata,
                     localizedEnumerationError: childEntry.localizedEnumerationError,
                     isDirectoryHint: childEntry.isDirectoryHint,
+                    blocksTraversalAtMountBoundary: MountBoundaryPolicy.isNestedMount(
+                        deviceID: childEntry.deviceID,
+                        ownedDeviceIDs: ownedDeviceIDs,
+                        directoryMountStatus: childEntry.directoryMountStatus
+                    ),
                     parentKey: itemKey,
                     depth: item.depth + 1,
                     weight: item.weight * Self.traversalWeightUnits(for: childEntry) / totalWeightUnits
@@ -610,6 +793,7 @@ nonisolated final class ScanTraversal {
         // Register this directory so phase 2 can assemble it.
         completedByKey[itemKey] = CompletedDirScan(
             node: nil,
+            directLeafNodes: leafBatch.nodes,
             metadata: meta,
             url: item.url,
             isTraversable: true,
@@ -641,7 +825,8 @@ nonisolated final class ScanTraversal {
                 item: item,
                 itemKey: candidate.itemKey,
                 metadata: meta,
-                childEntries: childEntries
+                childEntries: childEntries,
+                leafBatch: candidate.leafBatch
             )
             return
         }
@@ -680,6 +865,10 @@ nonisolated final class ScanTraversal {
             0
         )
         applyLeafMetrics(atomicNode, weight: item.weight)
+        summaryPool?.acknowledgeProgress(
+            jobIDs: summary.progressJobIDs,
+            foldedInto: metrics
+        )
         if !summary.warnings.isEmpty {
             warnings.append(contentsOf: summary.warnings)
             for warning in summary.warnings {
@@ -754,6 +943,10 @@ nonisolated final class ScanTraversal {
             childrenKeysByKey: childrenKeysByKey,
             nextKey: nextKey
         ) {
+            if let scanStart = firstPartialReference {
+                firstPartialReference = nil
+                ScanTiming.record("scan.firstPartial", scanStart.duration(to: .now))
+            }
             continuation.yield(.partial(partialStore))
         }
         lastPartialEmission = ContinuousClock.now
@@ -763,8 +956,9 @@ nonisolated final class ScanTraversal {
 
     // MARK: - Phase 2: Assembly
 
-    /// Phase 2: Assemble the tree bottom-up from completed results.
-    /// Process keys in reverse order (children always have higher keys than parents).
+    /// Phase 2: hand the completed phase-1 state to `ScanTreeAssembler`, which
+    /// builds the contiguous store. Metrics, warnings, and progress emission
+    /// stay here (scan-task confined) and are threaded in through callbacks.
     private func assembleTree() throws -> FileTreeStore {
         metrics.currentPath = "Summarizing results…"
         metrics.isFinalizing = true
@@ -772,156 +966,43 @@ nonisolated final class ScanTraversal {
         metrics.recalculateProgress()
         continuation.yield(.progress(metrics))
 
-        let finalizationTotal = max(completedByKey.count, 1)
-        let finalizationProgressInterval = 512
-        var finalizedItems = 0
-        var resolvedNodeByKey: [Int: FileNodeRecord] = [:]
-        var sortedChildKeysByKey: [Int: [Int]] = [:]
-        resolvedNodeByKey.reserveCapacity(completedByKey.count)
-        sortedChildKeysByKey.reserveCapacity(completedByKey.count)
-        #if DEBUG
-        let finalizationStart = diagnostics?.start()
-        #endif
-        for key in (0..<nextKey).reversed() {
-            if finalizedItems.isMultiple(of: 256) {
-                try Task.checkCancellation()
-            }
-            guard let completed = completedByKey.removeValue(forKey: key) else { continue }
-            finalizedItems += 1
-
-            if completed.isTraversable {
-                // Traversable directories must still be materialized when empty.
-                let childKeys = childrenKeysByKey.removeValue(forKey: key) ?? []
-                var childPairs: [(key: Int, node: FileNodeRecord)] = []
-                childPairs.reserveCapacity(childKeys.count)
-                for (offset, childKey) in childKeys.enumerated() {
-                    if offset.isMultiple(of: 256) {
-                        try Task.checkCancellation()
-                    }
-                    if let childNode = resolvedNodeByKey[childKey] {
-                        childPairs.append((childKey, childNode))
-                    }
-                }
-                childPairs = ScanEngine.uniqueAssemblyPairs(childPairs)
-                childPairs.sort { FileTreeStore.childDisplayOrder($0.node, $1.node) }
-                try Task.checkCancellation()
-                let assembled = FileNodeRecord.directory(
-                    id: completed.url.path,
-                    url: completed.url,
-                    name: ScanTarget.displayName(for: completed.url),
-                    children: childPairs.map(\.node),
-                    lastModified: completed.metadata.lastModified,
-                    fileIdentity: completed.metadata.fileIdentity,
-                    linkCount: completed.metadata.linkCount,
-                    isPackage: completed.metadata.isPackage,
-                    isAccessible: completed.metadata.isReadable,
-                    childrenAreSorted: true
-                )
-                resolvedNodeByKey[key] = assembled
-                if !childPairs.isEmpty {
-                    sortedChildKeysByKey[key] = childPairs.map(\.key)
-                }
-
-                metrics.completedItems = min(metrics.discoveredItems, metrics.completedItems + 1)
-            } else if let onlyChild = completed.node {
-                // Leaf node or inaccessible directory: use the child directly.
-                resolvedNodeByKey[key] = onlyChild
-            }
-
-            if finalizedItems.isMultiple(of: finalizationProgressInterval) || finalizedItems == finalizationTotal {
-                try Task.checkCancellation()
-                metrics.finalizationFraction = Double(finalizedItems) / Double(finalizationTotal)
+        let callbacks = ScanTreeAssembler.Callbacks(
+            cancellationCheck: { try Task.checkCancellation() },
+            progress: { [self] fraction in
+                metrics.finalizationFraction = fraction
                 metrics.recalculateProgress()
                 continuation.yield(.progress(metrics))
-            }
-        }
-
-        guard resolvedNodeByKey[0] != nil else {
-            throw ScanEngine.ScanEngineError.missingRootNode
-        }
-
-        // Lay the assembled tree out as contiguous preorder arrays — the
-        // scan keys stay Int end to end; the only string-keyed work left is
-        // one id → index insert per node.
-        var nodes: [FileNodeRecord] = []
-        var parentIndices: [Int32] = []
-        var indexByID = NodeIDIndex(minimumCapacity: resolvedNodeByKey.count)
-        nodes.reserveCapacity(resolvedNodeByKey.count)
-        parentIndices.reserveCapacity(resolvedNodeByKey.count)
-        var aggregateStats = AggregateStatsAccumulator()
-        var buildStack: [(key: Int, parent: Int32)] = [(0, -1)]
-        while let (key, parent) = buildStack.popLast() {
-            if nodes.count.isMultiple(of: 1_024) {
-                try Task.checkCancellation()
-            }
-            guard let record = resolvedNodeByKey[key] else { continue }
-            let index = Int32(nodes.count)
-            if let existing = indexByID.updateValue(index, forKey: record.id) {
-                // Should be impossible (phase 1 dedupes by path); drop the
-                // duplicate subtree and keep the first occurrence.
-                indexByID[record.id] = existing
-                let warning = ScanWarningFactory.makeDuplicateNodeWarning(for: record.url)
+            },
+            warning: { [self] warning in
                 warnings.append(warning)
                 continuation.yield(.warning(warning))
-                continue
+            },
+            directoryFinalized: { [self] in
+                metrics.completedItems = min(metrics.discoveredItems, metrics.completedItems + 1)
             }
-            nodes.append(record)
-            parentIndices.append(parent)
-            let childKeys = sortedChildKeysByKey[key] ?? []
-            aggregateStats.include(record, hasChildren: !childKeys.isEmpty)
-            for childKey in childKeys.reversed() {
-                buildStack.append((childKey, index))
-            }
-        }
-        let (childStarts, initialChildSlots) = TreeStorage.childLayout(parentIndices: parentIndices)
-        var childSlots = initialChildSlots
+        )
 
-        HardLinkDeduplicator.applyDeduplication(
-            nodes: &nodes,
-            parentIndices: parentIndices,
-            childStarts: childStarts,
-            childSlots: &childSlots,
-            indexByID: indexByID,
+        // The coordinator no longer needs the completed batches; hand them to
+        // the assembler (kept intact for a duplicate-id fallback rerun).
+        let completed = completedByKey
+        completedByKey = []
+        let store = try ScanTreeAssembler.assemble(
+            completedByKey: completed,
+            childrenKeysByKey: childrenKeysByKey,
+            nextKey: nextKey,
             hardLinkClaims: hardLinkClaims,
-            minimumAllocatedSizeByNodeID: minimumAllocatedSizeByNodeID
+            minimumAllocatedSizeByNodeID: minimumAllocatedSizeByNodeID,
+            targetURL: target.url,
+            diagnostics: diagnostics,
+            callbacks: callbacks
         )
-        CloneDeduplicator.applyDeduplication(
-            nodes: &nodes,
-            parentIndices: parentIndices,
-            childStarts: childStarts,
-            childSlots: &childSlots,
-            indexByID: indexByID
-        )
-        #if DEBUG
-        diagnostics?.record(
-            operation: "scan.finalize",
-            url: target.url,
-            startedAt: finalizationStart,
-            itemCount: finalizedItems
-        )
-        #endif
-
-        guard let rootNode = nodes.first else {
-            throw ScanEngine.ScanEngineError.missingRootNode
-        }
 
         metrics.completedItems = max(metrics.completedItems, metrics.discoveredItems)
         metrics.finalizationFraction = 1
         metrics.recalculateProgress()
         maybeEmitProgress()
 
-        return FileTreeStore(
-            trustedStorage: TreeStorage(
-                nodes: nodes,
-                parentIndices: parentIndices,
-                childStarts: childStarts,
-                childSlots: childSlots,
-                indexByID: indexByID,
-                nodeHashes: NodeIDIndex.parallelHashes(of: nodes)
-            ),
-            rootID: rootNode.id,
-            aggregateStats: aggregateStats.makeStats(root: rootNode)
-        )
+        return store
     }
 
     // MARK: - Leaf construction
@@ -1060,12 +1141,21 @@ nonisolated final class ScanTraversal {
         guard shouldEmit else { return }
 
         emissionState.lastProgressEmission = now
-        continuation.yield(.progress(metrics))
+        if let summaryPool {
+            summaryPool.publishProgressBase(metrics)
+        } else {
+            continuation.yield(.progress(metrics))
+        }
     }
 
-    private func shouldTraverseDirectory(metadata: NodeMetadata, isRoot: Bool = false) -> Bool {
+    private func shouldTraverseDirectory(
+        metadata: NodeMetadata,
+        isRoot: Bool = false,
+        blocksTraversalAtMountBoundary: Bool = false
+    ) -> Bool {
         guard metadata.isDirectory else { return false }
         guard !metadata.isSymbolicLink else { return false }
+        guard isRoot || !blocksTraversalAtMountBoundary else { return false }
         guard metadata.isPackage else { return true }
         return options.treatPackagesAsDirectories
             || (isRoot && options.treatRootPackageAsDirectory)

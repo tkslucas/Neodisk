@@ -27,6 +27,9 @@
 
 /* MARK: - 扫描进度 */
 "Assembling results for %@…" = "正在汇总 %@ 的结果…";
+"Applying changes…" = "正在应用更改…";
+"Checking for changes…" = "正在检查更改…";
+"Changes too extensive — running a full scan…" = "更改过多 — 正在执行完整扫描…";
 "Scanning %@…" = "正在扫描 %@…";
 "%@ files · %@" = "%@ 个文件 · %@";
 "Stop Scan" = "停止扫描";

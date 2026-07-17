@@ -134,12 +134,14 @@ public actor ScanSnapshotCache {
         // while its previous save encodes), but loads of other targets must
         // not wait behind this.
         let (digest, data) = try await Task.detached {
-            let digest = ScanChangeList.contentDigest(of: snapshot.treeStore)
-            return (digest, try ScanSnapshotCodec.encode(
-                snapshot,
-                version: Self.currentFormatVersion,
-                changeDigest: digest
-            ))
+            try ScanTiming.measure("snapshot.encode", detail: "nodes=\(snapshot.treeStore.nodeCount)") {
+                let digest = ScanChangeList.contentDigest(of: snapshot.treeStore)
+                return (digest, try ScanSnapshotCodec.encode(
+                    snapshot,
+                    version: Self.currentFormatVersion,
+                    changeDigest: digest
+                ))
+            }
         }.value
         try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
 
@@ -200,7 +202,11 @@ public actor ScanSnapshotCache {
         do {
             // Decode off the actor, so a slow decode (or another target's
             // in-flight save) never queues other targets' cache traffic.
-            let snapshot = try await Task.detached { try ScanSnapshotCodec.decode(data) }.value
+            let snapshot = try await Task.detached {
+                try ScanTiming.measure("snapshot.decode", detail: "bytes=\(data.count)") {
+                    try ScanSnapshotCodec.decode(data)
+                }
+            }.value
             guard snapshot.target.id == target.id else {
                 // Filename hash collision or a moved cache directory; not our
                 // snapshot, and not ours to delete.

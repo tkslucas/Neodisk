@@ -22,8 +22,9 @@ nonisolated enum CloneDeduplicator {
     /// Fetches a file's private (unshared) byte count. Injectable so tests
     /// and offline rebalances run without syscalls; nil means unknown and
     /// charges the member zero — the conservative direction (the residual
-    /// lands in hidden space).
-    typealias PrivateSizeProvider = (_ path: String) -> Int64?
+    /// lands in hidden space). `Sendable` so the parallel fetch can call it
+    /// across workers.
+    typealias PrivateSizeProvider = @Sendable (_ path: String) -> Int64?
 
     /// The real provider: one getattrlist(2) for ATTR_CMNEXT_PRIVATESIZE.
     /// Called only for duplicate clone-family members, never in scan hot
@@ -52,14 +53,23 @@ nonisolated enum CloneDeduplicator {
     /// arrays. Runs after hard-link deduplication; the two compose because
     /// this pass only ever lowers a member's current allocated size to its
     /// private size (idempotent, order-stable).
+    ///
+    /// The per-member private-size reads (`getattrlist`) are independent and
+    /// I/O-bound, and on clone-saturated volumes they dominate finalize
+    /// (~45s on a 1.5M-node home dir). They are fetched concurrently over
+    /// disjoint result slots, then the charges are applied in the original
+    /// sequential order so the store stays byte-identical to the serial pass.
     nonisolated static func applyDeduplication(
         nodes: inout [FileNodeRecord],
         parentIndices: [Int32],
         childStarts: [Int32],
         childSlots: inout [Int32],
         indexByID: NodeIDIndex,
-        privateSizeProvider: PrivateSizeProvider = systemPrivateSize
-    ) {
+        privateSizeProvider: PrivateSizeProvider = systemPrivateSize,
+        rebuild: HardLinkDeduplicator.AncestorRebuild = HardLinkDeduplicator.numericAncestorRebuild,
+        cancellationCheck: () throws -> Void = {},
+        progress: (_ fraction: Double) -> Void = { _ in }
+    ) rethrows {
         var memberIndicesByFamily: [CloneFamilyKey: [Int32]] = [:]
         for (index, node) in nodes.enumerated() {
             guard let cloneInfo = node.cloneInfo, !node.isDirectory, !node.isSymbolicLink,
@@ -67,7 +77,11 @@ nonisolated enum CloneDeduplicator {
             memberIndicesByFamily[cloneInfo.familyKey, default: []].append(Int32(index))
         }
 
-        var changedIndices: Set<Int32> = []
+        // Every family's non-first members (by path, then id) are the ones
+        // charged. Charges are independent per member, so flattening the
+        // families into one list keeps the output byte-identical regardless of
+        // family iteration order.
+        var chargedIndices: [Int32] = []
         for memberIndices in memberIndicesByFamily.values where memberIndices.count > 1 {
             let sorted = memberIndices.sorted { lhs, rhs in
                 let lhsNode = nodes[Int(lhs)]
@@ -75,33 +89,65 @@ nonisolated enum CloneDeduplicator {
                 if lhsNode.path == rhsNode.path { return lhsNode.id < rhsNode.id }
                 return lhsNode.path < rhsNode.path
             }
-            // First member keeps the family's shared blocks at full size.
-            for index in sorted.dropFirst() {
-                let node = nodes[Int(index)]
-                let privateSize = node.cloneInfo?.privateSize
-                    ?? privateSizeProvider(node.path)
-                let charged = min(node.allocatedSize, max(privateSize ?? 0, 0))
-                guard charged != node.allocatedSize || node.cloneInfo?.privateSize == nil else { continue }
-                nodes[Int(index)] = node.replacingAllocatedSize(
-                    charged,
-                    // Stamp the fetched figure so cached snapshots
-                    // rebalance offline with the same answer.
-                    cloneInfo: node.cloneInfo?.withPrivateSize(privateSize ?? 0)
-                )
-                if charged != node.allocatedSize {
-                    changedIndices.insert(index)
+            chargedIndices.append(contentsOf: sorted.dropFirst())
+        }
+        guard !chargedIndices.isEmpty else { return }
+
+        // Resolve each charged member's private size: the stamped figure when
+        // present, otherwise a getattrlist read. The reads run concurrently
+        // (bounded, disjoint slots), cancellation is polled between batches.
+        let chargedPaths = chargedIndices.map { nodes[Int($0)].path }
+        let stampedPrivateSizes = chargedIndices.map { nodes[Int($0)].cloneInfo?.privateSize }
+        var resolvedPrivateSizes = [Int64?](repeating: nil, count: chargedIndices.count)
+        let workerLimit = ScanConcurrencyPolicy.cloneMetadataFetchWorkerLimit()
+        let batchSize = 4_096
+        var batchStart = 0
+        while batchStart < chargedIndices.count {
+            try cancellationCheck()
+            let rangeStart = batchStart
+            let rangeEnd = min(batchStart + batchSize, chargedIndices.count)
+            resolvedPrivateSizes.withUnsafeMutableBufferPointer { buffer in
+                nonisolated(unsafe) let resolvedOut = buffer
+                let pathsIn = chargedPaths
+                let stampedIn = stampedPrivateSizes
+                let provider = privateSizeProvider
+                let batchCount = rangeEnd - rangeStart
+                let workers = min(workerLimit, batchCount)
+                let perWorker = (batchCount + workers - 1) / workers
+                DispatchQueue.concurrentPerform(iterations: workers) { worker in
+                    let start = min(rangeStart + worker * perWorker, rangeEnd)
+                    let end = min(start + perWorker, rangeEnd)
+                    for i in start..<end {
+                        resolvedOut[i] = stampedIn[i] ?? provider(pathsIn[i])
+                    }
                 }
+            }
+            batchStart = rangeEnd
+            // The fetch loop is the phase's cost on clone-heavy volumes; the
+            // charge/rebuild tail is fast, so batch completion is the honest
+            // progress signal.
+            progress(Double(rangeEnd) / Double(chargedIndices.count))
+        }
+
+        // Apply the charges sequentially, in the original order.
+        var changedIndices: Set<Int32> = []
+        for (offset, index) in chargedIndices.enumerated() {
+            let node = nodes[Int(index)]
+            let privateSize = resolvedPrivateSizes[offset]
+            let charged = min(node.allocatedSize, max(privateSize ?? 0, 0))
+            guard charged != node.allocatedSize || node.cloneInfo?.privateSize == nil else { continue }
+            nodes[Int(index)] = node.replacingAllocatedSize(
+                charged,
+                // Stamp the fetched figure so cached snapshots
+                // rebalance offline with the same answer.
+                cloneInfo: node.cloneInfo?.withPrivateSize(privateSize ?? 0)
+            )
+            if charged != node.allocatedSize {
+                changedIndices.insert(index)
             }
         }
 
-        HardLinkDeduplicator.rebuildAffectedAncestors(
-            of: changedIndices,
-            nodes: &nodes,
-            parentIndices: parentIndices,
-            childStarts: childStarts,
-            childSlots: &childSlots,
-            cancellationCheck: {}
-        )
+        rebuild(changedIndices, &nodes, parentIndices, childStarts, &childSlots)
     }
 
     /// Re-derives clone deduplication from the store's own records after

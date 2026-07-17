@@ -59,17 +59,18 @@ extension ScanEngine {
     /// depth limit, so emission cost no longer grows with the whole scanned
     /// tree.
     nonisolated static func assemblePartialTree(
-        completedByKey: [Int: CompletedDirScan],
-        childrenKeysByKey: [Int: [Int]],
+        completedByKey: [CompletedDirScan?],
+        childrenKeysByKey: [[Int]],
         nextKey: Int,
         maxDepth: Int = partialTreeMaxDepth
     ) -> FileTreeStore? {
-        guard !completedByKey.isEmpty else { return nil }
+        guard nextKey > 0, !completedByKey.isEmpty else { return nil }
 
         // Children always have higher keys than their parents, so a reverse
-        // pass resolves every child before its parent needs it.
-        var resolvedNodeByKey: [Int: FileNodeRecord] = [:]
-        var totalsByKey: [Int: PartialSubtreeTotals] = [:]
+        // pass resolves every child before its parent needs it. Dense
+        // key-indexed arrays mirror the coordinator's phase-1 state.
+        var resolvedNodeByKey = [FileNodeRecord?](repeating: nil, count: nextKey)
+        var totalsByKey = [PartialSubtreeTotals?](repeating: nil, count: nextKey)
         var childrenByID: [String: [FileNodeRecord]] = [:]
 
         for key in (0..<nextKey).reversed() {
@@ -80,8 +81,11 @@ extension ScanEngine {
                 if completed.isTraversable {
                     var totals = PartialSubtreeTotals()
                     totals.isAccessible = completed.metadata.isReadable
-                    for childKey in childrenKeysByKey[key] ?? [] {
-                        if let childTotals = totalsByKey.removeValue(forKey: childKey) {
+                    for leaf in completed.directLeafNodes {
+                        totals.add(PartialSubtreeTotals(of: leaf))
+                    }
+                    for childKey in childrenKeysByKey[key] {
+                        if let childTotals = totalsByKey[childKey] {
                             totals.add(childTotals)
                         }
                     }
@@ -94,8 +98,12 @@ extension ScanEngine {
                     // The aggregated remainder: a childless directory record
                     // carrying its subtree's running totals.
                     var totals = PartialSubtreeTotals()
-                    for childKey in childrenKeysByKey[key] ?? [] {
-                        if let childTotals = totalsByKey.removeValue(forKey: childKey) {
+                    totals.isAccessible = completed.metadata.isReadable
+                    for leaf in completed.directLeafNodes {
+                        totals.add(PartialSubtreeTotals(of: leaf))
+                    }
+                    for childKey in childrenKeysByKey[key] {
+                        if let childTotals = totalsByKey[childKey] {
                             totals.add(childTotals)
                         }
                     }
@@ -118,11 +126,12 @@ extension ScanEngine {
                         isAutoSummarized: false
                     )
                 } else {
-                    var childNodes: [FileNodeRecord] = []
-                    if let childKeys = childrenKeysByKey[key] {
-                        childNodes.reserveCapacity(childKeys.count)
+                    var childNodes = completed.directLeafNodes
+                    let childKeys = childrenKeysByKey[key]
+                    if !childKeys.isEmpty {
+                        childNodes.reserveCapacity(childNodes.count + childKeys.count)
                         for childKey in childKeys {
-                            if let childNode = resolvedNodeByKey.removeValue(forKey: childKey) {
+                            if let childNode = resolvedNodeByKey[childKey] {
                                 childNodes.append(childNode)
                             }
                         }
@@ -213,17 +222,31 @@ extension ScanEngine {
         directoryContents: DirectoryContentsProvider,
         classificationWorkerLimit: Int,
         usesBulkEnumeration: Bool = false,
+        directoryIOExecutor: DirectoryIOExecutor? = nil,
         cancellationCheck: @escaping CancellationCheck
     ) async throws -> DirectoryContentsScanResult {
         try cancellationCheck()
 
         if usesBulkEnumeration {
             do {
+                if let directoryIOExecutor {
+                    return try await directoryIOExecutor.run { context, ioCancellationCheck in
+                        try bulkDirectoryEntries(
+                            of: url,
+                            includeHiddenFiles: includeHiddenFiles,
+                            behavior: behavior,
+                            exclusionMatcher: exclusionMatcher,
+                            context: context,
+                            cancellationCheck: ioCancellationCheck
+                        )
+                    }
+                }
                 return try bulkDirectoryEntries(
                     of: url,
                     includeHiddenFiles: includeHiddenFiles,
                     behavior: behavior,
                     exclusionMatcher: exclusionMatcher,
+                    context: BulkDirectoryReader.Context(),
                     cancellationCheck: cancellationCheck
                 )
             } catch is CancellationError {
@@ -295,26 +318,25 @@ extension ScanEngine {
     /// Fast-path listing: one getattrlistbulk stream provides names and
     /// metadata together, so no per-child resourceValues (classification)
     /// stage is needed at all.
-    private nonisolated static func bulkDirectoryEntries(
+    nonisolated static func bulkDirectoryEntries(
         of url: URL,
         includeHiddenFiles: Bool,
         behavior: ScanBehavior,
         exclusionMatcher: ScanExclusionMatcher,
+        context: BulkDirectoryReader.Context,
         cancellationCheck: @escaping CancellationCheck
     ) throws -> DirectoryContentsScanResult {
         #if DEBUG
         let enumerationStart = DispatchTime.now().uptimeNanoseconds
         #endif
-        let children = try BulkDirectoryReader.children(
-            ofDirectory: url,
-            cancellationCheck: cancellationCheck
-        )
-
         var entries: [DirectoryEntry] = []
-        entries.reserveCapacity(children.count)
-        for child in children {
-            if !includeHiddenFiles && child.isHidden { continue }
-            guard includedChildName(child.name, under: url, behavior: behavior) else { continue }
+        let enumeratedItemCount = try BulkDirectoryReader.readChildren(
+            ofDirectory: url,
+            using: context,
+            cancellationCheck: cancellationCheck
+        ) { child in
+            if !includeHiddenFiles && child.isHidden { return }
+            guard includedChildName(child.name, under: url, behavior: behavior) else { return }
 
             if let entryErrno = child.entryErrno {
                 let childURL = url.appending(path: child.name)
@@ -325,31 +347,38 @@ extension ScanEngine {
                         domain: NSPOSIXErrorDomain,
                         code: Int(entryErrno),
                         userInfo: [NSURLErrorKey: childURL]
-                    )
+                    ),
+                    deviceID: child.deviceID,
+                    directoryMountStatus: child.directoryMountStatus
                 ))
-                continue
+                return
             }
 
-            guard let metadata = child.metadata else { continue }
+            guard let metadata = child.metadata else { return }
             let childURL = url.appending(
                 path: child.name,
                 directoryHint: metadata.isDirectory ? .isDirectory : .notDirectory
             )
-            guard !exclusionMatcher.excludes(childURL, isDirectory: metadata.isDirectory) else { continue }
-            entries.append(DirectoryEntry(url: childURL, metadata: metadata))
+            guard !exclusionMatcher.excludes(childURL, isDirectory: metadata.isDirectory) else { return }
+            entries.append(DirectoryEntry(
+                url: childURL,
+                metadata: metadata,
+                deviceID: child.deviceID,
+                directoryMountStatus: child.directoryMountStatus
+            ))
         }
 
         #if DEBUG
         return DirectoryContentsScanResult(
             entries: entries,
-            enumeratedItemCount: children.count,
+            enumeratedItemCount: enumeratedItemCount,
             enumerationNanoseconds: DispatchTime.now().uptimeNanoseconds - enumerationStart,
             classificationNanoseconds: 0
         )
         #else
         return DirectoryContentsScanResult(
             entries: entries,
-            enumeratedItemCount: children.count
+            enumeratedItemCount: enumeratedItemCount
         )
         #endif
     }
@@ -460,7 +489,8 @@ extension ScanEngine {
 
             let childMetadata = try? metadataLoader.metadata(
                 for: childURL,
-                prefetchedResourceValues: childURL.resourceValues(forKeys: resourceKeys)
+                prefetchedResourceValues: childURL.resourceValues(forKeys: resourceKeys),
+                captureDirectoryIdentity: true
             )
             guard !exclusionMatcher.excludes(
                 childURL,
@@ -469,7 +499,11 @@ extension ScanEngine {
                 continue
             }
 
-            entries.append((offset + localOffset, DirectoryEntry(url: childURL, metadata: childMetadata)))
+            entries.append((offset + localOffset, DirectoryEntry(
+                url: childURL,
+                metadata: childMetadata,
+                deviceID: childMetadata?.fileIdentity?.fileSystemDeviceID
+            )))
         }
 
         try cancellationCheck()

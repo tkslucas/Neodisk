@@ -65,7 +65,8 @@ import Foundation
 
     private func applyDeduplication(
         to store: FileTreeStore,
-        privateSizeProvider: @escaping (String) -> Int64?
+        privateSizeProvider: @escaping @Sendable (String) -> Int64?,
+        progress: (Double) -> Void = { _ in }
     ) -> FileTreeStore {
         let storage = store.storage
         var nodes = storage.nodes
@@ -76,7 +77,9 @@ import Foundation
             childStarts: storage.childStarts,
             childSlots: &childSlots,
             indexByID: storage.indexByID,
-            privateSizeProvider: privateSizeProvider
+            privateSizeProvider: privateSizeProvider,
+            cancellationCheck: {},
+            progress: progress
         )
         return FileTreeStore(
             trustedStorage: TreeStorage(
@@ -112,6 +115,37 @@ import Foundation
         #expect(deduped.root.allocatedSize == 107)
         // Fetched private sizes are stamped for offline rebalances.
         #expect(deduped.node(id: "/r/b.bin")?.cloneInfo?.privateSize == 0)
+    }
+
+    @Test func testProgressReportsFetchBatchesUpToOne() {
+        let family = CloneInfo(device: 1, cloneID: 9, refCount: 3)
+        let children = [
+            makeFile(id: "/r/a.bin", allocatedSize: 100, cloneInfo: family),
+            makeFile(id: "/r/b.bin", allocatedSize: 100, cloneInfo: family),
+            makeFile(id: "/r/c.bin", allocatedSize: 100, cloneInfo: family),
+        ]
+        var fractions: [Double] = []
+        _ = applyDeduplication(
+            to: store(root: makeRoot(id: "/r", children: children), children: children),
+            privateSizeProvider: { _ in 0 },
+            progress: { fractions.append($0) }
+        )
+
+        #expect(!fractions.isEmpty)
+        #expect(fractions == fractions.sorted())
+        #expect(fractions.allSatisfy { $0 > 0 && $0 <= 1 })
+        #expect(fractions.last == 1)
+    }
+
+    @Test func testProgressSilentWithoutChargedMembers() {
+        let children = [makeFile(id: "/r/plain.bin", allocatedSize: 7)]
+        var fractions: [Double] = []
+        _ = applyDeduplication(
+            to: store(root: makeRoot(id: "/r", children: children), children: children),
+            privateSizeProvider: { _ in 0 },
+            progress: { fractions.append($0) }
+        )
+        #expect(fractions.isEmpty)
     }
 
     @Test func testDivergedMemberKeepsItsPrivateBytes() {

@@ -20,11 +20,19 @@ struct CLIOptions {
     /// Entries shown per directory; 0 means unlimited.
     var top = 10
     var includeHidden = true
+    /// Measure the incremental-rescan path: full scan, snapshot round-trip,
+    /// then an FSEvents rescan of the same tree.
+    var benchRescan = false
+    /// File to modify between the baseline scan and the rescan, so the
+    /// rescan has a changed subtree to replace. Only used with
+    /// --bench-rescan; this is the one deliberate write diskscan can make.
+    var benchTouch: String?
 }
 
 func printUsage(to handle: FileHandle) {
     let usage = """
     usage: diskscan <path> [--json] [--depth N] [--top N] [--no-hidden]
+                    [--bench-rescan [--bench-touch <file>]]
 
     Scans a directory tree and reports allocated sizes (hard links counted
     once, like du). Progress goes to stderr, results to stdout.
@@ -34,6 +42,16 @@ func printUsage(to handle: FileHandle) {
       --top N      largest entries kept per directory (default 10, 0 = all)
       --no-hidden  skip hidden files and directories (default: included)
       -h, --help   show this help
+
+    Benchmarking (set NEODISK_SCAN_TIMING=1 for per-phase timings):
+      --bench-rescan        after the full scan, round-trip the snapshot
+                            through the cache codec and run an FSEvents
+                            incremental rescan of the same tree
+      --bench-touch <file>  modify <file> (append one byte; created if
+                            missing) between baseline and rescan so the
+                            rescan has a changed subtree to splice. The only
+                            write diskscan ever performs, and only with this
+                            flag.
     """
     handle.write(Data((usage + "\n").utf8))
 }
@@ -62,6 +80,14 @@ func parseOptions(_ arguments: [String]) -> CLIOptions? {
             options.top = value
         case "--no-hidden":
             options.includeHidden = false
+        case "--bench-rescan":
+            options.benchRescan = true
+        case "--bench-touch":
+            guard let value = iterator.next(), !value.hasPrefix("-") else {
+                FileHandle.standardError.write(Data("error: --bench-touch requires a file path\n".utf8))
+                return nil
+            }
+            options.benchTouch = value
         case "-h", "--help":
             printUsage(to: FileHandle.standardOutput)
             exit(0)
@@ -75,6 +101,10 @@ func parseOptions(_ arguments: [String]) -> CLIOptions? {
     }
 
     guard options.path != nil else {
+        return nil
+    }
+    if options.benchTouch != nil && !options.benchRescan {
+        FileHandle.standardError.write(Data("error: --bench-touch requires --bench-rescan\n".utf8))
         return nil
     }
     return options
@@ -262,6 +292,117 @@ func printJSONReport(snapshot: ScanSnapshot, options: CLIOptions) throws {
     FileHandle.standardOutput.write(Data("\n".utf8))
 }
 
+// MARK: - Rescan bench
+
+func benchNote(_ text: String) {
+    FileHandle.standardError.write(Data(("bench: " + text + "\n").utf8))
+}
+
+/// Measures the full incremental-rescan pipeline end to end: baseline full
+/// scan (with FSEvents checkpoint), snapshot encode+decode round-trip
+/// through the real cache, optional file mutation, then the rescan itself.
+/// With NEODISK_SCAN_TIMING=1 each phase also prints its own timing line.
+func runRescanBench(target: ScanTarget, options: ScanOptions, touchPath: String?) async -> Int32 {
+    let service = IncrementalScanService()
+    var reporter = ProgressReporter()
+
+    func runStream(
+        _ stream: AsyncThrowingStream<ScanProgressEvent, Error>,
+        label: String
+    ) async -> (snapshot: ScanSnapshot, seconds: Double)? {
+        let start = ContinuousClock.now
+        var finished: ScanSnapshot?
+        do {
+            for try await event in stream {
+                switch event {
+                case .progress(let metrics): reporter.update(metrics)
+                case .warning, .partial: break
+                case .finished(let snapshot): finished = snapshot
+                }
+            }
+        } catch {
+            reporter.finish()
+            benchNote("\(label) failed: \(error.localizedDescription)")
+            return nil
+        }
+        reporter.finish()
+        guard let finished else {
+            benchNote("\(label) produced no result")
+            return nil
+        }
+        let elapsed = start.duration(to: .now)
+        return (finished, Double(elapsed.components.seconds)
+            + Double(elapsed.components.attoseconds) / 1e18)
+    }
+
+    guard let baseline = await runStream(
+        service.scan(target: target, options: options),
+        label: "baseline scan"
+    ) else { return 1 }
+    let stats = baseline.snapshot.aggregateStats
+    benchNote(String(
+        format: "baseline scan %.2fs files=%d dirs=%d",
+        baseline.seconds, stats.fileCount, stats.directoryCount
+    ))
+    guard baseline.snapshot.incrementalCheckpoint != nil else {
+        benchNote("no FSEvents checkpoint captured (incremental disabled or unsupported target); cannot rescan")
+        return 1
+    }
+
+    // Round-trip through the real cache so encode + decode are measured and
+    // the rescan starts from a disk-loaded baseline, like a cold app launch.
+    let cacheDirectory = FileManager.default.temporaryDirectory.appending(
+        path: "diskscan-bench-\(ProcessInfo.processInfo.processIdentifier)",
+        directoryHint: .isDirectory
+    )
+    defer { try? FileManager.default.removeItem(at: cacheDirectory) }
+    let cache = ScanSnapshotCache(directoryURL: cacheDirectory, isLoggingEnabled: false)
+    do {
+        try await cache.save(baseline.snapshot)
+    } catch {
+        benchNote("snapshot save failed: \(error.localizedDescription)")
+        return 1
+    }
+    guard let loadedBaseline = await cache.loadSnapshot(for: target) else {
+        benchNote("snapshot reload failed")
+        return 1
+    }
+
+    if let touchPath {
+        let url = URL(filePath: touchPath)
+        do {
+            if FileManager.default.fileExists(atPath: url.path) {
+                let handle = try FileHandle(forWritingTo: url)
+                try handle.seekToEnd()
+                try handle.write(contentsOf: Data([0x0A]))
+                try handle.close()
+                benchNote("touched \(url.path) (+1 byte)")
+            } else {
+                try Data("diskscan bench\n".utf8).write(to: url)
+                benchNote("created \(url.path)")
+            }
+        } catch {
+            benchNote("touch failed: \(error.localizedDescription)")
+            return 1
+        }
+        // Give fseventsd a moment to flush the event into the journal the
+        // rescan is about to replay.
+        try? await Task.sleep(for: .seconds(1))
+    }
+
+    guard let rescan = await runStream(
+        service.rescan(target: target, options: options, baselineProvider: { loadedBaseline }),
+        label: "rescan"
+    ) else { return 1 }
+    let rescanStats = rescan.snapshot.aggregateStats
+    benchNote(String(
+        format: "rescan %.2fs files=%d dirs=%d bytes=%d",
+        rescan.seconds, rescanStats.fileCount, rescanStats.directoryCount,
+        rescanStats.totalAllocatedSize
+    ))
+    return 0
+}
+
 // MARK: - Entry point
 
 guard let cliOptions = parseOptions(Array(CommandLine.arguments.dropFirst())) else {
@@ -280,6 +421,14 @@ guard FileManager.default.fileExists(atPath: targetURL.path, isDirectory: &isDir
 let target = ScanTarget(url: targetURL)
 var scanOptions = ScanOptions()
 scanOptions.includeHiddenFiles = cliOptions.includeHidden
+
+if cliOptions.benchRescan {
+    exit(await runRescanBench(
+        target: target,
+        options: scanOptions,
+        touchPath: cliOptions.benchTouch
+    ))
+}
 
 let engine = ScanEngine()
 var reporter = ProgressReporter()

@@ -222,7 +222,8 @@ nonisolated struct AtomicDirectorySummarizer: Sendable {
                 node: node,
                 warnings: [],
                 hardLinkClaims: HardLinkDeduplicator.claim(for: metadata, ownerNodeID: node.id, path: url.path).map { [$0] } ?? [],
-                minimumAllocatedSize: nil
+                minimumAllocatedSize: nil,
+                progressJobIDs: []
             )
         }
 
@@ -243,7 +244,8 @@ nonisolated struct AtomicDirectorySummarizer: Sendable {
                 node: node,
                 warnings: [],
                 hardLinkClaims: HardLinkDeduplicator.claim(for: metadata, ownerNodeID: node.id, path: url.path).map { [$0] } ?? [],
-                minimumAllocatedSize: nil
+                minimumAllocatedSize: nil,
+                progressJobIDs: []
             )
         }
 
@@ -269,7 +271,8 @@ nonisolated struct AtomicDirectorySummarizer: Sendable {
             ),
             warnings: summary.warnings,
             hardLinkClaims: summary.hardLinkClaims,
-            minimumAllocatedSize: metadata.allocatedSize
+            minimumAllocatedSize: metadata.allocatedSize,
+            progressJobIDs: summary.progressJobIDs
         )
     }
 

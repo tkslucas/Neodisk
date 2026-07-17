@@ -36,10 +36,28 @@ public struct ScanMetrics: Sendable {
     var discoveredDirectoryCount = 0
     public var progressFraction = 0.0
     public var isFinalizing = false
+    /// True while an incremental rescan is rebuilding and splicing replacement
+    /// subtrees into the retained baseline.
+    public var isMergingChanges = false
+    /// True while an incremental rescan is still deciding what to scan —
+    /// decoding the baseline snapshot and replaying the FSEvents journal.
+    /// No counters move during this phase, so the strip needs the flag to
+    /// show activity instead of a dead bar.
+    public var isCheckingChanges = false
+    /// True once an attempted incremental rescan has degraded to a full scan
+    /// (dropped events, an invalid checkpoint, a splice conflict, …). The
+    /// strip surfaces this so a refresh that silently restarts from scratch is
+    /// honest about it instead of looking like a mysterious long rescan. The
+    /// root-relist path is a normal incremental rescan and never sets it.
+    public var isFullScanFallback = false
 
     /// Portion of the progress bar reserved for traversal; the remainder is consumed by
     /// the assembly (finalization) phase, with the final point reserved for completion.
-    private nonisolated static let traversalSpan = 0.95
+    /// Assembly is ~20% of wall time on real home-dir scans (dedup included), so it gets
+    /// a visible slice of the bar rather than the last few points. Internal because the
+    /// incremental rescan band must stay below it or the bar would step backward when
+    /// finalization begins.
+    nonisolated static let traversalSpan = 0.9
     private nonisolated static let finalizationCeiling = 0.99
     /// Upper bound on the geometric expansion applied per frontier directory when
     /// extrapolating how many descendants it will yield.

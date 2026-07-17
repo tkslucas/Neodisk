@@ -15,17 +15,27 @@ nonisolated struct DirectoryEntry: Sendable {
     let metadata: NodeMetadata?
     let localizedEnumerationError: Error?
     let isDirectoryHint: Bool?
+    /// Device identity used only for traversal boundary decisions. This is
+    /// populated directly by getattrlistbulk and derived from a directory's
+    /// FileIdentity on the compatibility path.
+    let deviceID: UInt64?
+    /// ATTR_DIR_MOUNTSTATUS when bulk enumeration supplied it.
+    let directoryMountStatus: UInt32
 
     init(
         url: URL,
         metadata: NodeMetadata?,
         localizedEnumerationError: Error? = nil,
-        isDirectoryHint: Bool? = nil
+        isDirectoryHint: Bool? = nil,
+        deviceID: UInt64? = nil,
+        directoryMountStatus: UInt32 = 0
     ) {
         self.url = url
         self.metadata = metadata
         self.localizedEnumerationError = localizedEnumerationError
         self.isDirectoryHint = isDirectoryHint
+        self.deviceID = deviceID
+        self.directoryMountStatus = directoryMountStatus
     }
 }
 
@@ -37,6 +47,10 @@ nonisolated struct AtomicDirectorySummary: Sendable {
     let isAccessible: Bool
     let warnings: [ScanWarning]
     let hardLinkClaims: [HardLinkClaim]
+    /// Pool jobs whose live progress contribution is still displayed. The
+    /// traversal acknowledges these IDs when it folds this summary into its
+    /// authoritative metrics base.
+    let progressJobIDs: [Int]
 }
 
 /// One directory level to summarize. Files at this level fold into the job's
@@ -66,6 +80,7 @@ nonisolated struct AtomicDirectorySummaryPartial: Sendable {
     var isAccessible = true
     var warnings: [ScanWarning] = []
     var hardLinkClaims: [HardLinkClaim] = []
+    var progressJobIDs: [Int] = []
 
     mutating func updateAccessibility(_ readable: Bool) {
         isAccessible = isAccessible && readable
@@ -98,6 +113,7 @@ nonisolated struct AtomicDirectorySummaryPartial: Sendable {
         isAccessible = isAccessible && other.isAccessible
         warnings.append(contentsOf: other.warnings)
         hardLinkClaims.append(contentsOf: other.hardLinkClaims)
+        progressJobIDs.append(contentsOf: other.progressJobIDs)
     }
 
     mutating func merge(_ summary: AtomicDirectorySummary) {
@@ -108,9 +124,10 @@ nonisolated struct AtomicDirectorySummaryPartial: Sendable {
         isAccessible = isAccessible && summary.isAccessible
         warnings.append(contentsOf: summary.warnings)
         hardLinkClaims.append(contentsOf: summary.hardLinkClaims)
+        progressJobIDs.append(contentsOf: summary.progressJobIDs)
     }
 
-    func makeSummary() -> AtomicDirectorySummary {
+    func makeSummary(additionalProgressJobIDs: [Int] = []) -> AtomicDirectorySummary {
         AtomicDirectorySummary(
             allocatedSize: allocatedSize,
             logicalSize: logicalSize,
@@ -118,7 +135,8 @@ nonisolated struct AtomicDirectorySummaryPartial: Sendable {
             descendantFileCount: descendantFileCount,
             isAccessible: isAccessible,
             warnings: warnings,
-            hardLinkClaims: hardLinkClaims
+            hardLinkClaims: hardLinkClaims,
+            progressJobIDs: progressJobIDs + additionalProgressJobIDs
         )
     }
 }
@@ -141,6 +159,7 @@ nonisolated struct LeafNodeResult: Sendable {
     let warnings: [ScanWarning]
     let hardLinkClaims: [HardLinkClaim]
     let minimumAllocatedSize: Int64?
+    let progressJobIDs: [Int]
 }
 
 /// Reference-typed holder for the serial walker paths, which mutate one running

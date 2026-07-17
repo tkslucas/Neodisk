@@ -57,17 +57,17 @@ import Testing
         )
     }
 
-    private var completedByKey: [Int: ScanEngine.CompletedDirScan] {
+    private var completedByKey: [ScanEngine.CompletedDirScan?] {
         [
-            0: Self.directoryScan("/root", depth: 0),
-            1: Self.leafScan(makeTestFileNode(id: "/root/f0", name: "f0", size: 100), depth: 1),
-            2: Self.directoryScan("/root/a", depth: 1),
-            3: Self.directoryScan("/root/a/b", depth: 2),
-            4: Self.leafScan(makeTestFileNode(id: "/root/a/b/deep", name: "deep", size: 7), depth: 3),
+            Self.directoryScan("/root", depth: 0),
+            Self.leafScan(makeTestFileNode(id: "/root/f0", name: "f0", size: 100), depth: 1),
+            Self.directoryScan("/root/a", depth: 1),
+            Self.directoryScan("/root/a/b", depth: 2),
+            Self.leafScan(makeTestFileNode(id: "/root/a/b/deep", name: "deep", size: 7), depth: 3),
         ]
     }
 
-    private let childrenKeysByKey = [0: [1, 2], 2: [3], 3: [4]]
+    private let childrenKeysByKey: [[Int]] = [[1, 2], [], [3], [4], []]
 
     @Test func depthLimitAggregatesDeepSubtreesIntoAncestor() throws {
         let store = try #require(ScanEngine.assemblePartialTree(
@@ -110,7 +110,7 @@ import Testing
     @Test func missingDeepChildrenAreTolerated() throws {
         // Key 4 (the deep file) has not been scanned yet.
         var incomplete = completedByKey
-        incomplete.removeValue(forKey: 4)
+        incomplete[4] = nil
 
         let store = try #require(ScanEngine.assemblePartialTree(
             completedByKey: incomplete,
@@ -121,5 +121,41 @@ import Testing
 
         #expect(store.node(id: "/root/a")?.allocatedSize == 0)
         #expect(store.root.allocatedSize == 100)
+    }
+
+    @Test func batchedDirectLeavesMaterializeAndRollUpAtDepthLimit() throws {
+        let rootLeaf = makeTestFileNode(id: "/root/direct", name: "direct", size: 100)
+        let deepLeaf = makeTestFileNode(id: "/root/a/b/deep", name: "deep", size: 7)
+        let root = ScanEngine.CompletedDirScan(
+            node: nil,
+            directLeafNodes: [rootLeaf],
+            metadata: Self.directoryMetadata(),
+            url: URL(filePath: "/root", directoryHint: .isDirectory),
+            isTraversable: true,
+            depth: 0
+        )
+        let a = Self.directoryScan("/root/a", depth: 1)
+        let b = ScanEngine.CompletedDirScan(
+            node: nil,
+            directLeafNodes: [deepLeaf],
+            metadata: Self.directoryMetadata(),
+            url: URL(filePath: "/root/a/b", directoryHint: .isDirectory),
+            isTraversable: true,
+            depth: 2
+        )
+
+        let store = try #require(ScanEngine.assemblePartialTree(
+            completedByKey: [root, a, b],
+            childrenKeysByKey: [[1], [2], []],
+            nextKey: 3,
+            maxDepth: 1
+        ))
+
+        #expect(store.nodeCount == 3)
+        #expect(store.node(id: rootLeaf.id)?.allocatedSize == 100)
+        #expect(store.node(id: deepLeaf.id) == nil)
+        #expect(store.node(id: "/root/a")?.allocatedSize == 7)
+        #expect(store.root.allocatedSize == 107)
+        #expect(store.root.descendantFileCount == 2)
     }
 }

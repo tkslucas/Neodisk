@@ -428,10 +428,18 @@ private struct LiveScanStrip: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            ProgressView(value: progress.metrics.progressFraction)
-                .progressViewStyle(.linear)
-                .frame(width: 160)
-                .opacity(isStopped ? 0.5 : 1)
+            // Always determinate and monotonic: the bar never bounces. The
+            // formerly "silent" phases (checking, merging) now either hold at
+            // their current fraction with an explanatory caption or report real
+            // sub-phase progress (the splice reports its copy/index/rebuild/
+            // rebalance boundaries), so the bar only ever moves forward. The
+            // drifting stripe sheen signals liveness during held fractions.
+            StripedProgressBar(
+                value: progress.metrics.progressFraction,
+                isActive: !isStopped
+            )
+            .frame(width: 160)
+            .opacity(isStopped ? 0.5 : 1)
 
             if isStopped {
                 Button("Restart", action: { onResume?() })
@@ -443,10 +451,14 @@ private struct LiveScanStrip: View {
 
             Text(statusText)
                 .foregroundStyle(.secondary)
-            Text("\(progress.metrics.filesVisited.formatted()) files · \(NeodiskFormatters.size(progress.metrics.bytesDiscovered))")
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+            // No counters have moved yet while checking for changes; "0 files"
+            // next to that caption would read as lost data.
+            if !progress.metrics.isCheckingChanges {
+                Text("\(progress.metrics.filesVisited.formatted()) files · \(NeodiskFormatters.size(progress.metrics.bytesDiscovered))")
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
             Spacer()
         }
         .font(.system(size: 11))
@@ -459,6 +471,20 @@ private struct LiveScanStrip: View {
             return cachedScanDate != nil
                 ? NSLocalizedString("Stopped — showing last scan", comment: "Live strip, stopped with a cached scan")
                 : NSLocalizedString("Stopped — showing partial results", comment: "Live strip, stopped mid-scan")
+        }
+        // Activity phases outrank the cached-scan caption: the refresh path
+        // is exactly where these silent phases used to look like a hang.
+        if progress.metrics.isCheckingChanges {
+            return NSLocalizedString("Checking for changes…", comment: "Live strip, incremental preparation")
+        }
+        if progress.metrics.isMergingChanges {
+            return NSLocalizedString("Applying changes…", comment: "Live strip, incremental splice")
+        }
+        // An incremental refresh that degraded to a full scan says so, rather
+        // than looking like a mysteriously long rescan. The root-relist path is
+        // a normal incremental rescan and never sets this flag.
+        if progress.metrics.isFullScanFallback {
+            return NSLocalizedString("Changes too extensive — running a full scan…", comment: "Live strip, incremental rescan fell back to a full scan")
         }
         if let cachedScanDate {
             let relative = DisplayFormatters.relativeDate(cachedScanDate)

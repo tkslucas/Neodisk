@@ -27,6 +27,9 @@
 
 /* MARK: - Scanning progress */
 "Assembling results for %@…" = "%@の結果をまとめています…";
+"Applying changes…" = "変更を適用中…";
+"Checking for changes…" = "変更を確認中…";
+"Changes too extensive — running a full scan…" = "変更が多すぎます — 完全スキャンを実行中…";
 "Scanning %@…" = "%@をスキャン中…";
 "%@ files · %@" = "%@個のファイル · %@";
 "Stop Scan" = "スキャンを停止";

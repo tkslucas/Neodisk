@@ -32,6 +32,39 @@ private final class ConditionsBox: @unchecked Sendable {
     private let fair = ScanThermalConditions(thermalState: .fair, isLowPowerModeEnabled: false)
     private let lowPower = ScanThermalConditions(thermalState: .nominal, isLowPowerModeEnabled: true)
 
+    @Test func bulkTraversalUsesStorageAwareCeilings() {
+        let parallel = ScanConcurrencyPolicy.directoryTraversalWorkerLimit(
+            for: ScanOptions(),
+            bulkEnumeration: true,
+            sourceProfile: .localParallel,
+            conditions: .nominal
+        )
+        let conservative = ScanConcurrencyPolicy.directoryTraversalWorkerLimit(
+            for: ScanOptions(),
+            bulkEnumeration: true,
+            sourceProfile: .localConservative,
+            conditions: .nominal
+        )
+        let network = ScanConcurrencyPolicy.directoryTraversalWorkerLimit(
+            for: ScanOptions(),
+            bulkEnumeration: true,
+            sourceProfile: .network,
+            conditions: .nominal
+        )
+
+        #expect(parallel > conservative)
+        #expect(conservative >= network)
+        #expect(parallel <= 24)
+        #expect(conservative <= 8)
+        #expect(network <= 4)
+    }
+
+    @Test func incrementalSubtreeConcurrencyDeratesUnderHeatAndLowPower() {
+        #expect(ScanConcurrencyPolicy.incrementalSubtreeWorkerLimit(conditions: .nominal) == 2)
+        #expect(ScanConcurrencyPolicy.incrementalSubtreeWorkerLimit(conditions: serious) == 1)
+        #expect(ScanConcurrencyPolicy.incrementalSubtreeWorkerLimit(conditions: lowPower) == 1)
+    }
+
     @Test func seriousThermalStateHalvesTraversalLimit() {
         let nominalLimit = ScanConcurrencyPolicy.directoryTraversalWorkerLimit(
             for: ScanOptions(), bulkEnumeration: true, conditions: .nominal

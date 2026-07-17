@@ -130,13 +130,31 @@ struct IncrementalRescanPlannerTests {
         #expect(result == .rescanSubtrees(["/scan/caches"]))
     }
 
-    @Test func changeDirectlyUnderScanRootFallsBackToFullScan() {
+    @Test func changeDirectlyUnderScanRootRelistsTheRoot() {
+        // A membership change directly under the scan root used to discard the
+        // whole baseline; now it shallow-relists the root instead.
         let result = plan([event("/scan/top.txt", [.itemRemoved])])
-        #expect(result == .fullScan(.changedScanRoot))
+        #expect(result == .relistRoot(subtreeRootIDs: []))
     }
 
-    @Test func eventOnScanRootFallsBackToFullScan() {
-        #expect(plan([event("/scan", [.itemIsDirectory, .itemRenamed])]) == .fullScan(.changedScanRoot))
+    @Test func eventOnScanRootRelistsTheRoot() {
+        #expect(plan([event("/scan", [.itemIsDirectory, .itemRenamed])]) == .relistRoot(subtreeRootIDs: []))
+    }
+
+    @Test func rootRelistCarriesDeepSubtreesFromTheSameWindow() {
+        // A root membership change plus a deep change: relist the root AND
+        // splice the mapped deep subtree in the same pass.
+        let result = plan([
+            event("/scan/top.txt", [.itemRemoved]),
+            event("/scan/docs/report.txt", [.itemCreated]),
+        ])
+        #expect(result == .relistRoot(subtreeRootIDs: ["/scan/docs"]))
+    }
+
+    @Test func hierarchicalCoalesceOnScanRootStillFullScans() {
+        // mustScanSubdirectories on the root means the whole tree lost
+        // granularity — only a full scan is trustworthy.
+        #expect(plan([event("/scan", [.mustScanSubdirectories])]) == .fullScan(.changedScanRoot))
     }
 
     @Test func eventOutsideTargetFallsBackToFullScan() {

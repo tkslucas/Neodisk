@@ -632,7 +632,22 @@ final class ScanCoordinator {
         progressPublishTask = nil
         pendingProgressMetrics = nil
         lastProgressPublishTime = progressClock.now
-        scanMetrics = metrics
+        var monotonicMetrics = metrics
+        if isScanning {
+            // Progress comes from the traversal coordinator and pooled summary
+            // workers. Even with engine-side serialization, exact final
+            // hard-link/clone accounting may be lower than the live estimate.
+            // The strip is a discovery counter, so it must never count down.
+            monotonicMetrics.filesVisited = max(
+                monotonicMetrics.filesVisited,
+                scanMetrics.filesVisited
+            )
+            monotonicMetrics.bytesDiscovered = max(
+                monotonicMetrics.bytesDiscovered,
+                scanMetrics.bytesDiscovered
+            )
+        }
+        scanMetrics = monotonicMetrics
     }
 
     private func finishScan(with snapshot: ScanSnapshot, scanID: UUID) {

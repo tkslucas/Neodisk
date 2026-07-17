@@ -69,10 +69,31 @@ public final class ScanEngine: Sendable {
     /// A completed directory scan awaiting parent assembly.
     struct CompletedDirScan {
         let node: FileNodeRecord?     // Leaves carry a node; traversable dirs are resolved in phase 2.
+        /// Ordinary files and symlinks materialized by this directory's
+        /// enumeration worker. They deliberately never receive scan keys:
+        /// keeping them batched here avoids routing millions of leaves through
+        /// the coordinator and its keyed dictionaries.
+        let directLeafNodes: [FileNodeRecord]
         let metadata: NodeMetadata
         let url: URL
         let isTraversable: Bool     // True if this was a directory we intended to traverse.
         let depth: Int              // Levels below the scan root (root is 0).
+
+        init(
+            node: FileNodeRecord?,
+            directLeafNodes: [FileNodeRecord] = [],
+            metadata: NodeMetadata,
+            url: URL,
+            isTraversable: Bool,
+            depth: Int
+        ) {
+            self.node = node
+            self.directLeafNodes = directLeafNodes
+            self.metadata = metadata
+            self.url = url
+            self.isTraversable = isTraversable
+            self.depth = depth
+        }
     }
 
     typealias DirectoryContentsProvider = @Sendable (
@@ -258,6 +279,73 @@ public final class ScanEngine: Sendable {
         scan(target: target, options: options, behaviorOverride: behavior, baseDepth: baseDepth)
     }
 
+    /// One direct child of a directory as the incremental root relist sees it:
+    /// enough to diff membership against the baseline without re-scanning any
+    /// subtree. Directory-like children (real directories, packages) are
+    /// left to the plan's normal event→subtree mapping; only leaf records are
+    /// materialized here.
+    struct ShallowChild: Sendable {
+        let url: URL
+        /// A traversable directory or a package/summarized directory — anything
+        /// the tree represents with a directory node. Symlinks are leaves.
+        let isDirectoryLike: Bool
+        /// The leaf record for a non-directory child (file/symlink), else nil.
+        let leafRecord: FileNodeRecord?
+        /// The child could not be classified (enumeration error or missing
+        /// metadata); the relist escalates to a full scan rather than guess.
+        let isUnavailable: Bool
+    }
+
+    /// Lists a directory's direct children with the exact inclusion gates a
+    /// full scan's enumeration of the same directory would apply (hidden
+    /// files, startup-volume internals, exclusion patterns), so a relist that
+    /// diffs against this set can never drift from a fresh scan's membership.
+    /// One readdir, no recursion.
+    nonisolated func directChildren(
+        of url: URL,
+        options: ScanOptions,
+        behavior: ScanBehavior,
+        exclusionMatcher: ScanExclusionMatcher
+    ) async throws -> [ShallowChild] {
+        let contents = try await ScanEngine.directoryEntries(
+            of: url,
+            includeHiddenFiles: options.includeHiddenFiles,
+            behavior: behavior,
+            exclusionMatcher: exclusionMatcher,
+            resourceKeys: ScanMetadataLoader.scanResourceKeys,
+            metadataLoader: metadataLoader,
+            directoryContents: directoryContents,
+            classificationWorkerLimit: 1,
+            usesBulkEnumeration: bulkEnumerationEnabled,
+            cancellationCheck: { try Task.checkCancellation() }
+        )
+        return contents.entries.map { entry in
+            guard entry.localizedEnumerationError == nil, let metadata = entry.metadata else {
+                return ShallowChild(
+                    url: entry.url,
+                    isDirectoryLike: false,
+                    leafRecord: nil,
+                    isUnavailable: true
+                )
+            }
+            let isDirectoryLike = metadata.isDirectory && !metadata.isSymbolicLink
+            return ShallowChild(
+                url: entry.url,
+                isDirectoryLike: isDirectoryLike,
+                leafRecord: isDirectoryLike
+                    ? nil
+                    : atomicDirectorySummarizer.makeFileNode(url: entry.url, metadata: metadata),
+                isUnavailable: false
+            )
+        }
+    }
+
+    /// The root directory's own refreshed record (mtime etc.) for a relist,
+    /// or nil when the load fails. Reads only the root itself.
+    nonisolated func rootDirectoryMetadata(of url: URL) -> NodeMetadata? {
+        try? metadataLoader.metadata(for: url, captureDirectoryIdentity: true)
+    }
+
     private nonisolated func scan(
         target: ScanTarget,
         options: ScanOptions,
@@ -349,6 +437,12 @@ public final class ScanEngine: Sendable {
         metrics.currentPath = target.url.path
         metrics.recalculateProgress(isComplete: true)
         continuation.yield(.progress(metrics))
+        ScanTiming.record(
+            "scan.total",
+            .seconds(Date().timeIntervalSince(startedAt)),
+            detail: "files=\(snapshot.aggregateStats.fileCount) dirs=\(snapshot.aggregateStats.directoryCount) "
+                + "nodes=\(treeStore.nodeCount) warnings=\(warnings.count) target=\(target.url.path)"
+        )
         #if DEBUG
         if let diagnostics {
             print(diagnostics.makeReport(targetPath: target.url.path, elapsedSeconds: Date().timeIntervalSince(startedAt)))

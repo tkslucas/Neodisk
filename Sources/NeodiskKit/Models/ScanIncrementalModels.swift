@@ -181,6 +181,8 @@ enum IncrementalFullScanReason: String, Sendable, Equatable {
     case subtreeVanished
     case subtreeScanFailed
     case spliceFailed
+    case rootRelistEnumerationFailed
+    case rootRelistFailed
 }
 
 /// The planner's verdict for one replayed history.
@@ -189,6 +191,16 @@ enum IncrementalRescanPlan: Sendable, Equatable {
     /// Minimal set of existing, disjoint subtree roots (node IDs in the
     /// baseline tree) to re-enumerate and splice.
     case rescanSubtrees([String])
+    /// The scan root's own membership changed (a child appeared/vanished, a
+    /// direct-child file changed, or the root's own record moved). The service
+    /// shallow-relists the root directory — one readdir, diff its direct
+    /// children against the baseline — instead of discarding the whole tree.
+    /// The associated IDs are the other mapped subtree roots from the same
+    /// event window (deep changes), spliced together with the membership edits
+    /// in one pass. An empty array means "only the root's membership/record
+    /// moved". This replaces the old `.fullScan(.changedScanRoot)` bail that
+    /// fired on near-every real refresh from ambient churn in the root.
+    case relistRoot(subtreeRootIDs: [String])
     case fullScan(IncrementalFullScanReason)
 }
 

@@ -63,6 +63,7 @@ extension ScanTraversal {
         let metadata: NodeMetadata?
         let localizedEnumerationError: Error?
         let isDirectoryHint: Bool?
+        let blocksTraversalAtMountBoundary: Bool
         let parentKey: Int
         let depth: Int
         let weight: Double
@@ -73,6 +74,35 @@ extension ScanTraversal {
         let itemKey: Int
         let metadata: NodeMetadata
         let contents: ScanEngine.DirectoryContentsScanResult
+        let leafBatch: DirectoryLeafBatch
+    }
+
+    /// Ordinary files and symlinks built by a directory worker. Directories,
+    /// packages, and entries whose metadata could not be read remain in
+    /// `remainingEntries` and keep the coordinator's existing path.
+    struct DirectoryLeafBatch: Sendable {
+        var nodes: [FileNodeRecord] = []
+        var remainingEntries: [DirectoryEntry] = []
+        var hardLinkClaims: [HardLinkClaim] = []
+        var duplicateWarnings: [ScanWarning] = []
+        var duplicateWeightUnits = 0.0
+        var fileCount = 0
+        var allocatedSize: Int64 = 0
+
+        var completedEntryCount: Int {
+            nodes.count + duplicateWarnings.count
+        }
+
+        var completedWeightUnits: Double {
+            Double(nodes.count) + duplicateWeightUnits
+        }
+    }
+
+    /// One finalized child reference. Keyed children are directories,
+    /// packages, or unavailable entries; ordinary leaves stay as values.
+    enum AssemblyChildReference {
+        case keyed(Int)
+        case direct(FileNodeRecord)
     }
 
     struct DirectoryTraversalFailure: Sendable {
@@ -136,6 +166,7 @@ extension ScanTraversal {
         let itemKey: Int
         let metadata: NodeMetadata
         let contents: ScanEngine.DirectoryContentsScanResult
+        let leafBatch: DirectoryLeafBatch
         let childDirectoryCount: Int
         let isNodeDependencyLayout: Bool
     }

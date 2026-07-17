@@ -175,6 +175,27 @@ import NeodiskKit
     }
 
     @MainActor
+    @Test func testDisplayedScanCountersNeverDecrease() async throws {
+        let service = ControlledScanService()
+        let coordinator = ScanCoordinator(scanService: service, progressThrottleDuration: .zero)
+        coordinator.startScan(makeCoordinatorTarget("/scan/monotonic"), options: ScanOptions())
+
+        service.yield(.progress(makeCoordinatorMetrics(path: "higher", filesVisited: 100)), scanIndex: 0)
+        try await waitUntil("higher counters published") {
+            coordinator.scanMetrics.currentPath == "higher"
+        }
+
+        service.yield(.progress(makeCoordinatorMetrics(path: "stale-base", filesVisited: 40)), scanIndex: 0)
+        try await waitUntil("later path published") {
+            coordinator.scanMetrics.currentPath == "stale-base"
+        }
+
+        #expect(coordinator.scanMetrics.filesVisited == 100)
+        #expect(coordinator.scanMetrics.bytesDiscovered == 100)
+        coordinator.stopScan()
+    }
+
+    @MainActor
     @Test func testFinishedScanFlushesPendingThrottledProgress() async throws {
         let service = ControlledScanService()
         let coordinator = ScanCoordinator(scanService: service, progressThrottleDuration: .milliseconds(250))

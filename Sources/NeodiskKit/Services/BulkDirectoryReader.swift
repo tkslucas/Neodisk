@@ -7,7 +7,8 @@
 //  inode, flags, readability) — replacing the FileManager enumerator plus a
 //  per-child resourceValues() call, i.e. one syscall per ~few-hundred entries
 //  instead of several syscalls per entry. Read-only by construction: the only
-//  operations are open(O_RDONLY), fstat, getattrlistbulk, and close.
+//  operations are open(O_RDONLY), getattrlistbulk, an exotic-filesystem-only
+//  fstat fallback, and close.
 //
 
 import Darwin
@@ -24,6 +25,14 @@ nonisolated struct BulkDirectoryChild: Sendable {
     /// Hidden by dot-name, UF_HIDDEN flag, or the Finder invisible bit —
     /// mirrors FileManager's `.skipsHiddenFiles` classification.
     let isHidden: Bool
+    /// The child's device from ATTR_CMN_DEVID. This is intentionally kept
+    /// separate from the selectively persisted FileIdentity: mount-boundary
+    /// decisions need it for every directory, while small ordinary files
+    /// still avoid carrying identity in snapshots.
+    let deviceID: UInt64?
+    /// ATTR_DIR_MOUNTSTATUS for directories; zero when the filesystem omits
+    /// the attribute or for non-directories.
+    let directoryMountStatus: UInt32
 }
 
 nonisolated enum BulkDirectoryReadError: Error {
@@ -34,6 +43,79 @@ nonisolated enum BulkDirectoryReadError: Error {
 }
 
 nonisolated enum BulkDirectoryReader {
+    /// Mutable getattrlistbulk storage. A context must never be used by two
+    /// reads concurrently; scanner I/O workers and `ContextPool` enforce that
+    /// ownership explicitly instead of relying on Swift tasks staying on one
+    /// OS thread.
+    final class Context: @unchecked Sendable {
+        static let bufferSize = 16 * 1024
+        fileprivate let buffer = UnsafeMutableRawPointer.allocate(
+            byteCount: bufferSize,
+            alignment: 16
+        )
+
+        deinit {
+            buffer.deallocate()
+        }
+    }
+
+    /// Compatibility callers (atomic walkers and tests) borrow from this
+    /// bounded pool. The full traversal uses worker-owned contexts directly.
+    final class ContextPool: @unchecked Sendable {
+        private let condition = NSCondition()
+        private let maximumContextCount: Int
+        private var available: [Context] = []
+        private var allocatedContextCount = 0
+
+        init(maximumContextCount: Int) {
+            self.maximumContextCount = max(1, maximumContextCount)
+        }
+
+        var contextCount: Int {
+            condition.lock()
+            defer { condition.unlock() }
+            return allocatedContextCount
+        }
+
+        func withContext<Result>(
+            cancellationCheck: CancellationCheck,
+            _ body: (Context) throws -> Result
+        ) throws -> Result {
+            let context = try acquire(cancellationCheck: cancellationCheck)
+            defer { release(context) }
+            return try body(context)
+        }
+
+        private func acquire(cancellationCheck: CancellationCheck) throws -> Context {
+            condition.lock()
+            while true {
+                if let context = available.popLast() {
+                    condition.unlock()
+                    return context
+                }
+                if allocatedContextCount < maximumContextCount {
+                    allocatedContextCount += 1
+                    condition.unlock()
+                    return Context()
+                }
+
+                condition.unlock()
+                try cancellationCheck()
+                condition.lock()
+                _ = condition.wait(until: Date(timeIntervalSinceNow: 0.01))
+            }
+        }
+
+        private func release(_ context: Context) {
+            condition.lock()
+            available.append(context)
+            condition.signal()
+            condition.unlock()
+        }
+    }
+
+    private static let compatibilityContextPool = ContextPool(maximumContextCount: 48)
+
     /// Reads all children of `url` in getattrlistbulk batches.
     /// Throws on any failure — callers fall back to the FileManager path so
     /// exotic volumes and permission errors keep their existing semantics.
@@ -41,6 +123,29 @@ nonisolated enum BulkDirectoryReader {
         ofDirectory url: URL,
         cancellationCheck: CancellationCheck
     ) throws -> [BulkDirectoryChild] {
+        try compatibilityContextPool.withContext(cancellationCheck: cancellationCheck) { context in
+            var children: [BulkDirectoryChild] = []
+            _ = try readChildren(
+                ofDirectory: url,
+                using: context,
+                cancellationCheck: cancellationCheck
+            ) { child in
+                children.append(child)
+            }
+            return children
+        }
+    }
+
+    /// Streams decoded records to `onChild`, avoiding the complete
+    /// `[BulkDirectoryChild]` allocation on the scan hot path. The callback is
+    /// synchronous and executes while `context` is exclusively borrowed.
+    @discardableResult
+    static func readChildren(
+        ofDirectory url: URL,
+        using context: Context,
+        cancellationCheck: CancellationCheck,
+        onChild: (BulkDirectoryChild) throws -> Void
+    ) throws -> Int {
         try cancellationCheck()
 
         // Never trigger downloads of dataless (cloud-evicted) files while
@@ -61,17 +166,10 @@ nonisolated enum BulkDirectoryReader {
         }
         defer { close(fd) }
 
-        // Hard links are deduplicated by (device, inode); all children share
-        // the directory's device except mount points, which cannot be
-        // hard-linked regular files anyway.
-        var directoryStat = stat()
-        let device: UInt64 = fstat(fd, &directoryStat) == 0
-            ? UInt64(bitPattern: Int64(directoryStat.st_dev))
-            : 0
-
         var commonAttributes: UInt32 = ATTR_CMN_RETURNED_ATTRS
         commonAttributes |= RequestedAttributes.error
         commonAttributes |= RequestedAttributes.name
+        commonAttributes |= RequestedAttributes.deviceID
         commonAttributes |= RequestedAttributes.objectType
         commonAttributes |= RequestedAttributes.modificationTime
         commonAttributes |= RequestedAttributes.finderInfo
@@ -81,10 +179,12 @@ nonisolated enum BulkDirectoryReader {
         var fileAttributes: UInt32 = RequestedAttributes.fileLinkCount
         fileAttributes |= RequestedAttributes.fileAllocatedSize
         fileAttributes |= RequestedAttributes.fileDataLength
+        let directoryAttributes = RequestedAttributes.directoryMountStatus
 
         var request = attrlist()
         request.bitmapcount = u_short(ATTR_BIT_MAP_COUNT)
         request.commonattr = commonAttributes
+        request.dirattr = directoryAttributes
         request.fileattr = fileAttributes
         // With FSOPT_ATTR_CMN_EXTENDED the forkattr field carries the
         // common-extended attributes (we request no real fork attributes):
@@ -92,25 +192,37 @@ nonisolated enum BulkDirectoryReader {
         // Filesystems without clone tracking simply omit them per entry.
         request.forkattr = RequestedAttributes.cloneID | RequestedAttributes.cloneRefCount
 
-        let bufferSize = 128 * 1024
-        let buffer = UnsafeMutableRawPointer.allocate(byteCount: bufferSize, alignment: 16)
-        defer { buffer.deallocate() }
-
-        var children: [BulkDirectoryChild] = []
+        var emittedCount = 0
+        var fallbackDirectoryDevice: UInt64?
+        var didProbeFallbackDirectoryDevice = false
         while true {
             try cancellationCheck()
-            let batchCount = getattrlistbulk(fd, &request, buffer, bufferSize, UInt64(FSOPT_ATTR_CMN_EXTENDED))
+            let batchCount = getattrlistbulk(
+                fd,
+                &request,
+                context.buffer,
+                Context.bufferSize,
+                UInt64(FSOPT_ATTR_CMN_EXTENDED)
+            )
             if batchCount < 0 {
                 throw BulkDirectoryReadError.bulkListFailed(errno)
             }
             if batchCount == 0 {
-                return children
+                return emittedCount
             }
 
-            var entry = buffer
+            var entry = context.buffer
             for _ in 0..<batchCount {
                 let entryLength = Int(entry.loadUnaligned(as: UInt32.self))
-                parseEntry(at: entry, device: device, into: &children)
+                if let child = parseEntry(
+                    at: entry,
+                    directoryFD: fd,
+                    fallbackDirectoryDevice: &fallbackDirectoryDevice,
+                    didProbeFallbackDirectoryDevice: &didProbeFallbackDirectoryDevice
+                ) {
+                    try onChild(child)
+                    emittedCount += 1
+                }
                 entry += entryLength
             }
         }
@@ -121,6 +233,7 @@ nonisolated enum BulkDirectoryReader {
     private enum RequestedAttributes {
         static let error = UInt32(bitPattern: ATTR_CMN_ERROR)
         static let name = UInt32(bitPattern: ATTR_CMN_NAME)
+        static let deviceID = UInt32(bitPattern: ATTR_CMN_DEVID)
         static let objectType = UInt32(bitPattern: ATTR_CMN_OBJTYPE)
         static let modificationTime = UInt32(bitPattern: ATTR_CMN_MODTIME)
         static let finderInfo = UInt32(bitPattern: ATTR_CMN_FNDRINFO)
@@ -130,6 +243,7 @@ nonisolated enum BulkDirectoryReader {
         static let fileLinkCount = UInt32(bitPattern: ATTR_FILE_LINKCOUNT)
         static let fileAllocatedSize = UInt32(bitPattern: ATTR_FILE_ALLOCSIZE)
         static let fileDataLength = UInt32(bitPattern: ATTR_FILE_DATALENGTH)
+        static let directoryMountStatus = UInt32(bitPattern: ATTR_DIR_MOUNTSTATUS)
         // Common-extended attributes ride the forkattr field under
         // FSOPT_ATTR_CMN_EXTENDED (sys/attr.h).
         static let cloneID = UInt32(bitPattern: ATTR_CMNEXT_CLONEID)
@@ -145,13 +259,15 @@ nonisolated enum BulkDirectoryReader {
     /// present — is packed immediately after it, before everything else.
     private static func parseEntry(
         at entryStart: UnsafeMutableRawPointer,
-        device: UInt64,
-        into children: inout [BulkDirectoryChild]
-    ) {
+        directoryFD: Int32,
+        fallbackDirectoryDevice: inout UInt64?,
+        didProbeFallbackDirectoryDevice: inout Bool
+    ) -> BulkDirectoryChild? {
         var field = entryStart + MemoryLayout<UInt32>.size
         let returned = field.loadUnaligned(as: attribute_set_t.self)
         field += MemoryLayout<attribute_set_t>.size
         let common = returned.commonattr
+        let directory = returned.dirattr
         let file = returned.fileattr
         // Common-extended attributes are reported through forkattr — see
         // the request setup.
@@ -171,6 +287,13 @@ nonisolated enum BulkDirectoryReader {
                 name = String(cString: nameStart.assumingMemoryBound(to: CChar.self))
             }
             field += MemoryLayout<attrreference_t>.size
+        }
+
+        var reportedDevice: UInt64?
+        if common & RequestedAttributes.deviceID != 0 {
+            let device = field.loadUnaligned(as: dev_t.self)
+            reportedDevice = UInt64(bitPattern: Int64(device))
+            field += MemoryLayout<dev_t>.size
         }
 
         var objectType: fsobj_type_t = 0
@@ -214,6 +337,12 @@ nonisolated enum BulkDirectoryReader {
             field += MemoryLayout<UInt64>.size
         }
 
+        var directoryMountStatus: UInt32 = 0
+        if directory & RequestedAttributes.directoryMountStatus != 0 {
+            directoryMountStatus = field.loadUnaligned(as: UInt32.self)
+            field += MemoryLayout<UInt32>.size
+        }
+
         var linkCount: UInt64 = 1
         if file & RequestedAttributes.fileLinkCount != 0 {
             linkCount = UInt64(max(field.loadUnaligned(as: UInt32.self), 1))
@@ -244,16 +373,17 @@ nonisolated enum BulkDirectoryReader {
             field += MemoryLayout<UInt32>.size
         }
 
-        guard let name else { return }
+        guard let name else { return nil }
 
         if let entryErrno {
-            children.append(BulkDirectoryChild(
+            return BulkDirectoryChild(
                 name: name,
                 metadata: nil,
                 entryErrno: entryErrno,
-                isHidden: isHiddenName(name)
-            ))
-            return
+                isHidden: isHiddenName(name),
+                deviceID: reportedDevice,
+                directoryMountStatus: directoryMountStatus
+            )
         }
 
         let isDirectory = objectType == UInt32(VDIR.rawValue)
@@ -273,6 +403,11 @@ nonisolated enum BulkDirectoryReader {
         let isReadable = userAccess.map { $0 & UInt32(R_OK) != 0 } ?? true
         let fileLogicalSize = isDirectory ? 0 : logicalSize
         let fileAllocatedSize = isDirectory ? 0 : (allocatedSize ?? logicalSize)
+        let device = reportedDevice ?? fallbackDevice(
+            directoryFD: directoryFD,
+            cachedDevice: &fallbackDirectoryDevice,
+            didProbe: &didProbeFallbackDirectoryDevice
+        ) ?? 0
         // Identity feeds hard-link deduplication (multi-link files) and
         // rename detection in scan diffs (directories and files big enough
         // to matter — see ScanSizeBaseline.renameTrackingMinimumFileSize).
@@ -295,7 +430,7 @@ nonisolated enum BulkDirectoryReader {
             ? cloneID.map { CloneInfo(device: device, cloneID: $0, refCount: cloneRefCount) }
             : nil
 
-        children.append(BulkDirectoryChild(
+        return BulkDirectoryChild(
             name: name,
             metadata: NodeMetadata(
                 isDirectory: isDirectory,
@@ -312,8 +447,27 @@ nonisolated enum BulkDirectoryReader {
                 cloneInfo: cloneInfo
             ),
             entryErrno: nil,
-            isHidden: isHidden
-        ))
+            isHidden: isHidden,
+            deviceID: reportedDevice ?? fallbackDirectoryDevice,
+            directoryMountStatus: directoryMountStatus
+        )
+    }
+
+    /// Most filesystems return ATTR_CMN_DEVID for every record, eliminating
+    /// the old unconditional fstat. If an exotic implementation omits it,
+    /// retain correct hard-link/clone identity with one lazy directory fstat.
+    private static func fallbackDevice(
+        directoryFD: Int32,
+        cachedDevice: inout UInt64?,
+        didProbe: inout Bool
+    ) -> UInt64? {
+        if didProbe { return cachedDevice }
+        didProbe = true
+        var directoryStat = stat()
+        guard fstat(directoryFD, &directoryStat) == 0 else { return nil }
+        let device = UInt64(bitPattern: Int64(directoryStat.st_dev))
+        cachedDevice = device
+        return device
     }
 
     private static func isHiddenName(_ name: String) -> Bool {

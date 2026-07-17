@@ -476,4 +476,9 @@ public nonisolated enum FileIdentity: Hashable, Sendable {
         }
         return false
     }
+
+    nonisolated var fileSystemDeviceID: UInt64? {
+        guard case .fileSystem(let device, _) = self else { return nil }
+        return device
+    }
 }

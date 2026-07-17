@@ -286,6 +286,7 @@ extension AtomicDirectorySummarizer {
     ) throws {
         let bulkChildren = try BulkDirectoryReader.children(
             ofDirectory: item.url,
+            category: .summary,
             cancellationCheck: cancellationCheck
         )
         let normalizedParentPath = item.url.standardizedFileURL.path

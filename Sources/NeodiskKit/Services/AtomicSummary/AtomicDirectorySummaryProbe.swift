@@ -128,6 +128,7 @@ extension AtomicDirectorySummarizer {
             do {
                 children = try BulkDirectoryReader.children(
                     ofDirectory: directoryURL,
+                    category: .probe,
                     cancellationCheck: cancellationCheck
                 )
             } catch is CancellationError {

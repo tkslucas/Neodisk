@@ -89,6 +89,10 @@ extension ScanTraversal {
         var remainingEntries: [DirectoryEntry] = []
         var hardLinkClaims: [HardLinkClaim] = []
         var duplicateWarnings: [ScanWarning] = []
+        /// Paths of this directory's clone-family members (refCount > 1), so the
+        /// coordinator can prefetch their private sizes while traversal
+        /// continues instead of paying them in the serial clone-dedup tail.
+        var cloneMemberPaths: [String] = []
         var duplicateWeightUnits = 0.0
         var fileCount = 0
         var allocatedSize: Int64 = 0

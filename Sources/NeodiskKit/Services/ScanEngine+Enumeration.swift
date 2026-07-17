@@ -508,6 +508,7 @@ extension ScanEngine {
                 continue
             }
 
+            ScanSyscallTally.recordMetadataLoad()
             let childMetadata = try? metadataLoader.metadata(
                 for: childURL,
                 prefetchedResourceValues: childURL.resourceValues(forKeys: resourceKeys),

@@ -30,6 +30,7 @@ nonisolated enum CloneDeduplicator {
     /// Called only for duplicate clone-family members, never in scan hot
     /// loops.
     nonisolated static func systemPrivateSize(path: String) -> Int64? {
+        ScanSyscallTally.recordCloneGetattr(count: 1)
         var request = attrlist()
         request.bitmapcount = u_short(ATTR_BIT_MAP_COUNT)
         request.forkattr = UInt32(bitPattern: ATTR_CMNEXT_PRIVATESIZE)

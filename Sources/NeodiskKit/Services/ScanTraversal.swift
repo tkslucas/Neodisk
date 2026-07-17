@@ -66,6 +66,9 @@ nonisolated final class ScanTraversal {
     /// array shape as `completedByKey`; a key with no children keeps `[]`.
     private var childrenKeysByKey: [[Int]] = []
     private var seenScannedNodeIDs = Set<String>()
+    /// Prefetches clone members' private sizes during traversal so the
+    /// clone-dedup assemble pass reads mostly-cached values. Created in `run()`.
+    private var clonePrivateSizePrefetcher: ClonePrivateSizePrefetcher?
     private var nextKey = 0
     // Live partial-tree emission: the first partial goes out as soon as
     // the root listing is in; afterwards the interval adapts to assembly
@@ -142,6 +145,10 @@ nonisolated final class ScanTraversal {
         summaryPool = pool
         atomicDirectorySummarizer = atomicDirectorySummarizer.withSummaryPool(pool)
         pool.start()
+        clonePrivateSizePrefetcher = ClonePrivateSizePrefetcher(
+            workerLimit: ScanConcurrencyPolicy.cloneMetadataFetchWorkerLimit()
+        )
+        ScanSyscallTally.reset()
 
         do {
             try Task.checkCancellation()
@@ -184,8 +191,10 @@ nonisolated final class ScanTraversal {
                 store = try await makeRootLeafStore(rootMetadata: rootMetadata)
             }
             await pool.finish()
+            ScanSyscallTally.emit()
             return store
         } catch {
+            clonePrivateSizePrefetcher?.cancel()
             await pool.cancelAndFinish(with: error)
             throw error
         }
@@ -547,6 +556,9 @@ nonisolated final class ScanTraversal {
 
             let node = summarizer.makeFileNode(path: entry.path, name: entry.name, metadata: metadata)
             batch.nodes.append(node)
+            if node.cloneInfo != nil {
+                batch.cloneMemberPaths.append(node.path)
+            }
             if !node.isSymbolicLink {
                 batch.fileCount += 1
             }
@@ -575,6 +587,7 @@ nonisolated final class ScanTraversal {
         weightPerEntry: Double
     ) {
         hardLinkClaims.append(contentsOf: batch.hardLinkClaims)
+        clonePrivateSizePrefetcher?.enqueue(paths: batch.cloneMemberPaths)
         metrics.filesVisited += batch.fileCount
         metrics.bytesDiscovered = metrics.bytesDiscovered.addingClamped(batch.allocatedSize)
         metrics.completedItems += batch.completedEntryCount
@@ -988,6 +1001,13 @@ nonisolated final class ScanTraversal {
         // the assembler (kept intact for a duplicate-id fallback rerun).
         let completed = completedByKey
         completedByKey = []
+        // Collect the clone private sizes prefetched during traversal; the
+        // deduplicator reads them first and falls back to a synchronous read for
+        // any member not (yet) cached, so the result is identical either way.
+        let prefetchedCloneSizes = clonePrivateSizePrefetcher?.drain() ?? [:]
+        let cloneProvider: CloneDeduplicator.PrivateSizeProvider = { path in
+            prefetchedCloneSizes[path] ?? CloneDeduplicator.systemPrivateSize(path: path)
+        }
         let store = try ScanTreeAssembler.assemble(
             completedByKey: completed,
             childrenKeysByKey: childrenKeysByKey,
@@ -996,6 +1016,7 @@ nonisolated final class ScanTraversal {
             minimumAllocatedSizeByNodeID: minimumAllocatedSizeByNodeID,
             targetURL: target.url,
             diagnostics: diagnostics,
+            clonePrivateSizeProvider: cloneProvider,
             callbacks: callbacks
         )
 

@@ -121,6 +121,7 @@ nonisolated enum BulkDirectoryReader {
     /// exotic volumes and permission errors keep their existing semantics.
     static func children(
         ofDirectory url: URL,
+        category: ScanSyscallCategory = .other,
         cancellationCheck: CancellationCheck
     ) throws -> [BulkDirectoryChild] {
         try compatibilityContextPool.withContext(cancellationCheck: cancellationCheck) { context in
@@ -128,6 +129,7 @@ nonisolated enum BulkDirectoryReader {
             _ = try readChildren(
                 ofDirectory: url,
                 using: context,
+                category: category,
                 cancellationCheck: cancellationCheck
             ) { child in
                 children.append(child)
@@ -143,6 +145,7 @@ nonisolated enum BulkDirectoryReader {
     static func readChildren(
         ofDirectory url: URL,
         using context: Context,
+        category: ScanSyscallCategory = .traversal,
         cancellationCheck: CancellationCheck,
         onChild: (BulkDirectoryChild) throws -> Void
     ) throws -> Int {
@@ -165,6 +168,14 @@ nonisolated enum BulkDirectoryReader {
             throw BulkDirectoryReadError.openFailed(errno)
         }
         defer { close(fd) }
+
+        // Diagnostic syscall accounting (NEODISK_SCAN_SYSCALLS). Recorded once
+        // per successfully opened directory; no-op when the flag is off.
+        var bulkCallCount = 0
+        var emittedForTally = 0
+        defer {
+            ScanSyscallTally.recordBulkDirectory(category, bulkCalls: bulkCallCount, entries: emittedForTally)
+        }
 
         var commonAttributes: UInt32 = ATTR_CMN_RETURNED_ATTRS
         commonAttributes |= RequestedAttributes.error
@@ -197,6 +208,7 @@ nonisolated enum BulkDirectoryReader {
         var didProbeFallbackDirectoryDevice = false
         while true {
             try cancellationCheck()
+            bulkCallCount += 1
             let batchCount = getattrlistbulk(
                 fd,
                 &request,
@@ -208,6 +220,7 @@ nonisolated enum BulkDirectoryReader {
                 throw BulkDirectoryReadError.bulkListFailed(errno)
             }
             if batchCount == 0 {
+                emittedForTally = emittedCount
                 return emittedCount
             }
 
@@ -463,6 +476,7 @@ nonisolated enum BulkDirectoryReader {
     ) -> UInt64? {
         if didProbe { return cachedDevice }
         didProbe = true
+        ScanSyscallTally.recordFstatFallback()
         var directoryStat = stat()
         guard fstat(directoryFD, &directoryStat) == 0 else { return nil }
         let device = UInt64(bitPattern: Int64(directoryStat.st_dev))

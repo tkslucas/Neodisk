@@ -78,6 +78,7 @@ nonisolated enum ScanTreeAssembler {
         minimumAllocatedSizeByNodeID: [String: Int64],
         targetURL: URL,
         diagnostics: ScanDiagnosticsContext?,
+        clonePrivateSizeProvider: @escaping CloneDeduplicator.PrivateSizeProvider = CloneDeduplicator.systemPrivateSize,
         callbacks: Callbacks
     ) throws -> FileTreeStore {
         guard nextKey > 0 else {
@@ -300,6 +301,7 @@ nonisolated enum ScanTreeAssembler {
                 minimumAllocatedSizeByNodeID: minimumAllocatedSizeByNodeID,
                 targetURL: targetURL,
                 diagnostics: diagnostics,
+                clonePrivateSizeProvider: clonePrivateSizeProvider,
                 callbacks: callbacks
             )
         }
@@ -325,6 +327,7 @@ nonisolated enum ScanTreeAssembler {
             childStarts: childStarts,
             childSlots: &childSlots,
             indexByID: indexByID,
+            privateSizeProvider: clonePrivateSizeProvider,
             cancellationCheck: callbacks.cancellationCheck,
             progress: { callbacks.progress(0.5 + 0.48 * $0) }
         )
@@ -383,6 +386,7 @@ nonisolated enum ScanTreeAssembler {
         minimumAllocatedSizeByNodeID: [String: Int64],
         targetURL: URL,
         diagnostics: ScanDiagnosticsContext?,
+        clonePrivateSizeProvider: @escaping CloneDeduplicator.PrivateSizeProvider = CloneDeduplicator.systemPrivateSize,
         callbacks: Callbacks
     ) throws -> FileTreeStore {
         var completedByKey = completedByKey
@@ -530,6 +534,7 @@ nonisolated enum ScanTreeAssembler {
             childStarts: childStarts,
             childSlots: &childSlots,
             indexByID: indexByID,
+            privateSizeProvider: clonePrivateSizeProvider,
             cancellationCheck: callbacks.cancellationCheck
         )
         ScanTiming.record("scan.assemble.dedup", ContinuousClock.now - dedupStart)

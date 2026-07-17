@@ -235,6 +235,7 @@ nonisolated struct ScanMetadataLoader: Sendable {
         captureDirectoryIdentity: Bool = false
     ) throws -> NodeMetadata {
         let keys = includeVolumeDetails ? Self.rootResourceKeys : Self.scanResourceKeys
+        ScanSyscallTally.recordMetadataLoad()
         #if DEBUG
         let start = diagnostics?.start()
         #endif
@@ -264,6 +265,7 @@ nonisolated struct ScanMetadataLoader: Sendable {
     }
 
     func atomicSummaryMetadata(for url: URL) throws -> NodeMetadata {
+        ScanSyscallTally.recordMetadataLoad()
         #if DEBUG
         let start = diagnostics?.start()
         #endif

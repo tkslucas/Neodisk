@@ -181,6 +181,7 @@
 "Show the copies in this group" = "このグループのコピーを表示";
 "%@ copies × %@" = "%@ 個のコピー × %@";
 "%@ wasted" = "%@ の無駄";
+"APFS clones" = "APFSクローン";
 "Back to duplicates" = "重複の一覧に戻る";
 "%@ files couldn't be read" = "%@ 個のファイルを読み込めませんでした";
 "Duplicates computed %@" = "%@に重複を計算";

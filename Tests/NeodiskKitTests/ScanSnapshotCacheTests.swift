@@ -637,7 +637,7 @@ import Testing
 
     private func makeDuplicateResults() -> DuplicateScanResults {
         let group = DuplicateGroup(
-            id: "abc-100", fileSize: 100, nodeIDs: ["/x/a.bin", "/x/b.bin"]
+            id: "abc-100", fileSize: 100, nodeIDs: ["/x/a.bin", "/x/b.bin"], reclaimableBytes: 100
         )
         return DuplicateScanResults(
             groups: [group], totalWastedBytes: 100, candidateCount: 2, unreadableCount: 0

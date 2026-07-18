@@ -25,7 +25,8 @@ import NeodiskKit
         let group = DuplicateGroup(
             id: "hash-2000000",
             fileSize: 2_000_000,
-            nodeIDs: [target.id + "/a.bin", target.id + "/b.bin"]
+            nodeIDs: [target.id + "/a.bin", target.id + "/b.bin"],
+            reclaimableBytes: 2_000_000
         )
         let results = DuplicateScanResults(
             groups: [group], totalWastedBytes: 2_000_000, candidateCount: 2, unreadableCount: 0

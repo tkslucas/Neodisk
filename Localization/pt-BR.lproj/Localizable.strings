@@ -182,6 +182,7 @@
 "Show the copies in this group" = "Mostrar as cópias deste grupo";
 "%@ copies × %@" = "%@ cópias × %@";
 "%@ wasted" = "%@ desperdiçados";
+"APFS clones" = "Clones APFS";
 "Back to duplicates" = "Voltar às duplicatas";
 "%@ files couldn't be read" = "%@ arquivos não puderam ser lidos";
 "Duplicates computed %@" = "Duplicados calculados %@";

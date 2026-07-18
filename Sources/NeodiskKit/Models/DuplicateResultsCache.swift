@@ -37,7 +37,9 @@ public nonisolated struct DuplicateResultsCacheKey: Codable, Equatable, Sendable
 public nonisolated struct DuplicateResultsCacheEntry: Codable, Sendable {
     /// Finder semantics version. Bump when `DuplicateFinder.findDuplicates`
     /// changes what it emits so previously cached blobs are treated as misses.
-    public static let currentDuplicateFormatVersion = 1
+    /// v2: groups carry `reclaimableBytes` (clone-aware reclaim accounting);
+    /// v1 blobs lack the field and no longer decode.
+    public static let currentDuplicateFormatVersion = 2
 
     public let dupFormatVersion: Int
     public let key: DuplicateResultsCacheKey

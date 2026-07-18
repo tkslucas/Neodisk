@@ -166,7 +166,7 @@ struct DuplicatesPane: View {
                 comment: "Duplicates results header: group count, reclaimable size"
             ),
             model.duplicates.liveGroups.count.formatted(),
-            NeodiskFormatters.size(model.duplicates.liveGroups.reduce(0) { $0 + $1.wastedBytes })
+            NeodiskFormatters.size(model.duplicates.liveGroups.reduce(0) { $0 + $1.reclaimableBytes })
         )
     }
 
@@ -325,10 +325,19 @@ private struct DuplicateGroupRow: View {
 
             Spacer(minLength: 8)
 
-            Text(NeodiskFormatters.size(group.wastedBytes))
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
-                .fixedSize(horizontal: true, vertical: false)
+            // Pure APFS-clone groups share their blocks, so removing a copy
+            // frees ~nothing: label them instead of showing a misleading 0.
+            if group.isAllClones {
+                Text("APFS clones")
+                    .foregroundStyle(.secondary)
+                    .font(.system(size: 10))
+                    .fixedSize(horizontal: true, vertical: false)
+            } else {
+                Text(NeodiskFormatters.size(group.reclaimableBytes))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .fixedSize(horizontal: true, vertical: false)
+            }
         }
         .font(.system(size: 12))
     }
@@ -426,10 +435,12 @@ private struct DuplicateGroupDetailView: View {
             group.nodeIDs.count.formatted(),
             NeodiskFormatters.size(group.fileSize)
         )
-        let wasted = String(
-            format: NSLocalizedString("%@ wasted", comment: "Duplicate group detail: reclaimable size"),
-            NeodiskFormatters.size(group.wastedBytes)
-        )
-        return "\(copies) — \(wasted)"
+        let reclaim = group.isAllClones
+            ? NSLocalizedString("APFS clones", comment: "Duplicate group note: copies are APFS clones that free no space")
+            : String(
+                format: NSLocalizedString("%@ wasted", comment: "Duplicate group detail: reclaimable size"),
+                NeodiskFormatters.size(group.reclaimableBytes)
+            )
+        return "\(copies) — \(reclaim)"
     }
 }

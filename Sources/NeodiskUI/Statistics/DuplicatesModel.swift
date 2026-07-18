@@ -239,7 +239,7 @@ final class DuplicatesModel {
         // Same order as the final results, so finishing only appends context
         // (banner, refresh) without reshuffling what the user is looking at.
         liveGroups.sort {
-            if $0.wastedBytes != $1.wastedBytes { return $0.wastedBytes > $1.wastedBytes }
+            if $0.reclaimableBytes != $1.reclaimableBytes { return $0.reclaimableBytes > $1.reclaimableBytes }
             return $0.id < $1.id
         }
     }

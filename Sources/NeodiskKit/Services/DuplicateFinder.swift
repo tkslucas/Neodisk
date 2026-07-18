@@ -37,22 +37,33 @@ public struct DuplicateGroup: Sendable, Equatable, Identifiable, Codable {
     /// Node IDs (absolute paths) of the copies, sorted, one per distinct
     /// on-disk file — hard-linked aliases are already collapsed.
     public let nodeIDs: [String]
+    /// Bytes actually freed by keeping one copy and deleting the rest — read
+    /// off the store's clone/hardlink-deduplicated allocated sizes, not
+    /// `fileSize * (count - 1)`. APFS clones share their on-disk blocks, so a
+    /// removed clone frees only its private bytes; charging the group by the
+    /// naive logical figure over-reports those groups. See
+    /// `DuplicateFinder.reclaimableBytes`.
+    public let reclaimableBytes: Int64
 
-    /// Bytes freed by keeping one copy and deleting the rest.
-    public var wastedBytes: Int64 {
-        fileSize * Int64(nodeIDs.count - 1)
+    /// The copies are byte-identical but free essentially nothing on removal:
+    /// they are APFS clones of one another, sharing the same on-disk blocks.
+    public var isAllClones: Bool {
+        reclaimableBytes == 0 && nodeIDs.count > 1
     }
 
-    public init(id: String, fileSize: Int64, nodeIDs: [String]) {
+    public init(id: String, fileSize: Int64, nodeIDs: [String], reclaimableBytes: Int64) {
         self.id = id
         self.fileSize = fileSize
         self.nodeIDs = nodeIDs
+        self.reclaimableBytes = reclaimableBytes
     }
 }
 
 public struct DuplicateScanResults: Sendable, Equatable, Codable {
-    /// Confirmed groups, biggest waste first.
+    /// Confirmed groups, most reclaimable first.
     public let groups: [DuplicateGroup]
+    /// Sum of every group's `reclaimableBytes` — the honest total that can be
+    /// freed, with APFS-clone groups contributing only their private bytes.
     public let totalWastedBytes: Int64
     /// Files that survived size grouping and were considered for hashing.
     public let candidateCount: Int
@@ -232,11 +243,7 @@ public enum DuplicateFinder {
                 continue
             }
             if members[0].size <= Int64(headHashLength) {
-                headConfirmed.append(DuplicateGroup(
-                    id: key,
-                    fileSize: members[0].size,
-                    nodeIDs: members.map(\.node.id).sorted()
-                ))
+                headConfirmed.append(makeGroup(id: key, members: members))
             } else {
                 needPrefixHash.append(contentsOf: members)
             }
@@ -278,11 +285,7 @@ public enum DuplicateFinder {
                 continue
             }
             if members[0].size <= Int64(prefixHashLength) {
-                prefixConfirmed.append(DuplicateGroup(
-                    id: key,
-                    fileSize: members[0].size,
-                    nodeIDs: members.map(\.node.id).sorted()
-                ))
+                prefixConfirmed.append(makeGroup(id: key, members: members))
             } else {
                 needFullHash.append(contentsOf: members)
                 fullPreKeys.append(contentsOf: repeatElement(key, count: members.count))
@@ -326,11 +329,7 @@ public enum DuplicateFinder {
             }
             var newGroups: [DuplicateGroup] = []
             for (groupKey, copies) in byDigest where copies.count >= 2 {
-                newGroups.append(DuplicateGroup(
-                    id: groupKey,
-                    fileSize: copies[0].size,
-                    nodeIDs: copies.map(\.node.id).sorted()
-                ))
+                newGroups.append(makeGroup(id: groupKey, members: copies))
             }
             guard !newGroups.isEmpty else { return }
             confirmed.append(contentsOf: newGroups)
@@ -341,15 +340,44 @@ public enum DuplicateFinder {
         await progress.finish()
 
         confirmed.sort {
-            if $0.wastedBytes != $1.wastedBytes { return $0.wastedBytes > $1.wastedBytes }
+            if $0.reclaimableBytes != $1.reclaimableBytes { return $0.reclaimableBytes > $1.reclaimableBytes }
             return $0.id < $1.id
         }
         return DuplicateScanResults(
             groups: confirmed,
-            totalWastedBytes: confirmed.reduce(0) { $0 + $1.wastedBytes },
+            totalWastedBytes: confirmed.reduce(0) { $0.addingClamped($1.reclaimableBytes) },
             candidateCount: candidateCount,
             unreadableCount: unreadableCount
         )
+    }
+
+    /// Builds a confirmed group and its honest reclaim figure from the member
+    /// records: the node IDs sorted for a stable identity, and reclaimable
+    /// bytes read off the store's deduplicated allocated sizes.
+    private static func makeGroup(
+        id: String,
+        members: [(node: FileNodeRecord, size: Int64)]
+    ) -> DuplicateGroup {
+        DuplicateGroup(
+            id: id,
+            fileSize: members[0].size,
+            nodeIDs: members.map(\.node.id).sorted(),
+            reclaimableBytes: reclaimableBytes(of: members.map(\.node))
+        )
+    }
+
+    /// Bytes actually freed by keeping one copy of a confirmed group and
+    /// deleting the rest. The store's `allocatedSize` is already clone- and
+    /// hardlink-deduplicated (`CloneDeduplicator`/`HardLinkDeduplicator`), so
+    /// a clone family's shared blocks are charged once — to its largest
+    /// member. Keeping that largest-charged member and summing the rest is the
+    /// real reclaim: a pure clone family nets ~0 (its other members hold only
+    /// private bytes), while independent byte-identical copies each contribute
+    /// their full size, exactly as before.
+    private static func reclaimableBytes(of members: [FileNodeRecord]) -> Int64 {
+        let sizes = members.map(\.allocatedSize)
+        let total = sizes.reduce(Int64(0)) { $0.addingClamped($1) }
+        return max(0, total - (sizes.max() ?? 0))
     }
 
     // MARK: - Planned-bytes accounting

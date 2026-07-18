@@ -69,6 +69,56 @@ import Testing
         )
     }
 
+    /// Store variant that pins each file's charged `allocatedSize` and
+    /// `cloneInfo`, mirroring what the clone/hardlink deduplicators leave on
+    /// the records the finder reads — the keeper carries the family's shared
+    /// blocks, charged clone members carry ~0. The bytes on disk are written
+    /// verbatim so the hashing ladder still confirms the group.
+    private func makeStore(
+        directory: URL,
+        detailedFiles: [(name: String, data: Data, allocatedSize: Int64, cloneInfo: CloneInfo?)]
+    ) throws -> FileTreeStore {
+        var children: [FileNodeRecord] = []
+        for file in detailedFiles {
+            let url = directory.appending(path: file.name)
+            try file.data.write(to: url)
+            let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+            let inode = (attributes[.systemFileNumber] as? UInt64)
+                ?? UInt64(attributes[.systemFileNumber] as? Int ?? 0)
+            children.append(FileNodeRecord(
+                id: url.path,
+                url: url,
+                name: file.name,
+                isDirectory: false,
+                isSymbolicLink: false,
+                allocatedSize: file.allocatedSize,
+                logicalSize: Int64(file.data.count),
+                descendantFileCount: 1,
+                lastModified: nil,
+                fileIdentity: FileIdentity(device: 1, inode: inode),
+                isPackage: false,
+                isAccessible: true,
+                isSelfAccessible: true,
+                isSynthetic: false,
+                isAutoSummarized: false,
+                cloneInfo: file.cloneInfo
+            ))
+        }
+        let root = FileNodeRecord.directory(
+            id: directory.path,
+            url: directory,
+            name: directory.lastPathComponent,
+            children: children,
+            lastModified: nil,
+            isPackage: false,
+            isAccessible: true
+        )
+        return FileTreeStore(
+            root: root,
+            childrenByID: [directory.path: FileTreeStore.sortedChildren(children)]
+        )
+    }
+
     private func withTempDirectory<T>(_ body: (URL) async throws -> T) async throws -> T {
         let directory = FileManager.default.temporaryDirectory
             .appending(path: "neodisk-dupes-\(UUID().uuidString)", directoryHint: .isDirectory)
@@ -94,8 +144,10 @@ import Testing
             #expect(group.nodeIDs.map { ($0 as NSString).lastPathComponent }.sorted()
                 == ["copy-1.bin", "copy-2.bin"])
             #expect(group.fileSize == Int64(2 * Self.megabyte))
-            #expect(group.wastedBytes == Int64(2 * Self.megabyte))
-            #expect(results.totalWastedBytes == group.wastedBytes)
+            // Independent copies, own blocks: reclaim is the naive figure.
+            #expect(group.reclaimableBytes == Int64(2 * Self.megabyte))
+            #expect(!group.isAllClones)
+            #expect(results.totalWastedBytes == group.reclaimableBytes)
             #expect(results.unreadableCount == 0)
         }
     }
@@ -510,8 +562,8 @@ import Testing
     @Test func testResultsCodableRoundTrip() throws {
         let results = DuplicateScanResults(
             groups: [
-                DuplicateGroup(id: "h1-2048", fileSize: 2048, nodeIDs: ["/a/one", "/b/one"]),
-                DuplicateGroup(id: "h2-4096", fileSize: 4096, nodeIDs: ["/a/two", "/b/two", "/c/two"])
+                DuplicateGroup(id: "h1-2048", fileSize: 2048, nodeIDs: ["/a/one", "/b/one"], reclaimableBytes: 2048),
+                DuplicateGroup(id: "h2-4096", fileSize: 4096, nodeIDs: ["/a/two", "/b/two", "/c/two"], reclaimableBytes: 4096 * 2)
             ],
             totalWastedBytes: 2048 + 4096 * 2,
             candidateCount: 5,
@@ -520,8 +572,71 @@ import Testing
         let data = try JSONEncoder().encode(results)
         let decoded = try JSONDecoder().decode(DuplicateScanResults.self, from: data)
         #expect(decoded == results)
-        // Derived accessors survive the round trip.
-        #expect(decoded.groups.first?.wastedBytes == 2048)
+        // The stored reclaim figure survives the round trip.
+        #expect(decoded.groups.first?.reclaimableBytes == 2048)
+    }
+
+    /// A pre-clone-aware cache blob: its groups had no `reclaimableBytes`
+    /// field. It must not decode as a valid entry, so a stale result can't
+    /// resurface with an inflated reclaim figure after the schema change.
+    @Test func staleCacheWithoutReclaimableBytesFailsToDecode() {
+        let legacyJSON = """
+        {"dupFormatVersion":1,"key":{"snapshotSize":1,"snapshotModified":2,"minimumFileSize":1048576},\
+        "computedAt":0,"results":{"groups":[{"id":"h-100","fileSize":100,"nodeIDs":["/a","/b"]}],\
+        "totalWastedBytes":100,"candidateCount":2,"unreadableCount":0}}
+        """
+        #expect(DuplicateResultsCacheEntry.decoding(Data(legacyJSON.utf8)) == nil)
+        #expect(DuplicateResultsCacheEntry.currentDuplicateFormatVersion == 2)
+    }
+
+    @Test func clonedCopiesAreADuplicateGroupButReclaimNothing() async throws {
+        try await withTempDirectory { directory in
+            let identical = bytes(seed: 0x5C, count: 2 * Self.megabyte)
+            let size = Int64(identical.count)
+            // Two byte-identical APFS clones: the store already charged the
+            // path-second member ~0 (its private bytes), the keeper the full
+            // shared blocks. Reclaim must come out near zero.
+            let family = CloneInfo(device: 1, cloneID: 100, refCount: 2, privateSize: 0)
+            let store = try makeStore(directory: directory, detailedFiles: [
+                (name: "clone-a.bin", data: identical, allocatedSize: size, cloneInfo: family),
+                (name: "clone-b.bin", data: identical, allocatedSize: 0, cloneInfo: family.withPrivateSize(0)),
+            ])
+
+            let results = try await DuplicateFinder.findDuplicates(in: store)
+
+            // Still a confirmed duplicate group (identical content)...
+            #expect(results.groups.count == 1)
+            let group = try #require(results.groups.first)
+            #expect(group.nodeIDs.count == 2)
+            // ...but removing a clone frees nothing.
+            #expect(group.reclaimableBytes == 0)
+            #expect(group.isAllClones)
+            #expect(results.totalWastedBytes == 0)
+        }
+    }
+
+    @Test func mixedCloneAndRealCopyReclaimsOnlyTheRealCopy() async throws {
+        try await withTempDirectory { directory in
+            let identical = bytes(seed: 0x6D, count: 2 * Self.megabyte)
+            let size = Int64(identical.count)
+            let family = CloneInfo(device: 1, cloneID: 200, refCount: 2, privateSize: 0)
+            // a & b are clones (store charged b to 0); d is an independent
+            // byte-identical copy carrying its own blocks.
+            let store = try makeStore(directory: directory, detailedFiles: [
+                (name: "a.bin", data: identical, allocatedSize: size, cloneInfo: family),
+                (name: "b.bin", data: identical, allocatedSize: 0, cloneInfo: family.withPrivateSize(0)),
+                (name: "d.bin", data: identical, allocatedSize: size, cloneInfo: nil),
+            ])
+
+            let results = try await DuplicateFinder.findDuplicates(in: store)
+
+            #expect(results.groups.count == 1)
+            let group = try #require(results.groups.first)
+            #expect(group.nodeIDs.count == 3)
+            // Keeping the keeper frees b's ~0 clone bytes plus d's full size.
+            #expect(group.reclaimableBytes == size)
+            #expect(!group.isAllClones)
+        }
     }
 }
 

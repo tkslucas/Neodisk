@@ -181,6 +181,7 @@
 "Show the copies in this group" = "Show the copies in this group";
 "%@ copies × %@" = "%@ copies × %@";
 "%@ wasted" = "%@ wasted";
+"APFS clones" = "APFS clones";
 "Back to duplicates" = "Back to duplicates";
 "%@ files couldn't be read" = "%@ files couldn't be read";
 "Duplicates computed %@" = "Duplicates computed %@";

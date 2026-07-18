@@ -181,6 +181,7 @@
 "Show the copies in this group" = "显示此组中的副本";
 "%@ copies × %@" = "%@ 个副本 × %@";
 "%@ wasted" = "浪费 %@";
+"APFS clones" = "APFS 克隆";
 "Back to duplicates" = "返回重复项";
 "%@ files couldn't be read" = "%@ 个文件无法读取";
 "Duplicates computed %@" = "%@计算的重复项";

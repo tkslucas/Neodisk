@@ -252,6 +252,12 @@ struct TreemapScene: Sendable {
         let rootBranch: (id: String?, depth: Int)? = colorMode == .branch
             ? (rootID == store.root.id ? nil : SunburstLayout.topLevelBranchID(for: rootID, in: store), rootDepth - 1)
             : nil
+        // Branch positions among the scan root's children: table palettes
+        // pick branch hues positionally, and the cells must agree with the
+        // sunburst's tokens and the status-bar swatch.
+        let branchPositions = colorMode == .branch
+            ? SunburstLayout.colorBranchPositions(in: store)
+            : [:]
 
         // Flat fills are "translucent": each cell's color composites once at
         // flatFillOpacity over the window background — the sunburst's
@@ -303,7 +309,8 @@ struct TreemapScene: Sendable {
                         // in-order pass resolves the overdraw correctly.
                         var rgb = resolvedRGB(
                             for: node, colorMode: colorMode, catalog: catalog,
-                            palette: palette, branch: branch, style: style, store: store
+                            palette: palette, branch: branch, style: style, store: store,
+                            branchPositions: branchPositions
                         )
                         if let highlight,
                            !matches(node, highlight: highlight, colorMode: colorMode, catalog: catalog) {
@@ -382,7 +389,8 @@ struct TreemapScene: Sendable {
                                 aggregateRGB = branchRGB(
                                     branchID: branchID, nodeID: node.id,
                                     depth: max(branch.depth + 1, 0),
-                                    role: .normal, style: style, palette: palette
+                                    role: .normal, style: style, palette: palette,
+                                    positions: branchPositions
                                 )
                             } else {
                                 aggregateRGB = SunburstColorResolver.rgb(
@@ -440,7 +448,8 @@ struct TreemapScene: Sendable {
             } else {
                 rgb = resolvedRGB(
                     for: node, colorMode: colorMode, catalog: catalog,
-                    palette: palette, branch: branch, style: style, store: store
+                    palette: palette, branch: branch, style: style, store: store,
+                    branchPositions: branchPositions
                 )
             }
             // Plain directories never match a highlight (they are neither a
@@ -557,7 +566,8 @@ struct TreemapScene: Sendable {
         palette: VizPalette,
         branch: (id: String?, depth: Int)?,
         style: TreemapStyle,
-        store: FileTreeStore
+        store: FileTreeStore,
+        branchPositions: [String: (index: Int, count: Int)]
     ) -> SIMD3<Float> {
         switch colorMode {
         case .kind:
@@ -584,7 +594,8 @@ struct TreemapScene: Sendable {
             }
             return branchRGB(
                 branchID: branch?.id ?? node.id, nodeID: node.id,
-                depth: depth, role: role, style: style, palette: palette
+                depth: depth, role: role, style: style, palette: palette,
+                positions: branchPositions
             )
         }
     }
@@ -602,13 +613,15 @@ struct TreemapScene: Sendable {
         depth: Int,
         role: SunburstColorRole,
         style: TreemapStyle,
-        palette: VizPalette
+        palette: VizPalette,
+        positions: [String: (index: Int, count: Int)]
     ) -> SIMD3<Float> {
+        let position = positions[branchID]
         let token = SunburstColorToken(
             branchID: branchID,
             localID: style == .flat ? nodeID : branchID,
-            branchIndex: 0,
-            branchCount: 1,
+            branchIndex: position?.index ?? 0,
+            branchCount: position?.count ?? 1,
             siblingIndex: 0,
             siblingCount: 1,
             depth: depth,

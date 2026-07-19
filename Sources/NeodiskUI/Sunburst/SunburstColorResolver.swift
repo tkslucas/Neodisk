@@ -50,11 +50,14 @@ extension SunburstColorResolver {
         let isFile = treeStore.node(id: nodeID)?.isSunburstFolder(in: treeStore) == false
         let isLooseRootFile = isFile && depth == 0
         if branchTintedFiles, isLooseRootFile { depth = 1 }
+        // Real branch position, so table palettes' positional hue pick
+        // matches the chart's and the treemap's tokens.
+        let position = SunburstLayout.colorBranchPositions(in: treeStore)[branchID]
         let token = SunburstColorToken(
             branchID: branchID,
             localID: nodeID,
-            branchIndex: 0,
-            branchCount: 1,
+            branchIndex: position?.index ?? 0,
+            branchCount: position?.count ?? 1,
             siblingIndex: 0,
             siblingCount: 1,
             depth: depth,

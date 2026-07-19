@@ -203,13 +203,23 @@ public enum SunburstColorResolver {
     }
 
     /// Branch colors under a table palette: each branch picks a table entry
-    /// (hash-stable per branch) and keeps that hue exactly — depth and
-    /// sibling variation move brightness only, never the hue.
+    /// and keeps that hue exactly — depth and sibling variation move
+    /// brightness only, never the hue.
+    ///
+    /// With real branch context (`branchCount > 1`) the pick is positional:
+    /// tables are rank-ordered for hue diversity, so the first N entries are
+    /// the N most separated colors, and every scan gets a maximally distinct
+    /// branch spread — a hash pick could land several big branches in the
+    /// same hue cluster of a warm-leaning table. Context-free tokens
+    /// (`branchCount` 1) keep the stable hash so an isolated swatch still
+    /// resolves deterministically.
     private nonisolated static func tableComponents(
         for token: SunburstColorToken,
         entries: [SIMD3<Float>]
     ) -> SunburstColorComponents {
-        let base = entries[Int(stableHash(for: token.branchID) % UInt64(entries.count))]
+        let base = token.branchCount > 1
+            ? entries[token.branchIndex % entries.count]
+            : entries[Int(stableHash(for: token.branchID) % UInt64(entries.count))]
         let (hue, saturation, brightness) = hsb(fromRGB: base)
         let depthTone = min(Double(token.depth), 6)
         return SunburstColorComponents(

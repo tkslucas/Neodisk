@@ -341,6 +341,17 @@ public enum SunburstLayout {
         treeStore.children(of: treeStore.rootID).map { $0.id }
     }
 
+    /// The positional (index, count) of every scan-root branch — the same
+    /// context a layout pass bakes into its color tokens, for call sites
+    /// that build tokens outside a layout (treemap cells, the status-bar
+    /// swatch). Table palettes pick branch hues by this position, so every
+    /// token producer must agree on it.
+    public nonisolated static func colorBranchPositions(
+        in treeStore: some SunburstTreeReading
+    ) -> [String: (index: Int, count: Int)] {
+        ColorBranchContext(rootChildIDs: rootColorBranchIDs(in: treeStore)).positions
+    }
+
     /// The scan-root child a node descends from — the branch its hue family
     /// derives from. Stable across sibling reorders and drill-ins because it
     /// always walks up to the scan root, not the focused root.
@@ -400,6 +411,10 @@ public enum SunburstLayout {
         nonisolated func branch(id: String) -> ColorBranch? {
             guard let index = indexByID[id] else { return nil }
             return ColorBranch(id: id, index: index, count: count)
+        }
+
+        nonisolated var positions: [String: (index: Int, count: Int)] {
+            indexByID.mapValues { (index: $0, count: count) }
         }
     }
 

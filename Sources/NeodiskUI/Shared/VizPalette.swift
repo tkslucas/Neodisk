@@ -8,17 +8,19 @@
 //  file; the Settings palette picker selects one of the named instances in
 //  `VizPalette.all`.
 //
-//  Classic, Vivid, Retro, and Neon share one hue-role ordering (index 0 is
-//  the blue slot, 1 the red slot, …), so category colors and the age ramp
-//  derive from the kind table through the shared role maps below — switching
-//  between them never changes what a color means, only how it looks. Retro
-//  and Neon are terminal-colorscheme moods (warm faded amber-and-olive, and
-//  soft neon accents on a dark canvas) with hues restricted per branch like
-//  a terminal's fixed accent set. Colorblind uses the Okabe-Ito qualitative
-//  palette (designed to stay distinct under deuteranopia/protanopia/
-//  tritanopia) with its own role map, and the viridis ramp for age —
-//  perceptually uniform and monotonic in lightness so it still reads in
-//  greyscale.
+//  Every kind table is RANK-ordered: the Types mode hands table[i] to the
+//  i-th largest kind, and positional branch coloring hands table[i] to the
+//  i-th scan-root branch, so each table is sequenced for hue diversity —
+//  any prefix should spread across the color wheel, never park two size
+//  ranks in the same hue cluster. Classic and Vivid share one role ordering
+//  (index 0 blue, 1 red, …) and derive categories and the age ramp through
+//  the shared role maps below; Retro and Neon carry verbatim terminal-
+//  scheme accent sets (warm faded amber-and-olive, and soft neon on a dark
+//  canvas) with their own role maps, since scheme-faithful tables can't
+//  also be role-ordered. Colorblind uses the Okabe-Ito qualitative palette
+//  (designed to stay distinct under deuteranopia/protanopia/tritanopia)
+//  with its own role map, and the viridis ramp for age — perceptually
+//  uniform and monotonic in lightness so it still reads in greyscale.
 //
 
 import SwiftUI
@@ -111,22 +113,47 @@ struct VizPalette: Sendable, Equatable, Identifiable {
     )
 
     /// Warm faded terminal tones — brick red, olive green, amber, muted
-    /// blue-grey — in the classic role slots. Branch hues restrict to the
-    /// table, like a terminal's fixed accent set.
+    /// blue-grey. Branch hues restrict to the table, like a terminal's
+    /// fixed accent set; categories keep their hue families through the
+    /// palette's own role map (the table is rank-ordered, not role-ordered).
     static let retro = VizPalette(
         id: "retro",
         title: "Retro",
-        kinds: retroKinds,
+        kindPalette: retroKinds,
+        categoryRoles: retroCategoryRoles,
+        // Cool → hot in-scheme: blue, aqua, green, yellow, orange, red.
+        ageRamp: [
+            retroKinds[1],  // bright blue #83a598 — newest
+            retroKinds[7],  // bright aqua #8ec07c
+            retroKinds[10], // green       #98971a
+            retroKinds[4],  // bright yellow #fabd2f
+            retroKinds[5],  // bright orange #fe8019
+            retroKinds[0],  // bright red  #fb4934 — oldest
+            FileKindCatalog.otherRGB,
+        ],
         sunburst: SunburstPalette(branchHues: .table(retroKinds))
     )
 
     /// Soft neon accents against the dark canvas — glowing mint, pink,
-    /// lavender, ice blue — in the classic role slots. Branch hues restrict
-    /// to the table, like a terminal's fixed accent set.
+    /// lavender, ice blue. Branch hues restrict to the table, like a
+    /// terminal's fixed accent set; categories keep their hue families
+    /// through the palette's own role map (the table is rank-ordered, not
+    /// role-ordered).
     static let neon = VizPalette(
         id: "neon",
         title: "Neon",
-        kinds: neonKinds,
+        kindPalette: neonKinds,
+        categoryRoles: neonCategoryRoles,
+        // Cool → hot in-scheme: purple, cyan, green, yellow, orange, red.
+        ageRamp: [
+            neonKinds[0],  // purple       #bd93f9 — newest
+            neonKinds[3],  // cyan         #8be9fd
+            neonKinds[9],  // bright green #69ff94
+            neonKinds[4],  // yellow       #f1fa8c
+            neonKinds[6],  // orange       #ffb86c
+            neonKinds[2],  // red          #ff5555 — oldest
+            FileKindCatalog.otherRGB,
+        ],
         sunburst: SunburstPalette(branchHues: .table(neonKinds))
     )
 
@@ -186,45 +213,73 @@ struct VizPalette: Sendable, Equatable, Identifiable {
     private static let classicAgeRoles = [0, 5, 10, 4, 6, 1]
 
     /// The verbatim 14-accent set of the classic warm retro terminal scheme
-    /// (7 bright accents + 7 muted counterparts). Bright accents take the
-    /// category-bearing slots; the muted counterparts fill the rank-only
-    /// tail, so a busy Types legend stays in-scheme.
+    /// (7 bright accents + 7 muted counterparts), rank-ordered for hue
+    /// diversity: every prefix mixes the scheme's hue families, so the top
+    /// size ranks — and positionally colored branches — never land three
+    /// warm accents in a row. Categories map through `retroCategoryRoles`.
     private static let retroKinds: [SIMD3<Float>] = [
-        SIMD3(0.514, 0.647, 0.596), // bright blue   #83a598
         SIMD3(0.984, 0.286, 0.204), // bright red    #fb4934
+        SIMD3(0.514, 0.647, 0.596), // bright blue   #83a598
         SIMD3(0.722, 0.733, 0.149), // bright green  #b8bb26
         SIMD3(0.827, 0.525, 0.608), // bright purple #d3869b
         SIMD3(0.980, 0.741, 0.184), // bright yellow #fabd2f
-        SIMD3(0.557, 0.753, 0.486), // bright aqua   #8ec07c
         SIMD3(0.996, 0.502, 0.098), // bright orange #fe8019
         SIMD3(0.694, 0.384, 0.525), // purple        #b16286
-        SIMD3(0.408, 0.616, 0.416), // aqua          #689d6a
-        SIMD3(0.843, 0.600, 0.129), // yellow        #d79921
-        SIMD3(0.596, 0.592, 0.102), // green         #98971a
-        SIMD3(0.839, 0.365, 0.055), // orange        #d65d0e
-        SIMD3(0.271, 0.522, 0.533), // blue          #458588
+        SIMD3(0.557, 0.753, 0.486), // bright aqua   #8ec07c
         SIMD3(0.800, 0.141, 0.114), // red           #cc241d
+        SIMD3(0.271, 0.522, 0.533), // blue          #458588
+        SIMD3(0.596, 0.592, 0.102), // green         #98971a
+        SIMD3(0.843, 0.600, 0.129), // yellow        #d79921
+        SIMD3(0.408, 0.616, 0.416), // aqua          #689d6a
+        SIMD3(0.839, 0.365, 0.055), // orange        #d65d0e
+    ]
+
+    private static let retroCategoryRoles: [String: Int] = [
+        "cat-video": 1,       // bright blue
+        "cat-apps": 0,        // bright red
+        "cat-image": 2,       // bright green
+        "cat-code": 3,        // bright purple
+        "cat-docs": 4,        // bright yellow
+        "cat-audio": 7,       // bright aqua
+        "cat-archive": 5,     // bright orange
+        "cat-data": 6,        // purple
+        "cat-summarized": 12, // aqua
+        "cat-system": 13,     // orange
     ]
 
     /// The verbatim ANSI accent set of the well-known dark vampire theme
-    /// (8 base accents + 6 brights). Base accents take the category-bearing
-    /// slots — its ANSI blue is the signature purple — and the brights fill
-    /// the rank-only tail.
+    /// (8 base accents + 6 brights), rank-ordered for hue diversity — the
+    /// base accents interleaved so every prefix spreads across the wheel,
+    /// the brights in the rank-only tail. Categories map through
+    /// `neonCategoryRoles`; its ANSI blue is the signature purple.
     private static let neonKinds: [SIMD3<Float>] = [
         SIMD3(0.741, 0.576, 0.976), // purple (ANSI blue) #bd93f9
-        SIMD3(1.000, 0.333, 0.333), // red            #ff5555
         SIMD3(0.314, 0.980, 0.482), // green          #50fa7b
-        SIMD3(1.000, 0.475, 0.776), // pink           #ff79c6
-        SIMD3(0.945, 0.980, 0.549), // yellow         #f1fa8c
+        SIMD3(1.000, 0.333, 0.333), // red            #ff5555
         SIMD3(0.545, 0.914, 0.992), // cyan           #8be9fd
+        SIMD3(0.945, 0.980, 0.549), // yellow         #f1fa8c
+        SIMD3(1.000, 0.475, 0.776), // pink           #ff79c6
         SIMD3(1.000, 0.722, 0.424), // orange         #ffb86c
         SIMD3(0.384, 0.447, 0.643), // comment blue   #6272a4
-        SIMD3(0.643, 1.000, 1.000), // bright cyan    #a4ffff
         SIMD3(1.000, 0.573, 0.875), // bright magenta #ff92df
         SIMD3(0.412, 1.000, 0.580), // bright green   #69ff94
         SIMD3(0.839, 0.675, 1.000), // bright purple  #d6acff
+        SIMD3(0.643, 1.000, 1.000), // bright cyan    #a4ffff
         SIMD3(1.000, 1.000, 0.647), // bright yellow  #ffffa5
         SIMD3(1.000, 0.431, 0.431), // bright red     #ff6e6e
+    ]
+
+    private static let neonCategoryRoles: [String: Int] = [
+        "cat-video": 0,       // purple
+        "cat-apps": 2,        // red
+        "cat-image": 1,       // green
+        "cat-code": 5,        // pink
+        "cat-docs": 4,        // yellow
+        "cat-audio": 3,       // cyan
+        "cat-archive": 6,     // orange
+        "cat-data": 7,        // comment blue
+        "cat-summarized": 11, // bright cyan
+        "cat-system": 10,     // bright purple
     ]
 
     /// Okabe-Ito, extended past the canonical eight with CVD-checked tones.

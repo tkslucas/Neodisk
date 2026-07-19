@@ -5,7 +5,7 @@ This file tells coding agents how to work effectively in this repository.
 ## Purpose
 
 Neodisk is a native macOS disk space analyzer built in Swift. It pairs a
-Disk Inventory X-style UI (outline list + cushion treemap + file kinds) with
+classic analyzer UI (outline list + cushion treemap + file kinds) with
 a fast, actor-based scan engine. When developing Neodisk, prioritize modern
 Swift/SwiftUI practices and keep the scanning core UI-free.
 
@@ -87,12 +87,16 @@ Swift/SwiftUI practices and keep the scanning core UI-free.
     directory, isolating a bench run from the developer's real cache (and
     letting a rescan bench seed a clean baseline it controls).
   - `Neodisk --render-png <scan-path> <out.png> [scale fx fy]` — headless
-    treemap render for verifying visual changes.
+    treemap render for verifying visual changes
+    (`NEODISK_RENDER_COLOR_MODE=<age|branch>` picks the color mode).
   - `NEODISK_UI_SNAPSHOT=<out.png>` — offscreen window capture with zoom.
   - `NEODISK_ANALYSIS_TAB=<kinds|largest|age|duplicates|changes>` — open that
     statistics tab on launch, so captures can show any tab.
   - `NEODISK_VIZ_MODE=<treemap|sunburst>` — show that center visualization
     on launch without persisting the preference.
+  - `NEODISK_TREEMAP_STYLE=<cushion|flat>` — show that treemap style on
+    launch without persisting the preference (`NEODISK_RENDER_STYLE=flat`
+    is the `--render-png` equivalent).
   - `NEODISK_UPDATE_STATE=<checking|available|downloading|readyToInstall|upToDate|failed>`
     — force the toolbar update pill into a non-idle state at launch (inert
     closures), so headless snapshots can capture the indicator without a live
@@ -212,6 +216,10 @@ copies them into `Contents/Resources/` and `Info.plist` lists the languages.
   must never be dropped.
 - Mark timing-sensitive test suites `.serialized` and prefer eventual-state
   assertions over sleeps.
+- Never rely on `CATextLayer.truncationMode`: on current macOS a string that
+  overflows the layer renders as nothing at all (not truncated — blank).
+  Treemap labels pre-ellipsize via `TreemapNSView.middleTruncated` instead;
+  `TreemapLabelLayerTests.overflowingHeaderLabelRendersPixels` guards this.
 
 ## If You Need A Starting Point
 

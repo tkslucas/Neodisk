@@ -40,6 +40,12 @@ public struct TreemapCell: Sendable {
     public let rgb: SIMD3<Float>
     public let surface: CushionSurface
     public let isDirectory: Bool
+    /// Set (flat style only) when this cell is a folder container whose
+    /// children are laid out inside it: the cell draws as a bordered box
+    /// with a header strip, its children overdraw the content region, and
+    /// hit-testing prefers the deepest cell so the container wins only on
+    /// its visible frame. Keyboard tile navigation skips containers.
+    public var isContainer: Bool
     /// Set when this cell stands in for several small siblings that would
     /// each be too tiny to render individually. `nodeID` is their parent.
     public var aggregate: AggregateInfo?
@@ -73,6 +79,7 @@ public struct TreemapCell: Sendable {
         rgb: SIMD3<Float>,
         surface: CushionSurface,
         isDirectory: Bool,
+        isContainer: Bool = false,
         aggregate: AggregateInfo? = nil,
         isFreeSpace: Bool = false,
         isHiddenSpace: Bool = false,
@@ -83,6 +90,7 @@ public struct TreemapCell: Sendable {
         self.rgb = rgb
         self.surface = surface
         self.isDirectory = isDirectory
+        self.isContainer = isContainer
         self.aggregate = aggregate
         self.isFreeSpace = isFreeSpace
         self.isHiddenSpace = isHiddenSpace

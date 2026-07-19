@@ -268,6 +268,11 @@
 "Available" = "Verfügbar";
 "Hidden Space" = "Verborgener Speicherplatz";
 "just now" = "gerade eben";
+"Default view" = "Standardansicht";
+"Last viewed" = "Zuletzt verwendet";
+"Cushion" = "Kissen";
+"Flat" = "Flach";
+"The view the app starts in. Last viewed restores whatever was on screen when you quit. The toolbar picker switches views any time." = "Die Ansicht, mit der die App startet. „Zuletzt verwendet“ stellt wieder her, was beim Beenden zu sehen war. Über die Symbolleiste lässt sich die Ansicht jederzeit wechseln.";
 "Use colorblind-safe colors" = "Farbfehlsichtigkeitssichere Farben verwenden";
 "Swaps the file-kind and age colors for a palette that stays distinct with common color vision differences. Applies immediately." = "Ersetzt die Farben für Dateityp und Alter durch eine Palette, die bei gängigen Farbsehschwächen unterscheidbar bleibt. Wird sofort angewendet.";
 
@@ -275,7 +280,9 @@
 "View" = "Darstellung";
 "Treemap" = "Treemap";
 "Sunburst" = "Sunburst";
-"Switch between treemap and sunburst views" = "Zwischen Treemap- und Sunburst-Darstellung wechseln";
+"Switch between cushion treemap, flat treemap, and sunburst views" = "Zwischen Kissen-Treemap, flacher Treemap und Sunburst wechseln";
+"Cushion Treemap" = "Kissen-Treemap";
+"Flat Treemap" = "Flache Treemap";
 "Smaller Items" = "Kleinere Objekte";
 "Loading Disk Map…" = "Festplattenübersicht wird geladen …";
 "Go up to %@" = "Nach oben zu %@";

@@ -9,6 +9,7 @@
 
 import AppKit
 import SwiftUI
+import TreemapKit
 import NeodiskKit
 
 enum ThemePreference: String, CaseIterable, Identifiable {
@@ -77,8 +78,14 @@ final class AppPreferences: ObservableObject {
     @AppStorage("exclusionPatternsText") var exclusionPatternsText =
         ScanExclusionMatcher.commonPresetPatterns.joined(separator: "\n")
     @AppStorage("autoRescanPolicy") var autoRescanPolicyRaw = AutoRescanPolicy.snapshotOnly.rawValue
+    /// Which view a new session opens with; `vizViewMode`/`treemapStyle`
+    /// track the current view, this decides whether launch keeps them.
+    @AppStorage("defaultVizView") var defaultVizViewRaw = DefaultVizView.lastViewed.rawValue
     /// Which visualization fills the center pane (treemap or sunburst).
     @AppStorage("vizViewMode") var vizViewModeRaw = VizViewMode.treemap.rawValue
+    /// How the treemap draws: classic cushion shading, or the flat
+    /// nested-box style. See TreemapStyle.
+    @AppStorage("treemapStyle") var treemapStyleRaw = TreemapStyle.cushion.rawValue
     /// Decode the previous snapshot whenever a complete tree lands on screen
     /// — a scan finishing, or a saved snapshot opening without a rescan — so
     /// the Changes toggle shows instantly instead of loading on click. The
@@ -92,7 +99,10 @@ final class AppPreferences: ObservableObject {
 
     /// Backing store defaults to UserDefaults.standard; tests pass their
     /// own suite so preference writes never leak into real settings.
+    /// Creation is launch: the default-view preference is applied on the
+    /// way out (before the model binds and before dev hooks override).
     init(defaults: UserDefaults? = nil) {
+        defer { applyDefaultVizView() }
         guard let defaults else { return }
         _themeRaw = AppStorage(
             wrappedValue: ThemePreference.system.rawValue, "themePreference", store: defaults
@@ -114,8 +124,14 @@ final class AppPreferences: ObservableObject {
         _autoRescanPolicyRaw = AppStorage(
             wrappedValue: AutoRescanPolicy.snapshotOnly.rawValue, "autoRescanPolicy", store: defaults
         )
+        _defaultVizViewRaw = AppStorage(
+            wrappedValue: DefaultVizView.lastViewed.rawValue, "defaultVizView", store: defaults
+        )
         _vizViewModeRaw = AppStorage(
             wrappedValue: VizViewMode.treemap.rawValue, "vizViewMode", store: defaults
+        )
+        _treemapStyleRaw = AppStorage(
+            wrappedValue: TreemapStyle.cushion.rawValue, "treemapStyle", store: defaults
         )
         _prepareChangesAfterScan = AppStorage(
             wrappedValue: true, "prepareChangesAfterScan", store: defaults
@@ -134,9 +150,37 @@ final class AppPreferences: ObservableObject {
         set { autoRescanPolicyRaw = newValue.rawValue }
     }
 
+    var defaultVizView: DefaultVizView {
+        get { DefaultVizView(rawValue: defaultVizViewRaw) ?? .lastViewed }
+        set { defaultVizViewRaw = newValue.rawValue }
+    }
+
     var vizViewMode: VizViewMode {
         get { VizViewMode(rawValue: vizViewModeRaw) ?? .treemap }
         set { vizViewModeRaw = newValue.rawValue }
+    }
+
+    /// Launch: unless the default is "last viewed", override the persisted
+    /// current-view pair with the chosen default. Picking Sunburst leaves
+    /// the treemap style alone, same as the toolbar picker.
+    func applyDefaultVizView() {
+        switch defaultVizView {
+        case .lastViewed:
+            break
+        case .cushionTreemap:
+            vizViewMode = .treemap
+            treemapStyle = .cushion
+        case .flatTreemap:
+            vizViewMode = .treemap
+            treemapStyle = .flat
+        case .sunburst:
+            vizViewMode = .sunburst
+        }
+    }
+
+    var treemapStyle: TreemapStyle {
+        get { TreemapStyle(rawValue: treemapStyleRaw) ?? .cushion }
+        set { treemapStyleRaw = newValue.rawValue }
     }
 
     /// Patterns parsed from the exclusions text, empty when disabled.
@@ -159,7 +203,8 @@ final class AppPreferences: ObservableObject {
     }
 
     func applyTheme() {
-        NSApp.appearance = theme.appearance
+        // NSApp is nil in test processes that never boot AppKit.
+        NSApp?.appearance = theme.appearance
     }
 
     func restoreDefaults() {
@@ -173,7 +218,9 @@ final class AppPreferences: ObservableObject {
         useScanExclusions = false
         exclusionPatternsText = ScanExclusionMatcher.commonPresetPatterns.joined(separator: "\n")
         autoRescanPolicyRaw = AutoRescanPolicy.snapshotOnly.rawValue
+        defaultVizViewRaw = DefaultVizView.lastViewed.rawValue
         vizViewModeRaw = VizViewMode.treemap.rawValue
+        treemapStyleRaw = TreemapStyle.cushion.rawValue
         prepareChangesAfterScan = true
         autoScanDuplicates = false
     }

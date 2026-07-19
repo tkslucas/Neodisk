@@ -2,9 +2,8 @@
 //  KindStatsPane.swift
 //  Neodisk
 //
-//  The statistics panel's Kinds tab, Disk Inventory X-style: one row per
-//  file kind with its treemap color, total size, and file count, largest
-//  first.
+//  The statistics panel's Kinds tab: one row per file kind with its treemap
+//  color, total size, and file count, largest first.
 //
 
 import SwiftUI

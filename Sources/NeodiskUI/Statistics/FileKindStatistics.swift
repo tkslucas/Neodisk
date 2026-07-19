@@ -2,9 +2,9 @@
 //  FileKindStatistics.swift
 //  Neodisk
 //
-//  Groups scanned files by kind and assigns each kind a stable display color,
-//  Disk Inventory X-style: the biggest kinds get distinct palette colors, the
-//  long tail shares a neutral gray.
+//  Groups scanned files by kind and assigns each kind a stable display color:
+//  the biggest kinds get distinct palette colors, the long tail shares a
+//  neutral gray.
 //
 
 import Foundation
@@ -50,7 +50,7 @@ struct FileKindCatalog: Sendable {
     static let coloredKindLimit = 14
 
     /// Distinct saturated hues, ordered so the largest kinds get the most
-    /// recognizable colors. Loosely mirrors the Disk Inventory X palette.
+    /// recognizable colors.
     nonisolated static let palette: [SIMD3<Float>] = [
         SIMD3(0.31, 0.48, 0.95), // blue
         SIMD3(0.90, 0.28, 0.26), // red

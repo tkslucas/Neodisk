@@ -28,12 +28,14 @@ extension SunburstColorResolver {
     /// The color the sunburst's branch mode draws an arbitrary node with —
     /// the status-bar swatch must agree with the chart. `effectiveRootID` is
     /// the drilled-in root: segment depth is measured from it, while the hue
-    /// family always derives from the scan-root branch.
+    /// family always derives from the scan-root branch. `mutedFiles` selects
+    /// the flat treemap's file treatment (branch-tinted instead of gray).
     nonisolated static func branchColor(
         forNodeID nodeID: String,
         in treeStore: FileTreeStore,
         effectiveRootID: String,
-        palette: VizPalette = .standard
+        palette: VizPalette = .standard,
+        mutedFiles: Bool = false
     ) -> Color {
         let branchID = SunburstLayout.topLevelBranchID(for: nodeID, in: treeStore) ?? nodeID
         let depth = max(
@@ -50,6 +52,37 @@ extension SunburstColorResolver {
             depth: depth,
             role: treeStore.node(id: nodeID)?.isSunburstFolder(in: treeStore) == false ? .file : .normal
         )
+        if mutedFiles, token.role == .file {
+            return mutedFileComponents(for: token, palette: palette.sunburst).color
+        }
         return color(for: token, palette: palette)
+    }
+
+    /// The flat treemap's branch-mode file fill: the folder hue, muted. The
+    /// sunburst grays its files because they sit in thin outer arcs; in a
+    /// treemap the file tiles ARE most of the area, so flat gray would wash
+    /// the map out. Same hue and per-node jitter as the folder color, with
+    /// saturation collapsed and a touch less brightness so folder frames
+    /// still read stronger than their contents.
+    nonisolated static func mutedFileComponents(
+        for token: SunburstColorToken,
+        palette: SunburstPalette = .standard
+    ) -> SunburstColorComponents {
+        let folderToken = SunburstColorToken(
+            branchID: token.branchID,
+            localID: token.localID,
+            branchIndex: token.branchIndex,
+            branchCount: token.branchCount,
+            siblingIndex: token.siblingIndex,
+            siblingCount: token.siblingCount,
+            depth: token.depth,
+            role: .normal
+        )
+        let components = components(for: folderToken, palette: palette)
+        return SunburstColorComponents(
+            hue: components.hue,
+            saturation: components.saturation * 0.35,
+            brightness: min(components.brightness * 0.94, 0.9)
+        )
     }
 }

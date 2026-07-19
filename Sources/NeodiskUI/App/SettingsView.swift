@@ -8,6 +8,7 @@
 //
 
 import SwiftUI
+import TreemapKit
 import NeodiskKit
 
 struct SettingsView: View {
@@ -101,6 +102,19 @@ private struct ViewSettingsTab: View {
     var body: some View {
         Form {
             Section("Visualization") {
+                Picker("Default view", selection: Binding(
+                    get: { preferences.defaultVizView },
+                    set: { preferences.defaultVizView = $0 }
+                )) {
+                    Text("Last viewed").tag(DefaultVizView.lastViewed)
+                    Text("Cushion Treemap").tag(DefaultVizView.cushionTreemap)
+                    Text("Flat Treemap").tag(DefaultVizView.flatTreemap)
+                    Text("Sunburst").tag(DefaultVizView.sunburst)
+                }
+                Text("The view the app starts in. Last viewed restores whatever was on screen when you quit. The toolbar picker switches views any time.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+
                 Toggle("Show free space in treemap", isOn: $preferences.showFreeSpace)
                 Text("The sunburst always shows free and hidden space for volume scans; this adds them to the treemap too. Hidden space is capacity the scan could not see, such as purgeable space and local snapshots. Applies immediately.")
                     .font(.callout)

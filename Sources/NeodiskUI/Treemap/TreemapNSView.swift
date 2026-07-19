@@ -38,7 +38,7 @@ final class TreemapNSView: NSView {
         let rootLayer = CALayer()
         rootLayer.masksToBounds = true
         rootLayer.isGeometryFlipped = true
-        rootLayer.backgroundColor = CGColor(red: 0.07, green: 0.07, blue: 0.09, alpha: 1)
+        rootLayer.backgroundColor = NSColor.windowBackgroundColor.cgColor
         layer = rootLayer
         wantsLayer = true
         // Since macOS 14, NSView.clipsToBounds defaults to false and AppKit
@@ -67,6 +67,10 @@ final class TreemapNSView: NSView {
 
     override var isFlipped: Bool { true }
 
+    private var isDarkAppearance: Bool {
+        effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+    }
+
     // MARK: - Display
 
     /// Applies the controller's current image, transform, labels, and
@@ -75,6 +79,12 @@ final class TreemapNSView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         defer { CATransaction.commit() }
+
+        // The map sits on the window background in both styles, so the
+        // canvas, the tile gaps, and the pane read as one surface.
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        }
 
         guard let scene = controller.scene, let image = controller.image else {
             imageLayer.contents = nil
@@ -100,6 +110,8 @@ final class TreemapNSView: NSView {
             labeledSceneViewport = scene.viewport
         }
 
+        // Flat tiles draw rounded and inset; the ring follows the shape.
+        selectionLayer.cornerRadius = scene.style == .flat ? 4 : 0
         if let rect = controller.selectionRect {
             selectionLayer.isHidden = false
             selectionLayer.frame = CGRect(
@@ -117,31 +129,120 @@ final class TreemapNSView: NSView {
         labelContainerLayer.sublayers = nil
         guard !scene.labels.isEmpty else { return }
 
-        let font = NSFont.systemFont(ofSize: 11, weight: .medium)
+        let fileFont = NSFont.systemFont(ofSize: 11, weight: .medium)
+        // Flat container headers: the folder name sits left-aligned in the
+        // header strip, bolder than file labels so hierarchy reads at a
+        // glance.
+        let headerFont = NSFont.systemFont(ofSize: 11, weight: .semibold)
         let backingScale = window?.backingScaleFactor ?? 2
+        // Both styles composite over the window background, so light mode
+        // needs dark text (and no shadow); dark mode keeps white-on-shadow.
+        let lightLabels = !isDarkAppearance
+        let textColor: NSColor = lightLabels
+            ? NSColor.black.withAlphaComponent(0.85) : .white
         for label in scene.labels {
-            let textLayer = CATextLayer()
-            textLayer.string = NSAttributedString(
-                string: label.text,
-                attributes: [.font: font, .foregroundColor: NSColor.white]
-            )
-            textLayer.truncationMode = .middle
-            textLayer.alignmentMode = .center
-            textLayer.contentsScale = backingScale
-            textLayer.shadowColor = NSColor.black.cgColor
-            textLayer.shadowOpacity = 0.9
-            textLayer.shadowRadius = 2
-            textLayer.shadowOffset = .zero
-
-            let height = ceil(font.ascender - font.descender) + 2
-            textLayer.frame = CGRect(
-                x: label.rect.minX + 4,
-                y: label.rect.midY - height / 2,
-                width: max(label.rect.width - 8, 10),
-                height: height
-            )
-            labelContainerLayer.addSublayer(textLayer)
+            labelContainerLayer.addSublayer(Self.labelLayer(
+                for: label,
+                font: label.isHeader ? headerFont : fileFont,
+                textColor: textColor,
+                shadowOpacity: lightLabels ? 0 : 0.9,
+                backingScale: backingScale
+            ))
         }
+    }
+
+    /// One label's text layer. CATextLayer's own truncation draws nothing
+    /// at all once the string overflows its bounds (observed through
+    /// macOS 26), so the text is pre-ellipsized to the frame instead and
+    /// the layer never has to truncate.
+    static func labelLayer(
+        for label: TreemapScene.CellLabel,
+        font: NSFont,
+        textColor: NSColor,
+        shadowOpacity: Float,
+        backingScale: CGFloat
+    ) -> CATextLayer {
+        let inset: CGFloat = label.isHeader ? 0 : 4
+        let width = max(label.rect.width - 2 * inset, 10)
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font, .foregroundColor: textColor,
+        ]
+        let textLayer = CATextLayer()
+        textLayer.string = NSAttributedString(
+            string: Self.middleTruncated(label.text, attributes: attributes, width: width),
+            attributes: attributes
+        )
+        textLayer.alignmentMode = label.isHeader ? .left : .center
+        textLayer.contentsScale = backingScale
+        textLayer.shadowColor = NSColor.black.cgColor
+        textLayer.shadowOpacity = shadowOpacity
+        textLayer.shadowRadius = 2
+        textLayer.shadowOffset = .zero
+
+        let height = ceil(font.ascender - font.descender) + 2
+        textLayer.frame = CGRect(
+            x: label.rect.minX + inset,
+            y: label.rect.midY - height / 2,
+            width: width,
+            height: height
+        )
+        return textLayer
+    }
+
+    /// `text` middle-ellipsized so it measures within `width`: the name's
+    /// head and tail survive with an "…" between them, degrading to a bare
+    /// "…" in the narrowest rects. Binary search over the kept character
+    /// count; fit is monotonic in it.
+    static func middleTruncated(
+        _ text: String,
+        attributes: [NSAttributedString.Key: Any],
+        width: CGFloat
+    ) -> String {
+        func fits(_ candidate: String) -> Bool {
+            NSAttributedString(string: candidate, attributes: attributes).size().width <= width
+        }
+        if fits(text) { return text }
+        let ellipsis = "…"
+        guard fits(ellipsis) else { return "" }
+
+        let characters = Array(text)
+        func candidate(keeping count: Int) -> String {
+            String(characters.prefix((count + 1) / 2))
+                + ellipsis
+                + String(characters.suffix(count / 2))
+        }
+        var low = 0
+        var high = characters.count - 1
+        while low < high {
+            let mid = (low + high + 1) / 2
+            if fits(candidate(keeping: mid)) { low = mid } else { high = mid - 1 }
+        }
+        return candidate(keeping: low)
+    }
+
+    /// Plays the flat-style drill morph on the freshly rendered content:
+    /// transform animates from `start` (the drilled container's former
+    /// footprint, or the pulled-back parent position) to rest; labels fade
+    /// in alongside so text never visibly stretches. Purely presentational —
+    /// the layer's model values were already set by refreshDisplay, so an
+    /// interrupted animation just snaps to the correct resting state.
+    func animateDrill(from start: CGAffineTransform) {
+        let duration: CFTimeInterval = 0.28
+        let timing = CAMediaTimingFunction(name: .easeInEaseOut)
+
+        let morph = CABasicAnimation(keyPath: "transform")
+        morph.fromValue = CATransform3DMakeAffineTransform(start)
+        morph.toValue = CATransform3DMakeAffineTransform(controller.displayTransform)
+        morph.duration = duration
+        morph.timingFunction = timing
+        contentLayer.add(morph, forKey: "drillMorph")
+
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = 0
+        fade.toValue = 1
+        fade.duration = duration
+        fade.timingFunction = timing
+        labelContainerLayer.add(fade, forKey: "drillLabelFade")
     }
 
     // MARK: - Geometry
@@ -158,6 +259,15 @@ final class TreemapNSView: NSView {
         refreshDisplay(contentsChanged: false)
         // And re-render the map itself at the new pixel density.
         controller.backingScaleChanged()
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        // Both styles composite against the window background and adapt
+        // their label colors — rebuild both for the new appearance.
+        labeledSceneViewport = nil
+        refreshDisplay(contentsChanged: false)
+        controller.appearanceChanged()
     }
 
     // MARK: - Events
@@ -200,10 +310,9 @@ final class TreemapNSView: NSView {
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         if event.clickCount == 2 {
-            // Double-click reveals in Finder (never re-roots the view —
-            // mouse navigation stays pinch/scroll; re-rooting is keyboard
-            // drill, ⌘↓/⌘↑, see TreemapController.handleKey).
-            controller.revealInFinder(at: point)
+            // Style-dependent: cushion reveals in Finder, flat drills into
+            // folders (see TreemapController.doubleClick).
+            controller.doubleClick(at: point)
         } else {
             controller.click(at: point)
         }

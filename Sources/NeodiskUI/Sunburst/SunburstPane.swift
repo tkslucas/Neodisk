@@ -130,6 +130,11 @@ struct SunburstPane: View {
             style.mode = .kind
         case .age(let referenceDate):
             style.mode = .age(referenceDate: referenceDate)
+        case .branch:
+            // Flat-treemap branch mode; this pane already defaulted to
+            // .branch above (and the guard returns early in every state
+            // where the model reports it).
+            break
         }
         return style
     }

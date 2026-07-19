@@ -4,7 +4,7 @@
 //
 //  The complete set of colors the visualization draws with — file-kind hues,
 //  the fixed category colors, and the modification-age ramp. Two instances:
-//  `.standard` (the default rainbow, tuned to look like Disk Inventory X) and
+//  `.standard` (the default rainbow of classic kind-colored analyzers) and
 //  `.colorblind`, which the Settings toggle swaps in.
 //
 //  The colorblind set uses the Okabe-Ito qualitative palette (designed to stay

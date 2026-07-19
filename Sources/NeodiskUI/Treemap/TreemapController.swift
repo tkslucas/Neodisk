@@ -35,6 +35,7 @@ final class TreemapController {
         var snapshotID: UUID?
         var rootID: String?
         var catalogID: UUID?
+        var style: TreemapStyle = .cushion
         var colorMode: TreemapColorMode = .kind
         var highlight: TreemapHighlight?
         var expandedAggregateIDs: Set<String> = []
@@ -63,6 +64,25 @@ final class TreemapController {
     private var gestureStartScale: CGFloat = 1
     private var gestureNetMagnification: CGFloat = 1
 
+    /// Flat style has no viewport zoom: a pinch drills instead, one level
+    /// per gesture. Accumulated net magnification since the gesture began;
+    /// the first crossing of the threshold commits and latches (mirrors
+    /// SunburstInteractionOverlay).
+    private static let flatPinchDrillThreshold: CGFloat = 0.1
+    private var flatPinchAccumulation: CGFloat = 0
+    private var didFlatPinchDrill = false
+
+    /// Flat-style drill morph: a root change within one snapshot animates —
+    /// drilling in, the new map grows out of the container's former
+    /// footprint; drilling out, the wider map pulls back from where you
+    /// were. Captured at input time (drill-in needs the outgoing scene's
+    /// rect), consumed when the matching render lands.
+    private enum PendingDrillAnimation {
+        case zoomIn(fromRect: CGRect)
+        case zoomOut(previousRootID: String)
+    }
+    private var pendingDrillAnimation: PendingDrillAnimation?
+
     /// Whether a pan/zoom gesture is in progress; toggling notifies the pane
     /// (tooltip hides while true). Only the edges fire, never every frame.
     private var isGesturing = false {
@@ -81,6 +101,7 @@ final class TreemapController {
         snapshot: ScanSnapshot?,
         rootID: String?,
         catalog: FileKindCatalog,
+        style: TreemapStyle = .cushion,
         colorMode: TreemapColorMode = .kind,
         highlight: TreemapHighlight? = nil,
         expandedAggregateIDs: Set<String>,
@@ -93,6 +114,7 @@ final class TreemapController {
             snapshotID: snapshot?.id,
             rootID: rootID,
             catalogID: catalog.buildID,
+            style: style,
             colorMode: colorMode,
             highlight: highlight,
             expandedAggregateIDs: expandedAggregateIDs,
@@ -103,7 +125,28 @@ final class TreemapController {
         )
         guard newInputs != inputs else { return }
 
-        if newInputs.rootID != inputs.rootID || snapshot == nil {
+        // Arm the flat drill morph on a root change within the same
+        // snapshot. The drill-in footprint must be read from the outgoing
+        // scene now — it is gone once the new render lands; drill-out
+        // resolves its rect from the incoming scene instead.
+        if newInputs.style == .flat, inputs.style == .flat,
+           newInputs.snapshotID != nil, newInputs.snapshotID == inputs.snapshotID,
+           newInputs.rootID != inputs.rootID,
+           let newRootID = newInputs.rootID, let previousRootID = inputs.rootID,
+           let scene, let store {
+            if let target = scene.rect(forNodeID: newRootID, in: store),
+               target.width >= 1, target.height >= 1 {
+                pendingDrillAnimation = .zoomIn(fromRect: target)
+            } else {
+                pendingDrillAnimation = .zoomOut(previousRootID: previousRootID)
+            }
+        } else {
+            pendingDrillAnimation = nil
+        }
+
+        // A style change also resets the viewport: flat never zooms, and a
+        // zoomed cushion viewport must not leak into it.
+        if newInputs.rootID != inputs.rootID || newInputs.style != inputs.style || snapshot == nil {
             viewport = .identity
         }
         inputs = newInputs
@@ -136,6 +179,32 @@ final class TreemapController {
         guard scale != renderedScale else { return }
         cancelInFlightRender()
         startRender()
+    }
+
+    /// Light/dark switched: both styles clear their raster to the window
+    /// background, so the pixels are stale — re-render.
+    func appearanceChanged() {
+        cancelInFlightRender()
+        startRender()
+    }
+
+    /// The background the map sits on: the app window background (same
+    /// surface as the sunburst pane), resolved for the view's current
+    /// appearance. Fills composite against it and the raster clears to it.
+    private func windowBackgroundRGB() -> SIMD3<Float> {
+        guard let view else { return TreemapRasterTarget.backgroundRGB }
+        var cgColor = CGColor(gray: 0, alpha: 1)
+        view.effectiveAppearance.performAsCurrentDrawingAppearance {
+            cgColor = NSColor.windowBackgroundColor.cgColor
+        }
+        guard let srgb = CGColorSpace(name: CGColorSpace.sRGB),
+              let converted = cgColor.converted(to: srgb, intent: .defaultIntent, options: nil),
+              let components = converted.components, components.count >= 3 else {
+            return TreemapRasterTarget.backgroundRGB
+        }
+        return SIMD3<Float>(
+            Float(components[0]), Float(components[1]), Float(components[2])
+        )
     }
 
     // MARK: - Display state
@@ -193,6 +262,20 @@ final class TreemapController {
         model.select(cell.nodeID)
     }
 
+    /// Double-click. Cushion: reveal in Finder (mouse never drills there —
+    /// navigation stays pinch/scroll and keyboard, see handleKey). Flat:
+    /// folders are first-class canvas targets, so a folder double-click
+    /// drills into it (aggregates carry their owning folder's id); files
+    /// keep the reveal-in-Finder contract.
+    func doubleClick(at point: CGPoint) {
+        if inputs.style == .flat, let model, let cell = cell(at: point),
+           cell.isDirectory, !cell.isFreeSpace, !cell.isHiddenSpace {
+            model.drillIn(to: cell.nodeID)
+            return
+        }
+        revealInFinder(at: point)
+    }
+
     func revealInFinder(at point: CGPoint) {
         guard let model, let cell = cell(at: point),
               let node = model.store?.node(id: cell.nodeID),
@@ -202,6 +285,8 @@ final class TreemapController {
     }
 
     func beginMagnify() {
+        flatPinchAccumulation = 0
+        didFlatPinchDrill = false
         gestureStartScale = viewport.scale
         gestureNetMagnification = 1
         gestureIdleResetTask?.cancel()
@@ -210,6 +295,21 @@ final class TreemapController {
 
     func magnify(by factor: CGFloat, anchor: CGPoint) {
         guard factor > 0 else { return }
+        // Flat style: no viewport zoom — a pinch drills one level, latched
+        // per gesture (spread into the folder under the cursor, squeeze up
+        // to the parent), mirroring the sunburst's contract.
+        if inputs.style == .flat {
+            flatPinchAccumulation += factor - 1
+            guard !didFlatPinchDrill,
+                  abs(flatPinchAccumulation) >= Self.flatPinchDrillThreshold else { return }
+            didFlatPinchDrill = true
+            if flatPinchAccumulation > 0 {
+                drillIntoFolder(at: anchor)
+            } else {
+                model?.zoomOut()
+            }
+            return
+        }
         gestureNetMagnification *= factor
         viewport = viewport.zoomed(by: factor, anchor: anchor, viewSize: viewSize)
         pushDisplay()
@@ -217,6 +317,12 @@ final class TreemapController {
     }
 
     func endMagnify() {
+        if inputs.style == .flat {
+            flatPinchAccumulation = 0
+            didFlatPinchDrill = false
+            isGesturing = false
+            return
+        }
         // Pinching in while already at 1:1 steps out one folder.
         if gestureStartScale <= 1.001, viewport.scale <= 1.001, gestureNetMagnification < 0.9 {
             model?.zoomOut()
@@ -226,9 +332,21 @@ final class TreemapController {
         isGesturing = false
     }
 
+    /// Flat pinch-in drill target: the deepest folder-backed cell under the
+    /// cursor — a container frame or header, an undivided directory, or a
+    /// "smaller items" aggregate (its nodeID is the owning folder). Over a
+    /// file the file's enclosing container is the deepest folder cell, so
+    /// the drill still lands where the cursor points.
+    private func drillIntoFolder(at point: CGPoint) {
+        guard let model, let scene else { return }
+        let scenePoint = point.applying(displayTransform.inverted())
+        guard let target = scene.deepestDirectoryCell(at: scenePoint) else { return }
+        model.drillIn(to: target.nodeID)
+    }
+
     /// Option-scroll zoom (browser/maps style), anchored at the cursor.
     func scrollZoom(by factor: CGFloat, anchor: CGPoint) {
-        guard factor > 0 else { return }
+        guard factor > 0, inputs.style != .flat else { return }
         noteTransientGesture()
         viewport = viewport.zoomed(by: factor, anchor: anchor, viewSize: viewSize)
         pushDisplay()
@@ -236,9 +354,10 @@ final class TreemapController {
     }
 
     /// Two-finger scroll pans the zoomed map. Returns false when the event
-    /// should fall through to the responder chain (map at 1:1).
+    /// should fall through to the responder chain (map at 1:1, or flat
+    /// style — which never zooms or pans).
     func scroll(by delta: CGSize) -> Bool {
-        guard viewport.scale > 1 else { return false }
+        guard inputs.style != .flat, viewport.scale > 1 else { return false }
         noteTransientGesture()
         viewport = viewport.panned(by: delta, viewSize: viewSize)
         pushDisplay()
@@ -247,7 +366,9 @@ final class TreemapController {
     }
 
     /// Two-finger double-tap: zoom the viewport in a comfortable step.
+    /// No-op in the flat style (no viewport zoom).
     func smartMagnify(at point: CGPoint) {
+        guard inputs.style != .flat else { return }
         noteTransientGesture()
         viewport = viewport.zoomed(by: 2, anchor: point, viewSize: viewSize)
         pushDisplay()
@@ -317,7 +438,11 @@ final class TreemapController {
         guard let model, let scene else { return }
         // Free-space, hidden-space, and "smaller items" aggregate tiles
         // aren't real files; navigate only among concrete file/folder tiles.
-        let tiles = scene.cells.filter { !$0.isFreeSpace && !$0.isHiddenSpace && $0.aggregate == nil }
+        // Flat-style containers are excluded too — their centers sit on top
+        // of their children, which would make spatial movement erratic.
+        let tiles = scene.cells.filter {
+            !$0.isFreeSpace && !$0.isHiddenSpace && $0.aggregate == nil && !$0.isContainer
+        }
         guard !tiles.isEmpty else { return }
 
         guard let from = selectionRect.map({ CGPoint(x: $0.midX, y: $0.midY) }) else {
@@ -403,6 +528,7 @@ final class TreemapController {
         let size = viewSize
         let viewport = viewport
         let catalog = catalog
+        let style = inputs.style
         let colorMode = inputs.colorMode
         let highlight = inputs.highlight
         let expandedAggregateIDs = inputs.expandedAggregateIDs
@@ -411,6 +537,7 @@ final class TreemapController {
         let includingCloudOnly = inputs.includingCloudOnly
         let palette = inputs.palette
         let scale = view?.window?.backingScaleFactor ?? 2
+        let background = windowBackgroundRGB()
         renderTask = Task { [weak self] in
             // The detached task doesn't inherit cancellation, so a superseded
             // render (partial bursts, catalog landing mid-render) used to run
@@ -419,7 +546,7 @@ final class TreemapController {
             let work = Task.detached(priority: .userInitiated) {
                 () -> (TreemapScene, CGImage?)? in
                 let scene = TreemapScene.build(
-                    store: store, rootID: rootID, size: size, catalog: catalog,
+                    store: store, rootID: rootID, style: style, size: size, catalog: catalog,
                     colorMode: colorMode,
                     highlight: highlight,
                     expandedAggregateIDs: expandedAggregateIDs,
@@ -427,10 +554,22 @@ final class TreemapController {
                     freeSpaceBytes: freeSpaceBytes,
                     hiddenSpaceBytes: hiddenSpaceBytes,
                     includingCloudOnly: includingCloudOnly,
-                    palette: palette
+                    palette: palette,
+                    background: background
                 )
                 guard !Task.isCancelled else { return nil }
-                let image = CushionTreemapRenderer.render(cells: scene.cells, bounds: scene.renderBounds, scale: scale)
+                let image = switch style {
+                case .cushion:
+                    CushionTreemapRenderer.render(
+                        cells: scene.cells, bounds: scene.renderBounds, scale: scale,
+                        background: background
+                    )
+                case .flat:
+                    FlatTreemapRenderer.render(
+                        cells: scene.cells, bounds: scene.renderBounds, scale: scale,
+                        background: background
+                    )
+                }
                 return (scene, image)
             }
             let result = await withTaskCancellationHandler {
@@ -445,6 +584,7 @@ final class TreemapController {
             self.image = result.1
             self.renderedScale = scale
             self.pushDisplay(contentsChanged: true)
+            self.runPendingDrillAnimation()
             // Felt-time: the map's pixels just reached the layer tree. This is
             // the honest "tree displayed" moment for the current snapshot.
             if result.1 != nil {
@@ -458,6 +598,42 @@ final class TreemapController {
 
     private func pushDisplay(contentsChanged: Bool = false) {
         view?.refreshDisplay(contentsChanged: contentsChanged)
+    }
+
+    /// Plays the armed drill morph once the render for the new root has
+    /// landed (superseded renders are cancelled in setInputs, so a landed
+    /// scene always matches the current inputs).
+    private func runPendingDrillAnimation() {
+        guard let pending = pendingDrillAnimation else { return }
+        pendingDrillAnimation = nil
+        guard inputs.style == .flat, let scene, scene.rootID == inputs.rootID else { return }
+        let bounds = CGRect(origin: .zero, size: scene.size)
+        guard bounds.width >= 1, bounds.height >= 1 else { return }
+
+        let start: CGAffineTransform
+        switch pending {
+        case .zoomIn(let fromRect):
+            // The new map starts squeezed into the drilled container's old
+            // footprint and expands to fill the pane.
+            start = Self.transform(mapping: bounds, to: fromRect)
+        case .zoomOut(let previousRootID):
+            // The wider map starts zoomed into where the old root now sits
+            // and pulls back to rest.
+            guard let store,
+                  let previousRect = scene.rect(forNodeID: previousRootID, in: store),
+                  previousRect.width >= 1, previousRect.height >= 1 else { return }
+            start = Self.transform(mapping: previousRect, to: bounds)
+        }
+        view?.animateDrill(from: start)
+    }
+
+    /// The affine transform that draws content laid out over `from` into
+    /// `to` (scale then translate).
+    private static func transform(mapping from: CGRect, to: CGRect) -> CGAffineTransform {
+        let sx = to.width / from.width
+        let sy = to.height / from.height
+        return CGAffineTransform(translationX: to.minX - from.minX * sx, y: to.minY - from.minY * sy)
+            .scaledBy(x: sx, y: sy)
     }
 }
 

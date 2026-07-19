@@ -67,6 +67,9 @@ final class NeodiskViewModel {
     /// The diff stays armed across the switch: sunburst has no Δ column to
     /// render, but switching back to the treemap must not lose the mode.
     var vizViewMode: VizViewMode = .treemap
+    /// Mirror of the persisted treemap style (cushion or flat), synced by
+    /// bindPreferences — same pattern as vizViewMode.
+    var treemapStyle: TreemapStyle = .cushion
 
     // MARK: Kind statistics
 
@@ -279,12 +282,26 @@ final class NeodiskViewModel {
 
     // MARK: - Treemap coloring
 
+    /// Branch-hue mode is shared by the sunburst and the flat treemap — the
+    /// two structural views draw the same colors: active on the Largest tab,
+    /// or whenever the statistics panel (the kind/age legend) is hidden.
+    var showsBranchColors: Bool {
+        let branchCapableView = vizViewMode == .sunburst
+            || (vizViewMode == .treemap && treemapStyle == .flat)
+        return branchCapableView && (analysisTab == .largest || !showKindStats)
+    }
+
     /// What treemap color means, driven by the statistics-panel tab: the Age
     /// tab colors by modification date (bucketed against the scan date, so
     /// the map matches the tab's legend), every other tab colors by kind.
     /// The mode survives hiding the panel — the panel is the legend, not the
-    /// owner of the state.
+    /// owner of the state. Exception: the flat style reverts to the
+    /// sunburst's branch hues on the Largest tab or with the panel hidden,
+    /// exactly like the sunburst does.
     var treemapColorMode: TreemapColorMode {
+        if treemapStyle == .flat, analysisTab == .largest || !showKindStats {
+            return .branch
+        }
         guard analysisTab == .age else { return .kind }
         let referenceDate = ages.catalog.stats.isEmpty
             ? coordinator.snapshot.map { $0.finishedAt ?? $0.startedAt }
@@ -323,17 +340,19 @@ final class NeodiskViewModel {
 
     /// The swatch color a node renders with on the map right now — the
     /// status bar's swatch must agree with the active view and color mode.
-    /// On the sunburst's Largest tab — or whenever the statistics panel is
-    /// hidden, which reverts the sunburst to its default coloring — that is
-    /// the branch hue; every other combination keeps the treemap's
-    /// kind/age semantics.
+    /// In branch mode (sunburst or flat treemap, Largest tab or hidden
+    /// statistics panel) that is the branch hue; every other combination
+    /// keeps the kind/age semantics.
     func displayColor(for node: FileNodeRecord) -> Color {
-        if vizViewMode == .sunburst, analysisTab == .largest || !showKindStats, let store {
+        if showsBranchColors, let store {
             return SunburstColorResolver.branchColor(
                 forNodeID: node.id,
                 in: store,
                 effectiveRootID: effectiveRootID ?? store.root.id,
-                palette: vizPalette
+                palette: vizPalette,
+                // The flat treemap tints files with the branch hue; the
+                // sunburst keeps its file gray.
+                mutedFiles: vizViewMode == .treemap
             )
         }
         if case .age(let referenceDate) = treemapColorMode {
@@ -375,12 +394,23 @@ final class NeodiskViewModel {
                 self?.freeSpace.update()
                 self?.syncVizPalette()
                 self?.syncVizViewMode()
+                self?.syncTreemapStyle()
                 self?.syncCloudOnlyPreference()
             }
         freeSpace.update()
         syncVizPalette()
         syncVizViewMode()
+        syncTreemapStyle()
         syncCloudOnlyPreference()
+    }
+
+    /// Mirror the persisted treemap style onto the model so the treemap pane
+    /// and breadcrumb re-render when the Settings picker flips.
+    private func syncTreemapStyle() {
+        guard let preferences else { return }
+        if treemapStyle != preferences.treemapStyle {
+            treemapStyle = preferences.treemapStyle
+        }
     }
 
     private func syncCloudOnlyPreference() {

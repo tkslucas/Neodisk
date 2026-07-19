@@ -8,6 +8,7 @@
 
 import AppKit
 import SwiftUI
+import TreemapKit
 
 struct NeodiskCommands: Commands {
     let model: NeodiskViewModel
@@ -87,6 +88,37 @@ struct NeodiskCommands: Commands {
                 )
             }
             .keyboardShortcut("k", modifiers: [.control, .command])
+            .disabled(model.coordinator.snapshot == nil)
+
+            Divider()
+
+            // The three center views, mirroring the toolbar picker (same
+            // two-preference write: a treemap item sets both, Sunburst keeps
+            // the treemap style for the trip back).
+            Button {
+                model.preferences?.vizViewMode = .treemap
+                model.preferences?.treemapStyle = .cushion
+            } label: {
+                Label("Cushion Treemap", systemImage: "square.split.bottomrightquarter")
+            }
+            .keyboardShortcut("1", modifiers: [.command, .option])
+            .disabled(model.coordinator.snapshot == nil)
+
+            Button {
+                model.preferences?.vizViewMode = .treemap
+                model.preferences?.treemapStyle = .flat
+            } label: {
+                Label("Flat Treemap", systemImage: "rectangle.3.group")
+            }
+            .keyboardShortcut("2", modifiers: [.command, .option])
+            .disabled(model.coordinator.snapshot == nil)
+
+            Button {
+                model.preferences?.vizViewMode = .sunburst
+            } label: {
+                Label("Sunburst", systemImage: "chart.pie")
+            }
+            .keyboardShortcut("3", modifiers: [.command, .option])
             .disabled(model.coordinator.snapshot == nil)
         }
 

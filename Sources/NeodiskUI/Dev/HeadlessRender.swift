@@ -6,6 +6,7 @@
 //  PNG, no window required. Invoked as `Neodisk --render-png <path> <out>`.
 //
 
+import AppKit
 import CoreGraphics
 import Foundation
 import ImageIO
@@ -77,10 +78,13 @@ public enum HeadlessRender {
                 let catalog = FileKindCatalog.build(from: store)
                 let environment = ProcessInfo.processInfo.environment
                 // NEODISK_RENDER_COLOR_MODE=age renders the modification-age
-                // heatmap instead of kind colors.
-                let colorMode: TreemapColorMode = environment["NEODISK_RENDER_COLOR_MODE"] == "age"
-                    ? .age(referenceDate: snapshot.finishedAt ?? snapshot.startedAt)
-                    : .kind
+                // heatmap; =branch the sunburst-matching branch hues (flat
+                // style's Largest/panel-hidden coloring); default kind colors.
+                let colorMode: TreemapColorMode = switch environment["NEODISK_RENDER_COLOR_MODE"] {
+                case "age": .age(referenceDate: snapshot.finishedAt ?? snapshot.startedAt)
+                case "branch": .branch
+                default: .kind
+                }
                 // NEODISK_RENDER_HIGHLIGHT_KIND=<kindID> (types mode: an
                 // extension like "swift") exercises the kind-highlight
                 // dimming in headless renders.
@@ -90,6 +94,22 @@ public enum HeadlessRender {
                 // on by default to match the app's toolbar toggle (a no-op
                 // for scans without cloud items).
                 let includingCloudOnly = environment["NEODISK_RENDER_CLOUD_ONLY"] != "0"
+                // NEODISK_RENDER_STYLE=flat renders the flat nested-box
+                // style instead of the cushion default. Both styles sit on
+                // the window background like the app (system appearance).
+                let style = environment["NEODISK_RENDER_STYLE"]
+                    .flatMap(TreemapStyle.init(rawValue:)) ?? .cushion
+                let background: SIMD3<Float>
+                if let srgb = CGColorSpace(name: CGColorSpace.sRGB),
+                   let converted = NSColor.windowBackgroundColor.cgColor
+                       .converted(to: srgb, intent: .defaultIntent, options: nil),
+                   let components = converted.components, components.count >= 3 {
+                    background = SIMD3<Float>(
+                        Float(components[0]), Float(components[1]), Float(components[2])
+                    )
+                } else {
+                    background = TreemapRasterTarget.backgroundRGB
+                }
                 let viewport = TreemapViewport(
                     scale: zoomScale,
                     origin: CGPoint(
@@ -98,13 +118,26 @@ public enum HeadlessRender {
                     )
                 )
                 let scene = TreemapScene.build(
-                    store: store, rootID: store.root.id, size: size, catalog: catalog,
+                    store: store, rootID: store.root.id, style: style, size: size, catalog: catalog,
                     colorMode: colorMode,
                     highlight: highlight,
                     viewport: viewport,
-                    includingCloudOnly: includingCloudOnly
+                    includingCloudOnly: includingCloudOnly,
+                    background: background
                 )
-                guard let image = CushionTreemapRenderer.render(cells: scene.cells, bounds: scene.renderBounds, scale: 2) else {
+                let image = switch style {
+                case .cushion:
+                    CushionTreemapRenderer.render(
+                        cells: scene.cells, bounds: scene.renderBounds, scale: 2,
+                        background: background
+                    )
+                case .flat:
+                    FlatTreemapRenderer.render(
+                        cells: scene.cells, bounds: scene.renderBounds, scale: 2,
+                        background: background
+                    )
+                }
+                guard let image else {
                     FileHandle.standardError.write(Data("render failed\n".utf8))
                     return
                 }

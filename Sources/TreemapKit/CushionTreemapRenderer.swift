@@ -24,9 +24,6 @@ public enum CushionTreemapRenderer {
     private nonisolated static let light = normalized(SIMD3<Double>(-0.3, -0.3, 0.906))
     private nonisolated static let ambient = 0.30
     private nonisolated static let diffuse = 0.70
-    /// Dark background so sub-pixel cells that get skipped read as seams
-    /// rather than holes. RGBA, straight (alpha 255).
-    private nonisolated static let backgroundPattern: [UInt8] = [18, 18, 22, 255]
 
     /// Diagonal hatch baked into cloud-only (`isDataless`) cells: alternating
     /// bands `hatchStripePeriod` device pixels wide along the x+y diagonal,
@@ -46,18 +43,13 @@ public enum CushionTreemapRenderer {
     public nonisolated static func rasterizeRGBA(
         cells: [TreemapCell],
         bounds: CGRect,
-        scale: CGFloat
+        scale: CGFloat,
+        background: SIMD3<Float> = TreemapRasterTarget.backgroundRGB
     ) -> (pixels: [UInt8], width: Int, height: Int)? {
-        let width = Int((bounds.width * scale).rounded())
-        let height = Int((bounds.height * scale).rounded())
-        guard width > 0, height > 0 else { return nil }
-
-        let bytesPerRow = width * 4
-        let byteCount = bytesPerRow * height
-        var pixels = [UInt8](repeating: 0, count: byteCount)
-        pixels.withUnsafeMutableBytes { raw in
-            guard let base = raw.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return }
-            fillBackground(base, byteCount: byteCount)
+        TreemapRasterTarget.rasterizeRGBA(
+            bounds: bounds, scale: scale,
+            background: TreemapRasterTarget.pattern(for: background)
+        ) { base, width, height, bytesPerRow in
             renderCells(
                 cells,
                 origin: bounds.origin,
@@ -68,78 +60,33 @@ public enum CushionTreemapRenderer {
                 bytesPerRow: bytesPerRow
             )
         }
-        return (pixels, width, height)
     }
 
     #if canImport(CoreGraphics)
-    /// Renders `cells` at `scale` into a CGImage. Same pixels as
-    /// `rasterizeRGBA`, but drawn directly into a CFData the CGImage's data
-    /// provider retains without copying — a plain `[UInt8]` would cost a
-    /// full-buffer copy (~25 MB at 2× on a large window) on every render.
-    public nonisolated static func render(cells: [TreemapCell], bounds: CGRect, scale: CGFloat) -> CGImage? {
-        let width = Int((bounds.width * scale).rounded())
-        let height = Int((bounds.height * scale).rounded())
-        guard width > 0, height > 0 else { return nil }
-
-        let bytesPerRow = width * 4
-        let byteCount = bytesPerRow * height
-        guard let pixelData = CFDataCreateMutable(kCFAllocatorDefault, byteCount) else { return nil }
-        CFDataSetLength(pixelData, byteCount)
-        guard let rawBase = CFDataGetMutableBytePtr(pixelData) else { return nil }
-
-        fillBackground(rawBase, byteCount: byteCount)
-        renderCells(
-            cells,
-            origin: bounds.origin,
-            scale: Double(scale),
-            into: rawBase,
-            width: width,
-            height: height,
-            bytesPerRow: bytesPerRow
-        )
-
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-        guard let provider = CGDataProvider(data: pixelData) else { return nil }
-        return CGImage(
-            width: width,
-            height: height,
-            bitsPerComponent: 8,
-            bitsPerPixel: 32,
-            bytesPerRow: bytesPerRow,
-            space: colorSpace,
-            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
-            provider: provider,
-            decode: nil,
-            shouldInterpolate: false,
-            intent: .defaultIntent
-        )
+    /// Renders `cells` at `scale` into a CGImage (see TreemapRasterTarget for
+    /// the buffer contract).
+    public nonisolated static func render(
+        cells: [TreemapCell],
+        bounds: CGRect,
+        scale: CGFloat,
+        background: SIMD3<Float> = TreemapRasterTarget.backgroundRGB
+    ) -> CGImage? {
+        TreemapRasterTarget.render(
+            bounds: bounds, scale: scale,
+            background: TreemapRasterTarget.pattern(for: background)
+        ) { base, width, height, bytesPerRow in
+            renderCells(
+                cells,
+                origin: bounds.origin,
+                scale: Double(scale),
+                into: base,
+                width: width,
+                height: height,
+                bytesPerRow: bytesPerRow
+            )
+        }
     }
     #endif
-
-    /// Prefills the buffer with the dark background. `memset_pattern4` is a
-    /// Darwin libc primitive; elsewhere a 4-byte stride loop does the same.
-    private nonisolated static func fillBackground(
-        _ base: UnsafeMutablePointer<UInt8>,
-        byteCount: Int
-    ) {
-        #if canImport(Darwin)
-        var pattern = backgroundPattern
-        memset_pattern4(base, &pattern, byteCount)
-        #else
-        let (b0, b1, b2, b3) = (
-            backgroundPattern[0], backgroundPattern[1],
-            backgroundPattern[2], backgroundPattern[3]
-        )
-        var offset = 0
-        while offset < byteCount {
-            base[offset] = b0
-            base[offset + 1] = b1
-            base[offset + 2] = b2
-            base[offset + 3] = b3
-            offset += 4
-        }
-        #endif
-    }
 
     /// Rasterizes every cell into the buffer. Cells never overlap, so
     /// concurrent chunks write disjoint pixels; without Dispatch this falls

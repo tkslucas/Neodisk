@@ -2,12 +2,13 @@
 //  ContentView.swift
 //  Neodisk
 //
-//  Root composition: welcome → scanning progress → the Disk Inventory X-style
+//  Root composition: welcome → scanning progress → the classic analyzer
 //  workspace (outline | treemap | kind stats) with a status bar.
 //
 
 import AppKit
 import SwiftUI
+import TreemapKit
 import NeodiskKit
 
 public struct ContentView: View {
@@ -72,6 +73,13 @@ public struct ContentView: View {
             if let rawMode = ProcessInfo.processInfo.environment["NEODISK_VIZ_MODE"],
                let mode = VizViewMode(rawValue: rawMode) {
                 model.vizViewMode = mode
+            }
+            // Dev/testing hook: NEODISK_TREEMAP_STYLE=<cushion|flat> picks
+            // the treemap style without persisting the preference, so
+            // headless snapshots can capture either style.
+            if let rawStyle = ProcessInfo.processInfo.environment["NEODISK_TREEMAP_STYLE"],
+               let style = TreemapStyle(rawValue: rawStyle) {
+                model.treemapStyle = style
             }
             // Dev/testing hook: NEODISK_UPDATE_STATE=<checking|available|
             // downloading|readyToInstall|upToDate|failed> forces the update
@@ -242,16 +250,48 @@ public struct ContentView: View {
         }
     }
 
+    /// The three mutually exclusive center views, flattened for the toolbar
+    /// picker. Backed by the two persisted preferences (`vizViewMode` +
+    /// `treemapStyle`): picking a treemap segment writes both; picking
+    /// Sunburst leaves the treemap style untouched so switching back
+    /// restores it.
+    private enum VizChoice: Hashable {
+        case cushion, flat, sunburst
+    }
+
+    private var vizChoice: Binding<VizChoice> {
+        Binding(
+            get: {
+                if preferences.vizViewMode == .sunburst { return .sunburst }
+                return preferences.treemapStyle == .flat ? .flat : .cushion
+            },
+            set: { choice in
+                switch choice {
+                case .cushion:
+                    preferences.vizViewMode = .treemap
+                    preferences.treemapStyle = .cushion
+                case .flat:
+                    preferences.vizViewMode = .treemap
+                    preferences.treemapStyle = .flat
+                case .sunburst:
+                    preferences.vizViewMode = .sunburst
+                }
+            }
+        )
+    }
+
     private var vizModePicker: some View {
-        Picker("View", selection: $preferences.vizViewMode) {
-            Label("Treemap", systemImage: "square.split.bottomrightquarter")
-                .tag(VizViewMode.treemap)
+        Picker("View", selection: vizChoice) {
+            Label("Cushion", systemImage: "square.split.bottomrightquarter")
+                .tag(VizChoice.cushion)
+            Label("Flat", systemImage: "rectangle.3.group")
+                .tag(VizChoice.flat)
             Label("Sunburst", systemImage: "chart.pie")
-                .tag(VizViewMode.sunburst)
+                .tag(VizChoice.sunburst)
         }
         .pickerStyle(.segmented)
         .disabled(model.coordinator.snapshot == nil)
-        .help("Switch between treemap and sunburst views")
+        .help("Switch between cushion treemap, flat treemap, and sunburst views")
     }
 
     private var cloudOnlyToggle: some View {
@@ -340,9 +380,13 @@ private struct WorkspaceView: View {
                     }
 
                     VStack(spacing: 0) {
+                        // The flat treemap leans on the bar like the sunburst
+                        // does: drilling is the only navigation, so the bar
+                        // renders at its prominent size there too.
                         TreemapBreadcrumbBar(
                             model: model,
                             isProminent: model.vizViewMode == .sunburst
+                                || model.treemapStyle == .flat
                         )
                         if model.vizViewMode == .sunburst {
                             SunburstPane(model: model)

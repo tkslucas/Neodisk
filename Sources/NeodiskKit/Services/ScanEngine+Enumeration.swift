@@ -346,7 +346,7 @@ extension ScanEngine {
         ) { child in
             if !includeHiddenFiles && child.isHidden { return }
             guard includedChildName(child.name, underParentPath: normalizedParentPath, behavior: behavior) else { return }
-            let childPath = childBasePath == "/" ? "/" + child.name : childBasePath + "/" + child.name
+            let childPath = ScanEngine.nodeChildPath(parentPath: childBasePath, childName: child.name)
 
             if let entryErrno = child.entryErrno {
                 entries.append(DirectoryEntry(
@@ -535,6 +535,17 @@ extension ScanEngine {
 
     private nonisolated static func shouldFilterStartupVolumeInternals(under parentURL: URL, behavior: ScanBehavior) -> Bool {
         behavior.excludesStartupVolumeInternals && ["/", "/System"].contains(parentURL.path)
+    }
+
+    /// The absolute node-id path of a child given its parent's node-id base
+    /// path. One definition for every bulk enumerator (traversal, atomic
+    /// summary, and probe walks) so child ids stay byte-identical across them —
+    /// a drift would split one node into two. Root's children are `/name`,
+    /// everyone else's `parent/name`. Callers pass whichever base their id
+    /// scheme uses (`url.path` for the traversal, the standardized path for the
+    /// probe); the join is what must not vary.
+    nonisolated static func nodeChildPath(parentPath: String, childName: String) -> String {
+        parentPath == "/" ? "/" + childName : parentPath + "/" + childName
     }
 
     nonisolated static func includedChildURL(_ childURL: URL, under parentURL: URL, behavior: ScanBehavior) -> Bool {

@@ -49,7 +49,7 @@ import TreemapKit
             rgb: SIMD3(0, 0, 1)
         )
         model.kinds.openFileList(for: videoStat)
-        try await waitUntil("kind file list built") { model.kinds.fileList != nil }
+        try await waitUntil("kind file list built") { model.kinds.drill.context != nil }
         #expect(model.vizHighlight == .kind("cat-video"))
 
         // Hiding the panel reverts to branch and drops the highlight;

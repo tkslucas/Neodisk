@@ -13,19 +13,19 @@ struct KindStatsPane: View {
     let model: NeodiskViewModel
 
     var body: some View {
-        if model.kinds.fileList != nil || model.kinds.isFileListLoading {
-            @Bindable var kinds = model.kinds
+        if model.kinds.drill.isActive {
+            @Bindable var drill = model.kinds.drill
             StatsFileListView(
                 model: model,
-                title: model.kinds.fileList?.kind.displayName,
-                swatch: model.kinds.fileList.map { list in
-                    Color(rgb: model.kinds.catalog.rgb(forKindID: list.kind.id))
+                title: model.kinds.drill.context?.kind.displayName,
+                swatch: model.kinds.drill.context.map { context in
+                    Color(rgb: model.kinds.catalog.rgb(forKindID: context.kind.id))
                 },
                 backHelp: "Back to file kinds",
-                isLoading: model.kinds.isFileListLoading,
-                visibleIDs: model.kinds.fileListVisibleIDs,
-                totalMatches: model.kinds.fileListTotalMatches,
-                filterText: $kinds.fileListFilterText,
+                isLoading: model.kinds.drill.isLoading,
+                visibleIDs: model.kinds.drill.visibleIDs,
+                totalMatches: model.kinds.drill.totalMatches,
+                filterText: $drill.filterText,
                 onClose: { model.kinds.closeFileList() }
             )
         } else {
@@ -66,13 +66,19 @@ struct KindStatsPane: View {
                 Spacer()
             } else {
                 List(model.kinds.catalog.stats) { stat in
-                    KindStatRow(stat: stat, totalSize: totalSize)
-                        .listRowSeparator(.hidden)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            model.kinds.openFileList(for: stat)
-                        }
-                        .help("Show every file of this kind")
+                    StatsLegendRow(
+                        swatch: stat.color,
+                        name: LocalizedStringKey(stat.kind.displayName),
+                        fileCount: stat.fileCount,
+                        totalAllocatedSize: stat.totalAllocatedSize,
+                        totalSize: totalSize
+                    )
+                    .listRowSeparator(.hidden)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        model.kinds.openFileList(for: stat)
+                    }
+                    .help("Show every file of this kind")
                 }
                 .environment(\.defaultMinListRowHeight, 20)
             }
@@ -81,43 +87,5 @@ struct KindStatsPane: View {
 
     private var totalSize: Int64 {
         model.coordinator.snapshot?.aggregateStats.totalAllocatedSize ?? 0
-    }
-}
-
-private struct KindStatRow: View {
-    let stat: FileKindStat
-    let totalSize: Int64
-
-    var body: some View {
-        HStack(spacing: 6) {
-            RoundedRectangle(cornerRadius: 2)
-                .fill(stat.color)
-                .frame(width: 12, height: 12)
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text(LocalizedStringKey(stat.kind.displayName))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Text("\(stat.fileCount.formatted()) files")
-                    .foregroundStyle(.secondary)
-                    .font(.system(size: 10))
-            }
-
-            Spacer(minLength: 8)
-
-            VStack(alignment: .trailing, spacing: 1) {
-                Text(NeodiskFormatters.size(stat.totalAllocatedSize))
-                    .monospacedDigit()
-                if let percent = NeodiskFormatters.percentage(
-                    part: stat.totalAllocatedSize, total: totalSize
-                ) {
-                    Text(percent)
-                        .foregroundStyle(.secondary)
-                        .font(.system(size: 10))
-                        .monospacedDigit()
-                }
-            }
-        }
-        .font(.system(size: 12))
     }
 }

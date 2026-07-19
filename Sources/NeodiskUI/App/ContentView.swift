@@ -45,66 +45,9 @@ public struct ContentView: View {
             if !preferences.hasSeenWelcome {
                 model.showWelcomeSheet = true
             }
-            // Dev/testing hook: NEODISK_AUTOSCAN=<path> scans on launch. A
-            // connected cloud account's target ID (cloudscan://…) works too,
-            // composing with NEODISK_CLOUD_FIXTURE for headless cloud runs.
-            if let path = ProcessInfo.processInfo.environment["NEODISK_AUTOSCAN"],
-               model.coordinator.phase == .idle {
-                if let cloudTarget = model.cloudAccounts.accounts.first(where: { $0.id == path }) {
-                    model.startScan(cloudTarget)
-                } else {
-                    model.startScan(ScanTarget(url: URL(filePath: path, directoryHint: .isDirectory)))
-                }
-                // Dev/bench hook: NEODISK_BENCH_RESCANS drives repeated in-app
-                // rescans of the just-started scan to measure felt rescan cost
-                // with the baseline in memory (no relaunch/decode).
-                BenchRescanDriver.shared.startIfRequested(model: model)
-            }
-            // Dev/testing hook: NEODISK_ANALYSIS_TAB=<kinds|largest|age|duplicates>
-            // opens that statistics tab, so headless snapshots can capture
-            // any tab.
-            if let rawTab = ProcessInfo.processInfo.environment["NEODISK_ANALYSIS_TAB"],
-               let tab = AnalysisTab(rawValue: rawTab) {
-                model.analysisTab = tab
-            }
-            // Dev/testing hook: NEODISK_VIZ_MODE=<treemap|sunburst> picks the
-            // center visualization without persisting a preference, so
-            // headless snapshots can capture either view.
-            if let rawMode = ProcessInfo.processInfo.environment["NEODISK_VIZ_MODE"],
-               let mode = VizViewMode(rawValue: rawMode) {
-                model.vizViewMode = mode
-            }
-            // Dev/testing hook: NEODISK_TREEMAP_STYLE=<cushion|flat> picks
-            // the treemap style without persisting the preference, so
-            // headless snapshots can capture either style.
-            if let rawStyle = ProcessInfo.processInfo.environment["NEODISK_TREEMAP_STYLE"],
-               let style = TreemapStyle(rawValue: rawStyle) {
-                model.treemapStyle = style
-            }
-            // Dev/testing hook: NEODISK_UPDATE_STATE=<checking|available|
-            // downloading|readyToInstall|upToDate|failed> forces the update
-            // pill into a non-idle state at launch (with inert closures), so
-            // headless snapshots can capture the toolbar indicator without a
-            // live Sparkle check.
-            if let rawUpdate = ProcessInfo.processInfo.environment["NEODISK_UPDATE_STATE"],
-               let forced = UpdateState.devState(named: rawUpdate) {
-                updates.viewModel.state = forced
-            }
-            // Dev/testing hook: NEODISK_AUTOREVEAL=<path> selects that node
-            // once it is scanned, expanding its ancestors in the outline —
-            // lets headless snapshots exercise deep trees and the
-            // external-selection reveal path.
-            if let revealPath = ProcessInfo.processInfo.environment["NEODISK_AUTOREVEAL"] {
-                Task { @MainActor in
-                    for _ in 0..<60 {
-                        try? await Task.sleep(for: .milliseconds(500))
-                        if let node = Self.findNode(at: revealPath, in: model) {
-                            model.select(node.id)
-                            break
-                        }
-                    }
-                }
-            }
+            // NEODISK_* launch env hooks (autoscan, forced tab/view/style/
+            // update state, autoreveal) — inert unless set. See DevLaunchHooks.
+            DevLaunchHooks.apply(model: model, updates: updates)
         }
         .onDisappear {
             updates.viewModel.hostDidDisappear()
@@ -162,21 +105,6 @@ public struct ContentView: View {
         case .failed:
             ScanFailedView(model: model)
         }
-    }
-
-    /// Walks the scanned tree down to the node whose path matches, for the
-    /// NEODISK_AUTOREVEAL dev hook.
-    private static func findNode(at path: String, in model: NeodiskViewModel) -> FileNodeRecord? {
-        guard let store = model.store else { return nil }
-        var node = store.root
-        while node.path != path {
-            guard let child = store.children(of: node.id)
-                .first(where: { path.hasPrefix($0.path + "/") || path == $0.path }) else {
-                return nil
-            }
-            node = child
-        }
-        return node
     }
 
     private var windowTitle: String {

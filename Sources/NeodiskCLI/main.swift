@@ -206,13 +206,6 @@ func printChildren(
     }
 }
 
-extension Int64 {
-    func addingClamped(_ other: Int64) -> Int64 {
-        let (sum, overflow) = addingReportingOverflow(other)
-        return overflow ? (other > 0 ? .max : .min) : sum
-    }
-}
-
 // MARK: - JSON output
 
 struct JSONNode: Encodable {

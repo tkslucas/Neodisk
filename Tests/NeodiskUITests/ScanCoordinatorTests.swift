@@ -17,7 +17,7 @@ import NeodiskKit
         #expect(coordinator.phase == .scanning)
         #expect(coordinator.selectedTarget == target)
         #expect(coordinator.snapshot == nil)
-        #expect(coordinator.fileTreeStore == nil)
+        #expect(coordinator.snapshot?.treeStore == nil)
         #expect(service.requests.map(\.target) == [target])
 
         service.yield(.progress(makeCoordinatorMetrics(path: "/scan/root/a.txt", filesVisited: 1)), scanIndex: 0)
@@ -33,9 +33,9 @@ import NeodiskKit
         }
 
         #expect(coordinator.snapshot?.target == target)
-        #expect(coordinator.fileTreeStore?.root.id == snapshot.root.id)
+        #expect(coordinator.snapshot?.treeStore.root.id == snapshot.root.id)
         #expect(abs((coordinator.scanMetrics.progressFraction) - (1)) <= 0.0001)
-        #expect(!(coordinator.canStopScan))
+        #expect(!(coordinator.isScanning))
         #expect(coordinator.canRescan)
     }
 
@@ -52,7 +52,7 @@ import NeodiskKit
         #expect(coordinator.phase == .displaying)
         #expect(coordinator.selectedTarget == target)
         #expect(coordinator.snapshot?.target == target)
-        #expect(coordinator.fileTreeStore?.root.id == snapshot.root.id)
+        #expect(coordinator.snapshot?.treeStore.root.id == snapshot.root.id)
         #expect(abs((coordinator.scanMetrics.progressFraction) - (1)) <= 0.0001)
     }
 
@@ -75,8 +75,8 @@ import NeodiskKit
 
         #expect(coordinator.phase == .idle)
         #expect(coordinator.snapshot == nil)
-        #expect(coordinator.fileTreeStore == nil)
-        #expect(!(coordinator.canStopScan))
+        #expect(coordinator.snapshot?.treeStore == nil)
+        #expect(!(coordinator.isScanning))
     }
 
     @MainActor
@@ -324,7 +324,7 @@ import NeodiskKit
         #expect(!(updatedNode.isAutoSummarized))
         #expect(updatedSnapshot.treeStore.children(of: summarizedNode.id).map(\.id) == [expandedFile.id])
         #expect(updatedSnapshot.scanWarnings.map(\.path) == [existingWarning.path, expansionWarning.path])
-        #expect(coordinator.fileTreeStore?.root.id == root.id)
+        #expect(coordinator.snapshot?.treeStore.root.id == root.id)
         #expect(coordinator.expandingNodeID == nil)
     }
 
@@ -442,92 +442,6 @@ import NeodiskKit
         coordinator.stopScan()
     }
 
-    @MainActor
-    @Test func testRemovingLargeSubtreeFromCurrentSnapshotUsesTransformService() async throws {
-        let service = ControlledScanService()
-        let transformService = RecordingSnapshotTransformService()
-        let coordinator = ScanCoordinator(
-            scanService: service,
-            snapshotTransformService: transformService,
-            progressThrottleDuration: .milliseconds(40)
-        )
-        let target = makeCoordinatorTarget("/root")
-        let removedFiles = (0..<600).map { index in
-            makeTestFileNode(
-                id: "/root/cache/file-\(index).dat",
-                name: "file-\(index).dat",
-                size: 1
-            )
-        }
-        let removedDirectory = makeTestDirectoryNode(id: "/root/cache", name: "cache", children: removedFiles)
-        let sibling = makeTestFileNode(id: "/root/readme.txt", name: "readme.txt", size: 25)
-        let root = makeTestDirectoryNode(id: "/root", name: "root", children: [removedDirectory, sibling])
-        let store = FileTreeStore(root: root, childrenByID: [
-            root.id: [removedDirectory, sibling],
-            removedDirectory.id: removedFiles,
-        ])
-        let snapshot = makeCoordinatorSnapshot(target: target, root: root, store: store)
-        coordinator.replaceCurrentSnapshot(snapshot)
-
-        let didRemove = await coordinator.removeNodeFromCurrentSnapshot(id: removedDirectory.id)
-        let recordedRemovingNodeIDs = await transformService.recordedRemovingNodeIDs()
-
-        #expect(didRemove)
-        #expect(recordedRemovingNodeIDs == [removedDirectory.id])
-        #expect(coordinator.snapshot?.treeStore.node(id: removedDirectory.id) == nil)
-        #expect(coordinator.snapshot?.aggregateStats.fileCount == 1)
-        #expect(coordinator.fileTreeStore?.children(of: root.id).map(\.id) == [sibling.id])
-    }
-
-}
-
-private actor RecordingSnapshotTransformService: ScanSnapshotTransforming {
-    private var removingNodeIDs: [String] = []
-
-    func recordedRemovingNodeIDs() -> [String] {
-        removingNodeIDs
-    }
-
-    func replacingNode(
-        in snapshot: ScanSnapshot,
-        id targetID: String,
-        with replacement: FileTreeStore,
-        additionalWarnings: [ScanWarning]
-    ) async throws -> ScanSnapshot? {
-        try snapshot.replacingNode(
-            id: targetID,
-            with: replacement,
-            additionalWarnings: additionalWarnings,
-            cancellationCheck: {
-                try Task.checkCancellation()
-            }
-        )
-    }
-
-    func removingNode(
-        in snapshot: ScanSnapshot,
-        id targetID: String
-    ) async throws -> ScanSnapshot? {
-        removingNodeIDs.append(targetID)
-        return try snapshot.removingNode(
-            id: targetID,
-            cancellationCheck: {
-                try Task.checkCancellation()
-            }
-        )
-    }
-
-    func scopedSnapshot(
-        _ snapshot: ScanSnapshot,
-        to target: ScanTarget
-    ) async throws -> ScanSnapshot? {
-        try snapshot.scoped(
-            to: target,
-            cancellationCheck: {
-                try Task.checkCancellation()
-            }
-        )
-    }
 }
 
 

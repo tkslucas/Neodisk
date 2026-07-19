@@ -130,31 +130,31 @@ extension SunburstLayout {
                 rgb = FileKindCatalog.directoryRGB
             }
         }
+        // Only .kind and .age reach here (.branch returns above), so the
+        // highlight-match predicate is shared with the treemap unchanged —
+        // map this mode onto the treemap's for the one .age case it reads.
         if let highlight = style.highlight,
-           !matches(node, highlight: highlight, mode: style.mode, catalog: style.catalog) {
+           !TreemapScene.matches(
+               node,
+               highlight: highlight,
+               colorMode: style.mode.treemapColorMode,
+               catalog: style.catalog
+           ) {
             rgb = TreemapScene.dimmedRGB(rgb)
         }
         return rgb
     }
+}
 
-    /// Whether a node stays at full color under an active highlight — the
-    /// same semantics as the treemap's: an age-bucket highlight needs the
-    /// `.age` mode's reference date; with any other mode it matches nothing.
-    private nonisolated static func matches(
-        _ node: FileNodeRecord,
-        highlight: TreemapHighlight,
-        mode: SunburstColorStyle.Mode,
-        catalog: FileKindCatalog
-    ) -> Bool {
-        switch highlight {
-        case .kind(let kindID):
-            return FileKindClassifier.kindID(for: node, mode: catalog.mode) == kindID
-        case .ageBucket(let bucket):
-            guard case .age(let referenceDate) = mode,
-                  FileKindClassifier.isLeafLike(node) else { return false }
-            return AgeBucket.bucket(for: node.lastModified, reference: referenceDate) == bucket
-        case .nodes(let ids):
-            return ids.contains(node.id)
+private extension SunburstColorStyle.Mode {
+    /// The treemap color mode this maps to, so both visualizations share one
+    /// highlight-match predicate (`TreemapScene.matches`). Only the `.age`
+    /// reference date is load-bearing there; `.branch` never reaches the
+    /// predicate, so it collapses to `.kind` like any non-age mode.
+    var treemapColorMode: TreemapColorMode {
+        switch self {
+        case .age(let referenceDate): return .age(referenceDate: referenceDate)
+        case .kind, .branch: return .kind
         }
     }
 }

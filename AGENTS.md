@@ -145,6 +145,8 @@ Sources/
 │   ├── Models/      #   scan targets, node records, tree store, snapshots
 │   └── Services/    #   ScanEngine, snapshot cache, formatters, dedup
 ├── TreemapKit/      # Pure treemap geometry and cushion rasterizer
+├── SunburstCore/    # Pure sunburst layout, ring metrics, hit-testing
+├── CloudScanKit/    # Cloud-drive scanning: OAuth stack + providers
 └── NeodiskCLI/      # diskscan — reference CLI consumer of the core
 Localization/        # <lang>.lproj string catalogs (bundled into the .app)
 Packaging/           # Info.plist and app resources

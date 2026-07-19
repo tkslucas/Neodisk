@@ -15,11 +15,6 @@ import NeodiskKit
 @MainActor
 @Observable
 final class KindStatsModel {
-    /// Cap for browsing a kind with no filter typed — SwiftUI's List
-    /// degrades with hundreds of thousands of rows; the tail is reachable
-    /// via search.
-    static let fileBrowseLimit = 3_000
-
     private(set) var catalog: FileKindCatalog = .empty
     /// Whether kind statistics (and treemap colors) group by extension or by
     /// broad category. Switching rebuilds the catalog.
@@ -55,39 +50,31 @@ final class KindStatsModel {
 
     // MARK: Kind file list
 
-    /// A kind the user drilled into from the stats pane: every countable
-    /// node of that kind, largest first. Read-only navigation — clicking a
-    /// row selects the node in the outline and treemap.
-    struct FileList: Sendable {
+    /// The subject of an open kind drill-in: the kind and the grouping mode it
+    /// was opened under, so a highlight left over from a stale mode is
+    /// dropped while a catalog rebuild is in flight.
+    struct DrillContext: Sendable {
         let kind: FileKind
         let mode: FileKindDisplayMode
-        /// Sorted by allocated size descending.
-        let entries: [FileSearchEntry]
     }
 
-    private(set) var fileList: FileList?
+    /// The drill-in list for one kind ("where are all my videos"): every
+    /// countable node of that kind, largest first. Read-only navigation —
+    /// clicking a row selects the node in the outline and treemap. Shares its
+    /// engine with the Age tab.
+    let drill: StatsDrillInList<DrillContext>
+
     /// Kind lit up on the treemap while a drill-in list is open: matching
-    /// cells keep their color, everything else dims. Derived, so it clears
-    /// with closeFileList (mode switches, snapshot changes). The mode
-    /// guard drops a stale highlight while a catalog rebuild is in flight.
+    /// cells keep their color, everything else dims. Derived from the open
+    /// list, so it clears when the list closes (mode switches, snapshot
+    /// changes). The mode guard drops a stale highlight while a catalog
+    /// rebuild is in flight.
     var highlightedKindID: String? {
-        guard let list = fileList, list.mode == catalog.mode else { return nil }
-        return list.kind.id
-    }
-    private(set) var isFileListLoading = false
-    private(set) var fileListVisibleIDs: [String] = []
-    private(set) var fileListTotalMatches = 0
-    var fileListFilterText = "" {
-        didSet {
-            guard fileListFilterText != oldValue else { return }
-            scheduleFileListFilter()
-        }
+        guard let context = drill.context, context.mode == catalog.mode else { return nil }
+        return context.kind.id
     }
 
     @ObservationIgnored private let coordinator: ScanCoordinator
-    @ObservationIgnored private let indexService: SearchIndexService
-    @ObservationIgnored private var fileListBuildTask: Task<Void, Never>?
-    @ObservationIgnored private let fileListFilterDebouncer = SearchDebouncer()
     @ObservationIgnored private var catalogCache: [FileKindDisplayMode: FileKindCatalog] = [:]
     @ObservationIgnored private var catalogBuildTask: Task<Void, Never>?
     /// Persisted stats loaded ahead of a snapshot restore, waiting for the
@@ -96,16 +83,13 @@ final class KindStatsModel {
     /// Persisted stats proven to match the displayed snapshot: catalog
     /// rebuilds (grouping mode, palette) skip the O(nodes) pass while set.
     @ObservationIgnored private var activeSeed: KindStatsSidecar?
-    @ObservationIgnored private var lastCatalogBuildTime: ContinuousClock.Instant?
-    /// Rebuild throttle while partials stream in: at least the base
-    /// interval, and never more than ~10% of the time spent building —
-    /// the same cost × N adaptation as partial-tree emission.
-    @ObservationIgnored private var catalogRebuildInterval: Duration = KindStatsModel.catalogRebuildBaseInterval
-    private static let catalogRebuildBaseInterval: Duration = .seconds(1.5)
+    /// Rebuild throttle while partials stream in — the same adaptive interval
+    /// as the age catalog.
+    @ObservationIgnored private var rebuildThrottle = CatalogRebuildThrottle()
 
     init(coordinator: ScanCoordinator, indexService: SearchIndexService) {
         self.coordinator = coordinator
-        self.indexService = indexService
+        self.drill = StatsDrillInList(indexService: indexService)
     }
 
     /// Clears the displayed catalog before a new scan or snapshot takes the
@@ -137,7 +121,7 @@ final class KindStatsModel {
         guard let snapshot else {
             catalogBuildTask?.cancel()
             catalog = .empty
-            lastCatalogBuildTime = nil
+            rebuildThrottle.reset()
             return
         }
 
@@ -155,12 +139,8 @@ final class KindStatsModel {
             activeSeed = nil
         }
 
-        if !snapshot.isComplete,
-           let lastCatalogBuildTime,
-           ContinuousClock.now - lastCatalogBuildTime < catalogRebuildInterval {
-            return
-        }
-        lastCatalogBuildTime = ContinuousClock.now
+        if !snapshot.isComplete, rebuildThrottle.shouldSkip() { return }
+        rebuildThrottle.noteBuildStarted()
         rebuildCatalog(from: snapshot.treeStore)
     }
 
@@ -179,7 +159,7 @@ final class KindStatsModel {
             }.value
             let buildDuration = ContinuousClock.now - buildStart
             guard !Task.isCancelled, let self else { return }
-            self.catalogRebuildInterval = max(Self.catalogRebuildBaseInterval, buildDuration * 10)
+            self.rebuildThrottle.noteBuildDuration(buildDuration)
             self.catalog = catalog
             self.catalogCache[mode] = catalog
         }
@@ -194,55 +174,12 @@ final class KindStatsModel {
         guard let snapshot = coordinator.snapshot else { return }
         let mode = displayMode
         let kind = stat.kind
-        fileListFilterText = ""
-        isFileListLoading = true
-        fileListBuildTask?.cancel()
-        fileListBuildTask = Task { [weak self, indexService] in
-            let index = await indexService.index(for: snapshot)
-            let entries = await Task.detached(priority: .userInitiated) {
-                index.entries.filter { $0.isKindCountable && $0.kindID(for: mode) == kind.id }
-            }.value
-            guard let self, !Task.isCancelled else { return }
-            self.isFileListLoading = false
-            self.fileList = FileList(kind: kind, mode: mode, entries: entries)
-            self.fileListVisibleIDs = entries.prefix(Self.fileBrowseLimit).map(\.id)
-            self.fileListTotalMatches = entries.count
+        drill.open(context: DrillContext(kind: kind, mode: mode), snapshot: snapshot) { entry in
+            entry.isKindCountable && entry.kindID(for: mode) == kind.id
         }
     }
 
     func closeFileList() {
-        fileListBuildTask?.cancel()
-        fileListFilterDebouncer.cancel()
-        fileList = nil
-        isFileListLoading = false
-        fileListFilterText = ""
-        fileListVisibleIDs = []
-        fileListTotalMatches = 0
-    }
-
-    private func scheduleFileListFilter() {
-        fileListFilterDebouncer.cancel()
-        guard let list = fileList else { return }
-        let query = fileListFilterText.trimmingCharacters(in: .whitespaces)
-        guard !query.isEmpty else {
-            fileListVisibleIDs = list.entries.prefix(Self.fileBrowseLimit).map(\.id)
-            fileListTotalMatches = list.entries.count
-            return
-        }
-        let limit = Self.fileBrowseLimit
-        fileListFilterDebouncer.schedule { [weak self] in
-            let entries = list.entries
-            let results = await Task.detached(priority: .userInitiated) {
-                // Order-preserving on purpose: this list ranks by size, and
-                // the filter narrows that ranking.
-                FuzzyMatcher.matchesInEntryOrder(query: query, entries: entries, limit: limit)
-            }.value
-            guard let self, !Task.isCancelled,
-                  self.fileListFilterText.trimmingCharacters(in: .whitespaces) == query else {
-                return
-            }
-            self.fileListVisibleIDs = results.ids
-            self.fileListTotalMatches = results.totalMatches
-        }
+        drill.close()
     }
 }

@@ -57,15 +57,10 @@ struct SunburstInteractionOverlay: NSViewRepresentable {
         var help: (CGPoint) -> String? = { _ in nil }
 
         private static let dragThreshold: CGFloat = 3
-        /// Accumulated |magnification| that commits a drill; a full
-        /// deliberate pinch sums to ~1, so this triggers well before the
-        /// fingers finish without firing on trackpad noise.
-        private static let pinchDrillThreshold: CGFloat = 0.1
         private var trackingArea: NSTrackingArea?
         private var mouseDownLocation: CGPoint?
         private var didDrag = false
-        private var pinchMagnification: CGFloat = 0
-        private var didPinchDrill = false
+        private var pinchRecognizer = PinchDrillRecognizer()
 
         override var isFlipped: Bool {
             true
@@ -135,32 +130,22 @@ struct SunburstInteractionOverlay: NSViewRepresentable {
             contextMenu(eventLocation(event))
         }
 
-        /// One drill per pinch gesture: magnification accumulates from the
-        /// gesture's start and the first threshold crossing commits (latched
-        /// until the fingers lift), so a long pinch cannot tunnel through
-        /// several levels at once.
+        /// One drill per pinch gesture (see PinchDrillRecognizer): the first
+        /// threshold crossing commits and latches until the fingers lift, so a
+        /// long pinch cannot tunnel through several levels at once.
         override func magnify(with event: NSEvent) {
             if event.phase == .began {
-                pinchMagnification = 0
-                didPinchDrill = false
+                pinchRecognizer.begin()
             }
 
-            pinchMagnification += event.magnification
-
             if event.phase == .ended || event.phase == .cancelled {
-                pinchMagnification = 0
-                didPinchDrill = false
+                pinchRecognizer.end()
                 return
             }
 
-            guard !didPinchDrill,
-                  abs(pinchMagnification) >= Self.pinchDrillThreshold else { return }
-
-            didPinchDrill = true
-            onPinchDrill(
-                eventLocation(event),
-                pinchMagnification > 0 ? .drillIn : .drillOut
-            )
+            if let direction = pinchRecognizer.accumulate(event.magnification) {
+                onPinchDrill(eventLocation(event), direction)
+            }
         }
 
         private func updateHelp(at location: CGPoint) {

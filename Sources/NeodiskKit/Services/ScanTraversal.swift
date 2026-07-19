@@ -205,7 +205,6 @@ nonisolated final class ScanTraversal {
             url: target.url,
             metadata: rootMetadata,
             options: options,
-            workerLimit: atomicSummaryWorkerLimit,
             exclusionMatcher: exclusionMatcher,
             cancellationCheck: cancellationCheck,
             metrics: &metrics,
@@ -456,7 +455,6 @@ nonisolated final class ScanTraversal {
                             url: taskItem.url,
                             metadata: taskMetadata,
                             options: options,
-                            workerLimit: summaryWorkerLimit,
                             exclusionMatcher: exclusionMatcher,
                             cancellationCheck: cancellationCheck,
                             metrics: &localMetrics,
@@ -489,7 +487,6 @@ nonisolated final class ScanTraversal {
                             isNodeDependencyLayout: candidate.isNodeDependencyLayout,
                             minFileCount: autoSummarizeMinFileCount,
                             maxAverageFileSize: autoSummarizeMaxAverageFileSize,
-                            workerLimit: summaryWorkerLimit,
                             exclusionMatcher: exclusionMatcher,
                             cancellationCheck: cancellationCheck,
                             metrics: &localMetrics,
@@ -642,7 +639,6 @@ nonisolated final class ScanTraversal {
             url: item.url,
             metadata: meta,
             options: options,
-            workerLimit: atomicSummaryWorkerLimit,
             exclusionMatcher: exclusionMatcher,
             cancellationCheck: cancellationCheck,
             metrics: &metrics,
@@ -1062,25 +1058,6 @@ nonisolated final class ScanTraversal {
 
     // MARK: - Leaf construction
 
-    private func makeUnavailableNode(for url: URL, isDirectory: Bool) -> FileNodeRecord {
-        FileNodeRecord(
-            id: url.path,
-            url: url,
-            name: ScanTarget.displayName(for: url),
-            isDirectory: isDirectory,
-            isSymbolicLink: false,
-            allocatedSize: 0,
-            logicalSize: 0,
-            descendantFileCount: 0,
-            lastModified: nil,
-            isPackage: false,
-            isAccessible: false,
-            isSelfAccessible: false,
-            isSynthetic: false,
-            isAutoSummarized: false
-        )
-    }
-
     // MARK: - Metrics & event helpers
 
     private func applyLeafMetrics(_ node: FileNodeRecord, weight: Double) {
@@ -1168,7 +1145,7 @@ nonisolated final class ScanTraversal {
         maybeEmitProgress()
 
         completedByKey[itemKey] = CompletedDirScan(
-            node: makeUnavailableNode(for: item.url, isDirectory: isDirectory),
+            node: FileNodeRecord.inaccessible(path: item.url.path, isDirectory: isDirectory),
             metadata: NodeMetadata(
                 isDirectory: isDirectory,
                 isPackage: false,

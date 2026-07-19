@@ -13,11 +13,6 @@ public protocol ScanSnapshotTransforming: Sendable {
         additionalWarnings: [ScanWarning]
     ) async throws -> ScanSnapshot?
 
-    func removingNode(
-        in snapshot: ScanSnapshot,
-        id targetID: String
-    ) async throws -> ScanSnapshot?
-
     func scopedSnapshot(
         _ snapshot: ScanSnapshot,
         to target: ScanTarget
@@ -37,18 +32,6 @@ public actor ScanSnapshotTransformService {
             id: targetID,
             with: replacement,
             additionalWarnings: additionalWarnings,
-            cancellationCheck: {
-                try Task.checkCancellation()
-            }
-        )
-    }
-
-    public func removingNode(
-        in snapshot: ScanSnapshot,
-        id targetID: String
-    ) async throws -> ScanSnapshot? {
-        try snapshot.removingNode(
-            id: targetID,
             cancellationCheck: {
                 try Task.checkCancellation()
             }

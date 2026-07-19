@@ -164,12 +164,6 @@ final class ScanCoordinator {
         self.progress = progress
     }
 
-    /// Always the displayed snapshot's tree — the two were separate
-    /// published properties set together at every site.
-    var fileTreeStore: FileTreeStore? {
-        snapshot?.treeStore
-    }
-
     var scanMetrics: ScanMetrics {
         get { progress.metrics }
         set { progress.metrics = newValue }
@@ -181,10 +175,6 @@ final class ScanCoordinator {
 
     var canRescan: Bool {
         selectedTarget != nil && !isScanning && phase != .restoring
-    }
-
-    var canStopScan: Bool {
-        isScanning
     }
 
     var snapshotSource: ScanSnapshotSource {
@@ -437,40 +427,6 @@ final class ScanCoordinator {
         metrics.recalculateProgress(isComplete: true)
         scanMetrics = metrics
         phase = .displaying
-    }
-
-    @discardableResult
-    func removeNodeFromCurrentSnapshot(id nodeID: FileNodeRecord.ID) async -> Bool {
-        guard let currentSnapshot = snapshot else { return false }
-        let currentSnapshotID = currentSnapshot.id
-
-        if let expandingNodeID,
-           currentSnapshot.treeStore.isAncestor(nodeID, of: expandingNodeID) {
-            cancelExpansion()
-        }
-
-        do {
-            guard let updatedSnapshot = try await snapshotTransformService.removingNode(
-                in: currentSnapshot,
-                id: nodeID
-            ) else { return false }
-            try Task.checkCancellation()
-            guard snapshot?.id == currentSnapshotID else { return false }
-
-            snapshot = updatedSnapshot
-            completedScanSnapshot = nil
-            if !isScanning {
-                phase = .displaying
-            }
-            return true
-        } catch is CancellationError {
-            return false
-        } catch {
-            FileHandle.standardError.write(
-                Data("Neodisk: removing \(nodeID) from the current snapshot failed: \(error)\n".utf8)
-            )
-            return false
-        }
     }
 
     /// Scans an auto-summarized folder's or a package's real contents and

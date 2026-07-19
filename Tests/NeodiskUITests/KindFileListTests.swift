@@ -36,23 +36,23 @@ import NeodiskKit
             rgb: SIMD3(0, 0, 1)
         )
         model.kinds.openFileList(for: videoStat)
-        try await waitUntil("kind file list built") { model.kinds.fileList != nil }
+        try await waitUntil("kind file list built") { model.kinds.drill.context != nil }
 
         // Unfiltered: every video, largest first.
-        #expect(model.kinds.fileListVisibleIDs == [movie.id, clip.id])
-        #expect(model.kinds.fileListTotalMatches == 2)
+        #expect(model.kinds.drill.visibleIDs == [movie.id, clip.id])
+        #expect(model.kinds.drill.totalMatches == 2)
 
         // Case-insensitive fuzzy search, debounced.
-        model.kinds.fileListFilterText = "CLIP"
+        model.kinds.drill.filterText = "CLIP"
         try await waitUntil("filtered results published") {
-            model.kinds.fileListVisibleIDs == [clip.id]
+            model.kinds.drill.visibleIDs == [clip.id]
         }
-        #expect(model.kinds.fileListTotalMatches == 1)
+        #expect(model.kinds.drill.totalMatches == 1)
 
         // Clearing restores the size-ordered browse view.
-        model.kinds.fileListFilterText = ""
+        model.kinds.drill.filterText = ""
         try await waitUntil("browse view restored") {
-            model.kinds.fileListVisibleIDs == [movie.id, clip.id]
+            model.kinds.drill.visibleIDs == [movie.id, clip.id]
         }
 
         // Selecting from the list reveals the row in the outline.
@@ -61,9 +61,9 @@ import NeodiskKit
         #expect(model.expandedNodeIDs.contains(root.id))
 
         model.kinds.closeFileList()
-        #expect(model.kinds.fileList == nil)
-        #expect(model.kinds.fileListFilterText.isEmpty)
-        #expect(model.kinds.fileListVisibleIDs.isEmpty)
+        #expect(model.kinds.drill.context == nil)
+        #expect(model.kinds.drill.filterText.isEmpty)
+        #expect(model.kinds.drill.visibleIDs.isEmpty)
     }
 
     @Test func testOutlineSearchFiltersWholeScanWithoutNavigating() async throws {

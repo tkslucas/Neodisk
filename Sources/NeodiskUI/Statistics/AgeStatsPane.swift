@@ -27,17 +27,17 @@ struct AgeStatsPane: View {
 
     @ViewBuilder
     private var content: some View {
-        if model.ages.fileList != nil || model.ages.isFileListLoading {
-            @Bindable var ages = model.ages
+        if model.ages.drill.isActive {
+            @Bindable var drill = model.ages.drill
             StatsFileListView(
                 model: model,
-                title: model.ages.fileList?.bucket.displayName,
-                swatch: model.ages.fileList.map { model.vizPalette.ageColor($0.bucket) },
+                title: model.ages.drill.context?.displayName,
+                swatch: model.ages.drill.context.map { model.vizPalette.ageColor($0) },
                 backHelp: "Back to age groups",
-                isLoading: model.ages.isFileListLoading,
-                visibleIDs: model.ages.fileListVisibleIDs,
-                totalMatches: model.ages.fileListTotalMatches,
-                filterText: $ages.fileListFilterText,
+                isLoading: model.ages.drill.isLoading,
+                visibleIDs: model.ages.drill.visibleIDs,
+                totalMatches: model.ages.drill.totalMatches,
+                filterText: $drill.filterText,
                 onClose: { model.ages.closeFileList() }
             )
         } else {
@@ -65,13 +65,19 @@ struct AgeStatsPane: View {
                 Spacer()
             } else {
                 List(model.ages.catalog.stats) { stat in
-                    AgeStatRow(stat: stat, totalSize: totalSize, palette: model.vizPalette)
-                        .listRowSeparator(.hidden)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            model.ages.openFileList(for: stat)
-                        }
-                        .help("Show every file modified in this period")
+                    StatsLegendRow(
+                        swatch: model.vizPalette.ageColor(stat.bucket),
+                        name: LocalizedStringKey(stat.bucket.displayName),
+                        fileCount: stat.fileCount,
+                        totalAllocatedSize: stat.totalAllocatedSize,
+                        totalSize: totalSize
+                    )
+                    .listRowSeparator(.hidden)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        model.ages.openFileList(for: stat)
+                    }
+                    .help("Show every file modified in this period")
                 }
                 .environment(\.defaultMinListRowHeight, 20)
             }
@@ -80,44 +86,5 @@ struct AgeStatsPane: View {
 
     private var totalSize: Int64 {
         model.coordinator.snapshot?.aggregateStats.totalAllocatedSize ?? 0
-    }
-}
-
-private struct AgeStatRow: View {
-    let stat: AgeStat
-    let totalSize: Int64
-    let palette: VizPalette
-
-    var body: some View {
-        HStack(spacing: 6) {
-            RoundedRectangle(cornerRadius: 2)
-                .fill(palette.ageColor(stat.bucket))
-                .frame(width: 12, height: 12)
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text(LocalizedStringKey(stat.bucket.displayName))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Text("\(stat.fileCount.formatted()) files")
-                    .foregroundStyle(.secondary)
-                    .font(.system(size: 10))
-            }
-
-            Spacer(minLength: 8)
-
-            VStack(alignment: .trailing, spacing: 1) {
-                Text(NeodiskFormatters.size(stat.totalAllocatedSize))
-                    .monospacedDigit()
-                if let percent = NeodiskFormatters.percentage(
-                    part: stat.totalAllocatedSize, total: totalSize
-                ) {
-                    Text(percent)
-                        .foregroundStyle(.secondary)
-                        .font(.system(size: 10))
-                        .monospacedDigit()
-                }
-            }
-        }
-        .font(.system(size: 12))
     }
 }

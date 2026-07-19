@@ -2,11 +2,9 @@
 //  GoogleDriveProvider.swift
 //  Neodisk
 //
-//  The Google Drive CloudProvider. M2 lands the OAuth + identity + credential
-//  storage half: authorize() runs the loopback flow, reads the account
-//  identity from the Drive `about` endpoint, and persists credentials.
-//  Enumeration (quota / rootFolderID / listAllFiles) arrives in M3 and throws
-//  a clear "not implemented yet" until then.
+//  The Google Drive CloudProvider: authorize() runs the loopback flow, reads
+//  the account identity from the Drive `about` endpoint, and persists
+//  credentials; enumeration covers quota, rootFolderID, and listAllFiles.
 //
 
 import Foundation

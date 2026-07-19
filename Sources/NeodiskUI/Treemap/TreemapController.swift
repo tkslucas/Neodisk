@@ -64,13 +64,9 @@ final class TreemapController {
     private var gestureStartScale: CGFloat = 1
     private var gestureNetMagnification: CGFloat = 1
 
-    /// Flat style has no viewport zoom: a pinch drills instead, one level
-    /// per gesture. Accumulated net magnification since the gesture began;
-    /// the first crossing of the threshold commits and latches (mirrors
-    /// SunburstInteractionOverlay).
-    private static let flatPinchDrillThreshold: CGFloat = 0.1
-    private var flatPinchAccumulation: CGFloat = 0
-    private var didFlatPinchDrill = false
+    /// Flat style has no viewport zoom: a pinch drills instead, one level per
+    /// gesture (the shared "one drill per pinch" latch).
+    private var flatPinchRecognizer = PinchDrillRecognizer()
 
     /// Flat-style drill morph: a root change within one snapshot animates —
     /// drilling in, the new map grows out of the container's former
@@ -287,8 +283,7 @@ final class TreemapController {
     }
 
     func beginMagnify() {
-        flatPinchAccumulation = 0
-        didFlatPinchDrill = false
+        flatPinchRecognizer.begin()
         gestureStartScale = viewport.scale
         gestureNetMagnification = 1
         gestureIdleResetTask?.cancel()
@@ -301,14 +296,10 @@ final class TreemapController {
         // per gesture (spread into the folder under the cursor, squeeze up
         // to the parent), mirroring the sunburst's contract.
         if inputs.style == .flat {
-            flatPinchAccumulation += factor - 1
-            guard !didFlatPinchDrill,
-                  abs(flatPinchAccumulation) >= Self.flatPinchDrillThreshold else { return }
-            didFlatPinchDrill = true
-            if flatPinchAccumulation > 0 {
-                drillIntoFolder(at: anchor)
-            } else {
-                model?.zoomOut()
+            switch flatPinchRecognizer.accumulate(factor - 1) {
+            case .drillIn: drillIntoFolder(at: anchor)
+            case .drillOut: model?.zoomOut()
+            case nil: break
             }
             return
         }
@@ -320,8 +311,7 @@ final class TreemapController {
 
     func endMagnify() {
         if inputs.style == .flat {
-            flatPinchAccumulation = 0
-            didFlatPinchDrill = false
+            flatPinchRecognizer.end()
             isGesturing = false
             return
         }

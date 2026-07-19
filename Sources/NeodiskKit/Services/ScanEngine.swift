@@ -375,34 +375,9 @@ public final class ScanEngine: Sendable {
         return ShallowChild(
             url: entry.url,
             isDirectoryLike: false,
-            leafRecord: inaccessibleNodeForUnavailableChild(path: entry.path, isDirectoryHint: isDirectory),
+            leafRecord: FileNodeRecord.inaccessible(path: entry.path, isDirectory: isDirectory),
             isUnavailable: true,
             warning: ScanWarningFactory.makeWarning(for: entry.url, error: error)
-        )
-    }
-
-    /// The childless inaccessible node a full scan produces for an unreadable
-    /// child (size 0, both accessibility flags false), so a relist can splice it
-    /// inline. Matches `ScanTraversal.makeUnavailableNode`.
-    nonisolated func inaccessibleNodeForUnavailableChild(
-        path: String, isDirectoryHint: Bool
-    ) -> FileNodeRecord {
-        let url = URL(filePath: path, directoryHint: isDirectoryHint ? .isDirectory : .notDirectory)
-        return FileNodeRecord(
-            id: path,
-            url: url,
-            name: ScanTarget.displayName(for: url),
-            isDirectory: isDirectoryHint,
-            isSymbolicLink: false,
-            allocatedSize: 0,
-            logicalSize: 0,
-            descendantFileCount: 0,
-            lastModified: nil,
-            isPackage: false,
-            isAccessible: false,
-            isSelfAccessible: false,
-            isSynthetic: false,
-            isAutoSummarized: false
         )
     }
 

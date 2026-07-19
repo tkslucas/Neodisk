@@ -56,36 +56,19 @@ struct DuplicatesPane: View {
     }
 
     private var cloudUnavailableView: some View {
-        VStack(spacing: 10) {
-            Spacer()
-            Image(systemName: "cloud")
-                .font(.system(size: 28))
-                .foregroundStyle(.secondary)
-            Text("Duplicate detection isn't available for cloud drives")
-                .font(.system(size: 12, weight: .semibold))
-                .multilineTextAlignment(.center)
-            Text("Finding duplicates reads each file's contents, which only works for files stored on this Mac.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-            Spacer()
-        }
-        .padding(.horizontal, 14)
-        .frame(maxWidth: .infinity)
+        StatsEmptyState(
+            symbol: "cloud",
+            title: Text("Duplicate detection isn't available for cloud drives"),
+            message: Text("Finding duplicates reads each file's contents, which only works for files stored on this Mac.")
+        )
     }
 
     private var idleView: some View {
-        VStack(spacing: 10) {
-            Spacer()
-            Image(systemName: "doc.on.doc")
-                .font(.system(size: 28))
-                .foregroundStyle(.secondary)
-            Text("Find files with identical content")
-                .font(.system(size: 12, weight: .semibold))
-            Text(explainerText)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+        StatsEmptyState(
+            symbol: "doc.on.doc",
+            title: Text("Find files with identical content"),
+            message: Text(explainerText)
+        ) {
             Button("Find Duplicates") {
                 model.duplicates.startScan()
             }
@@ -93,10 +76,7 @@ struct DuplicatesPane: View {
             .buttonStyle(.borderedProminent)
             .disabled(!model.duplicates.canScan)
             .padding(.top, 2)
-            Spacer()
         }
-        .padding(.horizontal, 14)
-        .frame(maxWidth: .infinity)
     }
 
     private var explainerText: String {
@@ -181,23 +161,16 @@ struct DuplicatesPane: View {
     }
 
     private func failedView(_ message: String) -> some View {
-        VStack(spacing: 10) {
-            Spacer()
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 24))
-                .foregroundStyle(.secondary)
-            Text(message)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+        StatsEmptyState(
+            symbol: "exclamationmark.triangle",
+            symbolSize: 24,
+            message: Text(message)
+        ) {
             Button("Try Again") {
                 model.duplicates.startScan()
             }
             .controlSize(.small)
-            Spacer()
         }
-        .padding(.horizontal, 14)
-        .frame(maxWidth: .infinity)
     }
 }
 

@@ -57,21 +57,11 @@ struct ChangesPane: View {
     }
 
     private var emptyView: some View {
-        VStack(spacing: 10) {
-            Spacer()
-            Image(systemName: "plus.forwardslash.minus")
-                .font(.system(size: 28))
-                .foregroundStyle(.secondary)
-            Text("No previous scan to compare")
-                .font(.system(size: 12, weight: .semibold))
-            Text("Scan this location again and what was added, deleted, renamed, or resized will appear here.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-            Spacer()
-        }
-        .padding(.horizontal, 14)
-        .frame(maxWidth: .infinity)
+        StatsEmptyState(
+            symbol: "plus.forwardslash.minus",
+            title: Text("No previous scan to compare"),
+            message: Text("Scan this location again and what was added, deleted, renamed, or resized will appear here.")
+        )
     }
 }
 

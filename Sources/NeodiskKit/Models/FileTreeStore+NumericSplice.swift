@@ -2,7 +2,7 @@
 //  FileTreeStore+NumericSplice.swift
 //  Neodisk
 //
-//  The numeric fast path behind `replacingSubtrees` and `applyingRootRelist`:
+//  The numeric fast path behind `replacingSubtrees` and `applyingDirectoryRelist`:
 //  splices replacement subtrees, inserts new ones, removes gone ones, and
 //  refreshes the root's own record directly at the contiguous-array level,
 //  instead of round-tripping the whole store through dictionary topology. The
@@ -16,10 +16,13 @@
 //  rebalance, so a root relist that adds a folder while replacing a deep
 //  subtree never pays two O(baseline) rebalances.
 //
-//  `legacyReplacingSubtrees` / `legacyApplyingRootRelist` (the dictionary paths)
-//  stay as the correctness oracles and as the fallback for stores this path
-//  declines (non-contiguous subtree layout, duplicate ids) — see
-//  `FileTreeStoreSpliceEquivalenceTests`.
+//  `legacyReplacingSubtrees` (the dictionary path) stays as the correctness
+//  oracle and as the fallback for stores `replacingSubtrees` declines
+//  (non-contiguous subtree layout, duplicate ids) — see
+//  `FileTreeStoreSpliceEquivalenceTests`. `applyingDirectoryRelist` has no
+//  dictionary fallback (it returns nil so the incremental service escalates to
+//  a full scan); its equivalence oracle lives in the test target — see
+//  `FileTreeStoreRelistEquivalenceTests`.
 //
 
 import Foundation
@@ -455,7 +458,7 @@ extension FileTreeStore {
         for parentIndex in insertionParentIndices {
             addSelfAndAncestors(oldToNew[Int(parentIndex)])
         }
-        try HardLinkDeduplicator.rebuildDirectories(
+        try AncestorRebuilder.rebuildDirectories(
             affectedDirectories,
             nodes: &nodes,
             parentIndices: newParents,

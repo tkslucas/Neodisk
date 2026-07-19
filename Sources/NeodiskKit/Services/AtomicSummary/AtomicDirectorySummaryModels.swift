@@ -85,9 +85,7 @@ nonisolated struct AtomicSummaryWorkResult: Sendable {
 }
 
 /// A running partial summary. `AtomicDirectorySummaryPool` keeps one per job and
-/// merges each processed directory level into it under its lock; the merge
-/// semantics match `AtomicSummaryAccumulator` (which the non-pool
-/// `summarizeInParallel` path still uses).
+/// merges each processed directory level into it under its lock.
 nonisolated struct AtomicDirectorySummaryPartial: Sendable {
     var allocatedSize: Int64 = 0
     var logicalSize: Int64 = 0
@@ -157,9 +155,8 @@ nonisolated struct AtomicDirectorySummaryPartial: Sendable {
     }
 }
 
-/// Callbacks a directory-level walk drives so the same per-child classification
-/// serves both the shared pool (folding into a partial) and the standalone
-/// `summarizeInParallel` path (folding into a locked accumulator + work queue).
+/// Callbacks a directory-level walk drives so `processDirectoryLevel`'s
+/// per-child classification can fold into the shared pool's per-job partial.
 nonisolated struct AtomicSummaryLevelSink {
     /// `onVisit`/`onFile` take the child's path string (progress, hard-link
     /// claim key) so the bulk walker builds no per-child `URL`; `onWarning`/
@@ -181,9 +178,9 @@ nonisolated struct LeafNodeResult: Sendable {
     let progressJobIDs: [Int]
 }
 
-/// Reference-typed holder for the serial walker paths, which mutate one running
-/// partial from enumerator callbacks. Accumulation semantics live entirely in
-/// `AtomicDirectorySummaryPartial`.
+/// Reference-typed holder for the immediate-children reuse path, which mutates
+/// one running partial as it folds each child. Accumulation semantics live
+/// entirely in `AtomicDirectorySummaryPartial`.
 nonisolated final class AtomicDirectorySummaryState {
     var partial = AtomicDirectorySummaryPartial()
     let ownerNodeID: String

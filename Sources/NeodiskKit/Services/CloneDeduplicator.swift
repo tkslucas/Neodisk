@@ -67,7 +67,6 @@ nonisolated enum CloneDeduplicator {
         childSlots: inout [Int32],
         indexByID: NodeIDIndex,
         privateSizeProvider: PrivateSizeProvider = systemPrivateSize,
-        rebuild: HardLinkDeduplicator.AncestorRebuild = HardLinkDeduplicator.numericAncestorRebuild,
         cancellationCheck: () throws -> Void = {},
         progress: (_ fraction: Double) -> Void = { _ in }
     ) rethrows {
@@ -84,12 +83,7 @@ nonisolated enum CloneDeduplicator {
         // family iteration order.
         var chargedIndices: [Int32] = []
         for memberIndices in memberIndicesByFamily.values where memberIndices.count > 1 {
-            let sorted = memberIndices.sorted { lhs, rhs in
-                let lhsNode = nodes[Int(lhs)]
-                let rhsNode = nodes[Int(rhs)]
-                if lhsNode.path == rhsNode.path { return lhsNode.id < rhsNode.id }
-                return lhsNode.path < rhsNode.path
-            }
+            let sorted = memberIndices.sorted { SharedSizeDeduplication.precedes(nodes[Int($0)], nodes[Int($1)]) }
             chargedIndices.append(contentsOf: sorted.dropFirst())
         }
         guard !chargedIndices.isEmpty else { return }
@@ -148,7 +142,14 @@ nonisolated enum CloneDeduplicator {
             }
         }
 
-        rebuild(changedIndices, &nodes, parentIndices, childStarts, &childSlots)
+        AncestorRebuilder.rebuildAffectedAncestors(
+            of: changedIndices,
+            nodes: &nodes,
+            parentIndices: parentIndices,
+            childStarts: childStarts,
+            childSlots: &childSlots,
+            cancellationCheck: {}
+        )
     }
 
     /// Re-derives clone deduplication from the store's own records after
@@ -175,64 +176,35 @@ nonisolated enum CloneDeduplicator {
         // removal still needs its surviving member restored to full size.
         guard !memberIndicesByFamily.isEmpty else { return store }
 
-        var nodes = storage.nodes
-        var childSlots = storage.childSlots
-        var changedIndices: Set<Int32> = []
-        for memberIndices in memberIndicesByFamily.values {
-            try cancellationCheck()
-            let sorted = memberIndices.sorted { lhs, rhs in
-                let lhsNode = nodes[Int(lhs)]
-                let rhsNode = nodes[Int(rhs)]
-                if lhsNode.path == rhsNode.path { return lhsNode.id < rhsNode.id }
-                return lhsNode.path < rhsNode.path
+        return try AncestorRebuilder.rebalancedStore(store, cancellationCheck: cancellationCheck) { nodes in
+            var changedIndices: Set<Int32> = []
+            for memberIndices in memberIndicesByFamily.values {
+                try cancellationCheck()
+                let sorted = memberIndices.sorted { SharedSizeDeduplication.precedes(nodes[Int($0)], nodes[Int($1)]) }
+                // A subtree removal can promote a previously-charged member to
+                // first; restore it to full size so the family's shared blocks
+                // stay counted exactly once. Never touch hard-link-managed
+                // nodes (the pass before this one owns their sizes), and only
+                // undo a charge this deduplicator made (stamped privateSize).
+                let firstIndex = sorted[0]
+                let first = nodes[Int(firstIndex)]
+                let firstIsHardLinkManaged = first.linkCount > 1 && first.fileIdentity != nil
+                if !firstIsHardLinkManaged,
+                   first.cloneInfo?.privateSize != nil,
+                   first.allocatedSize != first.unduplicatedAllocatedSize {
+                    nodes[Int(firstIndex)] = first.replacingAllocatedSize(first.unduplicatedAllocatedSize)
+                    changedIndices.insert(firstIndex)
+                }
+                for index in sorted.dropFirst() {
+                    let node = nodes[Int(index)]
+                    let charged = min(node.allocatedSize, max(node.cloneInfo?.privateSize ?? 0, 0))
+                    guard charged != node.allocatedSize else { continue }
+                    nodes[Int(index)] = node.replacingAllocatedSize(charged)
+                    changedIndices.insert(index)
+                }
             }
-            // A subtree removal can promote a previously-charged member to
-            // first; restore it to full size so the family's shared blocks
-            // stay counted exactly once. Never touch hard-link-managed
-            // nodes (the pass before this one owns their sizes), and only
-            // undo a charge this deduplicator made (stamped privateSize).
-            let firstIndex = sorted[0]
-            let first = nodes[Int(firstIndex)]
-            let firstIsHardLinkManaged = first.linkCount > 1 && first.fileIdentity != nil
-            if !firstIsHardLinkManaged,
-               first.cloneInfo?.privateSize != nil,
-               first.allocatedSize != first.unduplicatedAllocatedSize {
-                nodes[Int(firstIndex)] = first.replacingAllocatedSize(first.unduplicatedAllocatedSize)
-                changedIndices.insert(firstIndex)
-            }
-            for index in sorted.dropFirst() {
-                let node = nodes[Int(index)]
-                let charged = min(node.allocatedSize, max(node.cloneInfo?.privateSize ?? 0, 0))
-                guard charged != node.allocatedSize else { continue }
-                nodes[Int(index)] = node.replacingAllocatedSize(charged)
-                changedIndices.insert(index)
-            }
+            return changedIndices
         }
-
-        guard !changedIndices.isEmpty else { return store }
-
-        try HardLinkDeduplicator.rebuildAffectedAncestors(
-            of: changedIndices,
-            nodes: &nodes,
-            parentIndices: storage.parentIndices,
-            childStarts: storage.childStarts,
-            childSlots: &childSlots,
-            cancellationCheck: cancellationCheck
-        )
-
-        return FileTreeStore(
-            trustedStorage: TreeStorage(
-                nodes: nodes,
-                parentIndices: storage.parentIndices,
-                childStarts: storage.childStarts,
-                childSlots: childSlots,
-                indexByID: storage.indexByID,
-                // Only node sizes change here, never IDs, so the stored
-                // per-node hashes carry over unchanged.
-                nodeHashes: storage.nodeHashes
-            ),
-            rootID: store.rootID
-        )
     }
 }
 
@@ -249,5 +221,19 @@ nonisolated enum SharedSizeDeduplication {
             HardLinkDeduplicator.rebalancedStore(store, cancellationCheck: cancellationCheck),
             cancellationCheck: cancellationCheck
         )
+    }
+
+    /// The deterministic tie-break both passes charge on: order shared-block
+    /// members by path, then by node id. The first member keeps its full size;
+    /// every other member is charged. One definition for the hard-link and
+    /// clone passes (and their store-rebalance twins).
+    nonisolated static func precedes(_ a: FileNodeRecord, _ b: FileNodeRecord) -> Bool {
+        a.path == b.path ? a.id < b.id : a.path < b.path
+    }
+
+    /// Claim-typed twin of the node comparator above: hard-link claims tie-break
+    /// on the claim's owner node id.
+    nonisolated static func precedes(_ a: HardLinkClaim, _ b: HardLinkClaim) -> Bool {
+        a.path == b.path ? a.ownerNodeID < b.ownerNodeID : a.path < b.path
     }
 }

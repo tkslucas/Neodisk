@@ -2,13 +2,14 @@ import Foundation
 import Testing
 @testable import NeodiskKit
 
-/// Proves the numeric `HardLinkDeduplicator.rebuildAffectedAncestors` is
-/// byte-identical to the retained `legacyRebuildAffectedAncestors` oracle, and
-/// that both post-assembly dedup entry points (`HardLinkDeduplicator` /
-/// `CloneDeduplicator.applyDeduplication`) produce field-identical stores with
-/// either rebuild. The splice path (`SharedSizeDeduplication.rebalancedStore`)
-/// funnels through the same rebuild, so the direct equivalence covers it; a
-/// self-consistency + idempotence check exercises it end-to-end.
+/// Proves the numeric `AncestorRebuilder.rebuildAffectedAncestors` is
+/// byte-identical to an independent `legacyRebuildAffectedAncestors` oracle
+/// (defined below, in the test target). Both post-assembly dedup entry points
+/// (`HardLinkDeduplicator` / `CloneDeduplicator.applyDeduplication`) rebuild
+/// through the numeric path, so a self-consistency check confirms each produces
+/// a coherent store. The splice path (`SharedSizeDeduplication.rebalancedStore`)
+/// funnels through the same rebuild; a self-consistency + idempotence check
+/// exercises it end-to-end.
 @Suite struct DedupRebuildEquivalenceTests {
     private struct SeededGenerator: RandomNumberGenerator {
         var state: UInt64
@@ -128,11 +129,23 @@ import Testing
         }
     }
 
-    private let legacyRebuild: HardLinkDeduplicator.AncestorRebuild = { changed, nodes, parentIndices, childStarts, childSlots in
-        HardLinkDeduplicator.legacyRebuildAffectedAncestors(
-            of: changed, nodes: &nodes,
-            parentIndices: parentIndices, childStarts: childStarts, childSlots: &childSlots,
-            cancellationCheck: {}
+    /// Reconstructs a store from post-dedup arrays (only `nodes`/`childSlots`
+    /// change; parents, child starts, id index, and hashes are preserved) so
+    /// the array-level entry points can be checked with `assertSelfConsistent`.
+    private static func reconstruct(
+        _ store: FileTreeStore, nodes: [FileNodeRecord], childSlots: [Int32]
+    ) -> FileTreeStore {
+        let storage = store.storage
+        return FileTreeStore(
+            trustedStorage: TreeStorage(
+                nodes: nodes,
+                parentIndices: storage.parentIndices,
+                childStarts: storage.childStarts,
+                childSlots: childSlots,
+                indexByID: storage.indexByID,
+                nodeHashes: storage.nodeHashes
+            ),
+            rootID: store.rootID
         )
     }
 
@@ -162,12 +175,11 @@ import Testing
 
         var legacySlots = storage.childSlots
         var numericSlots = storage.childSlots
-        HardLinkDeduplicator.legacyRebuildAffectedAncestors(
+        Self.legacyRebuildAffectedAncestors(
             of: changed, nodes: &legacyNodes,
-            parentIndices: storage.parentIndices, childStarts: storage.childStarts, childSlots: &legacySlots,
-            cancellationCheck: {}
+            parentIndices: storage.parentIndices, childStarts: storage.childStarts, childSlots: &legacySlots
         )
-        HardLinkDeduplicator.rebuildAffectedAncestors(
+        AncestorRebuilder.rebuildAffectedAncestors(
             of: changed, nodes: &numericNodes,
             parentIndices: storage.parentIndices, childStarts: storage.childStarts, childSlots: &numericSlots,
             cancellationCheck: {}
@@ -180,7 +192,7 @@ import Testing
     // MARK: - Post-assembly call site: hard-link applyDeduplication
 
     @Test(arguments: [2, 8, 20, 77, 500] as [UInt64])
-    func hardLinkApplyDeduplicationMatchesLegacyRebuild(seed: UInt64) {
+    func hardLinkApplyDeduplicationIsSelfConsistent(seed: UInt64) {
         var gen = SeededGenerator(seed: seed)
         let store = StoreBuilder(seed: seed &+ 1).build(maxDepth: 6)
         let storage = store.storage
@@ -204,47 +216,35 @@ import Testing
             i += familySize
         }
 
-        var numericNodes = storage.nodes, numericSlots = storage.childSlots
+        var nodes = storage.nodes, childSlots = storage.childSlots
         HardLinkDeduplicator.applyDeduplication(
-            nodes: &numericNodes, parentIndices: storage.parentIndices, childStarts: storage.childStarts,
-            childSlots: &numericSlots, indexByID: storage.indexByID,
+            nodes: &nodes, parentIndices: storage.parentIndices, childStarts: storage.childStarts,
+            childSlots: &childSlots, indexByID: storage.indexByID,
             hardLinkClaims: claims, minimumAllocatedSizeByNodeID: minimums
         )
-        var legacyNodes = storage.nodes, legacySlots = storage.childSlots
-        HardLinkDeduplicator.applyDeduplication(
-            nodes: &legacyNodes, parentIndices: storage.parentIndices, childStarts: storage.childStarts,
-            childSlots: &legacySlots, indexByID: storage.indexByID,
-            hardLinkClaims: claims, minimumAllocatedSizeByNodeID: minimums,
-            rebuild: legacyRebuild
-        )
 
-        #expect(numericSlots == legacySlots, "seed \(seed): childSlots")
-        Self.assertNodesEqual(numericNodes, legacyNodes, "seed \(seed)")
+        // The numeric rebuild is proven byte-identical to the oracle by
+        // `numericRebuildMatchesLegacy`; here we confirm the hard-link entry
+        // point drives it into a coherent store.
+        assertSelfConsistent(Self.reconstruct(store, nodes: nodes, childSlots: childSlots), seed: seed)
     }
 
     // MARK: - Post-assembly call site: clone applyDeduplication
 
     @Test(arguments: [3, 11, 29, 88, 611] as [UInt64])
-    func cloneApplyDeduplicationMatchesLegacyRebuild(seed: UInt64) {
+    func cloneApplyDeduplicationIsSelfConsistent(seed: UInt64) {
         let store = StoreBuilder(seed: seed &+ 2).build(maxDepth: 6)
         let storage = store.storage
         let provider: CloneDeduplicator.PrivateSizeProvider = { _ in 128 }
 
-        var numericNodes = storage.nodes, numericSlots = storage.childSlots
+        var nodes = storage.nodes, childSlots = storage.childSlots
         CloneDeduplicator.applyDeduplication(
-            nodes: &numericNodes, parentIndices: storage.parentIndices, childStarts: storage.childStarts,
-            childSlots: &numericSlots, indexByID: storage.indexByID, privateSizeProvider: provider,
+            nodes: &nodes, parentIndices: storage.parentIndices, childStarts: storage.childStarts,
+            childSlots: &childSlots, indexByID: storage.indexByID, privateSizeProvider: provider,
             cancellationCheck: {}
         )
-        var legacyNodes = storage.nodes, legacySlots = storage.childSlots
-        CloneDeduplicator.applyDeduplication(
-            nodes: &legacyNodes, parentIndices: storage.parentIndices, childStarts: storage.childStarts,
-            childSlots: &legacySlots, indexByID: storage.indexByID, privateSizeProvider: provider,
-            rebuild: legacyRebuild, cancellationCheck: {}
-        )
 
-        #expect(numericSlots == legacySlots, "seed \(seed): childSlots")
-        Self.assertNodesEqual(numericNodes, legacyNodes, "seed \(seed)")
+        assertSelfConsistent(Self.reconstruct(store, nodes: nodes, childSlots: childSlots), seed: seed)
     }
 
     // MARK: - Splice path: rebalancedStore is self-consistent and idempotent
@@ -293,6 +293,53 @@ import Testing
                 #expect(node.descendantFileCount == files, "seed \(seed): \(node.id) descendantFileCount")
                 #expect(node.isAccessible == (node.isSelfAccessible && accessible), "seed \(seed): \(node.id) accessible")
             }
+        }
+    }
+
+    /// Independent reference for `AncestorRebuilder.rebuildAffectedAncestors`:
+    /// the straightforward rebuild that re-sorts each affected directory's
+    /// children by the display comparator and rebuilds its record via
+    /// `FileNodeRecord.directory` (whole-record copies, URL construction). The
+    /// numeric rebuild reproduces this field-for-field without the copies; this
+    /// lived in production as `legacyRebuildAffectedAncestors` until the numeric
+    /// path fully replaced it, and is retained here purely as the oracle.
+    static func legacyRebuildAffectedAncestors(
+        of changedIndices: Set<Int32>,
+        nodes: inout [FileNodeRecord],
+        parentIndices: [Int32],
+        childStarts: [Int32],
+        childSlots: inout [Int32]
+    ) {
+        guard !changedIndices.isEmpty else { return }
+
+        let affectedDirectoryIndices = AncestorRebuilder.affectedAncestorIndices(
+            of: changedIndices,
+            parentIndices: parentIndices
+        )
+
+        for directoryIndex in affectedDirectoryIndices.sorted(by: >) {
+            let current = nodes[Int(directoryIndex)]
+            guard current.isDirectory else { continue }
+
+            let range = Int(childStarts[Int(directoryIndex)])..<Int(childStarts[Int(directoryIndex) + 1])
+            var orderedChildIndices = Array(childSlots[range])
+            orderedChildIndices.sort { lhs, rhs in
+                FileTreeStore.childDisplayOrder(nodes[Int(lhs)], nodes[Int(rhs)])
+            }
+            childSlots.replaceSubrange(range, with: orderedChildIndices)
+
+            nodes[Int(directoryIndex)] = FileNodeRecord.directory(
+                id: current.id,
+                url: current.url,
+                name: current.name,
+                children: orderedChildIndices.map { nodes[Int($0)] },
+                lastModified: current.lastModified,
+                fileIdentity: current.fileIdentity,
+                linkCount: current.linkCount,
+                isPackage: current.isPackage,
+                isAccessible: current.isSelfAccessible,
+                childrenAreSorted: true
+            )
         }
     }
 }

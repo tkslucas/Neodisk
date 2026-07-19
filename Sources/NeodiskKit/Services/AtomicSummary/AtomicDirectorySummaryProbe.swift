@@ -146,9 +146,9 @@ extension AtomicDirectorySummarizer {
 
                 visitedItems += 1
                 if visitedItems == 1 || visitedItems.isMultiple(of: 64) {
-                    let childPath = normalizedDirectoryPath == "/"
-                        ? "/" + child.name
-                        : normalizedDirectoryPath + "/" + child.name
+                    let childPath = ScanEngine.nodeChildPath(
+                        parentPath: normalizedDirectoryPath, childName: child.name
+                    )
                     emitProgressHeartbeat(
                         currentPath: childPath,
                         metrics: &metrics,

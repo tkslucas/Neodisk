@@ -54,9 +54,7 @@ public struct CloudTreeBuilder: Sendable {
                     folderCount += 1
                 } else {
                     fileCount += 1
-                    allocatedBytesDiscovered = clampedAdd(
-                        allocatedBytesDiscovered, entry.allocatedBytes
-                    )
+                    allocatedBytesDiscovered = allocatedBytesDiscovered.addingClamped(entry.allocatedBytes)
                 }
             }
             latestEntryName = entry.name
@@ -260,7 +258,7 @@ public struct CloudTreeBuilder: Sendable {
         }
 
         if isComplete, let quota {
-            let attributed = rootChildren.reduce(Int64(0)) { clampedAdd($0, $1.allocatedSize) }
+            let attributed = rootChildren.reduce(Int64(0)) { $0.addingClamped($1.allocatedSize) }
             let unattributed = quota.usedBytes - attributed
             if unattributed > 0 {
                 let id = CloudTargetID.nodeID(targetID: target.id, fileID: Self.unattributedFileID)
@@ -466,8 +464,8 @@ public struct CloudTreeBuilder: Sendable {
         var logicalSize: Int64 = 0
         var descendantFileCount = 0
         for child in children {
-            allocatedSize = clampedAdd(allocatedSize, child.allocatedSize)
-            logicalSize = clampedAdd(logicalSize, child.logicalSize)
+            allocatedSize = allocatedSize.addingClamped(child.allocatedSize)
+            logicalSize = logicalSize.addingClamped(child.logicalSize)
             if child.isDirectory {
                 descendantFileCount += child.descendantFileCount
             } else if !child.isSymbolicLink && !child.isSynthetic {
@@ -500,9 +498,3 @@ public struct CloudTreeBuilder: Sendable {
     static let unattributedName = "Unattributed"
 }
 
-/// Saturating add, mirroring NeodiskKit's internal accumulation helper:
-/// pathological provider sizes must clamp, never trap.
-private func clampedAdd(_ lhs: Int64, _ rhs: Int64) -> Int64 {
-    let (sum, overflow) = lhs.addingReportingOverflow(rhs)
-    return overflow ? (rhs > 0 ? .max : .min) : sum
-}

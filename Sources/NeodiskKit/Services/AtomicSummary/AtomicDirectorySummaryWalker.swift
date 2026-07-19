@@ -6,114 +6,6 @@
 import Foundation
 
 extension AtomicDirectorySummarizer {
-    nonisolated func summarizeSerial(
-        at url: URL,
-        includeHiddenFiles: Bool = true,
-        treatPackagesAsDirectories: Bool,
-        workerLimit: Int,
-        ownerNodeID: String,
-        exclusionMatcher: ScanExclusionMatcher,
-        cancellationCheck: @escaping CancellationCheck,
-        metrics: inout ScanMetrics,
-        continuation: AsyncThrowingStream<ScanProgressEvent, Error>.Continuation,
-        emissionState: inout ScanEmissionState
-    ) async throws -> AtomicDirectorySummary? {
-        #if DEBUG
-        let summaryStart = diagnostics?.start()
-        #endif
-        let state = AtomicDirectorySummaryState(ownerNodeID: ownerNodeID)
-        var visitedItems = 0
-        #if DEBUG
-        defer {
-            diagnostics?.record(
-                operation: "atomic.summary.enumerate",
-                url: url,
-                startedAt: summaryStart,
-                itemCount: visitedItems,
-                detail: "files=\(state.partial.descendantFileCount)"
-            )
-        }
-        #endif
-
-        do {
-            try cancellationCheck()
-            let rootValues = try url.resourceValues(forKeys: ScanMetadataLoader.atomicSummaryResourceKeySet)
-            updateAtomicAccessibility(rootValues.isReadable ?? true, in: state)
-        } catch {
-            recordAtomicWarning(for: url, error: error, in: state)
-        }
-
-        var enumeratorOptions: FileManager.DirectoryEnumerationOptions = []
-        if !includeHiddenFiles {
-            enumeratorOptions.insert(.skipsHiddenFiles)
-        }
-
-        guard let enumerator = FileManager.default.enumerator(
-            at: url,
-            includingPropertiesForKeys: ScanMetadataLoader.atomicSummaryResourceKeys,
-            options: enumeratorOptions,
-            errorHandler: { childURL, error in
-                state.partial.recordWarning(for: childURL, error: error)
-                return true
-            }
-        ) else {
-            return nil
-        }
-
-        while let nextObject = enumerator.nextObject() {
-            guard let childURL = nextObject as? URL else { continue }
-            try cancellationCheck()
-            visitedItems += 1
-            if visitedItems == 1 || visitedItems.isMultiple(of: 64) {
-                emitProgressHeartbeat(
-                    currentPath: childURL.path,
-                    metrics: &metrics,
-                    continuation: continuation,
-                    emissionState: &emissionState
-                )
-            }
-
-            let hintedIsDirectory = childURL.hasDirectoryPath
-            if exclusionMatcher.excludes(childURL, isDirectory: hintedIsDirectory) {
-                if hintedIsDirectory {
-                    enumerator.skipDescendants()
-                }
-                continue
-            }
-
-            do {
-                let childMetadata = try metadataLoader.atomicSummaryMetadata(for: childURL)
-                if exclusionMatcher.excludes(childURL, isDirectory: childMetadata.isDirectory) {
-                    if childMetadata.isDirectory {
-                        enumerator.skipDescendants()
-                    }
-                    continue
-                }
-
-                try await accumulateEnumeratedAtomicSummary(
-                    for: childURL,
-                    metadata: childMetadata,
-                    into: state,
-                    includeHiddenFiles: includeHiddenFiles,
-                    treatPackagesAsDirectories: treatPackagesAsDirectories,
-                    workerLimit: workerLimit,
-                    exclusionMatcher: exclusionMatcher,
-                    cancellationCheck: cancellationCheck,
-                    metrics: &metrics,
-                    continuation: continuation,
-                    emissionState: &emissionState,
-                    skipDescendants: {
-                        enumerator.skipDescendants()
-                    }
-                )
-            } catch {
-                recordAtomicWarning(for: childURL, error: error, in: state)
-            }
-        }
-
-        return makeAtomicSummary(from: state)
-    }
-
     /// Performs a fast recursive summary of a directory's size and file count.
     /// Reuses the directory's already-enumerated immediate children to avoid a second full
     /// pass over flat cache-like directories.
@@ -123,7 +15,6 @@ extension AtomicDirectorySummarizer {
         rootMetadata: NodeMetadata,
         includeHiddenFiles: Bool = true,
         treatPackagesAsDirectories: Bool,
-        workerLimit: Int,
         ownerNodeID: String,
         exclusionMatcher: ScanExclusionMatcher,
         cancellationCheck: @escaping CancellationCheck,
@@ -190,7 +81,6 @@ extension AtomicDirectorySummarizer {
                 into: state,
                 includeHiddenFiles: includeHiddenFiles,
                 treatPackagesAsDirectories: treatPackagesAsDirectories,
-                workerLimit: workerLimit,
                 exclusionMatcher: exclusionMatcher,
                 cancellationCheck: cancellationCheck,
                 metrics: &metrics,
@@ -208,7 +98,6 @@ extension AtomicDirectorySummarizer {
         into state: AtomicDirectorySummaryState,
         includeHiddenFiles: Bool,
         treatPackagesAsDirectories: Bool,
-        workerLimit: Int,
         exclusionMatcher: ScanExclusionMatcher,
         cancellationCheck: @escaping CancellationCheck,
         metrics: inout ScanMetrics,
@@ -226,7 +115,6 @@ extension AtomicDirectorySummarizer {
                     at: url,
                     includeHiddenFiles: includeHiddenFiles,
                     treatPackagesAsDirectories: nestedTreatsPackagesAsDirectories,
-                    workerLimit: workerLimit,
                     ownerNodeID: state.ownerNodeID,
                     exclusionMatcher: exclusionMatcher,
                     cancellationCheck: cancellationCheck,
@@ -245,53 +133,6 @@ extension AtomicDirectorySummarizer {
 
     nonisolated private func merge(_ summary: AtomicDirectorySummary, into state: AtomicDirectorySummaryState) {
         state.partial.merge(summary)
-    }
-
-    nonisolated private func accumulateEnumeratedAtomicSummary(
-        for url: URL,
-        metadata: NodeMetadata,
-        into state: AtomicDirectorySummaryState,
-        includeHiddenFiles: Bool,
-        treatPackagesAsDirectories: Bool,
-        workerLimit: Int,
-        exclusionMatcher: ScanExclusionMatcher,
-        cancellationCheck: @escaping CancellationCheck,
-        metrics: inout ScanMetrics,
-        continuation: AsyncThrowingStream<ScanProgressEvent, Error>.Continuation,
-        emissionState: inout ScanEmissionState,
-        skipDescendants: () -> Void
-    ) async throws {
-        try cancellationCheck()
-        guard !exclusionMatcher.excludes(url, isDirectory: metadata.isDirectory) else {
-            if metadata.isDirectory {
-                skipDescendants()
-            }
-            return
-        }
-        updateAtomicAccessibility(metadata.isReadable, in: state)
-
-        guard metadata.isDirectory else {
-            accumulateAtomicFile(metadata, url: url, into: state)
-            return
-        }
-
-        guard metadata.isPackage, !treatPackagesAsDirectories else { return }
-
-        if let packageSummary = try await summarize(
-            at: url,
-            includeHiddenFiles: includeHiddenFiles,
-            treatPackagesAsDirectories: true,
-            workerLimit: workerLimit,
-            ownerNodeID: state.ownerNodeID,
-            exclusionMatcher: exclusionMatcher,
-            cancellationCheck: cancellationCheck,
-            metrics: &metrics,
-            continuation: continuation,
-            emissionState: &emissionState
-        ) {
-            merge(packageSummary, into: state)
-            skipDescendants()
-        }
     }
 
     nonisolated private func updateAtomicAccessibility(_ isReadable: Bool, in state: AtomicDirectorySummaryState) {

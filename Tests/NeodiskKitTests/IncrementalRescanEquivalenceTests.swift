@@ -470,21 +470,17 @@ struct IncrementalRescanEquivalenceTests {
     @Test func unavailableChildMaterializesAsInlineInaccessibleNode() async throws {
         let root = try makeControlledTree()
         defer { try? FileManager.default.removeItem(at: root) }
-        let engine = ScanEngine()
-        let options = ScanOptions()
-        // Drive directChildren against a normal directory, then confirm the
-        // helper's contract on a synthetic unavailable entry: an unreadable
-        // child is never dropped — it becomes an inaccessible, childless node.
-        let node = engine.inaccessibleNodeForUnavailableChild(
+        // Confirm the shared inaccessible-node contract: an unreadable child is
+        // never dropped — it becomes an inaccessible, childless node.
+        let node = FileNodeRecord.inaccessible(
             path: root.appending(path: "d0/protected").path,
-            isDirectoryHint: true
+            isDirectory: true
         )
         #expect(!node.isAccessible)
         #expect(!node.isSelfAccessible)
         #expect(node.isDirectory)
         #expect(node.allocatedSize == 0)
         #expect(node.descendantFileCount == 0)
-        _ = options
     }
 
     // MARK: - Synthesizer fidelity vs the real kernel stream

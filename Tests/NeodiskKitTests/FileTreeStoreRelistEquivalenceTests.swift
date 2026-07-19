@@ -2,13 +2,14 @@ import Foundation
 import Testing
 @testable import NeodiskKit
 
-/// Proves the numeric root-relist splice (`numericApplyEdits`, via
-/// `applyingRootRelist`) produces a store semantically identical to the
-/// dictionary oracle (`legacyApplyingRootRelist`) across randomized trees with
-/// mixed edits: direct children removed, brand-new children inserted, existing
-/// subtrees replaced, and the root's own record refreshed — all in one pass,
-/// including hard links and clone families crossing the edit boundaries, which
-/// exercise the shared-size rebalance both paths finish with.
+/// Proves the numeric relist splice (`numericApplyEdits`, the engine's shipping
+/// incremental path via `applyingDirectoryRelist`) produces a store semantically
+/// identical to an independent dictionary oracle (`dictionaryRelistOracle`,
+/// defined below) across randomized trees with mixed edits: direct children
+/// removed, brand-new children inserted, existing subtrees replaced, and the
+/// root's own record refreshed — all in one pass, including hard links and clone
+/// families crossing the edit boundaries, which exercise the shared-size
+/// rebalance both paths finish with.
 ///
 /// Equality is semantic (per-id records, per-parent ordered child lists, parent
 /// links, aggregate stats), not raw-array: the legacy path rebuilds in
@@ -228,7 +229,7 @@ import Testing
                 Issue.record("seed \(seed): numeric path declined a supported relist (\(numericOutcome))")
                 return
             }
-            let legacy = try #require(try baseline.legacyApplyingRootRelist(
+            let legacy = try #require(try baseline.dictionaryRelistOracle(
                 refreshedRootRecord: rootOverride,
                 removingChildren: removals,
                 insertingChildren: insertions,
@@ -258,7 +259,7 @@ import Testing
             replacements: [], removingSubtreeIDs: [child], insertions: [],
             recordOverrides: [:], cancellationCheck: {}
         ) else { Issue.record("declined pure removal"); return }
-        let legacy = try #require(try baseline.legacyApplyingRootRelist(
+        let legacy = try #require(try baseline.dictionaryRelistOracle(
             refreshedRootRecord: nil, removingChildren: [child],
             insertingChildren: [], replacements: [], cancellationCheck: {}
         ))
@@ -276,7 +277,7 @@ import Testing
             insertions: [FileTreeStore.SubtreeInsertion(parentID: baseline.rootID, store: insertion)],
             recordOverrides: [:], cancellationCheck: {}
         ) else { Issue.record("declined pure insertion"); return }
-        let legacy = try #require(try baseline.legacyApplyingRootRelist(
+        let legacy = try #require(try baseline.dictionaryRelistOracle(
             refreshedRootRecord: nil, removingChildren: [],
             insertingChildren: [insertion], replacements: [], cancellationCheck: {}
         ))
@@ -306,7 +307,7 @@ import Testing
                 recordOverrides: [:], cancellationCheck: {}
             ) else { Issue.record("gen \(gen): declined"); return }
             numericStore = nextNumeric
-            legacyStore = try #require(try legacyStore.legacyApplyingRootRelist(
+            legacyStore = try #require(try legacyStore.dictionaryRelistOracle(
                 refreshedRootRecord: nil, removingChildren: removals,
                 insertingChildren: [insertion], replacements: replacements, cancellationCheck: {}
             ))
@@ -328,5 +329,163 @@ import Testing
                 cancellationCheck: { throw CancellationError() }
             )
         }
+    }
+}
+
+extension FileTreeStore {
+    /// Independent dictionary oracle for the numeric relist splice: the
+    /// straightforward O(baseline) dictionary-topology rebuild that
+    /// `numericApplyEdits` (the shipping `applyingDirectoryRelist` path) must
+    /// match. Lives in the test target only — it was the production
+    /// `legacyApplyingRootRelist` fallback until the numeric path fully
+    /// superseded it, and is retained here purely as the equivalence reference.
+    /// Root-scoped (removals/insertions are direct children of the root), which
+    /// is the shape these randomized tests generate; both paths finish with the
+    /// same shared-size rebalance.
+    nonisolated func dictionaryRelistOracle(
+        refreshedRootRecord: FileNodeRecord?,
+        removingChildren: [String],
+        insertingChildren: [FileTreeStore],
+        replacements: [(id: String, store: FileTreeStore)],
+        cancellationCheck: () throws -> Void
+    ) throws -> FileTreeStore? {
+        try cancellationCheck()
+        if replacements.isEmpty, removingChildren.isEmpty, insertingChildren.isEmpty,
+           refreshedRootRecord == nil {
+            return self
+        }
+
+        var replacementParentIDByTargetID: [String: String] = [:]
+        for (targetID, _) in replacements {
+            guard let targetIndex = storage.index(of: targetID) else { return nil }
+            if targetID == rootID { return nil }
+            let parentIndex = storage.parentIndex(of: targetIndex)!
+            replacementParentIDByTargetID[targetID] = storage.nodes[Int(parentIndex)].id
+        }
+
+        var (updatedNodes, updatedChildIDs, updatedParentIDs) = storage.dictionaryTopology()
+
+        if let refreshedRootRecord {
+            updatedNodes[rootID] = refreshedRootRecord
+        }
+
+        var affectedParentIDs = Set<String>()
+        var removedIDs = Set<String>()
+
+        for childID in removingChildren {
+            guard updatedNodes[childID] != nil else { continue }
+            removedIDs.formUnion(try Self.oracleSubtreeIDs(
+                rootedAt: childID, childIDsByID: updatedChildIDs, cancellationCheck: cancellationCheck
+            ))
+            affectedParentIDs.insert(rootID)
+        }
+
+        let replacementRootIDByTargetID = Dictionary(
+            uniqueKeysWithValues: zip(replacements.map(\.id), replacements.map(\.store.rootID))
+        )
+        for (targetID, _) in replacements {
+            removedIDs.formUnion(try Self.oracleSubtreeIDs(
+                rootedAt: targetID, childIDsByID: updatedChildIDs, cancellationCheck: cancellationCheck
+            ))
+            if let parentID = replacementParentIDByTargetID[targetID] {
+                affectedParentIDs.insert(parentID)
+            }
+        }
+
+        for (offset, removedID) in removedIDs.enumerated() {
+            if offset.isMultiple(of: 256) { try cancellationCheck() }
+            updatedNodes.removeValue(forKey: removedID)
+            updatedChildIDs.removeValue(forKey: removedID)
+            updatedParentIDs.removeValue(forKey: removedID)
+        }
+
+        func merge(_ store: FileTreeStore) throws {
+            let (nodes, childIDs, parentIDs) = store.storage.dictionaryTopology()
+            for (offset, entry) in nodes.enumerated() {
+                if offset.isMultiple(of: 256) { try cancellationCheck() }
+                updatedNodes[entry.key] = entry.value
+            }
+            for entry in childIDs { updatedChildIDs[entry.key] = entry.value }
+            for entry in parentIDs { updatedParentIDs[entry.key] = entry.value }
+        }
+        for (_, store) in replacements { try merge(store) }
+        for store in insertingChildren {
+            try merge(store)
+            affectedParentIDs.insert(rootID)
+        }
+
+        let affectedReplacementParents = Set(replacementParentIDByTargetID.values)
+        for parentID in affectedReplacementParents {
+            try cancellationCheck()
+            let previous = updatedChildIDs[parentID] ?? []
+            updatedChildIDs[parentID] = previous.map { childID in
+                replacementRootIDByTargetID[childID] ?? childID
+            }
+        }
+        for (targetID, replacementRootID) in replacementRootIDByTargetID {
+            updatedParentIDs[replacementRootID] = replacementParentIDByTargetID[targetID]!
+        }
+
+        let removedChildIDSet = Set(removingChildren)
+        var rootChildIDs = (updatedChildIDs[rootID] ?? []).filter { !removedChildIDSet.contains($0) }
+        for store in insertingChildren {
+            rootChildIDs.append(store.rootID)
+            updatedParentIDs[store.rootID] = rootID
+        }
+        updatedChildIDs[rootID] = rootChildIDs
+
+        var affectedAncestorIDs = Set<String>()
+        for parentID in affectedParentIDs {
+            var cursor: String? = parentID
+            while let currentID = cursor {
+                try cancellationCheck()
+                affectedAncestorIDs.insert(currentID)
+                cursor = updatedParentIDs[currentID]
+            }
+        }
+        for node in storage.nodes.reversed() where affectedAncestorIDs.contains(node.id) {
+            try cancellationCheck()
+            guard let current = updatedNodes[node.id] else { continue }
+            let childRecords = (updatedChildIDs[current.id] ?? []).compactMap { updatedNodes[$0] }
+            let sortedChildRecords = Self.sortedChildren(childRecords)
+            updatedNodes[current.id] = FileNodeRecord.directory(
+                id: current.id,
+                url: current.url,
+                name: current.name,
+                children: sortedChildRecords,
+                lastModified: current.lastModified,
+                fileIdentity: current.fileIdentity,
+                linkCount: current.linkCount,
+                isPackage: current.isPackage,
+                isAccessible: current.isSelfAccessible,
+                childrenAreSorted: true
+            )
+            updatedChildIDs[current.id] = sortedChildRecords.map(\.id)
+        }
+
+        let updatedStore = FileTreeStore(
+            trustedRootID: rootID,
+            nodesByID: updatedNodes,
+            childIDsByID: updatedChildIDs,
+            parentIDByID: updatedParentIDs
+        )
+        return try SharedSizeDeduplication.rebalancedStore(updatedStore, cancellationCheck: cancellationCheck)
+    }
+
+    private nonisolated static func oracleSubtreeIDs(
+        rootedAt id: String,
+        childIDsByID: [String: [String]],
+        cancellationCheck: () throws -> Void
+    ) throws -> [String] {
+        var result: [String] = []
+        var stack = [id]
+        while let current = stack.popLast() {
+            try cancellationCheck()
+            result.append(current)
+            if let children = childIDsByID[current] {
+                stack.append(contentsOf: children)
+            }
+        }
+        return result
     }
 }

@@ -636,8 +636,10 @@ struct TreemapScene: Sendable {
 
     /// Whether a node stays at full color under an active highlight. An age
     /// bucket highlight needs the `.age` color mode's reference date; with
-    /// any other mode it matches nothing.
-    private nonisolated static func matches(
+    /// any other mode it matches nothing. Shared with the sunburst
+    /// (`SunburstLayout.resolvedFillRGB`) so both visualizations dim the same
+    /// non-matching nodes, alongside `dimmedRGB`.
+    nonisolated static func matches(
         _ node: FileNodeRecord,
         highlight: TreemapHighlight,
         colorMode: TreemapColorMode,

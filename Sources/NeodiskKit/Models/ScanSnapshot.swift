@@ -178,37 +178,6 @@ public struct ScanSnapshot: Identifiable, Sendable {
         treeStore.root
     }
 
-    public nonisolated func removingNode(id targetID: String) -> ScanSnapshot? {
-        try? removingNode(id: targetID, cancellationCheck: {})
-    }
-
-    public nonisolated func removingNode(
-        id targetID: String,
-        cancellationCheck: () throws -> Void
-    ) throws -> ScanSnapshot? {
-        try cancellationCheck()
-        guard let updatedStore = try treeStore.removingSubtree(
-            id: targetID,
-            cancellationCheck: cancellationCheck
-        ) else { return nil }
-
-        // Fresh id, like replacingNode: consumers key change detection on
-        // snapshot.id, so a same-id snapshot with a mutated tree reads as
-        // "nothing changed" and views don't refresh.
-        return ScanSnapshot(
-            target: target,
-            treeStore: updatedStore,
-            startedAt: startedAt,
-            finishedAt: finishedAt,
-            scanWarnings: scanWarnings,
-            aggregateStats: updatedStore.aggregateStats,
-            isComplete: isComplete,
-            scanOptions: scanOptions,
-            source: source,
-            incrementalCheckpoint: incrementalCheckpoint
-        )
-    }
-
     public nonisolated func replacingNode(
         id targetID: String,
         with replacement: FileTreeStore,

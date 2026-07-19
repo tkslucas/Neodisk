@@ -102,7 +102,6 @@ nonisolated struct AtomicDirectorySummarizer: Sendable {
         isNodeDependencyLayout: Bool,
         minFileCount: Int,
         maxAverageFileSize: Int64,
-        workerLimit: Int,
         exclusionMatcher: ScanExclusionMatcher,
         cancellationCheck: @escaping CancellationCheck,
         metrics: inout ScanMetrics,
@@ -177,7 +176,6 @@ nonisolated struct AtomicDirectorySummarizer: Sendable {
                 rootMetadata: metadata,
                 includeHiddenFiles: includeHiddenFiles,
                 treatPackagesAsDirectories: treatPackagesAsDirectories,
-                workerLimit: workerLimit,
                 ownerNodeID: url.path,
                 exclusionMatcher: exclusionMatcher,
                 cancellationCheck: cancellationCheck,
@@ -191,7 +189,6 @@ nonisolated struct AtomicDirectorySummarizer: Sendable {
             at: url,
             includeHiddenFiles: includeHiddenFiles,
             treatPackagesAsDirectories: treatPackagesAsDirectories,
-            workerLimit: workerLimit,
             ownerNodeID: url.path,
             exclusionMatcher: exclusionMatcher,
             cancellationCheck: cancellationCheck,
@@ -242,7 +239,6 @@ nonisolated struct AtomicDirectorySummarizer: Sendable {
         url: URL,
         metadata: NodeMetadata,
         options: ScanOptions,
-        workerLimit: Int,
         exclusionMatcher: ScanExclusionMatcher,
         cancellationCheck: @escaping CancellationCheck,
         metrics: inout ScanMetrics,
@@ -265,7 +261,6 @@ nonisolated struct AtomicDirectorySummarizer: Sendable {
             at: url,
             includeHiddenFiles: options.includeHiddenFiles,
             treatPackagesAsDirectories: true,
-            workerLimit: workerLimit,
             ownerNodeID: url.path,
             exclusionMatcher: exclusionMatcher,
             cancellationCheck: cancellationCheck,
@@ -318,7 +313,6 @@ nonisolated struct AtomicDirectorySummarizer: Sendable {
         at url: URL,
         includeHiddenFiles: Bool = true,
         treatPackagesAsDirectories: Bool,
-        workerLimit: Int,
         ownerNodeID: String,
         exclusionMatcher: ScanExclusionMatcher,
         cancellationCheck: @escaping CancellationCheck,
@@ -328,65 +322,27 @@ nonisolated struct AtomicDirectorySummarizer: Sendable {
     ) async throws -> AtomicDirectorySummary? {
         try cancellationCheck()
 
-        // Inside a traversal the whole recursive walk is one pool job: each
-        // directory level fans across the shared workers, and nested packages
-        // and subdirectories fold in as further work items rather than nested
-        // jobs. `metrics`/`emissionState` are untouched here — the pool drives
-        // its own progress heartbeat.
-        if let summaryPool {
-            return try await summaryPool.summarize(
-                AtomicSummaryPoolRequest(
-                    url: url,
-                    includeHiddenFiles: includeHiddenFiles,
-                    treatPackagesAsDirectories: treatPackagesAsDirectories,
-                    ownerNodeID: ownerNodeID,
-                    exclusionMatcher: exclusionMatcher,
-                    metadataLoader: metadataLoader,
-                    bulkEnumerationEnabled: bulkEnumerationEnabled,
-                    cancellationCheck: cancellationCheck
-                )
-            )
+        // The whole recursive walk is one pool job: each directory level fans
+        // across the shared workers, and nested packages and subdirectories fold
+        // in as further work items rather than nested jobs. `metrics`/
+        // `emissionState` are untouched here — the pool drives its own progress
+        // heartbeat. Summaries only ever run inside a traversal, which binds the
+        // pool in `ScanTraversal.run()`; there is no pool-less summary path.
+        guard let summaryPool else {
+            assertionFailure("AtomicDirectorySummarizer.summarize requires a summary pool")
+            return nil
         }
-
-        if workerLimit > 1 {
-            #if DEBUG
-            let summaryStart = diagnostics?.start()
-            #endif
-            let summary = try await Self.summarizeInParallel(
-                at: url,
+        return try await summaryPool.summarize(
+            AtomicSummaryPoolRequest(
+                url: url,
                 includeHiddenFiles: includeHiddenFiles,
                 treatPackagesAsDirectories: treatPackagesAsDirectories,
-                workerLimit: workerLimit,
                 ownerNodeID: ownerNodeID,
                 exclusionMatcher: exclusionMatcher,
                 metadataLoader: metadataLoader,
                 bulkEnumerationEnabled: bulkEnumerationEnabled,
-                metrics: metrics,
-                continuation: continuation
+                cancellationCheck: cancellationCheck
             )
-            #if DEBUG
-            diagnostics?.record(
-                operation: "atomic.summary.parallel",
-                url: url,
-                startedAt: summaryStart,
-                itemCount: summary?.descendantFileCount,
-                detail: "workers=\(workerLimit)"
-            )
-            #endif
-            return summary
-        }
-
-        return try await summarizeSerial(
-            at: url,
-            includeHiddenFiles: includeHiddenFiles,
-            treatPackagesAsDirectories: treatPackagesAsDirectories,
-            workerLimit: workerLimit,
-            ownerNodeID: ownerNodeID,
-            exclusionMatcher: exclusionMatcher,
-            cancellationCheck: cancellationCheck,
-            metrics: &metrics,
-            continuation: continuation,
-            emissionState: &emissionState
         )
     }
 }

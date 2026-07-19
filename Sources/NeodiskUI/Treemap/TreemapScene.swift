@@ -303,7 +303,7 @@ struct TreemapScene: Sendable {
                         // in-order pass resolves the overdraw correctly.
                         var rgb = resolvedRGB(
                             for: node, colorMode: colorMode, catalog: catalog,
-                            palette: palette, branch: branch, store: store
+                            palette: palette, branch: branch, style: style, store: store
                         )
                         if let highlight,
                            !matches(node, highlight: highlight, colorMode: colorMode, catalog: catalog) {
@@ -370,14 +370,38 @@ struct TreemapScene: Sendable {
                         // is already in hand, so this check is cheap. Matches
                         // hidden deeper inside merged subdirectories are not
                         // searched for; those aggregates dim.
-                        // Branch mode uses the sunburst's aggregate gray so
-                        // the two views agree.
-                        var aggregateRGB = colorMode == .branch
-                            ? SunburstColorResolver.rgb(
-                                for: .single(id: node.id, role: .aggregate),
-                                palette: palette.sunburst
-                            )
-                            : FileKindCatalog.otherRGB
+                        // Branch mode: a folder's merged tail carries the
+                        // folder's branch hue one level deeper, like the
+                        // children it stands for — a gray cell per folder
+                        // read as holes punched in the hue field. Only the
+                        // scan root's own merge stays the sunburst's neutral
+                        // aggregate gray: its tail spans many branches.
+                        var aggregateRGB: SIMD3<Float>
+                        if colorMode == .branch {
+                            if let branch, let branchID = branch.id {
+                                let token = SunburstColorToken(
+                                    branchID: branchID,
+                                    localID: node.id,
+                                    branchIndex: 0,
+                                    branchCount: 1,
+                                    siblingIndex: 0,
+                                    siblingCount: 1,
+                                    depth: max(branch.depth + 1, 0),
+                                    role: .normal
+                                )
+                                aggregateRGB = branchDesaturated(
+                                    SunburstColorResolver.rgb(for: token, palette: palette.sunburst),
+                                    style: style
+                                )
+                            } else {
+                                aggregateRGB = SunburstColorResolver.rgb(
+                                    for: .single(id: node.id, role: .aggregate),
+                                    palette: palette.sunburst
+                                )
+                            }
+                        } else {
+                            aggregateRGB = FileKindCatalog.otherRGB
+                        }
                         if let highlight {
                             let lit = tail.contains {
                                 matches($0, highlight: highlight, colorMode: colorMode, catalog: catalog)
@@ -425,7 +449,7 @@ struct TreemapScene: Sendable {
             } else {
                 rgb = resolvedRGB(
                     for: node, colorMode: colorMode, catalog: catalog,
-                    palette: palette, branch: branch, store: store
+                    palette: palette, branch: branch, style: style, store: store
                 )
             }
             // Plain directories never match a highlight (they are neither a
@@ -505,11 +529,24 @@ struct TreemapScene: Sendable {
     /// Branch-mode fills desaturate toward gray in the treemap: the branch
     /// formula is tuned for the sunburst's thin arcs, and spread across a
     /// treemap's large abutting tiles the same saturation reads loud. The
-    /// pull lands the effective (post-composite) saturation in the calm
-    /// band the style wants. Loose scan-root files are already gray; they
-    /// dim a touch instead so they recede rather than glow.
+    /// flat style composites translucently over the background, which mutes
+    /// it further, so a light pull suffices; the cushion's opaque shaded
+    /// fills carry the full color and pull harder. Loose scan-root files
+    /// are already gray; they dim a touch instead so they recede rather
+    /// than glow.
     nonisolated static let flatBranchDesaturation: Float = 0.18
+    nonisolated static let cushionBranchDesaturation: Float = 0.4
     nonisolated static let flatRootFileDim: Float = 0.9
+
+    /// A branch-mode fill pulled into the style's calm band.
+    nonisolated static func branchDesaturated(
+        _ rgb: SIMD3<Float>,
+        style: TreemapStyle
+    ) -> SIMD3<Float> {
+        let gray = SIMD3<Float>(repeating: (rgb.x + rgb.y + rgb.z) / 3)
+        let amount = style == .flat ? flatBranchDesaturation : cushionBranchDesaturation
+        return rgb + (gray - rgb) * amount
+    }
 
     /// Flat nesting cue for the kind/age modes: deeper cells desaturate and
     /// darken a step per level, clamped, so containment reads without
@@ -543,6 +580,7 @@ struct TreemapScene: Sendable {
         catalog: FileKindCatalog,
         palette: VizPalette,
         branch: (id: String?, depth: Int)?,
+        style: TreemapStyle,
         store: FileTreeStore
     ) -> SIMD3<Float> {
         switch colorMode {
@@ -580,8 +618,7 @@ struct TreemapScene: Sendable {
             )
             let rgb = SunburstColorResolver.rgb(for: token, palette: palette.sunburst)
             guard role == .normal else { return rgb * flatRootFileDim }
-            let gray = SIMD3<Float>(repeating: (rgb.x + rgb.y + rgb.z) / 3)
-            return rgb + (gray - rgb) * flatBranchDesaturation
+            return branchDesaturated(rgb, style: style)
         }
     }
 

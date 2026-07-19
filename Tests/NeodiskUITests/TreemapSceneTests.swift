@@ -5,6 +5,7 @@
 
 import CoreGraphics
 import Foundation
+import SunburstCore
 import Testing
 import TreemapKit
 import NeodiskKit
@@ -539,6 +540,95 @@ import NeodiskKit
             #expect(abs(rect.width - cell.rect.width) < 0.001, "\(cell.nodeID)")
             #expect(abs(rect.height - cell.rect.height) < 0.001, "\(cell.nodeID)")
         }
+    }
+
+    @Test func cushionBranchCellsPullHarderTowardGrayThanFlat() throws {
+        let store = makeStore()
+        let scene = TreemapScene.build(
+            store: store, rootID: "/scan",
+            size: CGSize(width: 400, height: 300),
+            catalog: .empty, colorMode: .branch
+        )
+
+        // The nested file: /scan/sub's branch, one level deeper, pulled by
+        // the cushion's (stronger) desaturation.
+        let token = SunburstColorToken(
+            branchID: "/scan/sub", localID: "/scan/sub/c.txt",
+            branchIndex: 0, branchCount: 1, siblingIndex: 0, siblingCount: 1,
+            depth: 1, role: .normal
+        )
+        let expected = TreemapScene.branchDesaturated(
+            SunburstColorResolver.rgb(for: token), style: .cushion
+        )
+        let cell = try #require(scene.cells.first { $0.nodeID == "/scan/sub/c.txt" })
+        #expect(cell.rgb == expected)
+        #expect(expected != TreemapScene.branchDesaturated(
+            SunburstColorResolver.rgb(for: token), style: .flat
+        ))
+    }
+
+    @Test func branchModeColorsNestedAggregatesAndKeepsRootMergeGray() throws {
+        // Root: one big file plus a tail of tiny files (merges at the scan
+        // root), and a folder with the same shape (its tail merges inside
+        // the folder's branch).
+        let rootURL = URL(filePath: "/agg", directoryHint: .isDirectory)
+        func file(_ path: String, _ size: Int64) -> FileNodeRecord {
+            FileNodeRecord(
+                id: "/agg/\(path)", url: rootURL.appending(path: path),
+                name: String(path.split(separator: "/").last!),
+                isDirectory: false, isSymbolicLink: false,
+                allocatedSize: size, logicalSize: size, descendantFileCount: 0,
+                lastModified: nil, isPackage: false, isAccessible: true,
+                isSelfAccessible: true, isSynthetic: false, isAutoSummarized: false
+            )
+        }
+        var subChildren = [file("sub/big.bin", 500_000)]
+        for index in 0..<50 { subChildren.append(file("sub/tiny\(index).txt", 200)) }
+        subChildren = FileTreeStore.sortedChildren(subChildren)
+        let sub = FileNodeRecord.directory(
+            id: "/agg/sub", url: rootURL.appending(path: "sub", directoryHint: .isDirectory),
+            name: "sub", children: subChildren, lastModified: nil,
+            isPackage: false, isAccessible: true, childrenAreSorted: true
+        )
+        var rootChildren = [file("big.bin", 500_000), sub]
+        for index in 0..<50 { rootChildren.append(file("tiny\(index).txt", 200)) }
+        rootChildren = FileTreeStore.sortedChildren(rootChildren)
+        let root = FileNodeRecord.directory(
+            id: "/agg", url: rootURL, name: "agg", children: rootChildren,
+            lastModified: nil, isPackage: false, isAccessible: true, childrenAreSorted: true
+        )
+        let store = FileTreeStore(root: root, childrenByID: [
+            "/agg": rootChildren,
+            "/agg/sub": subChildren,
+        ])
+
+        let scene = TreemapScene.build(
+            store: store, rootID: "/agg",
+            size: CGSize(width: 400, height: 300),
+            catalog: .empty, colorMode: .branch
+        )
+
+        // The folder's merged tail carries the folder's branch hue one
+        // level below the folder, desaturated like its sibling cells.
+        let subAggregate = try #require(scene.cells.first {
+            $0.aggregate != nil && $0.nodeID == "/agg/sub"
+        })
+        let token = SunburstColorToken(
+            branchID: "/agg/sub", localID: "/agg/sub",
+            branchIndex: 0, branchCount: 1, siblingIndex: 0, siblingCount: 1,
+            depth: 1, role: .normal
+        )
+        #expect(subAggregate.rgb == TreemapScene.branchDesaturated(
+            SunburstColorResolver.rgb(for: token), style: .cushion
+        ))
+
+        // The scan root's own merge spans many branches: neutral gray.
+        let rootAggregate = try #require(scene.cells.first {
+            $0.aggregate != nil && $0.nodeID == "/agg"
+        })
+        #expect(rootAggregate.rgb == SunburstColorResolver.rgb(
+            for: .single(id: "/agg", role: .aggregate)
+        ))
     }
 
     @Test func cushionLabelsUndividedDirectoriesLikeFiles() {

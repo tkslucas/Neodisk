@@ -75,8 +75,14 @@ public enum HeadlessRender {
                 }
 
                 let store = snapshot.treeStore
-                let catalog = FileKindCatalog.build(from: store)
                 let environment = ProcessInfo.processInfo.environment
+                // NEODISK_RENDER_PALETTE=<id> renders with that VizPalette
+                // (standard, vivid, pastel, earth, colorblind); unknown ids
+                // fall back to standard.
+                let palette = VizPalette.named(
+                    environment["NEODISK_RENDER_PALETTE"] ?? VizPalette.standard.id
+                )
+                let catalog = FileKindCatalog.build(from: store, palette: palette)
                 // NEODISK_RENDER_COLOR_MODE=age renders the modification-age
                 // heatmap; =branch the sunburst-matching branch hues (flat
                 // style's Largest/panel-hidden coloring); default kind colors.
@@ -123,6 +129,7 @@ public enum HeadlessRender {
                     highlight: highlight,
                     viewport: viewport,
                     includingCloudOnly: includingCloudOnly,
+                    palette: palette,
                     background: background
                 )
                 let image = switch style {

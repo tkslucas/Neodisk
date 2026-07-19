@@ -326,11 +326,11 @@ final class NeodiskViewModel {
         }
     }
 
-    /// The active visualization palette, driven by the colorblind Settings
-    /// toggle. Kind colors are baked into the catalog (see KindStatsModel);
-    /// age and status-bar swatch colors read this live.
+    /// The active visualization palette, driven by the Settings picker.
+    /// Kind colors are baked into the catalog (see KindStatsModel); age and
+    /// status-bar swatch colors read this live.
     var vizPalette: VizPalette {
-        preferences?.useColorblindPalette == true ? .colorblind : .standard
+        preferences?.vizPalette ?? .standard
     }
 
     /// The swatch color a node renders with on the map right now — the
@@ -351,8 +351,7 @@ final class NeodiskViewModel {
         }
         if case .age(let referenceDate) = vizColorMode {
             guard FileKindClassifier.isLeafLike(node) else {
-                let rgb = FileKindCatalog.directoryRGB
-                return Color(red: Double(rgb.x), green: Double(rgb.y), blue: Double(rgb.z))
+                return Color(rgb: FileKindCatalog.directoryRGB)
             }
             return vizPalette.ageColor(AgeBucket.bucket(for: node.lastModified, reference: referenceDate))
         }

@@ -83,36 +83,33 @@ public struct SunburstColorComponents: Equatable, Hashable, Sendable {
     }
 }
 
-/// Which qualitative color set the branch resolver draws with. Standalone from
-/// NeodiskUI's `VizPalette` so the resolver stays app-free; NeodiskUI maps its
-/// palette onto this, and both share `SunburstColorblindKindTable` for the
-/// colorblind hues.
-public enum SunburstPalette: Sendable {
-    case standard
-    case colorblind
-}
+/// How the branch resolver picks hues under the active palette. Standalone
+/// from NeodiskUI's `VizPalette` so the resolver stays app-free; NeodiskUI
+/// carries one of these values on each of its palettes. The raw color tables
+/// live with the rest of the palette data in NeodiskUI — this type only
+/// describes the strategy (and receives a table by value when one applies).
+public struct SunburstPalette: Equatable, Sendable {
+    public enum BranchHues: Equatable, Sendable {
+        /// Hash-derived free hues — the classic continuous look. The scales
+        /// tilt the resolver's saturation/brightness envelope so branch mode
+        /// matches the palette's overall mood; (1, 1) is the classic default.
+        case hashed(saturationScale: Double, brightnessScale: Double)
+        /// Branch hues restricted to a fixed qualitative table (hash-stable
+        /// per branch); depth and sibling variation move brightness only,
+        /// never hue — hue identity is what the viewer must distinguish, and
+        /// a curated table keeps its meaning.
+        case table([SIMD3<Float>])
+    }
 
-/// The Okabe-Ito qualitative palette the colorblind branch mode restricts hues
-/// to (designed to stay distinct under deuteranopia/protanopia/tritanopia).
-/// Lives here as plain data so both this resolver and NeodiskUI's VizPalette
-/// select from one source.
-public enum SunburstColorblindKindTable {
-    public static let kinds: [SIMD3<Float>] = [
-        SIMD3(0.000, 0.447, 0.698), // blue
-        SIMD3(0.835, 0.369, 0.000), // vermillion
-        SIMD3(0.000, 0.620, 0.451), // bluish green
-        SIMD3(0.800, 0.475, 0.655), // reddish purple
-        SIMD3(0.902, 0.624, 0.000), // orange
-        SIMD3(0.337, 0.706, 0.914), // sky blue
-        SIMD3(0.941, 0.894, 0.259), // yellow
-        SIMD3(0.200, 0.133, 0.533), // indigo
-        SIMD3(0.267, 0.667, 0.600), // teal
-        SIMD3(0.533, 0.133, 0.333), // wine
-        SIMD3(0.867, 0.800, 0.467), // sand
-        SIMD3(0.600, 0.600, 0.200), // olive
-        SIMD3(0.800, 0.400, 0.467), // rose
-        SIMD3(0.600, 0.867, 1.000), // pale cyan
-    ]
+    public let branchHues: BranchHues
+
+    public init(branchHues: BranchHues) {
+        self.branchHues = branchHues
+    }
+
+    public static let standard = SunburstPalette(
+        branchHues: .hashed(saturationScale: 1, brightnessScale: 1)
+    )
 }
 
 public enum SunburstColorResolver {
@@ -158,8 +155,17 @@ public enum SunburstColorResolver {
             break
         }
 
-        if palette == .colorblind {
-            return colorblindComponents(for: token)
+        let saturationScale: Double
+        let brightnessScale: Double
+        switch palette.branchHues {
+        case .table(let entries) where !entries.isEmpty:
+            return tableComponents(for: token, entries: entries)
+        case .table:
+            // An empty table would divide by zero below; fall back to the
+            // classic free hues.
+            (saturationScale, brightnessScale) = (1, 1)
+        case .hashed(let saturation, let brightness):
+            (saturationScale, brightnessScale) = (saturation, brightness)
         }
 
         let branchHue = stableUnitInterval(for: token.branchID)
@@ -171,19 +177,22 @@ public enum SunburstColorResolver {
                 + (localVariant * 0.11)
                 + (Double(token.depth % 2) * 0.015)
         )
+        // The palette scales move the whole envelope (base and clamps) so a
+        // muted palette can sit below the classic floor; at scale 1 the
+        // bounds reduce exactly to the classic 0.48…0.86 / 0.48…0.9.
         let saturation = clamped(
-            0.74
+            (0.74 * saturationScale)
                 - (depthTone * 0.035)
                 + (localVariant * 0.08),
-            lower: 0.48,
-            upper: 0.86
+            lower: 0.48 * saturationScale,
+            upper: min(0.86 * saturationScale, 1)
         )
         let brightness = clamped(
-            0.84
+            (0.84 * brightnessScale)
                 - (depthTone * 0.055)
                 + (variantBrightnessOffset(for: token.localID) * 0.035),
-            lower: 0.48,
-            upper: 0.9
+            lower: min(0.48 * brightnessScale, 0.9),
+            upper: min(0.9 * brightnessScale, 0.98)
         )
 
         return SunburstColorComponents(
@@ -193,15 +202,13 @@ public enum SunburstColorResolver {
         )
     }
 
-    /// Branch colors under the colorblind palette: hue identity is what a
-    /// colorblind viewer must distinguish, so branches pick from the same
-    /// Okabe-Ito set the kind mode uses (hash-stable per branch) and keep
-    /// that hue exactly — depth and sibling variation move brightness only,
-    /// never the hue.
-    private nonisolated static func colorblindComponents(
-        for token: SunburstColorToken
+    /// Branch colors under a table palette: each branch picks a table entry
+    /// (hash-stable per branch) and keeps that hue exactly — depth and
+    /// sibling variation move brightness only, never the hue.
+    private nonisolated static func tableComponents(
+        for token: SunburstColorToken,
+        entries: [SIMD3<Float>]
     ) -> SunburstColorComponents {
-        let entries = SunburstColorblindKindTable.kinds
         let base = entries[Int(stableHash(for: token.branchID) % UInt64(entries.count))]
         let (hue, saturation, brightness) = hsb(fromRGB: base)
         let depthTone = min(Double(token.depth), 6)

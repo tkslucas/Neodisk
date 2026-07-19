@@ -3,27 +3,45 @@ import Testing
 import NeodiskKit
 @testable import NeodiskUI
 
-/// The colorblind palette and its wiring through the kind catalog.
+/// The palette registry and its wiring through the kind catalog.
 @MainActor
 @Suite struct VizPaletteTests {
-    @Test func testStandardPaletteMirrorsTheDefaultColors() {
-        // The `.standard` palette is just a gathered view of the values that
-        // live on FileKindCatalog / AgeBucket, so it must match them exactly.
-        #expect(VizPalette.standard.kindPalette == FileKindCatalog.palette)
-        #expect(VizPalette.standard.categoryRGB == FileKindCatalog.categoryRGB)
-        for bucket in AgeBucket.allCases {
-            #expect(VizPalette.standard.ageRGB(bucket) == bucket.rgb)
+    @Test func testRegistryResolvesEveryIDAndFallsBackToStandard() {
+        for palette in VizPalette.all {
+            #expect(VizPalette.named(palette.id) == palette)
+        }
+        // A stale or unknown persisted id must never leave the app blank.
+        #expect(VizPalette.named("no-such-palette") == .standard)
+        #expect(Set(VizPalette.all.map(\.id)).count == VizPalette.all.count)
+    }
+
+    @Test func testEveryPaletteCoversEveryKindSlotCategoryAndAgeBucket() {
+        // A color for every rank the kind mode colors, for every fixed
+        // category, and for every age bucket — in every selectable palette —
+        // so nothing silently falls back to grey when the picker switches.
+        let categoryKeys = Set(VizPalette.standard.categoryRGB.keys)
+        for palette in VizPalette.all {
+            #expect(palette.kindPalette.count == FileKindCatalog.coloredKindLimit)
+            #expect(Set(palette.categoryRGB.keys) == categoryKeys)
+            #expect(palette.ageRamp.count == AgeBucket.allCases.count)
         }
     }
 
-    @Test func testColorblindPaletteCoversEveryKindSlotAndCategory() {
-        // A colorblind color for every rank the standard palette colors, and
-        // for every fixed category, so nothing silently falls back to grey.
-        #expect(VizPalette.colorblind.kindPalette.count == VizPalette.standard.kindPalette.count)
-        #expect(
-            Set(VizPalette.colorblind.categoryRGB.keys) == Set(VizPalette.standard.categoryRGB.keys)
-        )
-        #expect(VizPalette.colorblind.ageRamp.count == AgeBucket.allCases.count)
+    @Test func testClassicRolePalettesShareColorMeaning() {
+        // Classic, Vivid, Pastel, and Earth keep one hue-role order: each
+        // category maps to the same kind-table slot, so switching between
+        // them changes the look, never what a color means.
+        for palette in [VizPalette.vivid, .pastel, .earth] {
+            for (category, rgb) in VizPalette.standard.categoryRGB where category != "cat-other" {
+                let index = VizPalette.standard.kindPalette.firstIndex(of: rgb)
+                let paletteIndex = palette.kindPalette.firstIndex(of: palette.categoryRGB[category]!)
+                #expect(index == paletteIndex, "role mismatch for \(category) in \(palette.id)")
+            }
+            // Age ramp reuses the kind table at the same role slots.
+            #expect(palette.ageRGB(.day) == palette.kindPalette[0])
+            #expect(palette.ageRGB(.older) == palette.kindPalette[1])
+            #expect(palette.ageRGB(.unknown) == FileKindCatalog.otherRGB)
+        }
     }
 
     @Test func testColorblindPaletteActuallyDiffersFromStandard() {
@@ -48,5 +66,19 @@ import NeodiskKit
         #expect(standard.rgb(for: png) == VizPalette.standard.categoryRGB["cat-image"])
         #expect(colorblind.rgb(for: png) == VizPalette.colorblind.categoryRGB["cat-image"])
         #expect(standard.rgb(for: png) != colorblind.rgb(for: png))
+    }
+
+    @Test func testColorblindToggleMigratesToPalettePickerOnce() {
+        let suiteName = "VizPaletteTests-migration-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        // Old toggle on, no palette chosen yet → carried over.
+        defaults.set(true, forKey: "useColorblindPalette")
+        #expect(AppPreferences(defaults: defaults).vizPalette == .colorblind)
+
+        // An explicit later choice wins over the old toggle.
+        defaults.set(VizPalette.vivid.id, forKey: "vizPalette")
+        #expect(AppPreferences(defaults: defaults).vizPalette == .vivid)
     }
 }

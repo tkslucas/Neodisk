@@ -566,7 +566,7 @@ import NeodiskKit
         // variation moves brightness only, so the hue must match one entry.
         let components = SunburstColorResolver.components(
             for: colorblindSegment.colorToken,
-            palette: .colorblind
+            palette: VizPalette.colorblind.sunburst
         )
         let paletteHues = VizPalette.colorblind.kindPalette.map { rgb -> Double in
             let r = Double(rgb.x), g = Double(rgb.y), b = Double(rgb.z)

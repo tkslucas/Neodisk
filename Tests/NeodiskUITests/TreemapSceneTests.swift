@@ -821,8 +821,8 @@ import NeodiskKit
         #expect(catalog.stats[2].kind.id == "no-extension")
 
         // Top kinds get distinct palette colors.
-        #expect(catalog.rgb(forKindID: "mov") == FileKindCatalog.palette[0])
-        #expect(catalog.rgb(forKindID: "jpg") == FileKindCatalog.palette[1])
+        #expect(catalog.rgb(forKindID: "mov") == VizPalette.standard.kindPalette[0])
+        #expect(catalog.rgb(forKindID: "jpg") == VizPalette.standard.kindPalette[1])
         // Unknown kinds fall back to the neutral color.
         #expect(catalog.rgb(forKindID: "zzz-unknown") == FileKindCatalog.otherRGB)
     }

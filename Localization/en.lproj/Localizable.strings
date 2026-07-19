@@ -273,8 +273,13 @@
 "Cushion" = "Cushion";
 "Flat" = "Flat";
 "The view the app starts in. Last viewed restores whatever was on screen when you quit. The toolbar picker switches views any time." = "The view the app starts in. Last viewed restores whatever was on screen when you quit. The toolbar picker switches views any time.";
-"Use colorblind-safe colors" = "Use colorblind-safe colors";
-"Swaps the file-kind and age colors for a palette that stays distinct with common color vision differences. Applies immediately." = "Swaps the file-kind and age colors for a palette that stays distinct with common color vision differences. Applies immediately.";
+"Color palette" = "Color palette";
+"Classic" = "Classic";
+"Vivid" = "Vivid";
+"Pastel" = "Pastel";
+"Earth" = "Earth";
+"Colorblind-safe" = "Colorblind-safe";
+"The color set the visualizations draw with. Colorblind-safe stays distinct with common color vision differences. Applies immediately." = "The color set the visualizations draw with. Colorblind-safe stays distinct with common color vision differences. Applies immediately.";
 
 /* MARK: - Sunburst & view switcher */
 "View" = "View";

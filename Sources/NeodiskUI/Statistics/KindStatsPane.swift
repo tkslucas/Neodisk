@@ -19,8 +19,7 @@ struct KindStatsPane: View {
                 model: model,
                 title: model.kinds.fileList?.kind.displayName,
                 swatch: model.kinds.fileList.map { list in
-                    let rgb = model.kinds.catalog.rgb(forKindID: list.kind.id)
-                    return Color(red: Double(rgb.x), green: Double(rgb.y), blue: Double(rgb.z))
+                    Color(rgb: model.kinds.catalog.rgb(forKindID: list.kind.id))
                 },
                 backHelp: "Back to file kinds",
                 isLoading: model.kinds.isFileListLoading,

@@ -35,7 +35,7 @@ nonisolated struct VolumeBarData: Equatable, Sendable {
         var isHatched = false
 
         var color: Color {
-            explicitColor ?? Color(red: Double(rgb.x), green: Double(rgb.y), blue: Double(rgb.z))
+            explicitColor ?? Color(rgb: rgb)
         }
     }
 

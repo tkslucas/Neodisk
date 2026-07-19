@@ -120,8 +120,12 @@ private struct ViewSettingsTab: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
 
-                Toggle("Use colorblind-safe colors", isOn: $preferences.useColorblindPalette)
-                Text("Swaps the file-kind and age colors for a palette that stays distinct with common color vision differences. Applies immediately.")
+                Picker("Color palette", selection: $preferences.vizPaletteID) {
+                    ForEach(VizPalette.all) { palette in
+                        Text(LocalizedStringKey(palette.title)).tag(palette.id)
+                    }
+                }
+                Text("The color set the visualizations draw with. Colorblind-safe stays distinct with common color vision differences. Applies immediately.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }

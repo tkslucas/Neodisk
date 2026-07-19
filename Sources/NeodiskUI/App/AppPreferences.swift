@@ -69,9 +69,9 @@ final class AppPreferences: ObservableObject {
     /// only — a no-op for scans without cloud items.
     @AppStorage("showCloudOnlyFiles") var showCloudOnlyFiles = true
     @AppStorage("showFreeSpace") var showFreeSpace = false
-    /// Swap the visualization's kind/age colors for a colorblind-safe palette
-    /// (Okabe-Ito + viridis). Applies immediately; see VizPalette.
-    @AppStorage("useColorblindPalette") var useColorblindPalette = false
+    /// The visualization color palette, by VizPalette id. Applies
+    /// immediately; unknown ids fall back to the default (see VizPalette).
+    @AppStorage("vizPalette") var vizPaletteID = VizPalette.standard.id
     @AppStorage("useScanExclusions") var useScanExclusions = false
     /// One glob-style pattern per line (same syntax as .gitignore-lite:
     /// trailing "/" matches directories, "*" wildcards within a component).
@@ -102,7 +102,10 @@ final class AppPreferences: ObservableObject {
     /// Creation is launch: the default-view preference is applied on the
     /// way out (before the model binds and before dev hooks override).
     init(defaults: UserDefaults? = nil) {
-        defer { applyDefaultVizView() }
+        defer {
+            migrateColorblindToggle(in: defaults ?? .standard)
+            applyDefaultVizView()
+        }
         guard let defaults else { return }
         _themeRaw = AppStorage(
             wrappedValue: ThemePreference.system.rawValue, "themePreference", store: defaults
@@ -114,7 +117,9 @@ final class AppPreferences: ObservableObject {
         _includeCloudStorage = AppStorage(wrappedValue: true, "includeCloudStorage", store: defaults)
         _showCloudOnlyFiles = AppStorage(wrappedValue: true, "showCloudOnlyFiles", store: defaults)
         _showFreeSpace = AppStorage(wrappedValue: false, "showFreeSpace", store: defaults)
-        _useColorblindPalette = AppStorage(wrappedValue: false, "useColorblindPalette", store: defaults)
+        _vizPaletteID = AppStorage(
+            wrappedValue: VizPalette.standard.id, "vizPalette", store: defaults
+        )
         _useScanExclusions = AppStorage(wrappedValue: false, "useScanExclusions", store: defaults)
         _exclusionPatternsText = AppStorage(
             wrappedValue: ScanExclusionMatcher.commonPresetPatterns.joined(separator: "\n"),
@@ -143,6 +148,20 @@ final class AppPreferences: ObservableObject {
     var theme: ThemePreference {
         get { ThemePreference(rawValue: themeRaw) ?? .system }
         set { themeRaw = newValue.rawValue }
+    }
+
+    var vizPalette: VizPalette {
+        get { VizPalette.named(vizPaletteID) }
+        set { vizPaletteID = newValue.id }
+    }
+
+    /// The palette picker replaced the colorblind toggle (2.53): carry a
+    /// previously enabled toggle over to the colorblind palette, once —
+    /// after that the new key alone decides.
+    private func migrateColorblindToggle(in defaults: UserDefaults) {
+        guard defaults.object(forKey: "vizPalette") == nil,
+              defaults.bool(forKey: "useColorblindPalette") else { return }
+        vizPaletteID = VizPalette.colorblind.id
     }
 
     var autoRescanPolicy: AutoRescanPolicy {
@@ -214,7 +233,7 @@ final class AppPreferences: ObservableObject {
         includeCloudStorage = true
         showCloudOnlyFiles = true
         showFreeSpace = false
-        useColorblindPalette = false
+        vizPaletteID = VizPalette.standard.id
         useScanExclusions = false
         exclusionPatternsText = ScanExclusionMatcher.commonPresetPatterns.joined(separator: "\n")
         autoRescanPolicyRaw = AutoRescanPolicy.snapshotOnly.rawValue

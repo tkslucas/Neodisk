@@ -273,8 +273,13 @@
 "Cushion" = "Coussin";
 "Flat" = "Plat";
 "The view the app starts in. Last viewed restores whatever was on screen when you quit. The toolbar picker switches views any time." = "La vue au lancement de l'app. « Dernière vue » restaure ce qui était à l'écran à la fermeture. Le sélecteur de la barre d'outils change de vue à tout moment.";
-"Use colorblind-safe colors" = "Utiliser des couleurs adaptées au daltonisme";
-"Swaps the file-kind and age colors for a palette that stays distinct with common color vision differences. Applies immediately." = "Remplace les couleurs de type de fichier et d'ancienneté par une palette qui reste distincte pour les déficiences courantes de la vision des couleurs. Application immédiate.";
+"Color palette" = "Palette de couleurs";
+"Classic" = "Classique";
+"Vivid" = "Vive";
+"Pastel" = "Pastel";
+"Earth" = "Terre";
+"Colorblind-safe" = "Adapté au daltonisme";
+"The color set the visualizations draw with. Colorblind-safe stays distinct with common color vision differences. Applies immediately." = "Le jeu de couleurs utilisé par les visualisations. Adapté au daltonisme reste distinct avec les différences de vision des couleurs courantes. S'applique immédiatement.";
 
 /* MARK: - Sunburst & view switcher */
 "View" = "Présentation";

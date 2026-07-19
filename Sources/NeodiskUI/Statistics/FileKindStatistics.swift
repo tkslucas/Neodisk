@@ -42,54 +42,20 @@ struct FileKindStat: Identifiable, Sendable {
     var id: String { kind.id }
 
     var color: Color {
-        Color(red: Double(rgb.x), green: Double(rgb.y), blue: Double(rgb.z))
+        Color(rgb: rgb)
     }
 }
 
 struct FileKindCatalog: Sendable {
     static let coloredKindLimit = 14
 
-    /// Distinct saturated hues, ordered so the largest kinds get the most
-    /// recognizable colors.
-    nonisolated static let palette: [SIMD3<Float>] = [
-        SIMD3(0.31, 0.48, 0.95), // blue
-        SIMD3(0.90, 0.28, 0.26), // red
-        SIMD3(0.30, 0.75, 0.32), // green
-        SIMD3(0.83, 0.29, 0.83), // magenta
-        SIMD3(0.95, 0.78, 0.20), // yellow
-        SIMD3(0.25, 0.78, 0.82), // cyan
-        SIMD3(0.95, 0.52, 0.19), // orange
-        SIMD3(0.56, 0.36, 0.90), // purple
-        SIMD3(0.20, 0.60, 0.50), // teal
-        SIMD3(0.94, 0.45, 0.65), // pink
-        SIMD3(0.62, 0.80, 0.24), // lime
-        SIMD3(0.62, 0.44, 0.28), // brown
-        SIMD3(0.42, 0.56, 0.14), // olive
-        SIMD3(0.55, 0.27, 0.42), // plum
-    ]
-
+    /// Shared neutrals — palette-independent, so they live here with the
+    /// kind fallback that uses them; the hue tables live in VizPalette.
     nonisolated static let otherRGB = SIMD3<Float>(0.52, 0.52, 0.55)
     nonisolated static let directoryRGB = SIMD3<Float>(0.33, 0.33, 0.36)
 
-    /// Categories keep fixed, meaningful colors regardless of size rank —
-    /// videos are always blue, images always green, and so on. (Types keep
-    /// rank-based colors: the biggest type gets the most prominent hue.)
-    nonisolated static let categoryRGB: [String: SIMD3<Float>] = [
-        "cat-video": SIMD3(0.31, 0.48, 0.95),      // blue
-        "cat-image": SIMD3(0.30, 0.75, 0.32),      // green
-        "cat-audio": SIMD3(0.25, 0.78, 0.82),      // cyan
-        "cat-docs": SIMD3(0.95, 0.78, 0.20),       // yellow
-        "cat-archive": SIMD3(0.95, 0.52, 0.19),    // orange
-        "cat-code": SIMD3(0.83, 0.29, 0.83),       // magenta
-        "cat-data": SIMD3(0.56, 0.36, 0.90),       // purple
-        "cat-apps": SIMD3(0.90, 0.28, 0.26),       // red
-        "cat-summarized": SIMD3(0.20, 0.60, 0.50), // teal
-        "cat-system": SIMD3(0.62, 0.44, 0.28),     // brown
-        "cat-other": otherRGB,
-    ]
-
     static var otherColor: Color {
-        Color(red: Double(otherRGB.x), green: Double(otherRGB.y), blue: Double(otherRGB.z))
+        Color(rgb: otherRGB)
     }
 
     let stats: [FileKindStat]
@@ -124,8 +90,7 @@ struct FileKindCatalog: Sendable {
     }
 
     func color(for node: FileNodeRecord) -> Color {
-        let rgb = rgb(for: node)
-        return Color(red: Double(rgb.x), green: Double(rgb.y), blue: Double(rgb.z))
+        Color(rgb: rgb(for: node))
     }
 
     /// Builds kind statistics for every countable node in the tree — files

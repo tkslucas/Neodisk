@@ -99,9 +99,9 @@ import NeodiskKit
             try #require(scene.cells.first { $0.nodeID == id }).rgb
         }
 
-        #expect(try rgb("/scan/new.mov") == AgeBucket.day.rgb)
-        #expect(try rgb("/scan/old.jpg") == AgeBucket.older.rgb)
-        #expect(try rgb("/scan/undated.bin") == AgeBucket.unknown.rgb)
+        #expect(try rgb("/scan/new.mov") == VizPalette.standard.ageRGB(.day))
+        #expect(try rgb("/scan/old.jpg") == VizPalette.standard.ageRGB(.older))
+        #expect(try rgb("/scan/undated.bin") == VizPalette.standard.ageRGB(.unknown))
     }
 
     @Test func ageBucketHighlightDimsOtherBuckets() throws {
@@ -118,9 +118,9 @@ import NeodiskKit
             try #require(scene.cells.first { $0.nodeID == id }).rgb
         }
 
-        #expect(try rgb("/scan/old.jpg") == AgeBucket.older.rgb)
-        #expect(try rgb("/scan/new.mov") == TreemapScene.dimmedRGB(AgeBucket.day.rgb))
-        #expect(try rgb("/scan/undated.bin") == TreemapScene.dimmedRGB(AgeBucket.unknown.rgb))
+        #expect(try rgb("/scan/old.jpg") == VizPalette.standard.ageRGB(.older))
+        #expect(try rgb("/scan/new.mov") == TreemapScene.dimmedRGB(VizPalette.standard.ageRGB(.day)))
+        #expect(try rgb("/scan/undated.bin") == TreemapScene.dimmedRGB(VizPalette.standard.ageRGB(.unknown)))
     }
 
     @Test func nodeSetHighlightKeepsListedNodesLit() throws {

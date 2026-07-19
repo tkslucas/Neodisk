@@ -323,7 +323,7 @@ struct SidebarPane: View {
         }
         return scans.joined(separator: ",")
             + "|\(model.session.kindStatsSidecarGeneration)"
-            + "|\(model.preferences?.useColorblindPalette == true)"
+            + "|\(model.vizPalette.id)"
     }
 
     private func loadVolumeBars() async {

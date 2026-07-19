@@ -27,25 +27,6 @@ enum AgeBucket: Int, CaseIterable, Identifiable, Sendable {
 
     var id: Int { rawValue }
 
-    /// The ramp runs cool → hot with age: stale files glow warm so the eye
-    /// lands on cleanup candidates. Hues reuse the kind palette's values so
-    /// both color modes feel like one app.
-    nonisolated var rgb: SIMD3<Float> {
-        switch self {
-        case .day: return SIMD3(0.31, 0.48, 0.95)     // blue
-        case .week: return SIMD3(0.25, 0.78, 0.82)    // cyan
-        case .month: return SIMD3(0.62, 0.80, 0.24)   // lime
-        case .quarter: return SIMD3(0.95, 0.78, 0.20) // yellow
-        case .year: return SIMD3(0.95, 0.52, 0.19)    // orange
-        case .older: return SIMD3(0.90, 0.28, 0.26)   // red
-        case .unknown: return FileKindCatalog.otherRGB
-        }
-    }
-
-    var color: Color {
-        Color(red: Double(rgb.x), green: Double(rgb.y), blue: Double(rgb.z))
-    }
-
     var displayName: String {
         switch self {
         case .day: return "Today"

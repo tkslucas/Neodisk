@@ -131,6 +131,6 @@ struct FileCategoryIcon: View {
         let rgb = categoryID == "folder"
             ? FileKindCatalog.otherRGB
             : palette.categoryRGB[categoryID] ?? FileKindCatalog.otherRGB
-        return Color(red: Double(rgb.x), green: Double(rgb.y), blue: Double(rgb.z))
+        return Color(rgb: rgb)
     }
 }

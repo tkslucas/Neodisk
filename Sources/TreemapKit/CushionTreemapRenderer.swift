@@ -22,8 +22,16 @@ public enum CushionTreemapRenderer {
     /// Directional light, image coordinates (y down), pointing from the
     /// surface toward the light: above and to the top-left of the map.
     private nonisolated static let light = normalized(SIMD3<Double>(-0.3, -0.3, 0.906))
-    private nonisolated static let ambient = 0.30
-    private nonisolated static let diffuse = 0.70
+    /// Lambert terms in linear light. The buffer holds sRGB-encoded
+    /// channels, so the shade is applied as `channel · √shade` — under the
+    /// gamma-2 approximation of sRGB that is exactly a linear-light multiply
+    /// (encode(decode(c) · s) = c · √s). Multiplying the encoded channels by
+    /// the raw shade instead darkened roughly twice as hard perceptually and
+    /// dragged every mid-tone hue toward mud. The ambient floor is tuned for
+    /// the encoded result: √0.14 ≈ 0.37 of full brightness at the darkest
+    /// cushion edge.
+    private nonisolated static let ambient = 0.14
+    private nonisolated static let diffuse = 0.86
 
     /// Diagonal hatch baked into cloud-only (`isDataless`) cells: alternating
     /// bands `hatchStripePeriod` device pixels wide along the x+y diagonal,
@@ -213,7 +221,11 @@ public enum CushionTreemapRenderer {
                 // Surface normal is (-gx, -gy, 1) (unnormalized).
                 let normalLength = (gx * gx + gySquaredV + oneV).squareRoot()
                 let dot = (-gx * lightXV - gyLightYV + lightZV) / normalLength
-                var shade = ambientV + diffuseV * pointwiseMax(zeroV, dot)
+                // √ encodes the linear-light Lambert shade for the sRGB
+                // buffer (see the ambient/diffuse comment). The hatch then
+                // modulates the encoded value, keeping its stripe contrast
+                // independent of the gamma handling.
+                var shade = (ambientV + diffuseV * pointwiseMax(zeroV, dot)).squareRoot()
                 if hatch {
                     // stripe = floor((px + py) / period); parity 0/1 = stripe
                     // mod 2. Pixel indices are exact integers well within
@@ -246,7 +258,7 @@ public enum CushionTreemapRenderer {
                 // Surface normal is (-gx, -gy, 1) (unnormalized).
                 let normalLength = (gx * gx + gy * gy + 1).squareRoot()
                 let dot = (-gx * light.x - gy * light.y + light.z) / normalLength
-                var shade = ambient + diffuse * max(0, dot)
+                var shade = (ambient + diffuse * max(0, dot)).squareRoot()
                 if hatch {
                     let parity = ((px + py) / hatchStripePeriod) & 1
                     shade *= (1 + hatchContrast) - (2 * hatchContrast) * Double(parity)

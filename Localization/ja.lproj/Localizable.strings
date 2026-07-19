@@ -273,8 +273,13 @@
 "Cushion" = "クッション";
 "Flat" = "フラット";
 "The view the app starts in. Last viewed restores whatever was on screen when you quit. The toolbar picker switches views any time." = "アプリ起動時に表示されるビューです。「前回の表示」は終了時に表示していたビューを復元します。ツールバーのピッカーでいつでも切り替えられます。";
-"Use colorblind-safe colors" = "色覚に配慮した配色を使用";
-"Swaps the file-kind and age colors for a palette that stays distinct with common color vision differences. Applies immediately." = "ファイル種類と経過時間の色を、一般的な色覚特性でも区別しやすいパレットに切り替えます。すぐに適用されます。";
+"Color palette" = "カラーパレット";
+"Classic" = "クラシック";
+"Vivid" = "ビビッド";
+"Pastel" = "パステル";
+"Earth" = "アース";
+"Colorblind-safe" = "色覚対応";
+"The color set the visualizations draw with. Colorblind-safe stays distinct with common color vision differences. Applies immediately." = "ビジュアライゼーションが使用する配色です。色覚対応は一般的な色覚特性でも見分けやすい配色を保ちます。即座に適用されます。";
 
 /* MARK: - Sunburst & view switcher */
 "View" = "表示";

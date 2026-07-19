@@ -67,23 +67,8 @@ struct VizPalette: Sendable, Equatable, Identifiable {
     static let standard = VizPalette(
         id: "standard",
         title: "Classic",
-        kinds: [
-            SIMD3(0.30, 0.75, 0.32), // green
-            SIMD3(0.31, 0.48, 0.95), // blue
-            SIMD3(0.90, 0.28, 0.26), // red
-            SIMD3(0.83, 0.29, 0.83), // magenta
-            SIMD3(0.95, 0.78, 0.20), // yellow
-            SIMD3(0.95, 0.52, 0.19), // orange
-            SIMD3(0.56, 0.36, 0.90), // purple
-            SIMD3(0.25, 0.78, 0.82), // cyan
-            SIMD3(0.20, 0.60, 0.50), // teal
-            SIMD3(0.94, 0.45, 0.65), // pink
-            SIMD3(0.62, 0.80, 0.24), // lime
-            SIMD3(0.62, 0.44, 0.28), // brown
-            SIMD3(0.42, 0.56, 0.14), // olive
-            SIMD3(0.55, 0.27, 0.42), // plum
-        ],
-        sunburst: .standard
+        kinds: classicKinds,
+        sunburst: SunburstPalette(branchHues: .table(classicKinds))
     )
 
     /// The classic hues punched up (saturation and brightness raised in HSB)
@@ -92,25 +77,8 @@ struct VizPalette: Sendable, Equatable, Identifiable {
     static let vivid = VizPalette(
         id: "vivid",
         title: "Vivid",
-        kinds: [
-            SIMD3(0.21, 0.84, 0.24), // green
-            SIMD3(0.16, 0.38, 1.00), // blue
-            SIMD3(1.00, 0.14, 0.12), // red
-            SIMD3(0.93, 0.18, 0.93), // magenta
-            SIMD3(1.00, 0.78, 0.02), // yellow
-            SIMD3(1.00, 0.44, 0.01), // orange
-            SIMD3(0.53, 0.25, 1.00), // purple
-            SIMD3(0.12, 0.86, 0.92), // cyan
-            SIMD3(0.11, 0.67, 0.53), // teal
-            SIMD3(1.00, 0.34, 0.61), // pink
-            SIMD3(0.65, 0.90, 0.12), // lime
-            SIMD3(0.69, 0.44, 0.22), // brown
-            SIMD3(0.43, 0.63, 0.04), // olive
-            SIMD3(0.62, 0.22, 0.43), // plum
-        ],
-        sunburst: SunburstPalette(
-            branchHues: .hashed(saturationScale: 1.15, brightnessScale: 1.06)
-        )
+        kinds: vividKinds,
+        sunburst: SunburstPalette(branchHues: .table(vividKinds))
     )
 
     /// Warm faded terminal tones — brick red, olive green, amber, muted
@@ -205,6 +173,40 @@ struct VizPalette: Sendable, Equatable, Identifiable {
     /// glow warm: blue, cyan, lime, yellow, orange, red slots. Shared by
     /// every classic-role palette; the `unknown` bucket appends the neutral.
     private static let classicAgeRoles = [1, 7, 10, 4, 5, 2]
+
+    private static let classicKinds: [SIMD3<Float>] = [
+        SIMD3(0.30, 0.75, 0.32), // green
+        SIMD3(0.31, 0.48, 0.95), // blue
+        SIMD3(0.90, 0.28, 0.26), // red
+        SIMD3(0.83, 0.29, 0.83), // magenta
+        SIMD3(0.95, 0.78, 0.20), // yellow
+        SIMD3(0.95, 0.52, 0.19), // orange
+        SIMD3(0.56, 0.36, 0.90), // purple
+        SIMD3(0.25, 0.78, 0.82), // cyan
+        SIMD3(0.20, 0.60, 0.50), // teal
+        SIMD3(0.94, 0.45, 0.65), // pink
+        SIMD3(0.62, 0.80, 0.24), // lime
+        SIMD3(0.62, 0.44, 0.28), // brown
+        SIMD3(0.42, 0.56, 0.14), // olive
+        SIMD3(0.55, 0.27, 0.42), // plum
+    ]
+
+    private static let vividKinds: [SIMD3<Float>] = [
+        SIMD3(0.21, 0.84, 0.24), // green
+        SIMD3(0.16, 0.38, 1.00), // blue
+        SIMD3(1.00, 0.14, 0.12), // red
+        SIMD3(0.93, 0.18, 0.93), // magenta
+        SIMD3(1.00, 0.78, 0.02), // yellow
+        SIMD3(1.00, 0.44, 0.01), // orange
+        SIMD3(0.53, 0.25, 1.00), // purple
+        SIMD3(0.12, 0.86, 0.92), // cyan
+        SIMD3(0.11, 0.67, 0.53), // teal
+        SIMD3(1.00, 0.34, 0.61), // pink
+        SIMD3(0.65, 0.90, 0.12), // lime
+        SIMD3(0.69, 0.44, 0.22), // brown
+        SIMD3(0.43, 0.63, 0.04), // olive
+        SIMD3(0.62, 0.22, 0.43), // plum
+    ]
 
     /// The verbatim 14-accent set of the classic warm retro terminal scheme
     /// (7 bright accents + 7 muted counterparts), rank-ordered for hue

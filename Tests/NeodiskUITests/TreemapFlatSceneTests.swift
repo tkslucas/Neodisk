@@ -246,13 +246,16 @@ import NeodiskKit
         // depth 0), folder role — the sunburst's first-ring token, drawn
         // "translucently" (composited over the raster background).
         let container = try #require(scene.cells.first { $0.nodeID == "/scan/sub" })
+        let position = try #require(SunburstLayout.colorBranchPositions(in: store)["/scan/sub"])
+        let palette = VizPalette.standard.sunburst
         let folderToken = SunburstColorToken(
             branchID: "/scan/sub", localID: "/scan/sub",
-            branchIndex: 0, branchCount: 1, siblingIndex: 0, siblingCount: 1,
+            branchIndex: position.index, branchCount: position.count,
+            siblingIndex: 0, siblingCount: 1,
             depth: 0, role: .normal
         )
         let expectedContainer = TreemapScene.flatComposite(
-            desaturated(SunburstColorResolver.rgb(for: folderToken)),
+            desaturated(SunburstColorResolver.rgb(for: folderToken, palette: palette)),
             over: TreemapRasterTarget.backgroundRGB
         )
         #expect(container.rgb == expectedContainer)
@@ -263,11 +266,12 @@ import NeodiskKit
         let child = try #require(scene.cells.first { $0.nodeID == "/scan/sub/c.txt" })
         let fileToken = SunburstColorToken(
             branchID: "/scan/sub", localID: "/scan/sub/c.txt",
-            branchIndex: 0, branchCount: 1, siblingIndex: 0, siblingCount: 1,
+            branchIndex: position.index, branchCount: position.count,
+            siblingIndex: 0, siblingCount: 1,
             depth: 1, role: .normal
         )
         let expectedChild = TreemapScene.flatComposite(
-            desaturated(SunburstColorResolver.rgb(for: fileToken)),
+            desaturated(SunburstColorResolver.rgb(for: fileToken, palette: palette)),
             over: TreemapRasterTarget.backgroundRGB
         )
         #expect(child.rgb == expectedChild)
@@ -300,13 +304,15 @@ import NeodiskKit
             catalog: .empty, colorMode: .branch
         )
         let child = try #require(scene.cells.first { $0.nodeID == "/scan/sub/c.txt" })
+        let position = try #require(SunburstLayout.colorBranchPositions(in: store)["/scan/sub"])
         let token = SunburstColorToken(
             branchID: "/scan/sub", localID: "/scan/sub/c.txt",
-            branchIndex: 0, branchCount: 1, siblingIndex: 0, siblingCount: 1,
+            branchIndex: position.index, branchCount: position.count,
+            siblingIndex: 0, siblingCount: 1,
             depth: 1, role: .normal
         )
         let expected = TreemapScene.flatComposite(
-            desaturated(SunburstColorResolver.rgb(for: token)),
+            desaturated(SunburstColorResolver.rgb(for: token, palette: VizPalette.standard.sunburst)),
             over: TreemapRasterTarget.backgroundRGB
         )
         #expect(child.rgb == expected)

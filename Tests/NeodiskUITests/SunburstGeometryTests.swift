@@ -418,8 +418,9 @@ import NeodiskKit
 
         let dirSegment = try #require(segments.first { $0.nodeID == sub.id })
         let fileSegment = try #require(segments.first { $0.nodeID == file.id })
-        #expect(dirSegment.fillRGB == SunburstColorResolver.rgb(for: dirSegment.colorToken))
-        #expect(fileSegment.fillRGB == SunburstColorResolver.rgb(for: fileSegment.colorToken))
+        let palette = VizPalette.standard.sunburst
+        #expect(dirSegment.fillRGB == SunburstColorResolver.rgb(for: dirSegment.colorToken, palette: palette))
+        #expect(fileSegment.fillRGB == SunburstColorResolver.rgb(for: fileSegment.colorToken, palette: palette))
     }
 
     @Test func branchModeDrawsFilesGrayAndFoldersColored() throws {

@@ -90,9 +90,11 @@ public struct SunburstColorComponents: Equatable, Hashable, Sendable {
 /// describes the strategy (and receives a table by value when one applies).
 public struct SunburstPalette: Equatable, Sendable {
     public enum BranchHues: Equatable, Sendable {
-        /// Hash-derived free hues — the classic continuous look. The scales
-        /// tilt the resolver's saturation/brightness envelope so branch mode
-        /// matches the palette's overall mood; (1, 1) is the classic default.
+        /// Hash-derived free hues over the whole wheel. The app's palettes
+        /// all use `.table` now; this remains the resolver's app-free
+        /// default (`.standard`) for consumers without a palette table —
+        /// embedded demos — and the empty-table fallback. The scales tilt
+        /// the saturation/brightness envelope; (1, 1) is the plain look.
         case hashed(saturationScale: Double, brightnessScale: Double)
         /// Branch hues restricted to a fixed qualitative table (hash-stable
         /// per branch); depth and sibling variation move brightness only,

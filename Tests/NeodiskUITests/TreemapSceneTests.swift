@@ -553,13 +553,16 @@ import NeodiskKit
         // The nested file: /scan/sub's branch one level deeper, the raw
         // resolver color with the branch id standing in for the node —
         // cushion drops the per-node jitter, so branch siblings at one
-        // depth share one clean hue.
+        // depth share one clean hue. The token carries the branch's real
+        // scan-root position, like the scene's cells.
+        let position = try #require(SunburstLayout.colorBranchPositions(in: store)["/scan/sub"])
         let token = SunburstColorToken(
             branchID: "/scan/sub", localID: "/scan/sub",
-            branchIndex: 0, branchCount: 1, siblingIndex: 0, siblingCount: 1,
+            branchIndex: position.index, branchCount: position.count,
+            siblingIndex: 0, siblingCount: 1,
             depth: 1, role: .normal
         )
-        let expected = SunburstColorResolver.rgb(for: token)
+        let expected = SunburstColorResolver.rgb(for: token, palette: VizPalette.standard.sunburst)
         let cell = try #require(scene.cells.first { $0.nodeID == "/scan/sub/c.txt" })
         #expect(cell.rgb == expected)
 
@@ -620,12 +623,14 @@ import NeodiskKit
         let subAggregate = try #require(scene.cells.first {
             $0.aggregate != nil && $0.nodeID == "/agg/sub"
         })
+        let position = try #require(SunburstLayout.colorBranchPositions(in: store)["/agg/sub"])
         let token = SunburstColorToken(
             branchID: "/agg/sub", localID: "/agg/sub",
-            branchIndex: 0, branchCount: 1, siblingIndex: 0, siblingCount: 1,
+            branchIndex: position.index, branchCount: position.count,
+            siblingIndex: 0, siblingCount: 1,
             depth: 1, role: .normal
         )
-        #expect(subAggregate.rgb == SunburstColorResolver.rgb(for: token))
+        #expect(subAggregate.rgb == SunburstColorResolver.rgb(for: token, palette: VizPalette.standard.sunburst))
 
         // The scan root's own merge spans many branches: neutral gray.
         let rootAggregate = try #require(scene.cells.first {

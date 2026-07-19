@@ -128,7 +128,7 @@ struct VizPalette: Sendable, Equatable, Identifiable {
             retroKinds[10], // green       #98971a
             retroKinds[4],  // bright yellow #fabd2f
             retroKinds[5],  // bright orange #fe8019
-            retroKinds[0],  // bright red  #fb4934 — oldest
+            retroKinds[2],  // bright red  #fb4934 — oldest
             FileKindCatalog.otherRGB,
         ],
         sunburst: SunburstPalette(branchHues: .table(retroKinds))
@@ -218,9 +218,9 @@ struct VizPalette: Sendable, Equatable, Identifiable {
     /// size ranks — and positionally colored branches — never land three
     /// warm accents in a row. Categories map through `retroCategoryRoles`.
     private static let retroKinds: [SIMD3<Float>] = [
-        SIMD3(0.984, 0.286, 0.204), // bright red    #fb4934
-        SIMD3(0.514, 0.647, 0.596), // bright blue   #83a598
         SIMD3(0.722, 0.733, 0.149), // bright green  #b8bb26
+        SIMD3(0.514, 0.647, 0.596), // bright blue   #83a598
+        SIMD3(0.984, 0.286, 0.204), // bright red    #fb4934
         SIMD3(0.827, 0.525, 0.608), // bright purple #d3869b
         SIMD3(0.980, 0.741, 0.184), // bright yellow #fabd2f
         SIMD3(0.996, 0.502, 0.098), // bright orange #fe8019
@@ -236,8 +236,8 @@ struct VizPalette: Sendable, Equatable, Identifiable {
 
     private static let retroCategoryRoles: [String: Int] = [
         "cat-video": 1,       // bright blue
-        "cat-apps": 0,        // bright red
-        "cat-image": 2,       // bright green
+        "cat-apps": 2,        // bright red
+        "cat-image": 0,       // bright green
         "cat-code": 3,        // bright purple
         "cat-docs": 4,        // bright yellow
         "cat-audio": 7,       // bright aqua

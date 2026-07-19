@@ -352,7 +352,7 @@ final class NeodiskViewModel {
                 palette: vizPalette,
                 // The flat treemap tints files with the branch hue; the
                 // sunburst keeps its file gray.
-                mutedFiles: vizViewMode == .treemap
+                branchTintedFiles: vizViewMode == .treemap
             )
         }
         if case .age(let referenceDate) = treemapColorMode {

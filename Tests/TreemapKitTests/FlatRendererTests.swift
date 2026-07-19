@@ -52,10 +52,12 @@ import TreemapKit
         // background, the first drawn row is the darkened border.
         let gap = pixel(raster, x: 50, y: 0)
         #expect(gap.r == 18 && gap.g == 18 && gap.b == 22)
-        // Border shade: the fill mixed toward black by 0.38.
+        // Border shade: the darkened fill, feathered over the background
+        // on its outermost ring (so a whisper of the backdrop's green/blue
+        // channels survives the blend).
         let edge = pixel(raster, x: 50, y: 1)
         #expect(edge.r < 200 && edge.r > 100)
-        #expect(edge.g == 0 && edge.b == 0)
+        #expect(edge.g < 10 && edge.b < 10)
 
         // Rounded corner: the cut reveals the background inside the drawn
         // rect's corner.

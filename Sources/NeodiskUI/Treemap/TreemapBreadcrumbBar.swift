@@ -16,7 +16,7 @@ import NeodiskKit
 struct TreemapBreadcrumbBar: View {
     let model: NeodiskViewModel
     /// The sunburst's simplified layout leans on the bar for navigation, so
-    /// it renders larger there; the treemap keeps the compact strip.
+    /// it renders larger there; both treemap styles keep the compact strip.
     var isProminent = false
 
     /// Root → selected node, falling back to the drill root with nothing

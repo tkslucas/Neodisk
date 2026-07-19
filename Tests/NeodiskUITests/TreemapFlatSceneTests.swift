@@ -58,6 +58,13 @@ import NeodiskKit
         )
     }
 
+    /// The flat treemap's branch-mode desaturation, mirrored for expected
+    /// colors (TreemapScene.resolvedRGB).
+    private func desaturated(_ rgb: SIMD3<Float>) -> SIMD3<Float> {
+        let gray = SIMD3<Float>(repeating: (rgb.x + rgb.y + rgb.z) / 3)
+        return rgb + (gray - rgb) * TreemapScene.flatBranchDesaturation
+    }
+
     private func buildFlat(size: CGSize = CGSize(width: 400, height: 300)) -> TreemapScene {
         TreemapScene.build(
             store: makeStore(), rootID: "/scan", style: .flat,
@@ -172,6 +179,61 @@ import NeodiskKit
         #expect(!scene.labels.contains { $0.id == "/scan/sub" })
     }
 
+    @Test func flatDepthCapStopsNestingPastLimit() throws {
+        // A chain of single-child directories deeper than the cap, in a map
+        // large enough that every rect clears the minimum container size:
+        // nesting must stop at flatMaxContainerDepth anyway.
+        let rootURL = URL(filePath: "/scan", directoryHint: .isDirectory)
+        let levels = TreemapScene.flatMaxContainerDepth + 2
+        let ids = (1...levels).map { level in
+            "/scan/" + (1...level).map { "d\($0)" }.joined(separator: "/")
+        }
+        let leaf = FileNodeRecord(
+            id: ids[levels - 1] + "/f.bin",
+            url: rootURL.appending(path: "f.bin"), name: "f.bin",
+            isDirectory: false, isSymbolicLink: false,
+            allocatedSize: 1_000, logicalSize: 1_000, descendantFileCount: 0,
+            lastModified: nil, isPackage: false, isAccessible: true,
+            isSelfAccessible: true, isSynthetic: false, isAutoSummarized: false
+        )
+        var childrenByID: [String: [FileNodeRecord]] = [ids[levels - 1]: [leaf]]
+        var node = leaf
+        for id in ids.reversed() {
+            node = FileNodeRecord.directory(
+                id: id, url: rootURL.appending(path: id, directoryHint: .isDirectory),
+                name: String(id.split(separator: "/").last!), children: [node],
+                lastModified: nil, isPackage: false, isAccessible: true
+            )
+            childrenByID[id] = childrenByID[id] ?? []
+            if let parent = ids.firstIndex(of: id), parent > 0 {
+                childrenByID[ids[parent - 1]] = [node]
+            }
+        }
+        let root = FileNodeRecord.directory(
+            id: "/scan", url: rootURL, name: "scan", children: [node],
+            lastModified: nil, isPackage: false, isAccessible: true
+        )
+        childrenByID["/scan"] = [node]
+        let store = FileTreeStore(root: root, childrenByID: childrenByID)
+
+        let scene = TreemapScene.build(
+            store: store, rootID: "/scan", style: .flat,
+            size: CGSize(width: 900, height: 900), catalog: .empty
+        )
+
+        // d1…d(cap-1) nest; the directory AT the cap renders plain and
+        // nothing below it is emitted.
+        let capped = try #require(
+            scene.cells.first { $0.nodeID == ids[TreemapScene.flatMaxContainerDepth - 1] }
+        )
+        #expect(!capped.isContainer)
+        let lastContainer = try #require(
+            scene.cells.first { $0.nodeID == ids[TreemapScene.flatMaxContainerDepth - 2] }
+        )
+        #expect(lastContainer.isContainer)
+        #expect(!scene.cells.contains { $0.nodeID == ids[TreemapScene.flatMaxContainerDepth] })
+    }
+
     @Test func branchColorsMatchSunburstResolver() throws {
         let store = makeStore()
         let scene = TreemapScene.build(
@@ -190,33 +252,47 @@ import NeodiskKit
             depth: 0, role: .normal
         )
         let expectedContainer = TreemapScene.flatComposite(
-            SunburstColorResolver.rgb(for: folderToken),
+            desaturated(SunburstColorResolver.rgb(for: folderToken)),
             over: TreemapRasterTarget.backgroundRGB
         )
         #expect(container.rgb == expectedContainer)
 
-        // The nested file: same branch, one ring deeper — muted branch tint
-        // (not the sunburst's file gray), stacked over the container's
-        // composited fill.
+        // The nested file: same branch, one ring deeper — the full folder
+        // formula (not the sunburst's file gray), composited over the same
+        // background as every other cell (never over the container's fill).
         let child = try #require(scene.cells.first { $0.nodeID == "/scan/sub/c.txt" })
         let fileToken = SunburstColorToken(
             branchID: "/scan/sub", localID: "/scan/sub/c.txt",
             branchIndex: 0, branchCount: 1, siblingIndex: 0, siblingCount: 1,
-            depth: 1, role: .file
+            depth: 1, role: .normal
         )
         let expectedChild = TreemapScene.flatComposite(
-            SunburstColorResolver.rgb(
-                from: SunburstColorResolver.mutedFileComponents(for: fileToken)
-            ),
-            over: container.rgb
+            desaturated(SunburstColorResolver.rgb(for: fileToken)),
+            over: TreemapRasterTarget.backgroundRGB
         )
         #expect(child.rgb == expectedChild)
+
+        // A loose file at the scan root goes gray (the sunburst's file
+        // treatment, depth floored to 1): no hue family of its own, and
+        // graying it keeps the root's colored folders identifiable.
+        let rootFile = try #require(scene.cells.first { $0.nodeID == "/scan/a.mov" })
+        let rootFileToken = SunburstColorToken(
+            branchID: "/scan/a.mov", localID: "/scan/a.mov",
+            branchIndex: 0, branchCount: 1, siblingIndex: 0, siblingCount: 1,
+            depth: 1, role: .file
+        )
+        let expectedRootFile = TreemapScene.flatComposite(
+            SunburstColorResolver.rgb(for: rootFileToken) * TreemapScene.flatRootFileDim,
+            over: TreemapRasterTarget.backgroundRGB
+        )
+        #expect(rootFile.rgb == expectedRootFile)
     }
 
     @Test func drilledBranchColorsKeepScanRootHueFamily() throws {
         // Rooted at /scan/sub: the hue family still derives from the
-        // scan-root branch (/scan/sub), depth measured from the drill root —
-        // same contract as SunburstColorResolver.branchColor.
+        // scan-root branch (/scan/sub), and depth is still measured from the
+        // SCAN root — drilling in must not re-brighten the subtree, so
+        // c.txt keeps the same depth-1 color it had in the full map.
         let store = makeStore()
         let scene = TreemapScene.build(
             store: store, rootID: "/scan/sub", style: .flat,
@@ -227,12 +303,10 @@ import NeodiskKit
         let token = SunburstColorToken(
             branchID: "/scan/sub", localID: "/scan/sub/c.txt",
             branchIndex: 0, branchCount: 1, siblingIndex: 0, siblingCount: 1,
-            depth: 0, role: .file
+            depth: 1, role: .normal
         )
         let expected = TreemapScene.flatComposite(
-            SunburstColorResolver.rgb(
-                from: SunburstColorResolver.mutedFileComponents(for: token)
-            ),
+            desaturated(SunburstColorResolver.rgb(for: token)),
             over: TreemapRasterTarget.backgroundRGB
         )
         #expect(child.rgb == expected)

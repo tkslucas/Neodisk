@@ -21,9 +21,15 @@ import Foundation
 
 public enum FlatTreemapRenderer {
     /// Border color: the cell's own fill mixed toward black by this
-    /// fraction (equivalent to a black stroke at 0.38 opacity), so the grid reads
+    /// fraction (equivalent to a black stroke at 0.30 opacity), so the grid reads
     /// in every color mode without introducing a new color channel.
-    private nonisolated static let borderShade: Float = 0.62
+    private nonisolated static let borderShade: Float = 0.70
+    /// The border's outermost device-pixel ring blends over whatever lies
+    /// beneath at this coverage, and its innermost ring mixes halfway
+    /// toward the fill — the soft edges of an anti-aliased vector stroke.
+    /// A hard-edged solid band of the same color reads darker and sharper
+    /// than intended.
+    private nonisolated static let borderEdgeFeather: Double = 0.6
     /// Border thickness in view points (scaled to device pixels).
     private nonisolated static let borderWidth: CGFloat = 1
     /// Every tile draws inset by this much per side, so siblings get a
@@ -139,6 +145,19 @@ public enum FlatTreemapRenderer {
         #endif
     }
 
+    /// Lerp between two packed RGBA words — the anti-aliasing mix for corner
+    /// pixels straddling the border band's inner edge, where a hard cut
+    /// leaves a visible staircase inside the rounded corner.
+    private nonisolated static func mixWords(_ a: UInt32, _ b: UInt32, _ t: Double) -> UInt32 {
+        let fraction = Float(t)
+        func channel(_ shift: UInt32) -> UInt32 {
+            let from = Float((a >> shift) & 0xFF)
+            let to = Float((b >> shift) & 0xFF)
+            return UInt32((from + (to - from) * fraction).rounded()) << shift
+        }
+        return channel(0) | channel(8) | channel(16) | (255 << 24)
+    }
+
     /// Blends `word` over the pixel already in the buffer by `coverage` —
     /// the anti-aliasing write for partially covered corner pixels. The
     /// buffer is premultiplied, so the same lerp covers the alpha channel:
@@ -212,6 +231,58 @@ public enum FlatTreemapRenderer {
             return ((px + py) / hatchStripePeriod) & 1 == 0 ? hatchBrightWord : hatchDarkWord
         }
 
+        // Border writes, feathered by ring (distance from the drawn rect's
+        // edge): ring 0 blends over what's beneath, the ring touching the
+        // interior mixes toward the fill, rings between stay solid.
+        let innerBorderWord = mixWords(borderWord, fillWord, 0.5)
+        func borderRun(row py: Int, from start: Int, to end: Int, ring: Int) {
+            guard end > start else { return }
+            let rowStart = py * bytesPerRow
+            if ring == 0 {
+                for px in start..<end {
+                    blendPixel(
+                        base, byteOffset: rowStart + px * 4,
+                        word: borderWord, coverage: borderEdgeFeather
+                    )
+                }
+            } else if ring == border - 1 {
+                if hatch {
+                    for px in start..<end {
+                        fillRun(
+                            base, byteOffset: rowStart + px * 4, pixelCount: 1,
+                            word: mixWords(borderWord, interiorWord(px, py), 0.5)
+                        )
+                    }
+                } else {
+                    fillRun(
+                        base, byteOffset: rowStart + start * 4,
+                        pixelCount: end - start, word: innerBorderWord
+                    )
+                }
+            } else {
+                fillRun(
+                    base, byteOffset: rowStart + start * 4,
+                    pixelCount: end - start, word: borderWord
+                )
+            }
+        }
+
+        // A row that is border across its span: columns closer to a
+        // vertical edge than the row is to its horizontal edge take that
+        // column's (outer) ring instead.
+        func borderRow(row py: Int, from start: Int, to end: Int, rowRing: Int) {
+            guard end > start else { return }
+            let midStart = min(max(start, x0 + rowRing), end)
+            let midEnd = max(min(end, x1 - rowRing), midStart)
+            for px in start..<midStart {
+                borderRun(row: py, from: px, to: px + 1, ring: px - x0)
+            }
+            borderRun(row: py, from: midStart, to: midEnd, ring: rowRing)
+            for px in midEnd..<end {
+                borderRun(row: py, from: px, to: px + 1, ring: x1 - 1 - px)
+            }
+        }
+
         // Interior span fill for one row (hatch-aware).
         func fillInterior(row py: Int, from start: Int, to end: Int) {
             guard end > start else { return }
@@ -237,11 +308,13 @@ public enum FlatTreemapRenderer {
             if edgeDistY >= radius {
                 // No corner on this row: straight border rows/columns.
                 if edgeDistY < border {
-                    fillRun(base, byteOffset: rowStart + x0 * 4, pixelCount: x1 - x0, word: borderWord)
+                    borderRow(row: py, from: x0, to: x1, rowRing: edgeDistY)
                     continue
                 }
-                fillRun(base, byteOffset: rowStart + x0 * 4, pixelCount: border, word: borderWord)
-                fillRun(base, byteOffset: rowStart + (x1 - border) * 4, pixelCount: border, word: borderWord)
+                for ring in 0..<border {
+                    borderRun(row: py, from: x0 + ring, to: x0 + ring + 1, ring: ring)
+                    borderRun(row: py, from: x1 - 1 - ring, to: x1 - ring, ring: ring)
+                }
                 fillInterior(row: py, from: x0 + border, to: x1 - border)
                 continue
             }
@@ -257,11 +330,33 @@ public enum FlatTreemapRenderer {
                 let distance = (dx * dx + dy * dy).squareRoot()
                 let coverage = min(max(radiusD + 0.5 - distance, 0), 1)
                 guard coverage > 0 else { return }
-                let word = distance > bandInner ? borderWord : interiorWord(px, py)
-                if coverage >= 1 {
+                // Border→fill transition anti-aliases like the outline: a
+                // pixel straddling the band's inner arc mixes the two words
+                // by its interior fraction instead of hard-cutting. The
+                // band's outermost ring feathers over what's beneath, like
+                // the straight edges. The mix window spans the band's whole
+                // innermost pixel ring — the straight edges mix that entire
+                // ring toward the fill, and a narrower window leaves a
+                // solid-dark arc sliver only the corners have.
+                let word: UInt32
+                let interiorFraction = bandInner <= 0
+                    ? 0
+                    : min(max(bandInner + 1 - distance, 0), 1)
+                if interiorFraction <= 0 {
+                    word = borderWord
+                } else if interiorFraction >= 1 {
+                    word = interiorWord(px, py)
+                } else {
+                    word = mixWords(borderWord, interiorWord(px, py), interiorFraction)
+                }
+                var effectiveCoverage = coverage
+                if interiorFraction < 1, distance > radiusD - 1 {
+                    effectiveCoverage *= borderEdgeFeather
+                }
+                if effectiveCoverage >= 1 {
                     fillRun(base, byteOffset: rowStart + px * 4, pixelCount: 1, word: word)
                 } else {
-                    blendPixel(base, byteOffset: rowStart + px * 4, word: word, coverage: coverage)
+                    blendPixel(base, byteOffset: rowStart + px * 4, word: word, coverage: effectiveCoverage)
                 }
             }
 
@@ -282,7 +377,7 @@ public enum FlatTreemapRenderer {
             let mid1 = x1 - zoneWidth
             guard mid1 > mid0 else { continue }
             if edgeDistY < border {
-                fillRun(base, byteOffset: rowStart + mid0 * 4, pixelCount: mid1 - mid0, word: borderWord)
+                borderRow(row: py, from: mid0, to: mid1, rowRing: edgeDistY)
             } else {
                 fillInterior(row: py, from: mid0, to: mid1)
             }

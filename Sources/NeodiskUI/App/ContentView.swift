@@ -380,13 +380,9 @@ private struct WorkspaceView: View {
                     }
 
                     VStack(spacing: 0) {
-                        // The flat treemap leans on the bar like the sunburst
-                        // does: drilling is the only navigation, so the bar
-                        // renders at its prominent size there too.
                         TreemapBreadcrumbBar(
                             model: model,
                             isProminent: model.vizViewMode == .sunburst
-                                || model.treemapStyle == .flat
                         )
                         if model.vizViewMode == .sunburst {
                             SunburstPane(model: model)

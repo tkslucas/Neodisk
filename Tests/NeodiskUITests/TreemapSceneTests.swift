@@ -541,6 +541,61 @@ import NeodiskKit
         }
     }
 
+    @Test func cushionLabelsUndividedDirectoriesLikeFiles() {
+        // Packages scanned as childless leaves (app bundles) and
+        // auto-summarized folders render as one solid cushion cell; big
+        // enough on screen they carry their name like a file. A subdivided
+        // directory still never labels — its area belongs to its children.
+        let rootURL = URL(filePath: "/apps", directoryHint: .isDirectory)
+        let app = FileNodeRecord(
+            id: "/apps/Big.app", url: rootURL.appending(path: "Big.app"), name: "Big.app",
+            isDirectory: true, isSymbolicLink: false,
+            allocatedSize: 500, logicalSize: 500, descendantFileCount: 120,
+            lastModified: nil, isPackage: true, isAccessible: true,
+            isSelfAccessible: true, isSynthetic: false, isAutoSummarized: false
+        )
+        let summarized = FileNodeRecord(
+            id: "/apps/cache", url: rootURL.appending(path: "cache", directoryHint: .isDirectory),
+            name: "cache", isDirectory: true, isSymbolicLink: false,
+            allocatedSize: 400, logicalSize: 400, descendantFileCount: 900,
+            lastModified: nil, isPackage: false, isAccessible: true,
+            isSelfAccessible: true, isSynthetic: false, isAutoSummarized: true
+        )
+        let inner = FileNodeRecord(
+            id: "/apps/sub/movie.mov", url: rootURL.appending(path: "sub/movie.mov"),
+            name: "movie.mov", isDirectory: false, isSymbolicLink: false,
+            allocatedSize: 300, logicalSize: 300, descendantFileCount: 0,
+            lastModified: nil, isPackage: false, isAccessible: true,
+            isSelfAccessible: true, isSynthetic: false, isAutoSummarized: false
+        )
+        let sub = FileNodeRecord.directory(
+            id: "/apps/sub", url: rootURL.appending(path: "sub", directoryHint: .isDirectory),
+            name: "sub", children: [inner], lastModified: nil,
+            isPackage: false, isAccessible: true
+        )
+        let children = FileTreeStore.sortedChildren([app, summarized, sub])
+        let root = FileNodeRecord.directory(
+            id: "/apps", url: rootURL, name: "apps", children: children,
+            lastModified: nil, isPackage: false, isAccessible: true, childrenAreSorted: true
+        )
+        let store = FileTreeStore(root: root, childrenByID: [
+            "/apps": children,
+            "/apps/sub": [inner],
+        ])
+
+        let scene = TreemapScene.build(
+            store: store, rootID: "/apps",
+            size: CGSize(width: 400, height: 300),
+            catalog: .empty
+        )
+
+        let labelIDs = Set(scene.labels.map(\.id))
+        #expect(labelIDs.contains("/apps/Big.app"))
+        #expect(labelIDs.contains("/apps/cache"))
+        #expect(labelIDs.contains("/apps/sub/movie.mov"))
+        #expect(!labelIDs.contains("/apps/sub"))
+    }
+
     @Test func rendererProducesImageOfExpectedSize() {
         let store = makeStore()
         let scene = TreemapScene.build(

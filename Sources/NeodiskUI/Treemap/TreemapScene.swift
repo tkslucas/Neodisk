@@ -117,10 +117,10 @@ struct TreemapScene: Sendable {
     /// read as border-only confetti in flat.
     nonisolated static let minChildCellArea: CGFloat = 64
     nonisolated static let flatMinChildCellArea: CGFloat = 120
-    /// Files at least this large get their name drawn on the map, provided
-    /// their cell has room for it.
-    /// Files get their name drawn once their on-screen cell is big enough to
-    /// carry it legibly — zooming in reveals more names as cells grow.
+    /// Undivided cells — files, and cushion directories drawn as one solid
+    /// tile (packages, summarized/inaccessible folders) — get their name
+    /// drawn once their on-screen cell is big enough to carry it legibly;
+    /// zooming in reveals more names as cells grow.
     nonisolated static let labelMinCellWidth: CGFloat = 80
     nonisolated static let labelMinCellHeight: CGFloat = 22
     nonisolated static let labelMinCellArea: CGFloat = 4_000
@@ -459,21 +459,23 @@ struct TreemapScene: Sendable {
             // Position the label inside the visible part of the cell. Files
             // share one gate across both styles: only genuinely big tiles
             // carry a name (zooming in reveals more). Flat undivided folders
-            // label at the smaller folder gate; cushion directories never
-            // label. Gates are pre-filters — the view still drops any label
-            // whose truncation would keep too few characters to inform.
+            // label at the smaller folder gate. Cushion directories reaching
+            // this path are always undivided — packages, summarized and
+            // inaccessible folders drawn as one solid cell — so they read
+            // like files and label at the file gate; subdivided directories
+            // never get here (their area belongs to their children). Gates
+            // are pre-filters — the view still drops any label whose
+            // truncation would keep too few characters to inform.
             let visiblePart = rect.intersection(visibleBounds)
             if style == .flat, node.isDirectory {
                 if visiblePart.width >= flatFolderLabelMinCellWidth,
                    visiblePart.height >= flatFolderLabelMinCellHeight {
                     labels.append(CellLabel(id: node.id, text: node.name, rect: visiblePart))
                 }
-            } else if !node.isDirectory {
-                if visiblePart.width >= labelMinCellWidth,
-                   visiblePart.height >= labelMinCellHeight,
-                   visiblePart.width * visiblePart.height >= labelMinCellArea {
-                    labels.append(CellLabel(id: node.id, text: node.name, rect: visiblePart))
-                }
+            } else if visiblePart.width >= labelMinCellWidth,
+                      visiblePart.height >= labelMinCellHeight,
+                      visiblePart.width * visiblePart.height >= labelMinCellArea {
+                labels.append(CellLabel(id: node.id, text: node.name, rect: visiblePart))
             }
         }
 

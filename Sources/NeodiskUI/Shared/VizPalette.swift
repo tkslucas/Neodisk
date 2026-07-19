@@ -185,42 +185,46 @@ struct VizPalette: Sendable, Equatable, Identifiable {
     /// every classic-role palette; the `unknown` bucket appends the neutral.
     private static let classicAgeRoles = [0, 5, 10, 4, 6, 1]
 
-    /// Warm retro-terminal accents: everything pulls toward amber and
-    /// olive, blues stay muted so the map reads like phosphor on parchment.
+    /// The verbatim 14-accent set of the classic warm retro terminal scheme
+    /// (7 bright accents + 7 muted counterparts). Bright accents take the
+    /// category-bearing slots; the muted counterparts fill the rank-only
+    /// tail, so a busy Types legend stays in-scheme.
     private static let retroKinds: [SIMD3<Float>] = [
-        SIMD3(0.27, 0.52, 0.53), // slate blue
-        SIMD3(0.98, 0.29, 0.20), // brick red
-        SIMD3(0.72, 0.73, 0.15), // spring olive
-        SIMD3(0.83, 0.53, 0.61), // rosewood
-        SIMD3(0.98, 0.74, 0.18), // amber
-        SIMD3(0.56, 0.75, 0.49), // sage aqua
-        SIMD3(1.00, 0.50, 0.10), // pumpkin
-        SIMD3(0.69, 0.38, 0.53), // heather
-        SIMD3(0.41, 0.62, 0.42), // fern
-        SIMD3(0.92, 0.86, 0.70), // parchment
-        SIMD3(0.60, 0.59, 0.10), // moss
-        SIMD3(0.84, 0.36, 0.05), // rust
-        SIMD3(0.47, 0.45, 0.05), // faded olive
-        SIMD3(0.56, 0.25, 0.44), // faded plum
+        SIMD3(0.514, 0.647, 0.596), // bright blue   #83a598
+        SIMD3(0.984, 0.286, 0.204), // bright red    #fb4934
+        SIMD3(0.722, 0.733, 0.149), // bright green  #b8bb26
+        SIMD3(0.827, 0.525, 0.608), // bright purple #d3869b
+        SIMD3(0.980, 0.741, 0.184), // bright yellow #fabd2f
+        SIMD3(0.557, 0.753, 0.486), // bright aqua   #8ec07c
+        SIMD3(0.996, 0.502, 0.098), // bright orange #fe8019
+        SIMD3(0.694, 0.384, 0.525), // purple        #b16286
+        SIMD3(0.408, 0.616, 0.416), // aqua          #689d6a
+        SIMD3(0.843, 0.600, 0.129), // yellow        #d79921
+        SIMD3(0.596, 0.592, 0.102), // green         #98971a
+        SIMD3(0.839, 0.365, 0.055), // orange        #d65d0e
+        SIMD3(0.271, 0.522, 0.533), // blue          #458588
+        SIMD3(0.800, 0.141, 0.114), // red           #cc241d
     ]
 
-    /// Soft neon accents: pastel-bright hues that glow against the near-
-    /// black canvas without the full saturation of Vivid.
+    /// The verbatim ANSI accent set of the well-known dark vampire theme
+    /// (8 base accents + 6 brights). Base accents take the category-bearing
+    /// slots — its ANSI blue is the signature purple — and the brights fill
+    /// the rank-only tail.
     private static let neonKinds: [SIMD3<Float>] = [
-        SIMD3(0.42, 0.51, 0.80), // dusk blue
-        SIMD3(1.00, 0.33, 0.33), // coral red
-        SIMD3(0.31, 0.98, 0.48), // mint
-        SIMD3(1.00, 0.47, 0.78), // hot pink
-        SIMD3(0.95, 0.98, 0.55), // lemon
-        SIMD3(0.55, 0.91, 0.99), // ice blue
-        SIMD3(1.00, 0.72, 0.42), // apricot
-        SIMD3(0.74, 0.58, 0.98), // lavender
-        SIMD3(0.30, 0.75, 0.68), // sea green
-        SIMD3(0.98, 0.55, 0.60), // salmon
-        SIMD3(0.68, 0.98, 0.51), // lime glow
-        SIMD3(0.72, 0.56, 0.44), // latte
-        SIMD3(0.62, 0.72, 0.35), // olive glow
-        SIMD3(0.58, 0.38, 0.68), // grape
+        SIMD3(0.741, 0.576, 0.976), // purple (ANSI blue) #bd93f9
+        SIMD3(1.000, 0.333, 0.333), // red            #ff5555
+        SIMD3(0.314, 0.980, 0.482), // green          #50fa7b
+        SIMD3(1.000, 0.475, 0.776), // pink           #ff79c6
+        SIMD3(0.945, 0.980, 0.549), // yellow         #f1fa8c
+        SIMD3(0.545, 0.914, 0.992), // cyan           #8be9fd
+        SIMD3(1.000, 0.722, 0.424), // orange         #ffb86c
+        SIMD3(0.384, 0.447, 0.643), // comment blue   #6272a4
+        SIMD3(0.643, 1.000, 1.000), // bright cyan    #a4ffff
+        SIMD3(1.000, 0.573, 0.875), // bright magenta #ff92df
+        SIMD3(0.412, 1.000, 0.580), // bright green   #69ff94
+        SIMD3(0.839, 0.675, 1.000), // bright purple  #d6acff
+        SIMD3(1.000, 1.000, 0.647), // bright yellow  #ffffa5
+        SIMD3(1.000, 0.431, 0.431), // bright red     #ff6e6e
     ]
 
     /// Okabe-Ito, extended past the canonical eight with CVD-checked tones.

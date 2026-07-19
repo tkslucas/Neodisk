@@ -38,10 +38,30 @@ import SunburstCore
                 let paletteIndex = palette.kindPalette.firstIndex(of: palette.categoryRGB[category]!)
                 #expect(index == paletteIndex, "role mismatch for \(category) in \(palette.id)")
             }
-            // Age ramp reuses the kind table at the same role slots.
-            #expect(palette.ageRGB(.day) == palette.kindPalette[0])
-            #expect(palette.ageRGB(.older) == palette.kindPalette[1])
+            // Age ramp reuses the kind table at the role slots (blue…red).
+            #expect(palette.ageRGB(.day) == palette.kindPalette[1])
+            #expect(palette.ageRGB(.older) == palette.kindPalette[2])
             #expect(palette.ageRGB(.unknown) == FileKindCatalog.otherRGB)
+        }
+    }
+
+    @Test func testEveryPaletteFollowsTheCanonicalRankSequence() {
+        // One canonical rank sequence across ALL palettes — green, blue,
+        // red, magenta/pink, yellow, orange, purple, cyan — pinned through
+        // the eight categories every scheme can color: switching palettes
+        // re-skins the map without reshuffling which hue family a size
+        // rank, category, or branch position gets.
+        let canonicalSlots: [String: Int] = [
+            "cat-image": 0, "cat-video": 1, "cat-apps": 2, "cat-code": 3,
+            "cat-docs": 4, "cat-archive": 5, "cat-data": 6, "cat-audio": 7,
+        ]
+        for palette in VizPalette.all {
+            for (category, slot) in canonicalSlots {
+                #expect(
+                    palette.categoryRGB[category] == palette.kindPalette[slot],
+                    "\(category) off its canonical slot \(slot) in \(palette.id)"
+                )
+            }
         }
     }
 

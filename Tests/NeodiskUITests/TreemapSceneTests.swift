@@ -542,7 +542,7 @@ import NeodiskKit
         }
     }
 
-    @Test func cushionBranchCellsBoostSaturationUnlikeFlat() throws {
+    @Test func cushionBranchCellsUseCleanBranchHueWithoutJitter() throws {
         let store = makeStore()
         let scene = TreemapScene.build(
             store: store, rootID: "/scan",
@@ -550,21 +550,28 @@ import NeodiskKit
             catalog: .empty, colorMode: .branch
         )
 
-        // The nested file: /scan/sub's branch, one level deeper, pushed by
-        // the cushion's saturation boost (flat pulls toward gray instead).
+        // The nested file: /scan/sub's branch one level deeper, the raw
+        // resolver color with the branch id standing in for the node —
+        // cushion drops the per-node jitter, so branch siblings at one
+        // depth share one clean hue.
         let token = SunburstColorToken(
-            branchID: "/scan/sub", localID: "/scan/sub/c.txt",
+            branchID: "/scan/sub", localID: "/scan/sub",
             branchIndex: 0, branchCount: 1, siblingIndex: 0, siblingCount: 1,
             depth: 1, role: .normal
         )
-        let expected = TreemapScene.branchStyled(
-            SunburstColorResolver.rgb(for: token), style: .cushion
-        )
+        let expected = SunburstColorResolver.rgb(for: token)
         let cell = try #require(scene.cells.first { $0.nodeID == "/scan/sub/c.txt" })
         #expect(cell.rgb == expected)
-        #expect(expected != TreemapScene.branchStyled(
-            SunburstColorResolver.rgb(for: token), style: .flat
-        ))
+
+        // Flat keeps the per-node jitter and its gray pull: same node,
+        // different fill.
+        let flatScene = TreemapScene.build(
+            store: store, rootID: "/scan", style: .flat,
+            size: CGSize(width: 400, height: 300),
+            catalog: .empty, colorMode: .branch
+        )
+        let flatCell = try #require(flatScene.cells.first { $0.nodeID == "/scan/sub/c.txt" })
+        #expect(flatCell.rgb != cell.rgb)
     }
 
     @Test func branchModeColorsNestedAggregatesAndKeepsRootMergeGray() throws {
@@ -609,7 +616,7 @@ import NeodiskKit
         )
 
         // The folder's merged tail carries the folder's branch hue one
-        // level below the folder, style-adjusted like its sibling cells.
+        // level below the folder, exactly like its sibling cells.
         let subAggregate = try #require(scene.cells.first {
             $0.aggregate != nil && $0.nodeID == "/agg/sub"
         })
@@ -618,9 +625,7 @@ import NeodiskKit
             branchIndex: 0, branchCount: 1, siblingIndex: 0, siblingCount: 1,
             depth: 1, role: .normal
         )
-        #expect(subAggregate.rgb == TreemapScene.branchStyled(
-            SunburstColorResolver.rgb(for: token), style: .cushion
-        ))
+        #expect(subAggregate.rgb == SunburstColorResolver.rgb(for: token))
 
         // The scan root's own merge spans many branches: neutral gray.
         let rootAggregate = try #require(scene.cells.first {

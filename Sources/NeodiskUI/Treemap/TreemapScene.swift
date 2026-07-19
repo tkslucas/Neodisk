@@ -379,19 +379,10 @@ struct TreemapScene: Sendable {
                         var aggregateRGB: SIMD3<Float>
                         if colorMode == .branch {
                             if let branch, let branchID = branch.id {
-                                let token = SunburstColorToken(
-                                    branchID: branchID,
-                                    localID: node.id,
-                                    branchIndex: 0,
-                                    branchCount: 1,
-                                    siblingIndex: 0,
-                                    siblingCount: 1,
+                                aggregateRGB = branchRGB(
+                                    branchID: branchID, nodeID: node.id,
                                     depth: max(branch.depth + 1, 0),
-                                    role: .normal
-                                )
-                                aggregateRGB = branchStyled(
-                                    SunburstColorResolver.rgb(for: token, palette: palette.sunburst),
-                                    style: style
+                                    role: .normal, style: style, palette: palette
                                 )
                             } else {
                                 aggregateRGB = SunburstColorResolver.rgb(
@@ -526,31 +517,12 @@ struct TreemapScene: Sendable {
         rgb * flatFillOpacity + backdrop * (1 - flatFillOpacity)
     }
 
-    /// Branch-mode fills tune per style. Flat pulls lightly toward gray:
-    /// its translucent composite is part of the look, and raw resolver
-    /// colors read loud through it. The cushion pushes the other way — its
-    /// shading spends much of every tile in shadow, so fills need extra
-    /// saturation to keep the hue families as vivid as the kind palette.
-    /// Loose scan-root files are already gray; they dim a touch instead so
-    /// they recede rather than glow.
+    /// Flat branch fills pull lightly toward gray: the translucent
+    /// composite is part of the look, and raw resolver colors read loud
+    /// through it. Loose scan-root files are already gray; they dim a
+    /// touch instead so they recede rather than glow.
     nonisolated static let flatBranchDesaturation: Float = 0.18
-    nonisolated static let cushionBranchSaturation: Float = 0.3
     nonisolated static let flatRootFileDim: Float = 0.9
-
-    /// A branch-mode fill adjusted into the style's band.
-    nonisolated static func branchStyled(
-        _ rgb: SIMD3<Float>,
-        style: TreemapStyle
-    ) -> SIMD3<Float> {
-        let gray = SIMD3<Float>(repeating: (rgb.x + rgb.y + rgb.z) / 3)
-        switch style {
-        case .flat:
-            return rgb + (gray - rgb) * flatBranchDesaturation
-        case .cushion:
-            let boosted = rgb + (rgb - gray) * cushionBranchSaturation
-            return boosted.clamped(lowerBound: .zero, upperBound: SIMD3(repeating: 1))
-        }
-    }
 
     /// Flat nesting cue for the kind/age modes: deeper cells desaturate and
     /// darken a step per level, clamped, so containment reads without
@@ -596,34 +568,57 @@ struct TreemapScene: Sendable {
             }
             return palette.ageRGB(AgeBucket.bucket(for: node.lastModified, reference: referenceDate))
         case .branch:
-            // Files share the folder formula (role .normal): branch hue,
-            // per-node jitter, depth ramp. The sunburst grays its files
-            // (thin outer arcs); a treemap's area is mostly file tiles, so
-            // gray — or a heavily muted tint — washes the whole map out.
-            // A loose file at the scan root goes gray like the sunburst's
-            // files instead: it has no hue family of its own, and a root
-            // full of vividly colored loose files buries the smaller
-            // folders that actually have structure worth spotting.
+            // Files share the folder formula (role .normal): branch hue and
+            // depth ramp. The sunburst grays its files (thin outer arcs); a
+            // treemap's area is mostly file tiles, so gray — or a heavily
+            // muted tint — washes the whole map out. A loose file at the
+            // scan root goes gray like the sunburst's files instead: it has
+            // no hue family of its own, and a root full of vividly colored
+            // loose files buries the smaller folders that actually have
+            // structure worth spotting.
             var depth = max(branch?.depth ?? 0, 0)
             var role = SunburstColorRole.normal
             if depth == 0, !SunburstLayout.isSunburstFolder(node, in: store) {
                 depth = 1
                 role = .file
             }
-            let token = SunburstColorToken(
-                branchID: branch?.id ?? node.id,
-                localID: node.id,
-                branchIndex: 0,
-                branchCount: 1,
-                siblingIndex: 0,
-                siblingCount: 1,
-                depth: depth,
-                role: role
+            return branchRGB(
+                branchID: branch?.id ?? node.id, nodeID: node.id,
+                depth: depth, role: role, style: style, palette: palette
             )
-            let rgb = SunburstColorResolver.rgb(for: token, palette: palette.sunburst)
-            guard role == .normal else { return rgb * flatRootFileDim }
-            return branchStyled(rgb, style: style)
         }
+    }
+
+    /// A branch-mode fill: the sunburst resolver's color for (branch, node,
+    /// depth), adjusted per style. Flat keeps the resolver's per-node hue
+    /// jitter and pulls lightly toward gray — its translucent composite is
+    /// part of the look, and the jitter separates its bordered tiles. The
+    /// cushion drops the per-node variance entirely (localID = branch id):
+    /// its shading already separates neighbors, and jittered hues across
+    /// shaded tiles read muddy — one clean hue per branch and depth.
+    private nonisolated static func branchRGB(
+        branchID: String,
+        nodeID: String,
+        depth: Int,
+        role: SunburstColorRole,
+        style: TreemapStyle,
+        palette: VizPalette
+    ) -> SIMD3<Float> {
+        let token = SunburstColorToken(
+            branchID: branchID,
+            localID: style == .flat ? nodeID : branchID,
+            branchIndex: 0,
+            branchCount: 1,
+            siblingIndex: 0,
+            siblingCount: 1,
+            depth: depth,
+            role: role
+        )
+        let rgb = SunburstColorResolver.rgb(for: token, palette: palette.sunburst)
+        guard role == .normal else { return rgb * flatRootFileDim }
+        guard style == .flat else { return rgb }
+        let gray = SIMD3<Float>(repeating: (rgb.x + rgb.y + rgb.z) / 3)
+        return rgb + (gray - rgb) * flatBranchDesaturation
     }
 
     /// Whether a node stays at full color under an active highlight. An age

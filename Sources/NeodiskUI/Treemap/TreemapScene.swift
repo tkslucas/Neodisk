@@ -389,7 +389,7 @@ struct TreemapScene: Sendable {
                                     depth: max(branch.depth + 1, 0),
                                     role: .normal
                                 )
-                                aggregateRGB = branchDesaturated(
+                                aggregateRGB = branchStyled(
                                     SunburstColorResolver.rgb(for: token, palette: palette.sunburst),
                                     style: style
                                 )
@@ -526,26 +526,30 @@ struct TreemapScene: Sendable {
         rgb * flatFillOpacity + backdrop * (1 - flatFillOpacity)
     }
 
-    /// Branch-mode fills desaturate toward gray in the treemap: the branch
-    /// formula is tuned for the sunburst's thin arcs, and spread across a
-    /// treemap's large abutting tiles the same saturation reads loud. The
-    /// flat style composites translucently over the background, which mutes
-    /// it further, so a light pull suffices; the cushion's opaque shaded
-    /// fills carry the full color and pull harder. Loose scan-root files
-    /// are already gray; they dim a touch instead so they recede rather
-    /// than glow.
+    /// Branch-mode fills tune per style. Flat pulls lightly toward gray:
+    /// its translucent composite is part of the look, and raw resolver
+    /// colors read loud through it. The cushion pushes the other way — its
+    /// shading spends much of every tile in shadow, so fills need extra
+    /// saturation to keep the hue families as vivid as the kind palette.
+    /// Loose scan-root files are already gray; they dim a touch instead so
+    /// they recede rather than glow.
     nonisolated static let flatBranchDesaturation: Float = 0.18
-    nonisolated static let cushionBranchDesaturation: Float = 0.4
+    nonisolated static let cushionBranchSaturation: Float = 0.3
     nonisolated static let flatRootFileDim: Float = 0.9
 
-    /// A branch-mode fill pulled into the style's calm band.
-    nonisolated static func branchDesaturated(
+    /// A branch-mode fill adjusted into the style's band.
+    nonisolated static func branchStyled(
         _ rgb: SIMD3<Float>,
         style: TreemapStyle
     ) -> SIMD3<Float> {
         let gray = SIMD3<Float>(repeating: (rgb.x + rgb.y + rgb.z) / 3)
-        let amount = style == .flat ? flatBranchDesaturation : cushionBranchDesaturation
-        return rgb + (gray - rgb) * amount
+        switch style {
+        case .flat:
+            return rgb + (gray - rgb) * flatBranchDesaturation
+        case .cushion:
+            let boosted = rgb + (rgb - gray) * cushionBranchSaturation
+            return boosted.clamped(lowerBound: .zero, upperBound: SIMD3(repeating: 1))
+        }
     }
 
     /// Flat nesting cue for the kind/age modes: deeper cells desaturate and
@@ -618,7 +622,7 @@ struct TreemapScene: Sendable {
             )
             let rgb = SunburstColorResolver.rgb(for: token, palette: palette.sunburst)
             guard role == .normal else { return rgb * flatRootFileDim }
-            return branchDesaturated(rgb, style: style)
+            return branchStyled(rgb, style: style)
         }
     }
 

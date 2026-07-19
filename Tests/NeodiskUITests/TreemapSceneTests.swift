@@ -542,7 +542,7 @@ import NeodiskKit
         }
     }
 
-    @Test func cushionBranchCellsPullHarderTowardGrayThanFlat() throws {
+    @Test func cushionBranchCellsBoostSaturationUnlikeFlat() throws {
         let store = makeStore()
         let scene = TreemapScene.build(
             store: store, rootID: "/scan",
@@ -550,19 +550,19 @@ import NeodiskKit
             catalog: .empty, colorMode: .branch
         )
 
-        // The nested file: /scan/sub's branch, one level deeper, pulled by
-        // the cushion's (stronger) desaturation.
+        // The nested file: /scan/sub's branch, one level deeper, pushed by
+        // the cushion's saturation boost (flat pulls toward gray instead).
         let token = SunburstColorToken(
             branchID: "/scan/sub", localID: "/scan/sub/c.txt",
             branchIndex: 0, branchCount: 1, siblingIndex: 0, siblingCount: 1,
             depth: 1, role: .normal
         )
-        let expected = TreemapScene.branchDesaturated(
+        let expected = TreemapScene.branchStyled(
             SunburstColorResolver.rgb(for: token), style: .cushion
         )
         let cell = try #require(scene.cells.first { $0.nodeID == "/scan/sub/c.txt" })
         #expect(cell.rgb == expected)
-        #expect(expected != TreemapScene.branchDesaturated(
+        #expect(expected != TreemapScene.branchStyled(
             SunburstColorResolver.rgb(for: token), style: .flat
         ))
     }
@@ -609,7 +609,7 @@ import NeodiskKit
         )
 
         // The folder's merged tail carries the folder's branch hue one
-        // level below the folder, desaturated like its sibling cells.
+        // level below the folder, style-adjusted like its sibling cells.
         let subAggregate = try #require(scene.cells.first {
             $0.aggregate != nil && $0.nodeID == "/agg/sub"
         })
@@ -618,7 +618,7 @@ import NeodiskKit
             branchIndex: 0, branchCount: 1, siblingIndex: 0, siblingCount: 1,
             depth: 1, role: .normal
         )
-        #expect(subAggregate.rgb == TreemapScene.branchDesaturated(
+        #expect(subAggregate.rgb == TreemapScene.branchStyled(
             SunburstColorResolver.rgb(for: token), style: .cushion
         ))
 

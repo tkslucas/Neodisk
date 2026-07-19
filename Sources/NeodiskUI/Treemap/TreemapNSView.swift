@@ -141,37 +141,46 @@ final class TreemapNSView: NSView {
         let textColor: NSColor = lightLabels
             ? NSColor.black.withAlphaComponent(0.85) : .white
         for label in scene.labels {
-            labelContainerLayer.addSublayer(Self.labelLayer(
+            guard let layer = Self.labelLayer(
                 for: label,
                 font: label.isHeader ? headerFont : fileFont,
                 textColor: textColor,
                 shadowOpacity: lightLabels ? 0 : 0.9,
                 backingScale: backingScale
-            ))
+            ) else { continue }
+            labelContainerLayer.addSublayer(layer)
         }
     }
 
-    /// One label's text layer. CATextLayer's own truncation draws nothing
-    /// at all once the string overflows its bounds (observed through
-    /// macOS 26), so the text is pre-ellipsized to the frame instead and
-    /// the layer never has to truncate.
+    /// A truncated label must keep at least this many name characters to be
+    /// worth drawing: "A…" or a bare "…" is clutter carrying no information,
+    /// so such labels are dropped entirely. The scene's size gates are only
+    /// a cheap pre-filter; this is the exact, text-measured rule.
+    static let minUsefulTruncatedCharacters = 4
+
+    /// One label's text layer, or nil when the rect is too narrow for a
+    /// useful name. CATextLayer's own truncation draws nothing at all once
+    /// a string overflows its bounds (observed through macOS 26), so the
+    /// text is pre-ellipsized to the frame instead and the layer never has
+    /// to truncate.
     static func labelLayer(
         for label: TreemapScene.CellLabel,
         font: NSFont,
         textColor: NSColor,
         shadowOpacity: Float,
         backingScale: CGFloat
-    ) -> CATextLayer {
+    ) -> CATextLayer? {
         let inset: CGFloat = label.isHeader ? 0 : 4
         let width = max(label.rect.width - 2 * inset, 10)
         let attributes: [NSAttributedString.Key: Any] = [
             .font: font, .foregroundColor: textColor,
         ]
+        let fitted = Self.endTruncated(label.text, attributes: attributes, width: width)
+        if fitted != label.text, fitted.count - 1 < Self.minUsefulTruncatedCharacters {
+            return nil
+        }
         let textLayer = CATextLayer()
-        textLayer.string = NSAttributedString(
-            string: Self.endTruncated(label.text, attributes: attributes, width: width),
-            attributes: attributes
-        )
+        textLayer.string = NSAttributedString(string: fitted, attributes: attributes)
         textLayer.alignmentMode = label.isHeader ? .left : .center
         textLayer.contentsScale = backingScale
         textLayer.shadowColor = NSColor.black.cgColor

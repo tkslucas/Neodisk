@@ -132,13 +132,13 @@ struct TreemapScene: Sendable {
     nonisolated static let flatHeaderHeight: CGFloat = 18
     nonisolated static let flatMinContainerWidth: CGFloat = 52
     nonisolated static let flatMinContainerHeight: CGFloat = 46
-    /// Undivided folders label far smaller than files: a folder tile with
-    /// no name reads as an anonymous box, so it gets a (heavily truncated)
-    /// name as soon as one could possibly fit. Files share the cushion
-    /// gates above — only genuinely big tiles carry a file name, keeping
-    /// the flat map quiet.
-    nonisolated static let flatFolderLabelMinCellWidth: CGFloat = 24
-    nonisolated static let flatFolderLabelMinCellHeight: CGFloat = 12
+    /// Undivided folders label far smaller than files (files share the
+    /// cushion gates above — only genuinely big tiles carry a file name).
+    /// These are a cheap pre-filter sized to where ~4 characters can fit;
+    /// the exact keep-enough-characters rule runs where text is measured
+    /// (`TreemapNSView.minUsefulTruncatedCharacters`).
+    nonisolated static let flatFolderLabelMinCellWidth: CGFloat = 40
+    nonisolated static let flatFolderLabelMinCellHeight: CGFloat = 15
 
     /// The region a flat container's children occupy, or nil when the rect
     /// is too small to nest — the caller then draws the directory as a
@@ -316,9 +316,9 @@ struct TreemapScene: Sendable {
                             width: rect.width - 2 * (flatContainerInset + 4),
                             height: flatHeaderHeight - 4
                         ).intersection(visibleBounds)
-                        // Every container whose header strip shows gets its
-                        // name — truncation absorbs narrow strips, so no
-                        // rendered container is an anonymous box.
+                        // Every container whose header strip shows emits a
+                        // name candidate; the view drops it if the strip is
+                        // too narrow for a useful (≥4-character) truncation.
                         if !headerRect.isEmpty {
                             labels.append(CellLabel(
                                 id: node.id, text: node.name, rect: headerRect, isHeader: true
@@ -439,8 +439,9 @@ struct TreemapScene: Sendable {
             // Position the label inside the visible part of the cell. Files
             // share one gate across both styles: only genuinely big tiles
             // carry a name (zooming in reveals more). Flat undivided folders
-            // label at the tiny folder gate — an unnamed folder tile reads
-            // as an anonymous box; cushion directories never label.
+            // label at the smaller folder gate; cushion directories never
+            // label. Gates are pre-filters — the view still drops any label
+            // whose truncation would keep too few characters to inform.
             let visiblePart = rect.intersection(visibleBounds)
             if style == .flat, node.isDirectory {
                 if visiblePart.width >= flatFolderLabelMinCellWidth,

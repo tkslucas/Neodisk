@@ -49,6 +49,36 @@ import Testing
         #expect(fitted == "…")
     }
 
+    private func layer(text: String, width: CGFloat, isHeader: Bool = false) -> CATextLayer? {
+        TreemapNSView.labelLayer(
+            for: TreemapScene.CellLabel(
+                id: "/scan/\(text)", text: text,
+                rect: CGRect(x: 0, y: 0, width: width, height: 15),
+                isHeader: isHeader
+            ),
+            font: Self.font, textColor: .white, shadowOpacity: 0, backingScale: 2
+        )
+    }
+
+    /// Labels that would truncate below four kept characters ("A…", bare
+    /// "…") carry no information and must not produce a layer at all.
+    @Test func uselessTruncationsProduceNoLayer() {
+        #expect(layer(text: "Applications", width: 18) == nil)
+        #expect(layer(text: "DesigningYourLifeShowcase", width: 10, isHeader: true) == nil)
+    }
+
+    @Test func usefulTruncationsAndFullFitsProduceLayers() throws {
+        // Wide enough to keep ≥4 characters of the name.
+        let truncated = try #require(layer(text: "Applications", width: 60))
+        let fitted = try #require((truncated.string as? NSAttributedString)?.string)
+        #expect(fitted.hasSuffix("…"))
+        #expect(fitted.count >= TreemapNSView.minUsefulTruncatedCharacters + 1)
+
+        // A short name that fits whole is information, however narrow.
+        let whole = try #require(layer(text: "bin", width: 40))
+        #expect((whole.string as? NSAttributedString)?.string == "bin")
+    }
+
     /// The regression that motivated all of this: a header label whose name
     /// overflows its strip must still render visible pixels. Guards against
     /// any future reintroduction of CATextLayer-side truncation.
@@ -59,10 +89,10 @@ import Testing
             rect: CGRect(x: 0, y: 0, width: 100, height: 15),
             isHeader: true
         )
-        let layer = TreemapNSView.labelLayer(
+        let layer = try #require(TreemapNSView.labelLayer(
             for: label, font: Self.font, textColor: .white,
             shadowOpacity: 0, backingScale: 2
-        )
+        ))
         let width = 200, height = 30
         let context = try #require(CGContext(
             data: nil, width: width, height: height,

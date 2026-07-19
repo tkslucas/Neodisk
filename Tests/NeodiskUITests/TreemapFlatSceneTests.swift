@@ -105,9 +105,9 @@ import NeodiskKit
 
     @Test func flatHeaderLabelSurvivesViewportClipping() throws {
         // Pan the container almost fully off the left edge: the sliver of
-        // header strip still visible must carry the name (truncation absorbs
-        // the width), clamped into the visible bounds — no rendered container
-        // may be an anonymous box.
+        // header strip still visible emits its name candidate, clamped into
+        // the visible bounds. (The view may still drop it if no useful
+        // truncation fits — the scene's contract is just the candidate.)
         let identity = buildFlat()
         let container = try #require(identity.cells.first { $0.nodeID == "/scan/sub" })
 
@@ -166,9 +166,10 @@ import NeodiskKit
         let sub = try #require(scene.cells.first { $0.nodeID == "/scan/sub" })
         #expect(!sub.isContainer)
         #expect(!scene.cells.contains { $0.nodeID == "/scan/sub/c.txt" })
-        // The tiny undivided folder still carries its name (folder gate):
-        // folders are never anonymous boxes.
-        #expect(scene.labels.contains { $0.id == "/scan/sub" && !$0.isHeader })
+        // The tiny undivided folder emits no label candidate: its ~32pt
+        // tile sits under the folder pre-filter, where no useful
+        // (≥4-character) name could fit anyway.
+        #expect(!scene.labels.contains { $0.id == "/scan/sub" })
     }
 
     @Test func branchColorsMatchSunburstResolver() throws {

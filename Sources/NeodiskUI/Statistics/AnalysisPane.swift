@@ -5,7 +5,7 @@
 //  The right-hand statistics panel: a tab per analysis lens (file kinds,
 //  modification age), each pairing a legend/stats list with the treemap —
 //  the active tab decides what treemap color means (see
-//  NeodiskViewModel.treemapColorMode) and drill-ins highlight the map.
+//  NeodiskViewModel.vizColorMode) and drill-ins highlight the map.
 //
 
 import SwiftUI

@@ -70,17 +70,13 @@ private struct TreemapRepresentable: NSViewRepresentable {
         controller.model = model
         controller.onHoverPoint = onHoverPoint
         controller.onGestureActiveChange = onGestureActiveChange
-        let colorMode = model.treemapColorMode
-        // Branch mode has no legend on screen, so no tab highlight reaches
-        // the map — mirroring the sunburst's hidden-panel behavior.
-        let highlight: TreemapHighlight? = colorMode == .branch ? nil : model.treemapHighlight
         controller.setInputs(
             snapshot: model.coordinator.snapshot,
             rootID: model.effectiveRootID,
             catalog: model.kinds.catalog,
             style: model.treemapStyle,
-            colorMode: colorMode,
-            highlight: highlight,
+            colorMode: model.vizColorMode,
+            highlight: model.vizHighlight,
             expandedAggregateIDs: model.expandedAggregateIDs,
             // Free and hidden space belong to the volume as a whole; hide
             // them once the user zooms into a subfolder. The treemap gates

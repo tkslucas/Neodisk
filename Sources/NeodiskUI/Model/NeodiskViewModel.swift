@@ -52,8 +52,8 @@ final class NeodiskViewModel {
     }
     /// Which statistics-panel tab is active. Also decides what treemap color
     /// means (Age colors by modification date; the others keep kind colors)
-    /// and which drill-in highlight reaches the map — see treemapColorMode /
-    /// treemapHighlight. Deliberately not reset per scan: the chosen lens
+    /// and which drill-in highlight reaches the map — see vizColorMode /
+    /// vizHighlight. Deliberately not reset per scan: the chosen lens
     /// carries across locations. Starts on Largest — the first tab, and the
     /// first question a disk tool gets asked.
     var analysisTab: AnalysisTab = .largest {
@@ -280,28 +280,22 @@ final class NeodiskViewModel {
         store?.node(id: hoveredNodeID)
     }
 
-    // MARK: - Treemap coloring
+    // MARK: - Visualization coloring
 
-    /// Branch-hue mode is shared by the sunburst and the flat treemap — the
-    /// two structural views draw the same colors: active on the Largest tab,
-    /// or whenever the statistics panel (the kind/age legend) is hidden.
+    /// Branch-hue mode is shared by every visualization — sunburst and both
+    /// treemap styles draw the same structural colors: active on the Largest
+    /// tab, or whenever the statistics panel (the kind/age legend) is hidden.
     var showsBranchColors: Bool {
-        let branchCapableView = vizViewMode == .sunburst
-            || (vizViewMode == .treemap && treemapStyle == .flat)
-        return branchCapableView && (analysisTab == .largest || !showKindStats)
+        analysisTab == .largest || !showKindStats
     }
 
-    /// What treemap color means, driven by the statistics-panel tab: the Age
-    /// tab colors by modification date (bucketed against the scan date, so
-    /// the map matches the tab's legend), every other tab colors by kind.
-    /// The mode survives hiding the panel — the panel is the legend, not the
-    /// owner of the state. Exception: the flat style reverts to the
-    /// sunburst's branch hues on the Largest tab or with the panel hidden,
-    /// exactly like the sunburst does.
-    var treemapColorMode: TreemapColorMode {
-        if treemapStyle == .flat, analysisTab == .largest || !showKindStats {
-            return .branch
-        }
+    /// What visualization color means, driven by the statistics-panel tab:
+    /// the Age tab colors by modification date (bucketed against the scan
+    /// date, so the map matches the tab's legend), every other tab colors by
+    /// kind — and without a kind/age legend on screen (the Largest tab, or
+    /// the panel hidden) every view reverts to the structural branch hues.
+    var vizColorMode: TreemapColorMode {
+        if showsBranchColors { return .branch }
         guard analysisTab == .age else { return .kind }
         let referenceDate = ages.catalog.stats.isEmpty
             ? coordinator.snapshot.map { $0.finishedAt ?? $0.startedAt }
@@ -311,22 +305,23 @@ final class NeodiskViewModel {
     }
 
     /// The active tab's drill-in highlight, if any — only the visible tab's
-    /// selection reaches the map, so switching tabs never leaves a stale dim.
-    var treemapHighlight: TreemapHighlight? {
+    /// selection reaches the map, so switching tabs never leaves a stale
+    /// dim. Branch mode carries no highlight: its states (Largest tab,
+    /// hidden panel) have no kind/age legend to dim against.
+    var vizHighlight: TreemapHighlight? {
+        guard !showsBranchColors else { return nil }
         switch analysisTab {
         case .kinds:
             return kinds.highlightedKindID.map { .kind($0) }
         case .largest:
-            // No dim: the plain selection ring already ties a clicked row to
-            // its cell, and the map keeps kind colors.
             return nil
         case .age:
             return ages.highlightedBucket.map { .ageBucket($0) }
         case .duplicates:
             return duplicates.highlightedNodeIDs.map { .nodes($0) }
         case .changes:
-            // No dim, like Largest: the plain selection ring already ties a
-            // clicked change to its cell, and the map keeps kind colors.
+            // No dim: the plain selection ring already ties a clicked
+            // change to its cell.
             return nil
         }
     }
@@ -340,9 +335,8 @@ final class NeodiskViewModel {
 
     /// The swatch color a node renders with on the map right now — the
     /// status bar's swatch must agree with the active view and color mode.
-    /// In branch mode (sunburst or flat treemap, Largest tab or hidden
-    /// statistics panel) that is the branch hue; every other combination
-    /// keeps the kind/age semantics.
+    /// In branch mode (Largest tab or hidden statistics panel) that is the
+    /// branch hue; every other combination keeps the kind/age semantics.
     func displayColor(for node: FileNodeRecord) -> Color {
         if showsBranchColors, let store {
             return SunburstColorResolver.branchColor(
@@ -350,12 +344,12 @@ final class NeodiskViewModel {
                 in: store,
                 effectiveRootID: effectiveRootID ?? store.root.id,
                 palette: vizPalette,
-                // The flat treemap tints files with the branch hue; the
+                // Both treemap styles tint files with the branch hue; the
                 // sunburst keeps its file gray.
                 branchTintedFiles: vizViewMode == .treemap
             )
         }
-        if case .age(let referenceDate) = treemapColorMode {
+        if case .age(let referenceDate) = vizColorMode {
             guard FileKindClassifier.isLeafLike(node) else {
                 let rgb = FileKindCatalog.directoryRGB
                 return Color(red: Double(rgb.x), green: Double(rgb.y), blue: Double(rgb.z))

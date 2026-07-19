@@ -44,7 +44,7 @@ public enum CushionTreemapRenderer {
         cells: [TreemapCell],
         bounds: CGRect,
         scale: CGFloat,
-        background: SIMD3<Float> = TreemapRasterTarget.backgroundRGB
+        background: SIMD3<Float>? = TreemapRasterTarget.backgroundRGB
     ) -> (pixels: [UInt8], width: Int, height: Int)? {
         TreemapRasterTarget.rasterizeRGBA(
             bounds: bounds, scale: scale,
@@ -69,7 +69,7 @@ public enum CushionTreemapRenderer {
         cells: [TreemapCell],
         bounds: CGRect,
         scale: CGFloat,
-        background: SIMD3<Float> = TreemapRasterTarget.backgroundRGB
+        background: SIMD3<Float>? = TreemapRasterTarget.backgroundRGB
     ) -> CGImage? {
         TreemapRasterTarget.render(
             bounds: bounds, scale: scale,

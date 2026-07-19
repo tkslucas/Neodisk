@@ -28,8 +28,13 @@ public enum TreemapRasterTarget {
     public nonisolated static let backgroundRGB = SIMD3<Float>(18, 18, 22) / 255
 
     /// A caller-provided background as the raster's RGBA clear pattern.
-    nonisolated static func pattern(for rgb: SIMD3<Float>) -> [UInt8] {
-        [
+    /// nil clears to transparent (premultiplied zeros): the app composites
+    /// the raster over the live window backdrop instead of baking a color —
+    /// an opaque guess can never match the window server's desktop-tinted
+    /// backdrop on screen.
+    nonisolated static func pattern(for rgb: SIMD3<Float>?) -> [UInt8] {
+        guard let rgb else { return [0, 0, 0, 0] }
+        return [
             UInt8(min(255, max(0, rgb.x * 255))),
             UInt8(min(255, max(0, rgb.y * 255))),
             UInt8(min(255, max(0, rgb.z * 255))),

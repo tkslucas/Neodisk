@@ -181,16 +181,18 @@ final class TreemapController {
         startRender()
     }
 
-    /// Light/dark switched: both styles clear their raster to the window
-    /// background, so the pixels are stale — re-render.
+    /// Light/dark switched: the flat style's fills are baked against the
+    /// window background, so the pixels are stale — re-render.
     func appearanceChanged() {
         cancelInFlightRender()
         startRender()
     }
 
-    /// The background the map sits on: the app window background (same
-    /// surface as the sunburst pane), resolved for the view's current
-    /// appearance. Fills composite against it and the raster clears to it.
+    /// The color the flat style's translucent fills are baked against —
+    /// the window background resolved for the view's current appearance.
+    /// Only the fill math uses it: the raster itself clears to transparent
+    /// and the real (desktop-tinted) window backdrop shows through the
+    /// gaps, where no constant could match the on-screen surface.
     private func windowBackgroundRGB() -> SIMD3<Float> {
         guard let view else { return TreemapRasterTarget.backgroundRGB }
         var cgColor = CGColor(gray: 0, alpha: 1)
@@ -562,12 +564,12 @@ final class TreemapController {
                 case .cushion:
                     CushionTreemapRenderer.render(
                         cells: scene.cells, bounds: scene.renderBounds, scale: scale,
-                        background: background
+                        background: nil
                     )
                 case .flat:
                     FlatTreemapRenderer.render(
                         cells: scene.cells, bounds: scene.renderBounds, scale: scale,
-                        background: background
+                        background: nil
                     )
                 }
                 return (scene, image)

@@ -35,10 +35,15 @@ final class TreemapNSView: NSView {
         // Layer-hosting (layer assigned before wantsLayer) so the layer tree
         // is fully ours; geometryFlipped gives it the same top-left origin
         // as the flipped view and the scene geometry.
+        // No background: the layer and the raster's uncovered pixels stay
+        // transparent, so the pane shows the real window backdrop through
+        // the tile gaps — same surface the sunburst sits on. Painting
+        // windowBackgroundColor here can never match: on screen the window
+        // server tints the actual backdrop (desktop tinting), and a layer
+        // color misses that compositing, reading darker than the app.
         let rootLayer = CALayer()
         rootLayer.masksToBounds = true
         rootLayer.isGeometryFlipped = true
-        rootLayer.backgroundColor = NSColor.windowBackgroundColor.cgColor
         layer = rootLayer
         wantsLayer = true
         // Since macOS 14, NSView.clipsToBounds defaults to false and AppKit
@@ -79,12 +84,6 @@ final class TreemapNSView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         defer { CATransaction.commit() }
-
-        // The map sits on the window background in both styles, so the
-        // canvas, the tile gaps, and the pane read as one surface.
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
-        }
 
         guard let scene = controller.scene, let image = controller.image else {
             imageLayer.contents = nil

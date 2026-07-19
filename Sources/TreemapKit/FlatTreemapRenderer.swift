@@ -45,7 +45,7 @@ public enum FlatTreemapRenderer {
         cells: [TreemapCell],
         bounds: CGRect,
         scale: CGFloat,
-        background: SIMD3<Float> = TreemapRasterTarget.backgroundRGB
+        background: SIMD3<Float>? = TreemapRasterTarget.backgroundRGB
     ) -> (pixels: [UInt8], width: Int, height: Int)? {
         TreemapRasterTarget.rasterizeRGBA(
             bounds: bounds, scale: scale,
@@ -70,7 +70,7 @@ public enum FlatTreemapRenderer {
         cells: [TreemapCell],
         bounds: CGRect,
         scale: CGFloat,
-        background: SIMD3<Float> = TreemapRasterTarget.backgroundRGB
+        background: SIMD3<Float>? = TreemapRasterTarget.backgroundRGB
     ) -> CGImage? {
         TreemapRasterTarget.render(
             bounds: bounds, scale: scale,
@@ -140,7 +140,10 @@ public enum FlatTreemapRenderer {
     }
 
     /// Blends `word` over the pixel already in the buffer by `coverage` —
-    /// the anti-aliasing write for partially covered corner pixels.
+    /// the anti-aliasing write for partially covered corner pixels. The
+    /// buffer is premultiplied, so the same lerp covers the alpha channel:
+    /// over a transparent background a corner pixel stays partially
+    /// transparent instead of fringing dark.
     private nonisolated static func blendPixel(
         _ base: UnsafeMutablePointer<UInt8>,
         byteOffset: Int,
@@ -152,7 +155,7 @@ public enum FlatTreemapRenderer {
         base[byteOffset] = UInt8(Float(base[byteOffset]) * keep + Float(word & 0xFF) * c)
         base[byteOffset + 1] = UInt8(Float(base[byteOffset + 1]) * keep + Float((word >> 8) & 0xFF) * c)
         base[byteOffset + 2] = UInt8(Float(base[byteOffset + 2]) * keep + Float((word >> 16) & 0xFF) * c)
-        base[byteOffset + 3] = 255
+        base[byteOffset + 3] = UInt8(Float(base[byteOffset + 3]) * keep + 255 * c)
     }
 
     private nonisolated static func rasterize(

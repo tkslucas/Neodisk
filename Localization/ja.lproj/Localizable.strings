@@ -276,8 +276,8 @@
 "Color palette" = "カラーパレット";
 "Classic" = "クラシック";
 "Vivid" = "ビビッド";
-"Pastel" = "パステル";
-"Earth" = "アース";
+"Retro" = "レトロ";
+"Neon" = "ネオン";
 "Colorblind-safe" = "色覚対応";
 "The color set the visualizations draw with. Colorblind-safe stays distinct with common color vision differences. Applies immediately." = "ビジュアライゼーションが使用する配色です。色覚対応は一般的な色覚特性でも見分けやすい配色を保ちます。即座に適用されます。";
 

@@ -8,15 +8,17 @@
 //  file; the Settings palette picker selects one of the named instances in
 //  `VizPalette.all`.
 //
-//  Classic, Vivid, and Pastel share one hue-role ordering (index 0 is the
-//  blue slot, 1 the red slot, …), so category colors and the age ramp derive
-//  from the kind table through the shared role maps below — switching between
-//  them never changes what a color means, only how it looks. Earth follows
-//  the same role order with muted natural tones. Colorblind uses the
-//  Okabe-Ito qualitative palette (designed to stay distinct under
-//  deuteranopia/protanopia/tritanopia) with its own role map, and the viridis
-//  ramp for age — perceptually uniform and monotonic in lightness so it still
-//  reads in greyscale.
+//  Classic, Vivid, Retro, and Neon share one hue-role ordering (index 0 is
+//  the blue slot, 1 the red slot, …), so category colors and the age ramp
+//  derive from the kind table through the shared role maps below — switching
+//  between them never changes what a color means, only how it looks. Retro
+//  and Neon are terminal-colorscheme moods (warm faded amber-and-olive, and
+//  soft neon accents on a dark canvas) with hues restricted per branch like
+//  a terminal's fixed accent set. Colorblind uses the Okabe-Ito qualitative
+//  palette (designed to stay distinct under deuteranopia/protanopia/
+//  tritanopia) with its own role map, and the viridis ramp for age —
+//  perceptually uniform and monotonic in lightness so it still reads in
+//  greyscale.
 //
 
 import SwiftUI
@@ -51,7 +53,7 @@ struct VizPalette: Sendable, Equatable, Identifiable {
     // MARK: - Registry
 
     /// Every selectable palette, in the order the Settings picker lists them.
-    static let all: [VizPalette] = [.standard, .vivid, .pastel, .earth, .colorblind]
+    static let all: [VizPalette] = [.standard, .vivid, .retro, .neon, .colorblind]
 
     /// The palette persisted under `id`, or the default for unknown ids
     /// (never fails: a stale preference falls back gracefully).
@@ -108,39 +110,24 @@ struct VizPalette: Sendable, Equatable, Identifiable {
         )
     )
 
-    /// The classic hues softened (half the saturation, brightness raised) —
-    /// gentle against the dark canvas.
-    static let pastel = VizPalette(
-        id: "pastel",
-        title: "Pastel",
-        kinds: [
-            SIMD3(0.66, 0.75, 1.00), // blue
-            SIMD3(1.00, 0.66, 0.64), // red
-            SIMD3(0.66, 0.94, 0.67), // green
-            SIMD3(1.00, 0.67, 1.00), // magenta
-            SIMD3(1.00, 0.91, 0.61), // yellow
-            SIMD3(0.65, 0.98, 1.00), // cyan
-            SIMD3(1.00, 0.77, 0.60), // orange
-            SIMD3(0.81, 0.70, 1.00), // purple
-            SIMD3(0.50, 0.75, 0.69), // teal
-            SIMD3(1.00, 0.74, 0.85), // pink
-            SIMD3(0.89, 1.00, 0.65), // lime
-            SIMD3(0.78, 0.66, 0.56), // brown
-            SIMD3(0.61, 0.70, 0.44), // olive
-            SIMD3(0.69, 0.51, 0.61), // plum
-        ],
-        sunburst: SunburstPalette(
-            branchHues: .hashed(saturationScale: 0.55, brightnessScale: 1.12)
-        )
+    /// Warm faded terminal tones — brick red, olive green, amber, muted
+    /// blue-grey — in the classic role slots. Branch hues restrict to the
+    /// table, like a terminal's fixed accent set.
+    static let retro = VizPalette(
+        id: "retro",
+        title: "Retro",
+        kinds: retroKinds,
+        sunburst: SunburstPalette(branchHues: .table(retroKinds))
     )
 
-    /// Muted natural tones — terracotta, ochre, moss — in the same hue-role
-    /// slots as Classic, so each category keeps a recognizable family.
-    static let earth = VizPalette(
-        id: "earth",
-        title: "Earth",
-        kinds: earthKinds,
-        sunburst: SunburstPalette(branchHues: .table(earthKinds))
+    /// Soft neon accents against the dark canvas — glowing mint, pink,
+    /// lavender, ice blue — in the classic role slots. Branch hues restrict
+    /// to the table, like a terminal's fixed accent set.
+    static let neon = VizPalette(
+        id: "neon",
+        title: "Neon",
+        kinds: neonKinds,
+        sunburst: SunburstPalette(branchHues: .table(neonKinds))
     )
 
     /// Okabe-Ito kinds/categories + viridis age ramp; the branch mode
@@ -198,21 +185,42 @@ struct VizPalette: Sendable, Equatable, Identifiable {
     /// every classic-role palette; the `unknown` bucket appends the neutral.
     private static let classicAgeRoles = [0, 5, 10, 4, 6, 1]
 
-    private static let earthKinds: [SIMD3<Float>] = [
-        SIMD3(0.35, 0.49, 0.60), // steel blue
-        SIMD3(0.76, 0.33, 0.25), // terracotta
-        SIMD3(0.45, 0.58, 0.32), // moss
-        SIMD3(0.64, 0.39, 0.53), // berry
-        SIMD3(0.85, 0.69, 0.34), // ochre
-        SIMD3(0.42, 0.65, 0.63), // agave
-        SIMD3(0.80, 0.47, 0.24), // burnt orange
-        SIMD3(0.52, 0.44, 0.63), // dusty purple
-        SIMD3(0.30, 0.50, 0.44), // pine
-        SIMD3(0.78, 0.53, 0.53), // dusty rose
-        SIMD3(0.63, 0.66, 0.37), // sage
-        SIMD3(0.55, 0.39, 0.26), // saddle brown
-        SIMD3(0.45, 0.47, 0.20), // dark olive
-        SIMD3(0.50, 0.33, 0.40), // mauve
+    /// Warm retro-terminal accents: everything pulls toward amber and
+    /// olive, blues stay muted so the map reads like phosphor on parchment.
+    private static let retroKinds: [SIMD3<Float>] = [
+        SIMD3(0.27, 0.52, 0.53), // slate blue
+        SIMD3(0.98, 0.29, 0.20), // brick red
+        SIMD3(0.72, 0.73, 0.15), // spring olive
+        SIMD3(0.83, 0.53, 0.61), // rosewood
+        SIMD3(0.98, 0.74, 0.18), // amber
+        SIMD3(0.56, 0.75, 0.49), // sage aqua
+        SIMD3(1.00, 0.50, 0.10), // pumpkin
+        SIMD3(0.69, 0.38, 0.53), // heather
+        SIMD3(0.41, 0.62, 0.42), // fern
+        SIMD3(0.92, 0.86, 0.70), // parchment
+        SIMD3(0.60, 0.59, 0.10), // moss
+        SIMD3(0.84, 0.36, 0.05), // rust
+        SIMD3(0.47, 0.45, 0.05), // faded olive
+        SIMD3(0.56, 0.25, 0.44), // faded plum
+    ]
+
+    /// Soft neon accents: pastel-bright hues that glow against the near-
+    /// black canvas without the full saturation of Vivid.
+    private static let neonKinds: [SIMD3<Float>] = [
+        SIMD3(0.42, 0.51, 0.80), // dusk blue
+        SIMD3(1.00, 0.33, 0.33), // coral red
+        SIMD3(0.31, 0.98, 0.48), // mint
+        SIMD3(1.00, 0.47, 0.78), // hot pink
+        SIMD3(0.95, 0.98, 0.55), // lemon
+        SIMD3(0.55, 0.91, 0.99), // ice blue
+        SIMD3(1.00, 0.72, 0.42), // apricot
+        SIMD3(0.74, 0.58, 0.98), // lavender
+        SIMD3(0.30, 0.75, 0.68), // sea green
+        SIMD3(0.98, 0.55, 0.60), // salmon
+        SIMD3(0.68, 0.98, 0.51), // lime glow
+        SIMD3(0.72, 0.56, 0.44), // latte
+        SIMD3(0.62, 0.72, 0.35), // olive glow
+        SIMD3(0.58, 0.38, 0.68), // grape
     ]
 
     /// Okabe-Ito, extended past the canonical eight with CVD-checked tones.

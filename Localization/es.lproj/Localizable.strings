@@ -277,8 +277,8 @@
 "Color palette" = "Paleta de colores";
 "Classic" = "Clásica";
 "Vivid" = "Vívida";
-"Pastel" = "Pastel";
-"Earth" = "Tierra";
+"Retro" = "Retro";
+"Neon" = "Neón";
 "Colorblind-safe" = "Apto para daltonismo";
 "The color set the visualizations draw with. Colorblind-safe stays distinct with common color vision differences. Applies immediately." = "El conjunto de colores con el que dibujan las visualizaciones. Apto para daltonismo se mantiene distinguible con las diferencias de visión del color más comunes. Se aplica de inmediato.";
 

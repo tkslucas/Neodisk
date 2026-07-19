@@ -276,8 +276,8 @@
 "Color palette" = "调色板";
 "Classic" = "经典";
 "Vivid" = "鲜艳";
-"Pastel" = "粉彩";
-"Earth" = "大地";
+"Retro" = "复古";
+"Neon" = "霓虹";
 "Colorblind-safe" = "色盲友好";
 "The color set the visualizations draw with. Colorblind-safe stays distinct with common color vision differences. Applies immediately." = "可视化使用的配色方案。色盲友好在常见色觉差异下仍可区分。立即生效。";
 

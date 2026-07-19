@@ -28,10 +28,10 @@ import NeodiskKit
     }
 
     @Test func testClassicRolePalettesShareColorMeaning() {
-        // Classic, Vivid, Pastel, and Earth keep one hue-role order: each
+        // Classic, Vivid, Retro, and Neon keep one hue-role order: each
         // category maps to the same kind-table slot, so switching between
         // them changes the look, never what a color means.
-        for palette in [VizPalette.vivid, .pastel, .earth] {
+        for palette in [VizPalette.vivid, .retro, .neon] {
             for (category, rgb) in VizPalette.standard.categoryRGB where category != "cat-other" {
                 let index = VizPalette.standard.kindPalette.firstIndex(of: rgb)
                 let paletteIndex = palette.kindPalette.firstIndex(of: palette.categoryRGB[category]!)

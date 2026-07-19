@@ -276,8 +276,8 @@
 "Color palette" = "Farbpalette";
 "Classic" = "Klassisch";
 "Vivid" = "Leuchtend";
-"Pastel" = "Pastell";
-"Earth" = "Erdtöne";
+"Retro" = "Retro";
+"Neon" = "Neon";
 "Colorblind-safe" = "Farbfehlsichtigkeitssicher";
 "The color set the visualizations draw with. Colorblind-safe stays distinct with common color vision differences. Applies immediately." = "Die Farben, mit denen die Visualisierungen zeichnen. Farbfehlsichtigkeitssicher bleibt bei häufigen Farbsehschwächen unterscheidbar. Wirkt sofort.";
 

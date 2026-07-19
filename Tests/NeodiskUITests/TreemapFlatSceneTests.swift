@@ -89,19 +89,18 @@ import NeodiskKit
         #expect(header.isHeader)
     }
 
-    @Test func flatLabelsSmallTilesThatCushionSkips() throws {
-        let scene = buildFlat()
-
-        // Every leaf tile in this fixture clears the relaxed flat gates
-        // (40×16) — including the nested c.txt, whose tile is smaller than
-        // the cushion's 80×22/4000pt² thresholds.
-        for id in ["/scan/a.mov", "/scan/b.jpg", "/scan/sub/c.txt"] {
-            #expect(scene.labels.contains { $0.id == id }, "missing label for \(id)")
-        }
+    @Test func flatFilesLabelOnlyGenuinelyBigTiles() throws {
+        // At 300×200 the nested c.txt tile falls under the shared file
+        // gates, so it stays quiet; the dominant a.mov tile clears them.
+        let scene = buildFlat(size: CGSize(width: 300, height: 200))
 
         let child = try #require(scene.cells.first { $0.nodeID == "/scan/sub/c.txt" })
-        #expect(child.rect.width >= TreemapScene.flatLabelMinCellWidth)
-        #expect(child.rect.height >= TreemapScene.flatLabelMinCellHeight)
+        #expect(child.rect.width * child.rect.height < TreemapScene.labelMinCellArea)
+        #expect(!scene.labels.contains { $0.id == "/scan/sub/c.txt" })
+
+        let big = try #require(scene.cells.first { $0.nodeID == "/scan/a.mov" })
+        #expect(big.rect.width * big.rect.height >= TreemapScene.labelMinCellArea)
+        #expect(scene.labels.contains { $0.id == "/scan/a.mov" })
     }
 
     @Test func flatHeaderLabelSurvivesViewportClipping() throws {
@@ -167,6 +166,9 @@ import NeodiskKit
         let sub = try #require(scene.cells.first { $0.nodeID == "/scan/sub" })
         #expect(!sub.isContainer)
         #expect(!scene.cells.contains { $0.nodeID == "/scan/sub/c.txt" })
+        // The tiny undivided folder still carries its name (folder gate):
+        // folders are never anonymous boxes.
+        #expect(scene.labels.contains { $0.id == "/scan/sub" && !$0.isHeader })
     }
 
     @Test func branchColorsMatchSunburstResolver() throws {

@@ -132,14 +132,11 @@ struct TreemapScene: Sendable {
     nonisolated static let flatHeaderHeight: CGFloat = 18
     nonisolated static let flatMinContainerWidth: CGFloat = 52
     nonisolated static let flatMinContainerHeight: CGFloat = 46
-    /// Flat tiles label much earlier than cushion cells: there is no zoom to
-    /// reveal names later and the tiles are the whole map, so any tile with
-    /// room for a few characters gets a truncated name.
-    nonisolated static let flatLabelMinCellWidth: CGFloat = 40
-    nonisolated static let flatLabelMinCellHeight: CGFloat = 16
-    /// Undivided folders label even smaller than files: a folder tile with
+    /// Undivided folders label far smaller than files: a folder tile with
     /// no name reads as an anonymous box, so it gets a (heavily truncated)
-    /// name as soon as one could possibly fit.
+    /// name as soon as one could possibly fit. Files share the cushion
+    /// gates above — only genuinely big tiles carry a file name, keeping
+    /// the flat map quiet.
     nonisolated static let flatFolderLabelMinCellWidth: CGFloat = 24
     nonisolated static let flatFolderLabelMinCellHeight: CGFloat = 12
 
@@ -439,20 +436,15 @@ struct TreemapScene: Sendable {
                 isDataless: isDataless
             ))
 
-            // Position the label inside the visible part of the cell. The
-            // flat style labels far smaller tiles — files and undivided
-            // folders alike — truncation carries the rest; the cushion keeps
-            // its zoom-tuned file-only gates (zooming in reveals more names).
+            // Position the label inside the visible part of the cell. Files
+            // share one gate across both styles: only genuinely big tiles
+            // carry a name (zooming in reveals more). Flat undivided folders
+            // label at the tiny folder gate — an unnamed folder tile reads
+            // as an anonymous box; cushion directories never label.
             let visiblePart = rect.intersection(visibleBounds)
-            if style == .flat {
-                // Undivided folders use the lower folder gate: unnamed
-                // folder tiles read as anonymous boxes, while files can
-                // afford to stay quiet a little longer.
-                let minWidth = node.isDirectory
-                    ? flatFolderLabelMinCellWidth : flatLabelMinCellWidth
-                let minHeight = node.isDirectory
-                    ? flatFolderLabelMinCellHeight : flatLabelMinCellHeight
-                if visiblePart.width >= minWidth, visiblePart.height >= minHeight {
+            if style == .flat, node.isDirectory {
+                if visiblePart.width >= flatFolderLabelMinCellWidth,
+                   visiblePart.height >= flatFolderLabelMinCellHeight {
                     labels.append(CellLabel(id: node.id, text: node.name, rect: visiblePart))
                 }
             } else if !node.isDirectory {

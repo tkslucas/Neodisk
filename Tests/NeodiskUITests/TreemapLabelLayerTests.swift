@@ -25,26 +25,25 @@ import Testing
 
     @Test func shortNameSurvivesUntouched() {
         let text = "other"
-        #expect(TreemapNSView.middleTruncated(
+        #expect(TreemapNSView.endTruncated(
             text, attributes: Self.attributes, width: 148
         ) == text)
     }
 
-    @Test func longNameEllipsizesToFitKeepingHeadAndTail() {
+    @Test func longNameEllipsizesAtTheEndKeepingTheHead() {
         let text = "DesigningYourLifeShowcase"
-        let fitted = TreemapNSView.middleTruncated(
+        let fitted = TreemapNSView.endTruncated(
             text, attributes: Self.attributes, width: 100
         )
-        #expect(fitted.contains("…"))
+        #expect(fitted.hasSuffix("…"))
         #expect(measured(fitted) <= 100)
-        #expect(fitted.hasPrefix(String(text.prefix(2))))
-        #expect(fitted.hasSuffix(String(text.suffix(2))))
+        #expect(text.hasPrefix(fitted.dropLast()))
         // Not degenerate: a 100pt rect fits far more than the bare ellipsis.
         #expect(fitted.count > 5)
     }
 
     @Test func narrowestRectDegradesToBareEllipsis() {
-        let fitted = TreemapNSView.middleTruncated(
+        let fitted = TreemapNSView.endTruncated(
             "DesigningYourLifeShowcase", attributes: Self.attributes, width: 10
         )
         #expect(fitted == "…")

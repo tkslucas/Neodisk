@@ -169,7 +169,7 @@ final class TreemapNSView: NSView {
         ]
         let textLayer = CATextLayer()
         textLayer.string = NSAttributedString(
-            string: Self.middleTruncated(label.text, attributes: attributes, width: width),
+            string: Self.endTruncated(label.text, attributes: attributes, width: width),
             attributes: attributes
         )
         textLayer.alignmentMode = label.isHeader ? .left : .center
@@ -189,11 +189,11 @@ final class TreemapNSView: NSView {
         return textLayer
     }
 
-    /// `text` middle-ellipsized so it measures within `width`: the name's
-    /// head and tail survive with an "…" between them, degrading to a bare
-    /// "…" in the narrowest rects. Binary search over the kept character
-    /// count; fit is monotonic in it.
-    static func middleTruncated(
+    /// `text` end-ellipsized so it measures within `width`: the name's head
+    /// survives with a trailing "…", degrading to a bare "…" in the
+    /// narrowest rects. Binary search over the kept character count; fit is
+    /// monotonic in it.
+    static func endTruncated(
         _ text: String,
         attributes: [NSAttributedString.Key: Any],
         width: CGFloat
@@ -207,9 +207,7 @@ final class TreemapNSView: NSView {
 
         let characters = Array(text)
         func candidate(keeping count: Int) -> String {
-            String(characters.prefix((count + 1) / 2))
-                + ellipsis
-                + String(characters.suffix(count / 2))
+            String(characters.prefix(count)) + ellipsis
         }
         var low = 0
         var high = characters.count - 1

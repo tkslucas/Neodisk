@@ -218,7 +218,7 @@ copies them into `Contents/Resources/` and `Info.plist` lists the languages.
   assertions over sleeps.
 - Never rely on `CATextLayer.truncationMode`: on current macOS a string that
   overflows the layer renders as nothing at all (not truncated — blank).
-  Treemap labels pre-ellipsize via `TreemapNSView.middleTruncated` instead;
+  Treemap labels pre-ellipsize via `TreemapNSView.endTruncated` instead;
   `TreemapLabelLayerTests.overflowingHeaderLabelRendersPixels` guards this.
 
 ## If You Need A Starting Point

@@ -23,6 +23,7 @@ final class TreemapNSView: NSView {
     private let imageLayer = CALayer()
     private let labelContainerLayer = CALayer()
     private let selectionLayer = CALayer()
+    private let hoverLayer = CALayer()
     /// Identity of the scene whose labels are currently materialized.
     private var labeledSceneViewport: TreemapViewport?
     private let debugSnapshotter = DebugSnapshotter.shared
@@ -58,9 +59,13 @@ final class TreemapNSView: NSView {
         imageLayer.position = .zero
         selectionLayer.borderColor = NSColor.systemYellow.cgColor
         selectionLayer.isHidden = true
+        hoverLayer.isHidden = true
 
         contentLayer.addSublayer(imageLayer)
         contentLayer.addSublayer(labelContainerLayer)
+        // Hover under selection, so the selection ring stays on top when
+        // both land on the same cell.
+        contentLayer.addSublayer(hoverLayer)
         contentLayer.addSublayer(selectionLayer)
         rootLayer.addSublayer(contentLayer)
     }
@@ -90,6 +95,7 @@ final class TreemapNSView: NSView {
             labelContainerLayer.sublayers = nil
             labeledSceneViewport = nil
             selectionLayer.isHidden = true
+            hoverLayer.isHidden = true
             contentLayer.setAffineTransform(.identity)
             return
         }
@@ -109,19 +115,49 @@ final class TreemapNSView: NSView {
             labeledSceneViewport = scene.viewport
         }
 
-        // Flat tiles draw rounded and inset; the ring follows the shape.
-        selectionLayer.cornerRadius = scene.style == .flat ? 4 : 0
-        if let rect = controller.selectionRect {
-            selectionLayer.isHidden = false
-            selectionLayer.frame = CGRect(
-                x: rect.minX, y: rect.minY,
-                width: max(rect.width, 2), height: max(rect.height, 2)
-            )
-            // Compensate the content transform so the outline stays hairline.
-            selectionLayer.borderWidth = 2 / max(transform.a, 0.001)
-        } else {
-            selectionLayer.isHidden = true
+        place(selectionLayer, over: controller.selectionRect, borderWidth: 2)
+        refreshHoverLayer()
+    }
+
+    /// Repositions only the hover ring, so pointer moves never pay for the
+    /// full display refresh (selection re-layout, label rebuild checks).
+    func refreshHoverLayer() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
+
+        guard controller.scene != nil, controller.image != nil else {
+            hoverLayer.isHidden = true
+            return
         }
+        // Neutral tint plus border reads on every palette and both cell
+        // surfaces: brighten in dark mode, darken in light.
+        if isDarkAppearance {
+            hoverLayer.backgroundColor = CGColor(gray: 1, alpha: 0.075)
+            hoverLayer.borderColor = CGColor(gray: 1, alpha: 0.72)
+        } else {
+            hoverLayer.backgroundColor = CGColor(gray: 0, alpha: 0.055)
+            hoverLayer.borderColor = CGColor(gray: 0, alpha: 0.58)
+        }
+        place(hoverLayer, over: controller.hoverRect, borderWidth: 1.75)
+    }
+
+    /// Frames an outline layer over a cell rect (rendered-scene
+    /// coordinates), compensating the content transform so the border keeps
+    /// its on-screen width; a nil rect hides the layer.
+    private func place(_ outline: CALayer, over rect: CGRect?, borderWidth: CGFloat) {
+        guard let rect, let scene = controller.scene else {
+            outline.isHidden = true
+            return
+        }
+        outline.isHidden = false
+        // Flat tiles draw rounded and inset; the ring follows the shape.
+        outline.cornerRadius = scene.style == .flat ? 4 : 0
+        outline.frame = CGRect(
+            x: rect.minX, y: rect.minY,
+            width: max(rect.width, 2), height: max(rect.height, 2)
+        )
+        outline.borderWidth = borderWidth / max(controller.displayTransform.a, 0.001)
     }
 
     private func rebuildLabels(for scene: TreemapScene) {

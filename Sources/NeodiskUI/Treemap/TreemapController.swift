@@ -85,8 +85,16 @@ final class TreemapController {
         didSet {
             guard isGesturing != oldValue else { return }
             onGestureActiveChange?(isGesturing)
+            // The hover ring hides with the tooltip and must come back when
+            // the map settles, even if the pointer never moves again.
+            view?.refreshHoverLayer()
         }
     }
+
+    /// Last pointer position in view coordinates, nil once it leaves the
+    /// map. Kept so the hover ring can re-resolve its cell whenever the
+    /// scene or transform changes under a stationary pointer.
+    private var hoverPoint: CGPoint?
     /// Momentum scroll/zoom has no explicit end event, so it self-clears after
     /// a brief idle; each event reschedules the reset.
     private var gestureIdleResetTask: Task<Void, Never>?
@@ -220,24 +228,37 @@ final class TreemapController {
         return scene.rect(forNodeID: selectedNodeID, in: store)
     }
 
+    /// Hovered cell's rect in rendered-scene coordinates, or nil when the
+    /// pointer is off the map or a gesture is moving it (the ring hides
+    /// with the tooltip). Resolved from the stored pointer position on
+    /// every read, so it stays honest across re-renders and transforms.
+    var hoverRect: CGRect? {
+        guard !isGesturing, let hoverPoint else { return nil }
+        return cell(at: hoverPoint)?.rect
+    }
+
     // MARK: - Events from the view
 
     func hover(at point: CGPoint) {
         guard let model else { return }
+        hoverPoint = point
         let cell = cell(at: point)
         model.hoveredNodeID = cell?.nodeID
         model.hoveredAggregate = cell?.aggregate
         model.hoveredCellIsFreeSpace = cell?.isFreeSpace == true
         model.hoveredCellIsHiddenSpace = cell?.isHiddenSpace == true
         onHoverPoint?(cell == nil ? nil : point)
+        view?.refreshHoverLayer()
     }
 
     func hoverEnded() {
+        hoverPoint = nil
         model?.hoveredNodeID = nil
         model?.hoveredAggregate = nil
         model?.hoveredCellIsFreeSpace = false
         model?.hoveredCellIsHiddenSpace = false
         onHoverPoint?(nil)
+        view?.refreshHoverLayer()
     }
 
     func click(at point: CGPoint) {

@@ -542,7 +542,7 @@ import NeodiskKit
         }
     }
 
-    @Test func cushionBranchCellsUseCleanBranchHueWithoutJitter() throws {
+    @Test func cushionBranchCellsUseRawMidpointHue() throws {
         let store = makeStore()
         let scene = TreemapScene.build(
             store: store, rootID: "/scan",
@@ -550,24 +550,21 @@ import NeodiskKit
             catalog: .empty, colorMode: .branch
         )
 
-        // The nested file: /scan/sub's branch one level deeper, the raw
-        // resolver color with the branch id standing in for the node —
-        // cushion drops the per-node jitter, so branch siblings at one
-        // depth share one clean hue. The token carries the branch's real
-        // scan-root position, like the scene's cells.
-        let position = try #require(SunburstLayout.colorBranchPositions(in: store)["/scan/sub"])
+        // The nested file: the raw resolver color at its global interval
+        // midpoint. /scan/sub spans [0.9, 1.0] (after a.mov's 0.6 and
+        // b.jpg's 0.3) and c.txt fills it, two levels below the scan root.
+        // Files carry the folder formula in the treemap (role .normal).
+        let subStart = 600.0 / 1000.0 + 300.0 / 1000.0
+        let subSpan = 100.0 / 1000.0
         let token = SunburstColorToken(
-            branchID: "/scan/sub", localID: "/scan/sub",
-            branchIndex: position.index, branchCount: position.count,
-            siblingIndex: 0, siblingCount: 1,
-            depth: 1, role: .normal
+            midpoint: subStart + subSpan / 2, depth: 2, role: .normal
         )
         let expected = SunburstColorResolver.rgb(for: token, palette: VizPalette.standard.sunburst)
         let cell = try #require(scene.cells.first { $0.nodeID == "/scan/sub/c.txt" })
         #expect(cell.rgb == expected)
 
-        // Flat keeps the per-node jitter and its gray pull: same node,
-        // different fill.
+        // Flat pulls toward gray and composites over the background: same
+        // node, different fill.
         let flatScene = TreemapScene.build(
             store: store, rootID: "/scan", style: .flat,
             size: CGSize(width: 400, height: 300),
@@ -618,17 +615,20 @@ import NeodiskKit
             catalog: .empty, colorMode: .branch
         )
 
-        // The folder's merged tail carries the folder's branch hue one
-        // level below the folder, exactly like its sibling cells.
+        // The folder's merged tail colors from the tail slice of the
+        // folder's global interval, one level below the folder. sub is the
+        // largest root child, so its interval starts at 0; the tail sits at
+        // the interval's end (children are size-sorted).
         let subAggregate = try #require(scene.cells.first {
             $0.aggregate != nil && $0.nodeID == "/agg/sub"
         })
-        let position = try #require(SunburstLayout.colorBranchPositions(in: store)["/agg/sub"])
+        let subTotal = 510_000.0
+        let subSpan = subTotal / 1_020_000.0
+        let tailSize = Double(try #require(subAggregate.aggregate).totalSize)
+        let tailStart = subSpan * ((subTotal - tailSize) / subTotal)
+        let tailSpan = subSpan * (tailSize / subTotal)
         let token = SunburstColorToken(
-            branchID: "/agg/sub", localID: "/agg/sub",
-            branchIndex: position.index, branchCount: position.count,
-            siblingIndex: 0, siblingCount: 1,
-            depth: 1, role: .normal
+            midpoint: tailStart + tailSpan / 2, depth: 2, role: .normal
         )
         #expect(subAggregate.rgb == SunburstColorResolver.rgb(for: token, palette: VizPalette.standard.sunburst))
 
@@ -637,7 +637,7 @@ import NeodiskKit
             $0.aggregate != nil && $0.nodeID == "/agg"
         })
         #expect(rootAggregate.rgb == SunburstColorResolver.rgb(
-            for: .single(id: "/agg", role: .aggregate)
+            for: SunburstColorToken(midpoint: 0, depth: 0, role: .aggregate)
         ))
     }
 

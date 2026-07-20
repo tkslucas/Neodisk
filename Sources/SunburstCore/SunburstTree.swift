@@ -47,8 +47,8 @@ public extension SunburstNode {
 public protocol SunburstTreeReading {
     associatedtype Node: SunburstNode
 
-    /// The scan root — the drill-independent origin the branch-hue families
-    /// derive from (see `SunburstLayout.topLevelBranchID`).
+    /// The scan root — the drill-independent origin of the color coordinate
+    /// system (see `SunburstLayout.colorCoordinate`).
     var rootID: String { get }
 
     func node(id: String?) -> Node?

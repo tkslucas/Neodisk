@@ -2,10 +2,13 @@
 //  SunburstColor.swift
 //  SunburstCore
 //
-//  Branch-hue coloring for the sunburst's Largest tab:
-//  each scan-root branch gets a stable hue (FNV-1a of the branch id), siblings
-//  vary around it, and depth darkens/desaturates. Pure — HSB/RGB math and FNV
-//  hashing only, no SwiftUI Color (that stays in NeodiskUI).
+//  Branch coloring for the structural (Largest) mode: a folder's hue is the
+//  midpoint of its global size interval — the tree is size-sorted, every
+//  node owns a contiguous slice of the 0…1 scan-root coordinate, and the
+//  slice's midpoint indexes the hue wheel (or a fixed palette table). Nested
+//  folders occupy sub-slices of their parent, so related folders naturally
+//  land on related hues, and saturation fades toward pastel with depth.
+//  Pure — HSB/RGB math only, no SwiftUI Color (that stays in NeodiskUI).
 //
 //  Stdlib only (no Foundation) so it stays Embedded-Swift-compatible for the
 //  wasm build; SIMD3 and the FloatingPoint math are all stdlib.
@@ -23,51 +26,25 @@ public enum SunburstColorRole: Hashable, Sendable {
     case hiddenSpace
 }
 
+/// A node's position in the scan-root color coordinate system: the midpoint
+/// of its global size interval and its depth below the scan root. Both are
+/// anchored to the scan root — never the drilled-in root — so drilling
+/// preserves every color.
 public struct SunburstColorToken: Hashable, Sendable {
     public let role: SunburstColorRole
-    public let branchID: String
-    public let localID: String
-    public let branchIndex: Int
-    public let branchCount: Int
-    public let siblingIndex: Int
-    public let siblingCount: Int
+    /// Midpoint of the node's global size interval, 0…1. The tree is
+    /// size-sorted and every node's interval nests inside its parent's, so
+    /// midpoints of related folders cluster. Drives the hue for `.normal`
+    /// and the brightness jitter for `.file`; ignored by the fixed roles.
+    public let midpoint: Double
+    /// Depth below the scan root; scan-root children are depth 1. Drives
+    /// the saturation fade (deeper rings go pastel, never darker).
     public let depth: Int
 
-    public init(
-        branchID: String,
-        localID: String,
-        branchIndex: Int,
-        branchCount: Int,
-        siblingIndex: Int,
-        siblingCount: Int,
-        depth: Int,
-        role: SunburstColorRole
-    ) {
+    public init(midpoint: Double, depth: Int, role: SunburstColorRole) {
         self.role = role
-        self.branchID = branchID
-        self.localID = localID
-        self.branchIndex = max(branchIndex, 0)
-        self.branchCount = max(branchCount, 1)
-        self.siblingIndex = max(siblingIndex, 0)
-        self.siblingCount = max(siblingCount, 1)
+        self.midpoint = midpoint.isFinite ? midpoint : 0
         self.depth = max(depth, 0)
-    }
-
-    public static func single(
-        id: String,
-        depth: Int = 0,
-        role: SunburstColorRole = .normal
-    ) -> SunburstColorToken {
-        SunburstColorToken(
-            branchID: id,
-            localID: id,
-            branchIndex: 0,
-            branchCount: 1,
-            siblingIndex: 0,
-            siblingCount: 1,
-            depth: depth,
-            role: role
-        )
     }
 }
 
@@ -83,23 +60,20 @@ public struct SunburstColorComponents: Equatable, Hashable, Sendable {
     }
 }
 
-/// How the branch resolver picks hues under the active palette. Standalone
-/// from NeodiskUI's `VizPalette` so the resolver stays app-free; NeodiskUI
-/// carries one of these values on each of its palettes. The raw color tables
-/// live with the rest of the palette data in NeodiskUI — this type only
-/// describes the strategy (and receives a table by value when one applies).
+/// How the branch resolver turns a midpoint into a hue under the active
+/// palette. Standalone from NeodiskUI's `VizPalette` so the resolver stays
+/// app-free; NeodiskUI carries one of these values on each of its palettes.
 public struct SunburstPalette: Equatable, Sendable {
     public enum BranchHues: Equatable, Sendable {
-        /// Hash-derived free hues over the whole wheel. The app's palettes
-        /// all use `.table` now; this remains the resolver's app-free
-        /// default (`.standard`) for consumers without a palette table —
-        /// embedded demos — and the empty-table fallback. The scales tilt
-        /// the saturation/brightness envelope; (1, 1) is the plain look.
-        case hashed(saturationScale: Double, brightnessScale: Double)
-        /// Branch hues restricted to a fixed qualitative table (hash-stable
-        /// per branch); depth and sibling variation move brightness only,
-        /// never hue — hue identity is what the viewer must distinguish, and
-        /// a curated table keeps its meaning.
+        /// The continuous hue wheel: hue equals the midpoint directly, and
+        /// saturation follows the exact depth fade (see `components`). The
+        /// scales tilt the whole envelope; (1, 1) is the plain look.
+        case wheel(saturationScale: Double, brightnessScale: Double)
+        /// Hues restricted to a fixed accent table: the midpoint quantizes
+        /// into the hue-sorted table, so the wheel's geometry (children near
+        /// their parent, siblings spreading with size) survives while every
+        /// color stays in the scheme. Build via `quantized(_:)`, which
+        /// hue-sorts the entries.
         case table([SIMD3<Float>])
     }
 
@@ -109,9 +83,22 @@ public struct SunburstPalette: Equatable, Sendable {
         self.branchHues = branchHues
     }
 
+    /// The resolver's app-free default (embedded demos, empty-table
+    /// fallback): the plain continuous wheel.
     public static let standard = SunburstPalette(
-        branchHues: .hashed(saturationScale: 1, brightnessScale: 1)
+        branchHues: .wheel(saturationScale: 1, brightnessScale: 1)
     )
+
+    /// A table palette from a raw accent set: entries are sorted by hue so
+    /// midpoint quantization walks the wheel in hue order — adjacent
+    /// midpoints land on adjacent accents, keeping the parent/child hue
+    /// kinship the wheel provides.
+    public static func quantized(_ entries: [SIMD3<Float>]) -> SunburstPalette {
+        let sorted = entries.sorted {
+            SunburstColorResolver.hsb(fromRGB: $0).0 < SunburstColorResolver.hsb(fromRGB: $1).0
+        }
+        return SunburstPalette(branchHues: .table(sorted))
+    }
 }
 
 public enum SunburstColorResolver {
@@ -148,7 +135,7 @@ public enum SunburstColorResolver {
                 brightness: clamped(
                     0.62
                         - (depthTone * 0.03)
-                        + (variantBrightnessOffset(for: token.localID) * 0.02),
+                        + (jitterOffset(for: token.midpoint) * 0.02),
                     lower: 0.46,
                     upper: 0.68
                 )
@@ -157,83 +144,69 @@ public enum SunburstColorResolver {
             break
         }
 
-        let saturationScale: Double
-        let brightnessScale: Double
+        // Scan-root children are depth 1; a degenerate depth-0 token (the
+        // scan root itself) colors like the first ring.
+        let depth = max(token.depth, 1)
+
         switch palette.branchHues {
         case .table(let entries) where !entries.isEmpty:
-            return tableComponents(for: token, entries: entries)
+            return tableComponents(midpoint: token.midpoint, depth: depth, entries: entries)
         case .table:
-            // An empty table would divide by zero below; fall back to the
-            // classic free hues.
-            (saturationScale, brightnessScale) = (1, 1)
-        case .hashed(let saturation, let brightness):
-            (saturationScale, brightnessScale) = (saturation, brightness)
+            // An empty table would index out of bounds below; fall back to
+            // the plain wheel.
+            return wheelComponents(
+                midpoint: token.midpoint, depth: depth,
+                saturationScale: 1, brightnessScale: 1
+            )
+        case .wheel(let saturationScale, let brightnessScale):
+            return wheelComponents(
+                midpoint: token.midpoint, depth: depth,
+                saturationScale: saturationScale, brightnessScale: brightnessScale
+            )
         }
+    }
 
-        let branchHue = stableUnitInterval(for: token.branchID)
-        let localUnit = stableUnitInterval(for: token.localID)
-        let localVariant = centered(localUnit)
-        let depthTone = min(Double(token.depth), 6)
-        let hue = normalizedHue(
-            branchHue
-                + (localVariant * 0.11)
-                + (Double(token.depth % 2) * 0.015)
-        )
-        // The palette scales move the whole envelope (base and clamps) so a
-        // muted palette can sit below the classic floor; at scale 1 the
-        // bounds reduce exactly to the classic 0.48…0.86 / 0.48…0.9.
-        let saturation = clamped(
-            (0.74 * saturationScale)
-                - (depthTone * 0.035)
-                + (localVariant * 0.08),
-            lower: 0.48 * saturationScale,
-            upper: min(0.86 * saturationScale, 1)
-        )
-        let brightness = clamped(
-            (0.84 * brightnessScale)
-                - (depthTone * 0.055)
-                + (variantBrightnessOffset(for: token.localID) * 0.035),
-            lower: min(0.48 * brightnessScale, 0.9),
-            upper: min(0.9 * brightnessScale, 0.98)
-        )
-
-        return SunburstColorComponents(
-            hue: hue,
-            saturation: saturation,
-            brightness: brightness
+    /// The continuous wheel: hue is the global midpoint itself, saturation
+    /// halves its distance to 0.5 per level (first ring 0.75, approaching
+    /// pastel 0.5), brightness stays full. Deeper never means darker.
+    private nonisolated static func wheelComponents(
+        midpoint: Double,
+        depth: Int,
+        saturationScale: Double,
+        brightnessScale: Double
+    ) -> SunburstColorComponents {
+        SunburstColorComponents(
+            hue: normalizedHue(midpoint),
+            saturation: clamped(
+                (0.5 + 0.5 * halving(depth)) * saturationScale,
+                lower: 0, upper: 1
+            ),
+            brightness: clamped(brightnessScale, lower: 0, upper: 1)
         )
     }
 
-    /// Branch colors under a table palette: each branch picks a table entry
-    /// and keeps that hue exactly — depth and sibling variation move
-    /// brightness only, never the hue.
-    ///
-    /// With real branch context (`branchCount > 1`) the pick is positional:
-    /// tables are rank-ordered for hue diversity, so the first N entries are
-    /// the N most separated colors, and every scan gets a maximally distinct
-    /// branch spread — a hash pick could land several big branches in the
-    /// same hue cluster of a warm-leaning table. Context-free tokens
-    /// (`branchCount` 1) keep the stable hash so an isolated swatch still
-    /// resolves deterministically.
+    /// 2^-steps as an exact stdlib construction (no Foundation `exp2`).
+    private nonisolated static func halving(_ steps: Int) -> Double {
+        Double(sign: .plus, exponent: -min(max(steps, 0), 62), significand: 1)
+    }
+
+    /// A table palette: the midpoint quantizes into the hue-sorted table
+    /// (each entry owns an equal share of the wheel), and depth applies the
+    /// same halve-toward-pastel fade to the entry's own saturation — the
+    /// first ring keeps the accent verbatim.
     private nonisolated static func tableComponents(
-        for token: SunburstColorToken,
+        midpoint: Double,
+        depth: Int,
         entries: [SIMD3<Float>]
     ) -> SunburstColorComponents {
-        let base = token.branchCount > 1
-            ? entries[token.branchIndex % entries.count]
-            : entries[Int(stableHash(for: token.branchID) % UInt64(entries.count))]
-        let (hue, saturation, brightness) = hsb(fromRGB: base)
-        let depthTone = min(Double(token.depth), 6)
+        let position = normalizedHue(midpoint) * Double(entries.count)
+        let index = min(Int(position), entries.count - 1)
+        let (hue, saturation, brightness) = hsb(fromRGB: entries[index])
+        let fade = 0.5 + 0.5 * halving(depth - 1)
         return SunburstColorComponents(
             hue: hue,
-            saturation: clamped(saturation - depthTone * 0.02, lower: 0.2, upper: 1),
-            brightness: clamped(
-                brightness
-                    - (depthTone * 0.055)
-                    + (variantBrightnessOffset(for: token.localID) * 0.035),
-                lower: 0.35,
-                upper: 0.95
-            )
+            saturation: saturation * fade,
+            brightness: brightness
         )
     }
 
@@ -256,7 +229,7 @@ public enum SunburstColorResolver {
         return SIMD3<Float>(Float(r + m), Float(g + m), Float(b + m))
     }
 
-    private nonisolated static func hsb(fromRGB rgb: SIMD3<Float>) -> (Double, Double, Double) {
+    nonisolated static func hsb(fromRGB rgb: SIMD3<Float>) -> (Double, Double, Double) {
         let r = Double(rgb.x), g = Double(rgb.y), b = Double(rgb.z)
         let maxC = max(r, g, b)
         let minC = min(r, g, b)
@@ -277,8 +250,18 @@ public enum SunburstColorResolver {
         return (hue, saturation, maxC)
     }
 
-    private nonisolated static func variantBrightnessOffset(for key: String) -> Double {
-        switch stableHash(for: key) % 4 {
+    /// A deterministic ±1/±0.5 offset from the midpoint's bit pattern —
+    /// adjacent file slices get distinct midpoints, so this separates them
+    /// without any per-node identity.
+    private nonisolated static func jitterOffset(for midpoint: Double) -> Double {
+        var hash = fnvOffsetBasis
+        var bits = midpoint.bitPattern
+        for _ in 0..<8 {
+            hash ^= bits & 0xFF
+            hash &*= fnvPrime
+            bits >>= 8
+        }
+        switch hash % 4 {
         case 0:
             return 0.5
         case 1:
@@ -288,23 +271,6 @@ public enum SunburstColorResolver {
         default:
             return -1
         }
-    }
-
-    private nonisolated static func stableUnitInterval(for key: String) -> Double {
-        Double(stableHash(for: key)) / Double(UInt64.max)
-    }
-
-    private nonisolated static func stableHash(for key: String) -> UInt64 {
-        var hash = fnvOffsetBasis
-        for byte in key.utf8 {
-            hash ^= UInt64(byte)
-            hash &*= fnvPrime
-        }
-        return hash
-    }
-
-    private nonisolated static func centered(_ value: Double) -> Double {
-        value - 0.5
     }
 
     private nonisolated static func normalizedHue(_ value: Double) -> Double {

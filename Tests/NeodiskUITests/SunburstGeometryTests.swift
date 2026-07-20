@@ -201,31 +201,53 @@ import NeodiskKit
         #expect(index.segment(at: pointInside(segment: second, in: size), in: size)?.id == second.id)
     }
 
-    @Test func topLevelSiblingColorTokensUseDistinctBranches() {
+    @Test func topLevelColorTokensCarrySizeIntervalMidpoints() {
+        // Sizes 3-2-1 split the wheel into [0, ½], [½, ⅚], [⅚, 1]: each
+        // folder's hue is its interval midpoint, first ring at depth 1.
         let children = [
-            makeTestFileNode(id: "/root/a", name: "a", size: 3),
-            makeTestFileNode(id: "/root/b", name: "b", size: 2),
-            makeTestFileNode(id: "/root/c", name: "c", size: 1),
+            makeTestDirectoryNode(id: "/root/a", name: "a", children: [
+                makeTestFileNode(id: "/root/a/f", name: "f", size: 3),
+            ]),
+            makeTestDirectoryNode(id: "/root/b", name: "b", children: [
+                makeTestFileNode(id: "/root/b/f", name: "f", size: 2),
+            ]),
+            makeTestDirectoryNode(id: "/root/c", name: "c", children: [
+                makeTestFileNode(id: "/root/c/f", name: "f", size: 1),
+            ]),
         ]
         let store = makeGeometryStore(children: children)
 
         let segments = SunburstLayout.segments(in: store, rootID: "/root", depthLimit: 1)
         let tokens = segments.map(\.colorToken)
 
-        #expect(tokens.map(\.branchID) == ["/root/a", "/root/b", "/root/c"])
-        #expect(tokens.map(\.branchIndex) == [0, 1, 2])
-        #expect(tokens.map(\.branchCount) == [3, 3, 3])
+        let expected = [0.25, 0.5 + 1.0 / 6, 5.0 / 6 + 1.0 / 12]
+        #expect(tokens.count == 3)
+        for (token, midpoint) in zip(tokens, expected) {
+            #expect(abs(token.midpoint - midpoint) < 1e-9)
+            #expect(token.depth == 1)
+        }
         #expect(Set(tokens.map { SunburstColorResolver.components(for: $0) }).count == 3)
     }
 
-    @Test func branchColorStaysStableWhenSiblingSortOrderChanges() throws {
+    @Test func resortedSiblingsMoveTheColorMidpoint() throws {
+        // Hue follows the size layout, not the node's identity: when a
+        // folder's rank among its siblings changes, its interval — and so
+        // its color — moves (the documented rescan sensitivity).
         let firstStore = makeGeometryStore(children: [
-            makeTestFileNode(id: "/root/a", name: "a", size: 3),
-            makeTestFileNode(id: "/root/b", name: "b", size: 2),
+            makeTestDirectoryNode(id: "/root/a", name: "a", children: [
+                makeTestFileNode(id: "/root/a/f", name: "f", size: 3),
+            ]),
+            makeTestDirectoryNode(id: "/root/b", name: "b", children: [
+                makeTestFileNode(id: "/root/b/f", name: "f", size: 2),
+            ]),
         ])
         let secondStore = makeGeometryStore(children: [
-            makeTestFileNode(id: "/root/a", name: "a", size: 1),
-            makeTestFileNode(id: "/root/b", name: "b", size: 4),
+            makeTestDirectoryNode(id: "/root/a", name: "a", children: [
+                makeTestFileNode(id: "/root/a/f", name: "f", size: 1),
+            ]),
+            makeTestDirectoryNode(id: "/root/b", name: "b", children: [
+                makeTestFileNode(id: "/root/b/f", name: "f", size: 4),
+            ]),
         ])
 
         let firstSegment = try #require(
@@ -237,16 +259,17 @@ import NeodiskKit
                 .first { $0.nodeID == "/root/a" }
         )
 
-        #expect(firstSegment.colorToken.branchIndex != secondSegment.colorToken.branchIndex)
+        #expect(firstSegment.colorToken.midpoint != secondSegment.colorToken.midpoint)
         #expect(
             SunburstColorResolver.components(for: firstSegment.colorToken)
-                == SunburstColorResolver.components(for: secondSegment.colorToken)
+                != SunburstColorResolver.components(for: secondSegment.colorToken)
         )
     }
 
-    @Test func childColorTokensKeepBranchFamilyButVaryBySibling() {
-        // Directory siblings: files are uniformly gray in branch mode, so
-        // per-sibling hue variation only applies to folders.
+    @Test func childColorMidpointsNestInsideTheParentInterval() throws {
+        // Every descendant's interval nests inside its parent's, so child
+        // midpoints stay within the parent's slice of the wheel — the
+        // family-resemblance rule — while still differing per sibling.
         let fileOne = makeTestFileNode(id: "/root/a/one/f", name: "f", size: 3)
         let fileTwo = makeTestFileNode(id: "/root/a/two/f", name: "f", size: 2)
         let fileThree = makeTestFileNode(id: "/root/a/three/f", name: "f", size: 1)
@@ -256,9 +279,12 @@ import NeodiskKit
             makeTestDirectoryNode(id: "/root/a/three", name: "three", children: [fileThree]),
         ]
         let branch = makeTestDirectoryNode(id: "/root/a", name: "a", children: children)
-        let root = makeTestDirectoryNode(id: "/root", name: "root", children: [branch])
+        let sibling = makeTestDirectoryNode(id: "/root/z", name: "z", children: [
+            makeTestFileNode(id: "/root/z/f", name: "f", size: 2),
+        ])
+        let root = makeTestDirectoryNode(id: "/root", name: "root", children: [branch, sibling])
         let store = FileTreeStore(root: root, childrenByID: [
-            "/root": [branch],
+            "/root": [branch, sibling],
             "/root/a": children,
             "/root/a/one": [fileOne],
             "/root/a/two": [fileTwo],
@@ -266,17 +292,25 @@ import NeodiskKit
         ])
 
         let segments = SunburstLayout.segments(in: store, rootID: "/root", depthLimit: 2)
+        let parentToken = try #require(segments.first { $0.nodeID == "/root/a" }).colorToken
+        let parentCoordinate = try #require(SunburstLayout.colorCoordinate(for: "/root/a", in: store))
         let childTokens = segments
             .filter { $0.depth == 1 }
             .map(\.colorToken)
 
-        #expect(childTokens.map(\.branchID) == Array(repeating: "/root/a", count: 3))
-        #expect(childTokens.map(\.siblingIndex) == [0, 1, 2])
-        #expect(childTokens.map(\.siblingCount) == [3, 3, 3])
-        #expect(Set(childTokens.map { SunburstColorResolver.components(for: $0) }).count == 3)
+        #expect(childTokens.count == 3)
+        #expect(Set(childTokens.map(\.midpoint)).count == 3)
+        for token in childTokens {
+            #expect(token.midpoint > parentCoordinate.start)
+            #expect(token.midpoint < parentCoordinate.start + parentCoordinate.span)
+            #expect(token.depth == parentToken.depth + 1)
+        }
     }
 
-    @Test func focusedSubtreeKeepsScanRootBranchFamily() throws {
+    @Test func focusedSubtreeKeepsScanRootColorCoordinates() throws {
+        // Drilling re-lays the chart out from the focused folder, but color
+        // tokens stay in scan-root coordinates: the focused layout's tokens
+        // are identical to the full layout's for the same nodes.
         let nestedChildren = [
             makeTestFileNode(id: "/root/a/child-1", name: "child-1", size: 2),
             makeTestFileNode(id: "/root/a/child-2", name: "child-2", size: 1),
@@ -289,13 +323,14 @@ import NeodiskKit
             "/root/a": nestedChildren,
         ])
 
-        let rootSegments = SunburstLayout.segments(in: store, rootID: "/root", depthLimit: 1)
-        let branchToken = try #require(rootSegments.first { $0.nodeID == "/root/a" }).colorToken
+        let fullSegments = SunburstLayout.segments(in: store, rootID: "/root", depthLimit: 2)
         let focusedSegments = SunburstLayout.segments(in: store, rootID: "/root/a", depthLimit: 1)
 
-        #expect(focusedSegments.map(\.colorToken.branchID) == ["/root/a", "/root/a"])
-        #expect(focusedSegments.map(\.colorToken.branchIndex) == [branchToken.branchIndex, branchToken.branchIndex])
-        #expect(focusedSegments.map(\.colorToken.branchCount) == [branchToken.branchCount, branchToken.branchCount])
+        for nodeID in ["/root/a/child-1", "/root/a/child-2"] {
+            let fullToken = try #require(fullSegments.first { $0.nodeID == nodeID }).colorToken
+            let focusedToken = try #require(focusedSegments.first { $0.nodeID == nodeID }).colorToken
+            #expect(fullToken == focusedToken, "\(nodeID)")
+        }
     }
 
     @Test func layoutStopsWhenCancellationCheckThrows() {
@@ -831,7 +866,7 @@ private func makeSegment(
         innerRadius: innerRadius,
         outerRadius: outerRadius,
         depth: depth,
-        colorToken: .single(id: id, depth: depth),
+        colorToken: SunburstColorToken(midpoint: 0.5, depth: depth, role: .normal),
         totalSize: 1,
         isAggregate: false
     )

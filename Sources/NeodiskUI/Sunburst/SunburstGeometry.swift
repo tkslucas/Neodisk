@@ -33,7 +33,8 @@ extension FileNodeRecord {
 /// styler's token fallback only covers segments without a node.
 struct SunburstColorStyle: Equatable, Sendable {
     enum Mode: Equatable, Sendable {
-        /// Branch hues — stable per scan-root branch (Largest tab).
+        /// Branch hues — the global size-midpoint wheel, scan-root
+        /// anchored (Largest tab).
         case branch
         /// Kind catalog colors, directories neutral (Kinds/Duplicates tabs).
         case kind

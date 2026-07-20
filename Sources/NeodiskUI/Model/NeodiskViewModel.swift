@@ -342,8 +342,8 @@ final class NeodiskViewModel {
             return SunburstColorResolver.branchColor(
                 forNodeID: node.id,
                 in: store,
-                effectiveRootID: effectiveRootID ?? store.root.id,
                 palette: vizPalette,
+                includingCloudOnly: showsCloudOnlyFiles,
                 // Both treemap styles tint files with the branch hue; the
                 // sunburst keeps its file gray.
                 branchTintedFiles: vizViewMode == .treemap

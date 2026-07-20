@@ -2,9 +2,9 @@
 //  SunburstColorResolver.swift
 //  Neodisk
 //
-//  The SwiftUI Color layer over SunburstCore's pure branch-hue math: turns a
-//  color token (or an arbitrary node's branch color, for the status-bar
-//  swatch) into a Color. The HSB/RGB math and FNV hashing live in SunburstCore.
+//  The SwiftUI Color layer over SunburstCore's pure midpoint-hue math: turns
+//  a color token (or an arbitrary node's branch color, for the status-bar
+//  swatch) into a Color. The HSB/RGB math lives in SunburstCore.
 //
 
 import SwiftUI
@@ -26,41 +26,29 @@ extension SunburstColorResolver {
     }
 
     /// The color the sunburst's branch mode draws an arbitrary node with —
-    /// the status-bar swatch must agree with the chart. `effectiveRootID` is
-    /// the drilled-in root: segment depth is measured from it, while the hue
-    /// family always derives from the scan-root branch. `branchTintedFiles`
-    /// selects the flat treemap's file treatment (the full folder formula —
-    /// a treemap's area is mostly file tiles, gray would wash it out); the
-    /// sunburst keeps its file gray. The flat treemap also measures depth
-    /// from the SCAN root (drilling never re-brightens) and grays loose
-    /// scan-root files (no family of their own), so this mirrors both.
+    /// the status-bar swatch must agree with the chart. The token derives
+    /// from the node's global color coordinate (scan-root anchored, so the
+    /// swatch never changes when the view drills). `includingCloudOnly`
+    /// must match the chart's weighting — it moves every interval.
+    /// `branchTintedFiles` selects the flat treemap's file treatment (the
+    /// full folder formula — a treemap's area is mostly file tiles, gray
+    /// would wash it out); the sunburst keeps its file gray. Loose
+    /// scan-root files gray in both (no family of their own).
     nonisolated static func branchColor(
         forNodeID nodeID: String,
         in treeStore: FileTreeStore,
-        effectiveRootID: String,
         palette: VizPalette = .standard,
+        includingCloudOnly: Bool = false,
         branchTintedFiles: Bool = false
     ) -> Color {
-        let branchID = SunburstLayout.topLevelBranchID(for: nodeID, in: treeStore) ?? nodeID
-        let depthRootID = branchTintedFiles ? treeStore.root.id : effectiveRootID
-        var depth = max(
-            treeStore.path(to: nodeID).count - treeStore.path(to: depthRootID).count - 1,
-            0
-        )
+        let coordinate = SunburstLayout.colorCoordinate(
+            for: nodeID, in: treeStore, includeCloudOnly: includingCloudOnly
+        ) ?? (start: 0, span: 1, depth: 0)
         let isFile = treeStore.node(id: nodeID)?.isSunburstFolder(in: treeStore) == false
-        let isLooseRootFile = isFile && depth == 0
-        if branchTintedFiles, isLooseRootFile { depth = 1 }
-        // Real branch position, so table palettes' positional hue pick
-        // matches the chart's and the treemap's tokens.
-        let position = SunburstLayout.colorBranchPositions(in: treeStore)[branchID]
+        let isLooseRootFile = isFile && coordinate.depth <= 1
         let token = SunburstColorToken(
-            branchID: branchID,
-            localID: nodeID,
-            branchIndex: position?.index ?? 0,
-            branchCount: position?.count ?? 1,
-            siblingIndex: 0,
-            siblingCount: 1,
-            depth: depth,
+            midpoint: coordinate.start + coordinate.span / 2,
+            depth: coordinate.depth,
             role: isFile && (!branchTintedFiles || isLooseRootFile) ? .file : .normal
         )
         if branchTintedFiles {

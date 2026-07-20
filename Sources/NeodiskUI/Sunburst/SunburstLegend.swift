@@ -113,7 +113,10 @@ enum SunburstLegend {
                     target: .node(id: child.id, isDirectory: child.isSunburstFolder(in: store)),
                     label: child.name,
                     size: size,
-                    dotColor: fallbackDotColor(for: child, chartRootID: chartRootID, in: store, style: style),
+                    dotColor: fallbackDotColor(
+                        for: child, chartRootID: chartRootID, in: store,
+                        style: style, includeCloudOnly: includeCloudOnly
+                    ),
                     isDimmed: false,
                     itemCount: 0,
                     showsCloudGlyph: showsCloudGlyph
@@ -177,7 +180,10 @@ enum SunburstLegend {
         if let segment = segments.first(where: { $0.nodeID == folder.id }) {
             dotColor = SunburstChartStyler.baseStyle(for: segment).fillColor
         } else {
-            dotColor = fallbackDotColor(for: folder, chartRootID: chartRootID, in: store, style: style)
+            dotColor = fallbackDotColor(
+                for: folder, chartRootID: chartRootID, in: store,
+                style: style, includeCloudOnly: includeCloudOnly
+            )
         }
         return SunburstLegendRow(
             id: "header-\(folder.id)",
@@ -211,30 +217,24 @@ enum SunburstLegend {
         return nil
     }
 
-    /// The fill the chart would give `node` at its depth below the chart
-    /// root, built through the exact same machinery as rendered segments: a
-    /// synthetic segment with the layout's resolved fill (kind/age modes) or
-    /// branch color token (Largest), styled by SunburstChartStyler. The
-    /// resolver only reads branchID/localID/depth, so the simplified token
-    /// yields the same color a real layout would.
+    /// The fill the chart would give `node`, built through the exact same
+    /// machinery as rendered segments: a synthetic segment with the layout's
+    /// resolved fill (kind/age modes) or midpoint color token (Largest),
+    /// styled by SunburstChartStyler. The token carries the node's global
+    /// color coordinate, so it yields the same color a real layout would.
     private nonisolated static func fallbackDotColor(
         for node: FileNodeRecord,
         chartRootID: String,
         in store: FileTreeStore,
-        style: SunburstColorStyle
+        style: SunburstColorStyle,
+        includeCloudOnly: Bool
     ) -> Color {
-        let depth = max(
-            store.path(to: node.id).count - store.path(to: chartRootID).count - 1,
-            0
-        )
+        let coordinate = SunburstLayout.colorCoordinate(
+            for: node.id, in: store, includeCloudOnly: includeCloudOnly
+        ) ?? (start: 0, span: 1, depth: 0)
         let token = SunburstColorToken(
-            branchID: SunburstLayout.topLevelBranchID(for: node.id, in: store) ?? node.id,
-            localID: node.id,
-            branchIndex: 0,
-            branchCount: 1,
-            siblingIndex: 0,
-            siblingCount: 1,
-            depth: depth,
+            midpoint: coordinate.start + coordinate.span / 2,
+            depth: coordinate.depth,
             role: node.isSunburstFolder(in: store) ? .normal : .file
         )
         let synthetic = SunburstSegment(
@@ -245,7 +245,7 @@ enum SunburstLegend {
             endAngle: .zero,
             innerRadius: 0,
             outerRadius: 0,
-            depth: depth,
+            depth: max(store.path(to: node.id).count - store.path(to: chartRootID).count - 1, 0),
             colorToken: token,
             fillRGB: SunburstLayout.resolvedFillRGB(for: node, token: token, style: style),
             totalSize: node.allocatedSize,

@@ -83,7 +83,14 @@ public enum SunburstLayout {
         let rootWeight = root.displayWeight(includingCloudOnly: includeCloudOnly)
         let allocatedDenominator = max(max(rootWeight, Int64(visibleChildren.count)), childUnitTotal)
         let denominator = allocatedDenominator + freeBytes + hiddenBytes
-        let colorBranchContext = ColorBranchContext(rootChildIDs: rootColorBranchIDs(in: treeStore))
+        // The color coordinate is anchored at the scan root even when the
+        // chart is drilled in, so drilling preserves every color. The
+        // synthetic free/hidden arcs are not tree nodes and never advance
+        // the color cursor: allocated data always spans the full hue wheel.
+        let rootCoordinate = rootID == treeStore.rootID
+            ? (start: 0.0, span: 1.0, depth: 0)
+            : colorCoordinate(for: rootID, in: treeStore, includeCloudOnly: includeCloudOnly)
+                ?? (start: 0.0, span: 1.0, depth: 0)
 
         var result: [SunburstSegment] = []
         try appendSegments(
@@ -96,8 +103,9 @@ public enum SunburstLayout {
             depth: 0,
             depthLimit: depthLimit,
             metrics: metrics,
-            branchContext: nil,
-            colorBranchContext: colorBranchContext,
+            colorStart: rootCoordinate.start,
+            colorSpan: rootCoordinate.span,
+            colorDepth: rootCoordinate.depth + 1,
             minimumAngle: minimumAngle,
             expandedAggregateIDs: expandedAggregateIDs,
             includeCloudOnly: includeCloudOnly,
@@ -118,7 +126,7 @@ public enum SunburstLayout {
                 innerRadius: metrics.innerRadius(depth: 0),
                 outerRadius: metrics.drawnOuterRadius(depth: 0),
                 depth: 0,
-                colorToken: .single(id: hiddenSpaceSegmentID, role: .hiddenSpace),
+                colorToken: SunburstColorToken(midpoint: 0, depth: 0, role: .hiddenSpace),
                 totalSize: hiddenBytes,
                 isAggregate: false
             ))
@@ -133,7 +141,7 @@ public enum SunburstLayout {
                 innerRadius: metrics.innerRadius(depth: 0),
                 outerRadius: metrics.drawnOuterRadius(depth: 0),
                 depth: 0,
-                colorToken: .single(id: freeSpaceSegmentID, role: .freeSpace),
+                colorToken: SunburstColorToken(midpoint: 0, depth: 0, role: .freeSpace),
                 totalSize: freeBytes,
                 isAggregate: false
             ))
@@ -153,8 +161,9 @@ public enum SunburstLayout {
         depth: Int,
         depthLimit: Int,
         metrics: SunburstRingMetrics,
-        branchContext: ColorBranch?,
-        colorBranchContext: ColorBranchContext,
+        colorStart: Double,
+        colorSpan: Double,
+        colorDepth: Int,
         minimumAngle: Double,
         expandedAggregateIDs: Set<String>,
         includeCloudOnly: Bool,
@@ -183,29 +192,21 @@ public enum SunburstLayout {
             cancellationCheck: cancellationCheck
         )
 
-        let siblingIndexes = colorableIndexes(for: grouped)
-        let siblingCount = max(siblingIndexes.count, 1)
         var cursor = startAngle
+        // The parent's color interval divides among the children purely by
+        // size (no free/hidden slack — the hue wheel always covers the
+        // data). Every entry advances the color cursor — gray files and
+        // aggregates too — so a large file shifts the hues of everything
+        // after it; grouped entries sum to the children they pool.
+        var colorCursor = colorStart
         for entry in grouped {
             try cancellationCheck()
             let proportion = Double(entry.totalSize) / Double(safeDenominator)
             let segmentEnd = cursor + (totalAngle * proportion)
-            let siblingIndex = siblingIndexes[entry.id] ?? 0
-            let branch = branchContext ?? colorBranch(
-                for: entry,
-                in: treeStore,
-                context: colorBranchContext,
-                fallbackIndex: siblingIndex,
-                fallbackCount: siblingCount
-            )
+            let entryColorSpan = colorSpan * (Double(entry.totalSize) / Double(effectiveChildTotal))
             let colorToken = SunburstColorToken(
-                branchID: branch.id,
-                localID: entry.colorID,
-                branchIndex: branch.index,
-                branchCount: branch.count,
-                siblingIndex: siblingIndex,
-                siblingCount: siblingCount,
-                depth: depth,
+                midpoint: colorCursor + entryColorSpan / 2,
+                depth: colorDepth,
                 role: entry.isAggregate
                     ? .aggregate
                     : ((entry.node.map { isSunburstFolder($0, in: treeStore) }) ?? true ? .normal : .file)
@@ -248,8 +249,9 @@ public enum SunburstLayout {
                     depth: depth + 1,
                     depthLimit: depthLimit,
                     metrics: metrics,
-                    branchContext: branch,
-                    colorBranchContext: colorBranchContext,
+                    colorStart: colorCursor,
+                    colorSpan: entryColorSpan,
+                    colorDepth: colorDepth + 1,
                     minimumAngle: minimumAngle,
                     expandedAggregateIDs: expandedAggregateIDs,
                     includeCloudOnly: includeCloudOnly,
@@ -259,6 +261,7 @@ public enum SunburstLayout {
             }
 
             cursor = segmentEnd
+            colorCursor += entryColorSpan
         }
     }
 
@@ -306,7 +309,6 @@ public enum SunburstLayout {
                 label: "Smaller Items",
                 totalSize: groupedSize,
                 isAggregate: true,
-                colorID: aggregateID,
                 node: nil,
                 itemCount: itemCount
             ))
@@ -317,105 +319,47 @@ public enum SunburstLayout {
         return visible
     }
 
-    // MARK: - Branch families
+    // MARK: - Color coordinate
 
-    private nonisolated static func colorBranch<Tree: SunburstTreeReading>(
-        for entry: GroupEntry<Tree.Node>,
-        in treeStore: Tree,
-        context: ColorBranchContext,
-        fallbackIndex: Int,
-        fallbackCount: Int
-    ) -> ColorBranch {
-        guard let branchID = topLevelBranchID(for: entry.nodeID, in: treeStore) else {
-            return ColorBranch(id: entry.colorID, index: fallbackIndex, count: fallbackCount)
-        }
+    /// A node's global color coordinate: the start and span of its size
+    /// interval and its depth, all relative to the scan root. This is the
+    /// same subdivision the layout's color cursor performs — each level
+    /// splits the parent's interval among the size-sorted siblings by
+    /// weight — so call sites that color nodes outside a layout pass (the
+    /// treemap's drilled scenes, the status-bar swatch, the legend) agree
+    /// with rendered segments. O(depth × siblings); nil for unknown nodes.
+    public nonisolated static func colorCoordinate(
+        for nodeID: String,
+        in treeStore: some SunburstTreeReading,
+        includeCloudOnly: Bool = false
+    ) -> (start: Double, span: Double, depth: Int)? {
+        let chain = treeStore.path(to: nodeID)
+        guard !chain.isEmpty else { return nil }
 
-        guard let branch = context.branch(id: branchID) else {
-            return ColorBranch(id: branchID, index: fallbackIndex, count: fallbackCount)
-        }
-
-        return branch
-    }
-
-    private nonisolated static func rootColorBranchIDs(in treeStore: some SunburstTreeReading) -> [String] {
-        treeStore.children(of: treeStore.rootID).map { $0.id }
-    }
-
-    /// The positional (index, count) of every scan-root branch — the same
-    /// context a layout pass bakes into its color tokens, for call sites
-    /// that build tokens outside a layout (treemap cells, the status-bar
-    /// swatch). Table palettes pick branch hues by this position, so every
-    /// token producer must agree on it.
-    public nonisolated static func colorBranchPositions(
-        in treeStore: some SunburstTreeReading
-    ) -> [String: (index: Int, count: Int)] {
-        ColorBranchContext(rootChildIDs: rootColorBranchIDs(in: treeStore)).positions
-    }
-
-    /// The scan-root child a node descends from — the branch its hue family
-    /// derives from. Stable across sibling reorders and drill-ins because it
-    /// always walks up to the scan root, not the focused root.
-    public nonisolated static func topLevelBranchID(
-        for nodeID: String?,
-        in treeStore: some SunburstTreeReading
-    ) -> String? {
-        guard let nodeID else { return nil }
-        guard nodeID != treeStore.rootID else { return nodeID }
-
-        var currentID = nodeID
-        while let parent = treeStore.parent(of: currentID) {
-            if parent.id == treeStore.rootID {
-                return currentID
+        var start = 0.0
+        var span = 1.0
+        var depth = 0
+        for (parent, child) in zip(chain, chain.dropFirst()) {
+            var total: Int64 = 0
+            var before: Int64 = 0
+            var childUnit: Int64 = 0
+            var found = false
+            for sibling in treeStore.children(of: parent.id) {
+                let unit = max(sibling.displayWeight(includingCloudOnly: includeCloudOnly), 1)
+                total += unit
+                if sibling.id == child.id {
+                    childUnit = unit
+                    found = true
+                } else if !found {
+                    before += unit
+                }
             }
-            currentID = parent.id
+            guard found, total > 0 else { return nil }
+            start += span * (Double(before) / Double(total))
+            span *= Double(childUnit) / Double(total)
+            depth += 1
         }
-
-        return nodeID
-    }
-
-    private nonisolated static func colorableIndexes<Node: SunburstNode>(
-        for entries: [GroupEntry<Node>]
-    ) -> [String: Int] {
-        var indexes: [String: Int] = [:]
-        indexes.reserveCapacity(entries.count)
-
-        for entry in entries where !entry.isAggregate {
-            indexes[entry.id] = indexes.count
-        }
-
-        return indexes
-    }
-
-    private nonisolated struct ColorBranch {
-        let id: String
-        let index: Int
-        let count: Int
-    }
-
-    private nonisolated struct ColorBranchContext {
-        private let indexByID: [String: Int]
-        private let count: Int
-
-        nonisolated init(rootChildIDs: [String]) {
-            var indexByID: [String: Int] = [:]
-            indexByID.reserveCapacity(rootChildIDs.count)
-
-            for id in rootChildIDs where indexByID[id] == nil {
-                indexByID[id] = indexByID.count
-            }
-
-            self.indexByID = indexByID
-            self.count = max(indexByID.count, 1)
-        }
-
-        nonisolated func branch(id: String) -> ColorBranch? {
-            guard let index = indexByID[id] else { return nil }
-            return ColorBranch(id: id, index: index, count: count)
-        }
-
-        nonisolated var positions: [String: (index: Int, count: Int)] {
-            indexByID.mapValues { (index: $0, count: count) }
-        }
+        return (start, span, depth)
     }
 
     private nonisolated struct GroupEntry<Node: SunburstNode> {
@@ -425,7 +369,6 @@ public enum SunburstLayout {
         let totalSize: Int64
         let isAggregate: Bool
         let isDataless: Bool
-        let colorID: String
         let node: Node?
         let itemCount: Int
 
@@ -436,7 +379,6 @@ public enum SunburstLayout {
             totalSize: Int64,
             isAggregate: Bool,
             isDataless: Bool = false,
-            colorID: String,
             node: Node?,
             itemCount: Int
         ) {
@@ -446,7 +388,6 @@ public enum SunburstLayout {
             self.totalSize = totalSize
             self.isAggregate = isAggregate
             self.isDataless = isDataless
-            self.colorID = colorID
             self.node = node
             self.itemCount = itemCount
         }
@@ -462,7 +403,6 @@ public enum SunburstLayout {
                 // cloud (no local content) — the dashed cloud-only arc.
                 isDataless: node.isDataless
                     || (node.cloudOnlyLogicalSize > 0 && node.allocatedSize == 0),
-                colorID: node.id,
                 node: node,
                 itemCount: 0
             )

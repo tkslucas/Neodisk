@@ -108,46 +108,42 @@ import SunburstCore
         #expect(standard.rgb(for: png) != colorblind.rgb(for: png))
     }
 
-    @Test func testTableBranchHuesAssignByPositionNotHash() {
-        // With real branch context, a table palette hands the i-th scan-root
-        // branch the i-th table entry — the rank-diverse prefix — instead of
-        // a hash pick that can land neighboring branches in one hue cluster.
-        // Depth and jitter may move saturation/brightness, never the hue.
-        let table = VizPalette.retro.kindPalette
-        for index in 0..<3 {
-            let token = SunburstColorToken(
-                branchID: "/scan/branch-\(index)",
-                localID: "/scan/branch-\(index)",
-                branchIndex: index,
-                branchCount: 3,
-                siblingIndex: 0,
-                siblingCount: 1,
-                depth: 0,
-                role: .normal
-            )
+    @Test func testTableBranchHuesQuantizeTheMidpointWheel() {
+        // A table palette quantizes the midpoint into its hue-sorted
+        // accents: every resolved hue is exactly one of the table's hues
+        // (no wheel colors leak through — that's the CVD-safety contract),
+        // walking the table in hue order as the midpoint sweeps 0…1.
+        let tableHues = VizPalette.retro.kindPalette.map { Self.hue(of: $0) }.sorted()
+        var previousIndex = -1
+        for step in 0..<12 {
+            let midpoint = (Double(step) + 0.5) / 12
             let components = SunburstColorResolver.components(
-                for: token, palette: VizPalette.retro.sunburst
+                for: SunburstColorToken(midpoint: midpoint, depth: 1, role: .normal),
+                palette: VizPalette.retro.sunburst
             )
-            #expect(
-                abs(components.hue - Self.hue(of: table[index])) < 0.001,
-                "branch \(index) did not take table entry \(index)"
-            )
+            let index = tableHues.firstIndex { abs($0 - components.hue) < 0.001 }
+            #expect(index != nil, "midpoint \(midpoint) resolved off-table hue \(components.hue)")
+            if let index {
+                #expect(index >= previousIndex, "hue order regressed at midpoint \(midpoint)")
+                previousIndex = index
+            }
         }
     }
 
-    @Test func testColorBranchPositionsMatchRootChildOrder() {
-        let a = makeTestDirectoryNode(id: "/r/a", name: "a", children: [])
-        let b = makeTestDirectoryNode(id: "/r/b", name: "b", children: [])
-        let c = makeTestDirectoryNode(id: "/r/c", name: "c", children: [])
-        let root = makeTestDirectoryNode(id: "/r", name: "r", children: [a, b, c])
-        let store = FileTreeStore(root: root, childrenByID: ["/r": [a, b, c]])
-
-        let positions = SunburstLayout.colorBranchPositions(in: store)
-        #expect(positions.count == 3)
-        #expect(positions["/r/a"]?.index == 0)
-        #expect(positions["/r/b"]?.index == 1)
-        #expect(positions["/r/c"]?.index == 2)
-        #expect(positions["/r/b"]?.count == 3)
+    @Test func testTableBranchDepthFadesSaturationNeverHue() {
+        // Depth pastels a table accent (halving its saturation's distance
+        // to half the accent's own) but never moves its hue — hue identity
+        // is what the viewer must distinguish.
+        let palette = VizPalette.retro.sunburst
+        let first = SunburstColorResolver.components(
+            for: SunburstColorToken(midpoint: 0.3, depth: 1, role: .normal), palette: palette
+        )
+        let deeper = SunburstColorResolver.components(
+            for: SunburstColorToken(midpoint: 0.3, depth: 4, role: .normal), palette: palette
+        )
+        #expect(first.hue == deeper.hue)
+        #expect(deeper.saturation < first.saturation)
+        #expect(deeper.brightness == first.brightness)
     }
 
     private static func hue(of rgb: SIMD3<Float>) -> Double {

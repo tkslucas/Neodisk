@@ -242,17 +242,16 @@ import NeodiskKit
             catalog: .empty, colorMode: .branch
         )
 
-        // The /scan/sub container: its own branch (child of the scan root,
-        // depth 0), folder role — the sunburst's first-ring token, drawn
-        // "translucently" (composited over the raster background).
+        // The /scan/sub container: its global interval midpoint (sub spans
+        // [0.9, 1.0] after a.mov's 0.6 and b.jpg's 0.3) at depth 1, folder
+        // role — drawn "translucently" (composited over the raster
+        // background) with the flat gray pull.
         let container = try #require(scene.cells.first { $0.nodeID == "/scan/sub" })
-        let position = try #require(SunburstLayout.colorBranchPositions(in: store)["/scan/sub"])
         let palette = VizPalette.standard.sunburst
+        let subStart = 600.0 / 1000.0 + 300.0 / 1000.0
+        let subSpan = 100.0 / 1000.0
         let folderToken = SunburstColorToken(
-            branchID: "/scan/sub", localID: "/scan/sub",
-            branchIndex: position.index, branchCount: position.count,
-            siblingIndex: 0, siblingCount: 1,
-            depth: 0, role: .normal
+            midpoint: subStart + subSpan / 2, depth: 1, role: .normal
         )
         let expectedContainer = TreemapScene.flatComposite(
             desaturated(SunburstColorResolver.rgb(for: folderToken, palette: palette)),
@@ -260,15 +259,13 @@ import NeodiskKit
         )
         #expect(container.rgb == expectedContainer)
 
-        // The nested file: same branch, one ring deeper — the full folder
-        // formula (not the sunburst's file gray), composited over the same
-        // background as every other cell (never over the container's fill).
+        // The nested file: it fills sub's interval (same midpoint), one
+        // level deeper — the full folder formula (not the sunburst's file
+        // gray), composited over the same background as every other cell
+        // (never over the container's fill).
         let child = try #require(scene.cells.first { $0.nodeID == "/scan/sub/c.txt" })
         let fileToken = SunburstColorToken(
-            branchID: "/scan/sub", localID: "/scan/sub/c.txt",
-            branchIndex: position.index, branchCount: position.count,
-            siblingIndex: 0, siblingCount: 1,
-            depth: 1, role: .normal
+            midpoint: subStart + subSpan / 2, depth: 2, role: .normal
         )
         let expectedChild = TreemapScene.flatComposite(
             desaturated(SunburstColorResolver.rgb(for: fileToken, palette: palette)),
@@ -277,13 +274,12 @@ import NeodiskKit
         #expect(child.rgb == expectedChild)
 
         // A loose file at the scan root goes gray (the sunburst's file
-        // treatment, depth floored to 1): no hue family of its own, and
-        // graying it keeps the root's colored folders identifiable.
+        // treatment): no hue family of its own, and graying it keeps the
+        // root's colored folders identifiable. The midpoint still feeds the
+        // gray's brightness jitter.
         let rootFile = try #require(scene.cells.first { $0.nodeID == "/scan/a.mov" })
         let rootFileToken = SunburstColorToken(
-            branchID: "/scan/a.mov", localID: "/scan/a.mov",
-            branchIndex: 0, branchCount: 1, siblingIndex: 0, siblingCount: 1,
-            depth: 1, role: .file
+            midpoint: (600.0 / 1000.0) / 2, depth: 1, role: .file
         )
         let expectedRootFile = TreemapScene.flatComposite(
             SunburstColorResolver.rgb(for: rootFileToken) * TreemapScene.flatRootFileDim,
@@ -292,11 +288,11 @@ import NeodiskKit
         #expect(rootFile.rgb == expectedRootFile)
     }
 
-    @Test func drilledBranchColorsKeepScanRootHueFamily() throws {
-        // Rooted at /scan/sub: the hue family still derives from the
-        // scan-root branch (/scan/sub), and depth is still measured from the
-        // SCAN root — drilling in must not re-brighten the subtree, so
-        // c.txt keeps the same depth-1 color it had in the full map.
+    @Test func drilledBranchColorsKeepScanRootCoordinate() throws {
+        // Rooted at /scan/sub: the color coordinate is still the global
+        // scan-root interval (via SunburstLayout.colorCoordinate), and depth
+        // is still measured from the SCAN root — drilling in must not
+        // recolor or re-brighten the subtree.
         let store = makeStore()
         let scene = TreemapScene.build(
             store: store, rootID: "/scan/sub", style: .flat,
@@ -304,12 +300,9 @@ import NeodiskKit
             catalog: .empty, colorMode: .branch
         )
         let child = try #require(scene.cells.first { $0.nodeID == "/scan/sub/c.txt" })
-        let position = try #require(SunburstLayout.colorBranchPositions(in: store)["/scan/sub"])
+        let coordinate = try #require(SunburstLayout.colorCoordinate(for: "/scan/sub", in: store))
         let token = SunburstColorToken(
-            branchID: "/scan/sub", localID: "/scan/sub/c.txt",
-            branchIndex: position.index, branchCount: position.count,
-            siblingIndex: 0, siblingCount: 1,
-            depth: 1, role: .normal
+            midpoint: coordinate.start + coordinate.span / 2, depth: 2, role: .normal
         )
         let expected = TreemapScene.flatComposite(
             desaturated(SunburstColorResolver.rgb(for: token, palette: VizPalette.standard.sunburst)),

@@ -9,8 +9,7 @@
 //  `VizPalette.all`.
 //
 //  Every kind table is RANK-ordered: the Types mode hands table[i] to the
-//  i-th largest kind, and positional branch coloring hands table[i] to the
-//  i-th scan-root branch. All palettes follow ONE canonical hue-family
+//  i-th largest kind. All palettes follow ONE canonical hue-family
 //  sequence — green, blue, red, magenta/pink, yellow, orange, purple,
 //  cyan/aqua, then the tail — so any prefix spreads across the color wheel,
 //  and switching palettes re-skins the map without reshuffling which family
@@ -68,7 +67,9 @@ struct VizPalette: Sendable, Equatable, Identifiable {
         id: "standard",
         title: "Classic",
         kinds: classicKinds,
-        sunburst: SunburstPalette(branchHues: .table(classicKinds))
+        // Branch mode uses the continuous size-midpoint hue wheel — the
+        // kind table stays for the Types/Categories modes.
+        sunburst: SunburstPalette(branchHues: .wheel(saturationScale: 1, brightnessScale: 1))
     )
 
     /// The classic hues punched up (saturation and brightness raised in HSB)
@@ -78,13 +79,16 @@ struct VizPalette: Sendable, Equatable, Identifiable {
         id: "vivid",
         title: "Vivid",
         kinds: vividKinds,
-        sunburst: SunburstPalette(branchHues: .table(vividKinds))
+        // The wheel with the saturation envelope pushed up to match the
+        // punched-up kind table.
+        sunburst: SunburstPalette(branchHues: .wheel(saturationScale: 1.15, brightnessScale: 1))
     )
 
     /// Warm faded terminal tones — brick red, olive green, amber, muted
-    /// blue-grey. Branch hues restrict to the table, like a terminal's
-    /// fixed accent set; categories keep their hue families through the
-    /// palette's own role map (the table is rank-ordered, not role-ordered).
+    /// blue-grey. Branch mode quantizes the midpoint wheel into the table,
+    /// like a terminal's fixed accent set; categories keep their hue
+    /// families through the palette's own role map (the table is
+    /// rank-ordered, not role-ordered).
     static let retro = VizPalette(
         id: "retro",
         title: "Retro",
@@ -100,14 +104,14 @@ struct VizPalette: Sendable, Equatable, Identifiable {
             retroKinds[2],  // bright red  #fb4934 — oldest
             FileKindCatalog.otherRGB,
         ],
-        sunburst: SunburstPalette(branchHues: .table(retroKinds))
+        sunburst: .quantized(retroKinds)
     )
 
     /// Soft neon accents against the dark canvas — glowing mint, pink,
-    /// lavender, ice blue. Branch hues restrict to the table, like a
-    /// terminal's fixed accent set; categories keep their hue families
-    /// through the palette's own role map (the table is rank-ordered, not
-    /// role-ordered).
+    /// lavender, ice blue. Branch mode quantizes the midpoint wheel into
+    /// the table, like a terminal's fixed accent set; categories keep
+    /// their hue families through the palette's own role map (the table
+    /// is rank-ordered, not role-ordered).
     static let neon = VizPalette(
         id: "neon",
         title: "Neon",
@@ -123,11 +127,12 @@ struct VizPalette: Sendable, Equatable, Identifiable {
             neonKinds[2],  // red          #ff5555 — oldest
             FileKindCatalog.otherRGB,
         ],
-        sunburst: SunburstPalette(branchHues: .table(neonKinds))
+        sunburst: .quantized(neonKinds)
     )
 
     /// Okabe-Ito kinds/categories + viridis age ramp; the branch mode
-    /// restricts its hues to the same table.
+    /// quantizes the midpoint wheel into the same table, so its colors
+    /// stay CVD-safe (the continuous wheel would not be).
     static let colorblind = VizPalette(
         id: "colorblind",
         title: "Colorblind-safe",
@@ -146,7 +151,7 @@ struct VizPalette: Sendable, Equatable, Identifiable {
             SIMD3(0.992, 0.906, 0.145), // older  — oldest
             FileKindCatalog.otherRGB,   // unknown
         ],
-        sunburst: SunburstPalette(branchHues: .table(okabeItoKinds))
+        sunburst: .quantized(okabeItoKinds)
     )
 
     // MARK: - Shared role maps and raw tables

@@ -31,7 +31,7 @@ import Testing
             innerRadius: metrics.innerRadius(depth: depth),
             outerRadius: metrics.drawnOuterRadius(depth: depth),
             depth: depth,
-            colorToken: .single(id: id, role: .normal),
+            colorToken: SunburstColorToken(midpoint: 0.5, depth: 0, role: .normal),
             totalSize: 1,
             isAggregate: false
         )

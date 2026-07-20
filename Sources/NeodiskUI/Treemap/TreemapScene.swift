@@ -241,23 +241,19 @@ struct TreemapScene: Sendable {
             .insetBy(dx: -size.width * overscanFraction, dy: -size.height * overscanFraction)
             .intersection(rootRect)
 
-        // Branch-color context (flat style): the hue family walks up to the
-        // scan root even when the map is drilled in, matching
-        // SunburstColorResolver.branchColor. A nil id at the scene root means
-        // "each root child starts its own branch". Color depth counts levels
-        // below the SCAN root (`rootDepth` offsets a drilled scene), so
-        // drilling in never re-brightens a subtree — its colors stay put,
-        // and the ramp's clamp keeps deep trees from going black.
+        // Branch-color coordinate: the node's global size interval in
+        // scan-root coordinates, matching the sunburst layout and
+        // SunburstColorResolver.branchColor — hue is the interval midpoint,
+        // and the coordinate is anchored at the SCAN root (`rootDepth`
+        // offsets a drilled scene), so drilling never recolors a subtree.
         let rootDepth = max(store.path(to: rootID).count - 1, 0)
-        let rootBranch: (id: String?, depth: Int)? = colorMode == .branch
-            ? (rootID == store.root.id ? nil : SunburstLayout.topLevelBranchID(for: rootID, in: store), rootDepth - 1)
+        let rootColor: (start: Double, span: Double)? = colorMode == .branch
+            ? (rootID == store.root.id
+                ? (start: 0, span: 1)
+                : SunburstLayout.colorCoordinate(
+                    for: rootID, in: store, includeCloudOnly: includingCloudOnly
+                ).map { (start: $0.start, span: $0.span) } ?? (start: 0, span: 1))
             : nil
-        // Branch positions among the scan root's children: table palettes
-        // pick branch hues positionally, and the cells must agree with the
-        // sunburst's tokens and the status-bar swatch.
-        let branchPositions = colorMode == .branch
-            ? SunburstLayout.colorBranchPositions(in: store)
-            : [:]
 
         // Flat fills are "translucent": each cell's color composites once at
         // flatFillOpacity over the window background — the sunburst's
@@ -265,11 +261,11 @@ struct TreemapScene: Sendable {
         // opaque memset runs. Nesting reads through the depth ramp instead
         // of stacking composites, which compounded toward mud. `depth`
         // counts levels below the scene root.
-        var stack: [(node: FileNodeRecord, rect: CGRect, surface: CushionSurface, height: Double, isRoot: Bool, branch: (id: String?, depth: Int)?, depth: Int)] = [
-            (root, rootRect, CushionSurface(), rootRidgeHeight, true, rootBranch, 0)
+        var stack: [(node: FileNodeRecord, rect: CGRect, surface: CushionSurface, height: Double, isRoot: Bool, color: (start: Double, span: Double)?, depth: Int)] = [
+            (root, rootRect, CushionSurface(), rootRidgeHeight, true, rootColor, 0)
         ]
 
-        while let (node, rect, parentSurface, ridgeHeight, isRoot, branch, depth) = stack.popLast() {
+        while let (node, rect, parentSurface, ridgeHeight, isRoot, color, depth) = stack.popLast() {
             guard rect.width > 0.5, rect.height > 0.5, rect.intersects(renderBounds) else { continue }
 
             var surface = parentSurface
@@ -302,6 +298,29 @@ struct TreemapScene: Sendable {
                     filtered, synthetic: syntheticNodes, includingCloudOnly: includingCloudOnly
                 )
                 if !children.isEmpty {
+                    // The node's color interval divides among the data
+                    // children by weight, in laid-out order — every child
+                    // advances the cursor (files too, so a large file shifts
+                    // the hues after it); the synthetic free/hidden blocks
+                    // advance nothing, keeping data on the full hue wheel.
+                    var childColors: [(start: Double, span: Double)?]
+                    if let color {
+                        let dataTotal = children.reduce(Int64(0)) { total, child in
+                            child.isSynthetic
+                                ? total
+                                : total + max(child.displayWeight(includingCloudOnly: includingCloudOnly), 1)
+                        }
+                        var colorCursor = color.start
+                        childColors = children.map { child in
+                            guard !child.isSynthetic else { return (start: colorCursor, span: 0) }
+                            let unit = max(child.displayWeight(includingCloudOnly: includingCloudOnly), 1)
+                            let span = color.span * (Double(unit) / Double(max(dataTotal, 1)))
+                            defer { colorCursor += span }
+                            return (start: colorCursor, span: span)
+                        }
+                    } else {
+                        childColors = Array(repeating: nil, count: children.count)
+                    }
                     if style == .flat, !isRoot {
                         // The container cell: full rect under its children,
                         // leaving the border frame and header strip visible.
@@ -309,8 +328,8 @@ struct TreemapScene: Sendable {
                         // in-order pass resolves the overdraw correctly.
                         var rgb = resolvedRGB(
                             for: node, colorMode: colorMode, catalog: catalog,
-                            palette: palette, branch: branch, style: style, store: store,
-                            branchPositions: branchPositions
+                            palette: palette, color: color,
+                            globalDepth: rootDepth + depth, style: style, store: store
                         )
                         if let highlight,
                            !matches(node, highlight: highlight, colorMode: colorMode, catalog: catalog) {
@@ -354,10 +373,10 @@ struct TreemapScene: Sendable {
                         minChildArea: style == .flat ? flatMinChildCellArea : minChildCellArea
                     )
 
-                    for (child, childRect) in zip(children[..<layout.keptCount], layout.rects) {
+                    for (index, (child, childRect)) in zip(children[..<layout.keptCount], layout.rects).enumerated() {
                         stack.append((
                             child, childRect, surface, childHeight, false,
-                            branch.map { (id: $0.id ?? child.id, depth: $0.depth + 1) },
+                            childColors[index],
                             depth + 1
                         ))
                     }
@@ -377,24 +396,29 @@ struct TreemapScene: Sendable {
                         // is already in hand, so this check is cheap. Matches
                         // hidden deeper inside merged subdirectories are not
                         // searched for; those aggregates dim.
-                        // Branch mode: a folder's merged tail carries the
-                        // folder's branch hue one level deeper, like the
-                        // children it stands for — a gray cell per folder
-                        // read as holes punched in the hue field. Only the
-                        // scan root's own merge stays the sunburst's neutral
-                        // aggregate gray: its tail spans many branches.
+                        // Branch mode: a folder's merged tail colors from
+                        // its own slice of the folder's interval (the tail
+                        // is the interval's end — the children it stands
+                        // for live there), one level deeper — a gray cell
+                        // per folder read as holes punched in the hue
+                        // field. Only the scan root's own merge stays the
+                        // sunburst's neutral aggregate gray: its tail spans
+                        // many branches.
                         var aggregateRGB: SIMD3<Float>
                         if colorMode == .branch {
-                            if let branch, let branchID = branch.id {
-                                aggregateRGB = branchRGB(
-                                    branchID: branchID, nodeID: node.id,
-                                    depth: max(branch.depth + 1, 0),
-                                    role: .normal, style: style, palette: palette,
-                                    positions: branchPositions
+                            if let color, node.id != store.root.id {
+                                let tailSpan = childColors[layout.keptCount...]
+                                    .reduce(0.0) { $0 + ($1?.span ?? 0) }
+                                let tailStart = childColors[layout.keptCount]?.start
+                                    ?? (color.start + color.span - tailSpan)
+                                aggregateRGB = midpointRGB(
+                                    midpoint: tailStart + tailSpan / 2,
+                                    depth: rootDepth + depth + 1,
+                                    role: .normal, style: style, palette: palette
                                 )
                             } else {
                                 aggregateRGB = SunburstColorResolver.rgb(
-                                    for: .single(id: node.id, role: .aggregate),
+                                    for: SunburstColorToken(midpoint: 0, depth: 0, role: .aggregate),
                                     palette: palette.sunburst
                                 )
                             }
@@ -448,8 +472,8 @@ struct TreemapScene: Sendable {
             } else {
                 rgb = resolvedRGB(
                     for: node, colorMode: colorMode, catalog: catalog,
-                    palette: palette, branch: branch, style: style, store: store,
-                    branchPositions: branchPositions
+                    palette: palette, color: color,
+                    globalDepth: rootDepth + depth, style: style, store: store
                 )
             }
             // Plain directories never match a highlight (they are neither a
@@ -554,20 +578,20 @@ struct TreemapScene: Sendable {
     }
 
     /// A node's full-color cell fill under a color mode: kind palette color,
-    /// age ramp, or the sunburst's branch hue (flat style). Plain directories
-    /// keep their neutral fill in the kind/age modes (a folder's own mtime
-    /// says little about its contents); in branch mode folders carry the hue
-    /// and files go gray, exactly like the sunburst — `branch` is the
-    /// traversal-carried (top-level branch id, depth) pair.
+    /// age ramp, or the sunburst's midpoint hue. Plain directories keep
+    /// their neutral fill in the kind/age modes (a folder's own mtime says
+    /// little about its contents); in branch mode folders carry the hue —
+    /// `color` is the traversal-carried global size interval and
+    /// `globalDepth` counts levels below the scan root.
     private nonisolated static func resolvedRGB(
         for node: FileNodeRecord,
         colorMode: TreemapColorMode,
         catalog: FileKindCatalog,
         palette: VizPalette,
-        branch: (id: String?, depth: Int)?,
+        color: (start: Double, span: Double)?,
+        globalDepth: Int,
         style: TreemapStyle,
-        store: FileTreeStore,
-        branchPositions: [String: (index: Int, count: Int)]
+        store: FileTreeStore
     ) -> SIMD3<Float> {
         switch colorMode {
         case .kind:
@@ -578,55 +602,40 @@ struct TreemapScene: Sendable {
             }
             return palette.ageRGB(AgeBucket.bucket(for: node.lastModified, reference: referenceDate))
         case .branch:
-            // Files share the folder formula (role .normal): branch hue and
-            // depth ramp. The sunburst grays its files (thin outer arcs); a
-            // treemap's area is mostly file tiles, so gray — or a heavily
-            // muted tint — washes the whole map out. A loose file at the
-            // scan root goes gray like the sunburst's files instead: it has
-            // no hue family of its own, and a root full of vividly colored
-            // loose files buries the smaller folders that actually have
-            // structure worth spotting.
-            var depth = max(branch?.depth ?? 0, 0)
+            // Files share the folder formula (role .normal): their own
+            // interval midpoint and the depth fade. The sunburst grays its
+            // files (thin outer arcs); a treemap's area is mostly file
+            // tiles, so gray — or a heavily muted tint — washes the whole
+            // map out. A loose file at the scan root goes gray like the
+            // sunburst's files instead: it has no hue family of its own,
+            // and a root full of vividly colored loose files buries the
+            // smaller folders that actually have structure worth spotting.
+            let depth = max(globalDepth, 1)
             var role = SunburstColorRole.normal
-            if depth == 0, !SunburstLayout.isSunburstFolder(node, in: store) {
-                depth = 1
+            if depth <= 1, !SunburstLayout.isSunburstFolder(node, in: store) {
                 role = .file
             }
-            return branchRGB(
-                branchID: branch?.id ?? node.id, nodeID: node.id,
-                depth: depth, role: role, style: style, palette: palette,
-                positions: branchPositions
+            let midpoint = color.map { $0.start + $0.span / 2 } ?? 0.5
+            return midpointRGB(
+                midpoint: midpoint, depth: depth, role: role,
+                style: style, palette: palette
             )
         }
     }
 
-    /// A branch-mode fill: the sunburst resolver's color for (branch, node,
-    /// depth), adjusted per style. Flat keeps the resolver's per-node hue
-    /// jitter and pulls lightly toward gray — its translucent composite is
-    /// part of the look, and the jitter separates its bordered tiles. The
-    /// cushion drops the per-node variance entirely (localID = branch id):
-    /// its shading already separates neighbors, and jittered hues across
-    /// shaded tiles read muddy — one clean hue per branch and depth.
-    private nonisolated static func branchRGB(
-        branchID: String,
-        nodeID: String,
+    /// A branch-mode fill: the sunburst resolver's color for the global
+    /// (midpoint, depth) coordinate, adjusted per style. Flat pulls lightly
+    /// toward gray — its translucent composite is part of the look, and raw
+    /// resolver colors read loud through it; the cushion keeps the color
+    /// verbatim, its shading does the separating.
+    private nonisolated static func midpointRGB(
+        midpoint: Double,
         depth: Int,
         role: SunburstColorRole,
         style: TreemapStyle,
-        palette: VizPalette,
-        positions: [String: (index: Int, count: Int)]
+        palette: VizPalette
     ) -> SIMD3<Float> {
-        let position = positions[branchID]
-        let token = SunburstColorToken(
-            branchID: branchID,
-            localID: style == .flat ? nodeID : branchID,
-            branchIndex: position?.index ?? 0,
-            branchCount: position?.count ?? 1,
-            siblingIndex: 0,
-            siblingCount: 1,
-            depth: depth,
-            role: role
-        )
+        let token = SunburstColorToken(midpoint: midpoint, depth: depth, role: role)
         let rgb = SunburstColorResolver.rgb(for: token, palette: palette.sunburst)
         guard role == .normal else { return rgb * flatRootFileDim }
         guard style == .flat else { return rgb }

@@ -67,6 +67,15 @@ public struct CGRect: Equatable, Hashable, Sendable {
     public func contains(_ point: CGPoint) -> Bool {
         point.x >= minX && point.x < maxX && point.y >= minY && point.y < maxY
     }
+
+    public func insetBy(dx: CGFloat, dy: CGFloat) -> CGRect {
+        CGRect(
+            x: origin.x + dx,
+            y: origin.y + dy,
+            width: size.width - 2 * dx,
+            height: size.height - 2 * dy
+        )
+    }
 }
 
 #endif

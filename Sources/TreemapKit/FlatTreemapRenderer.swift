@@ -213,11 +213,10 @@ public enum FlatTreemapRenderer {
         // Border thickness in device pixels, clipped so tiny cells stay
         // visible as pure border rather than vanishing.
         var border = max(1, Int((borderWidth * scale).rounded()))
-        border = min(border, (x1 - x0) / 2, (y1 - y0) / 2)
-        let radius = min(
-            Int((maxCornerRadius * scale).rounded()),
-            Int((Double(min(x1 - x0, y1 - y0)) * cornerRadiusFraction).rounded(.down))
-        )
+        border = min(border, min((x1 - x0) / 2, (y1 - y0) / 2))
+        let shortSide = min(x1 - x0, y1 - y0)
+        let radiusCap = Int((Double(shortSide) * Double(cornerRadiusFraction)).rounded(.down))
+        let radius = min(Int((maxCornerRadius * scale).rounded()), radiusCap)
         let radiusD = Double(radius)
         // Interior of the border band, measured as distance from the corner
         // center: outside `radiusD` is out of the tile, the band down to

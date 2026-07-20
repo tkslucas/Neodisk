@@ -229,7 +229,9 @@ public enum SunburstColorResolver {
         return SIMD3<Float>(Float(r + m), Float(g + m), Float(b + m))
     }
 
-    nonisolated static func hsb(fromRGB rgb: SIMD3<Float>) -> (Double, Double, Double) {
+    /// RGB → (hue, saturation, brightness), the exact inverse of
+    /// `rgb(from:)` — shared with NeodiskUI's palette transforms.
+    public nonisolated static func hsb(fromRGB rgb: SIMD3<Float>) -> (Double, Double, Double) {
         let r = Double(rgb.x), g = Double(rgb.y), b = Double(rgb.z)
         let maxC = max(r, g, b)
         let minC = min(r, g, b)

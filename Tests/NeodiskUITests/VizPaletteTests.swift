@@ -66,8 +66,9 @@ import SunburstCore
     }
 
     @Test func testSchemePalettesStayInsideTheirAccentTables() {
-        // Retro and Neon are verbatim terminal-scheme accent sets with their
-        // own role maps: every category color and every dated age-ramp entry
+        // Retro and Neon are terminal-scheme accent sets (saturation-punched
+        // for area fills) with their own role maps: every category color and
+        // every dated age-ramp entry
         // must be a table entry — nothing hand-invented off-scheme — and the
         // table entries must be pairwise distinct so rank and positional
         // assignment never hand two kinds or branches the same color.

@@ -15,9 +15,10 @@
 //  and switching palettes re-skins the map without reshuffling which family
 //  each rank, category, or branch gets. Classic, Vivid, and Colorblind
 //  derive categories through the shared role map below; Retro and Neon
-//  carry verbatim terminal-scheme accent sets (warm faded amber-and-olive,
-//  and soft neon on a dark canvas) whose maps differ only in the two tail
-//  categories their schemes lack colors for. Colorblind is the Okabe-Ito
+//  carry terminal-scheme accent sets (warm faded amber-and-olive, and soft
+//  neon on a dark canvas) — saturation-punched for area fills via
+//  `punched` — whose maps differ only in the two tail categories their
+//  schemes lack colors for. Colorblind is the Okabe-Ito
 //  qualitative palette (designed to stay distinct under deuteranopia/
 //  protanopia/tritanopia) with the viridis ramp for age — perceptually
 //  uniform and monotonic in lightness so it still reads in greyscale.
@@ -68,8 +69,11 @@ struct VizPalette: Sendable, Equatable, Identifiable {
         title: "Classic",
         kinds: classicKinds,
         // Branch mode uses the continuous size-midpoint hue wheel — the
-        // kind table stays for the Types/Categories modes.
-        sunburst: SunburstPalette(branchHues: .wheel(saturationScale: 1, brightnessScale: 1))
+        // kind table stays for the Types/Categories modes. The saturation
+        // envelope rides above the plain wheel: the resolver's 0.75
+        // first-ring saturation reads washed out under the cushion's
+        // shading and the flat style's translucent composite.
+        sunburst: SunburstPalette(branchHues: .wheel(saturationScale: 1.15, brightnessScale: 1))
     )
 
     /// The classic hues punched up (saturation and brightness raised in HSB)
@@ -79,9 +83,9 @@ struct VizPalette: Sendable, Equatable, Identifiable {
         id: "vivid",
         title: "Vivid",
         kinds: vividKinds,
-        // The wheel with the saturation envelope pushed up to match the
-        // punched-up kind table.
-        sunburst: SunburstPalette(branchHues: .wheel(saturationScale: 1.15, brightnessScale: 1))
+        // The wheel's saturation envelope pushed up a step beyond Classic's,
+        // matching the punched-up kind table.
+        sunburst: SunburstPalette(branchHues: .wheel(saturationScale: 1.3, brightnessScale: 1))
     )
 
     /// Warm faded terminal tones — brick red, olive green, amber, muted
@@ -96,12 +100,12 @@ struct VizPalette: Sendable, Equatable, Identifiable {
         categoryRoles: retroCategoryRoles,
         // Cool → hot in-scheme: blue, aqua, green, yellow, orange, red.
         ageRamp: [
-            retroKinds[1],  // bright blue #83a598 — newest
-            retroKinds[7],  // bright aqua #8ec07c
-            retroKinds[10], // green       #98971a
-            retroKinds[4],  // bright yellow #fabd2f
-            retroKinds[5],  // bright orange #fe8019
-            retroKinds[2],  // bright red  #fb4934 — oldest
+            retroKinds[1],  // bright blue — newest
+            retroKinds[7],  // bright aqua
+            retroKinds[10], // green
+            retroKinds[4],  // bright yellow
+            retroKinds[5],  // bright orange
+            retroKinds[2],  // bright red — oldest
             FileKindCatalog.otherRGB,
         ],
         sunburst: .quantized(retroKinds)
@@ -119,12 +123,12 @@ struct VizPalette: Sendable, Equatable, Identifiable {
         categoryRoles: neonCategoryRoles,
         // Cool → hot in-scheme: purple, cyan, green, yellow, orange, red.
         ageRamp: [
-            neonKinds[1],  // purple       #bd93f9 — newest
-            neonKinds[7],  // cyan         #8be9fd
-            neonKinds[9],  // bright green #69ff94
-            neonKinds[4],  // yellow       #f1fa8c
-            neonKinds[5],  // orange       #ffb86c
-            neonKinds[2],  // red          #ff5555 — oldest
+            neonKinds[1],  // purple — newest
+            neonKinds[7],  // cyan
+            neonKinds[9],  // bright green
+            neonKinds[4],  // yellow
+            neonKinds[5],  // orange
+            neonKinds[2],  // red — oldest
             FileKindCatalog.otherRGB,
         ],
         sunburst: .quantized(neonKinds)
@@ -213,12 +217,17 @@ struct VizPalette: Sendable, Equatable, Identifiable {
         SIMD3(0.62, 0.22, 0.43), // plum
     ]
 
+    /// The retro accents punched up for the map (see `punched`); everything
+    /// palette-side — kinds, categories, age ramp, quantized branch table —
+    /// derives from this, so the scheme stays internally consistent.
+    private static let retroKinds = punched(retroAccents, saturationPower: 0.55)
+
     /// The verbatim 14-accent set of the classic warm retro terminal scheme
     /// (7 bright accents + 7 muted counterparts), rank-ordered for hue
     /// diversity: every prefix mixes the scheme's hue families, so the top
     /// size ranks — and positionally colored branches — never land three
     /// warm accents in a row. Categories map through `retroCategoryRoles`.
-    private static let retroKinds: [SIMD3<Float>] = [
+    private static let retroAccents: [SIMD3<Float>] = [
         SIMD3(0.722, 0.733, 0.149), // bright green  #b8bb26
         SIMD3(0.514, 0.647, 0.596), // bright blue   #83a598
         SIMD3(0.984, 0.286, 0.204), // bright red    #fb4934
@@ -248,12 +257,16 @@ struct VizPalette: Sendable, Equatable, Identifiable {
         "cat-system": 13,     // orange
     ]
 
+    /// The neon accents punched up for the map (see `punched`), like
+    /// `retroKinds` above.
+    private static let neonKinds = punched(neonAccents, saturationPower: 0.55)
+
     /// The verbatim ANSI accent set of the well-known dark vampire theme
     /// (8 base accents + 6 brights), rank-ordered for hue diversity — the
     /// base accents interleaved so every prefix spreads across the wheel,
     /// the brights in the rank-only tail. Categories map through
     /// `neonCategoryRoles`; its ANSI blue is the signature purple.
-    private static let neonKinds: [SIMD3<Float>] = [
+    private static let neonAccents: [SIMD3<Float>] = [
         SIMD3(0.314, 0.980, 0.482), // green          #50fa7b
         SIMD3(0.741, 0.576, 0.976), // purple (ANSI blue) #bd93f9
         SIMD3(1.000, 0.333, 0.333), // red            #ff5555
@@ -282,6 +295,26 @@ struct VizPalette: Sendable, Equatable, Identifiable {
         "cat-summarized": 11, // bright cyan
         "cat-system": 10,     // bright purple
     ]
+
+    /// A scheme's accent table punched up for the map: saturation raised on
+    /// a power curve (s^power, 0 < power < 1), so the muted accents gain
+    /// the most and the already-vivid ones barely move — hue and brightness
+    /// stay verbatim, keeping the scheme recognizable. The raw terminal
+    /// accents read too pastel as area fills: colors that carry on a strip
+    /// of text wash out spread over a treemap cell.
+    private static func punched(
+        _ entries: [SIMD3<Float>],
+        saturationPower: Double
+    ) -> [SIMD3<Float>] {
+        entries.map { entry in
+            let (hue, saturation, brightness) = SunburstColorResolver.hsb(fromRGB: entry)
+            return SunburstColorResolver.rgb(from: SunburstColorComponents(
+                hue: hue,
+                saturation: pow(saturation, saturationPower),
+                brightness: brightness
+            ))
+        }
+    }
 
     /// Okabe-Ito, extended past the canonical eight with CVD-checked tones,
     /// in the canonical rank sequence (bluish green in the green slot,

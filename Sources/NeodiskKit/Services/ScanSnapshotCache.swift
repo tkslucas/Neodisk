@@ -13,10 +13,10 @@
 //  named by a hash of the target path (the app runs unbundled, so the
 //  directory is created explicitly rather than derived from a bundle
 //  identifier). The format is versioned; corrupt or old-version files are
-//  deleted on read and treated as cache misses. All encoding and decoding
-//  happens on this actor, off the main thread, and each save is a single
-//  non-suspending actor method ending in an atomic write — a scan finishing
-//  while a previous write is still in flight simply queues behind it.
+//  deleted on read and treated as cache misses. Heavy encode/decode work
+//  runs detached off the actor; a snapshot whose save is still encoding
+//  stays readable from memory (`savingByTargetID`), so a load can never
+//  miss a scan that already finished.
 //
 
 import CryptoKit
@@ -79,7 +79,10 @@ public struct SnapshotSaveOutcome: Sendable {
 /// location while another location's save is in flight must display in
 /// decode-time, not queue-time. Every file mutation happens inside one
 /// synchronous (suspension-free) section, so interleaved readers only ever
-/// observe complete slot states.
+/// observe complete slot states. Absence is a state too: a snapshot handed
+/// to `save` is readable from memory until its bytes land, so a load
+/// interleaving with an in-flight save gets the finished scan, never a miss
+/// (first save) or the older file's stale bytes.
 public actor ScanSnapshotCache {
     /// v3 adds the cloud-only bit (files) and cloudOnlyLogicalSize payload
     /// (directories); older builds reject v3 files cleanly as
@@ -95,6 +98,20 @@ public actor ScanSnapshotCache {
 
     private let directoryURL: URL
     private let isLoggingEnabled: Bool
+
+    /// Snapshots whose save is still encoding off the actor, readable by
+    /// `loadSnapshot` so a finished scan is never invisible mid-save. The
+    /// entry also gates the save's write: a removal or a newer save of the
+    /// same target while the encode ran means the stale bytes are dropped.
+    private var savingByTargetID: [String: ScanSnapshot] = [:]
+
+    /// Test seam, awaited inside the detached encode: tests hold a save
+    /// open with it and exercise the in-flight window deterministically.
+    private var encodeGateForTesting: (@Sendable () async -> Void)?
+
+    func setEncodeGateForTesting(_ gate: (@Sendable () async -> Void)?) {
+        encodeGateForTesting = gate
+    }
 
     public nonisolated static var defaultDirectoryURL: URL {
         // Dev/bench hook: NEODISK_SNAPSHOT_DIR isolates the on-disk snapshot
@@ -135,12 +152,22 @@ public actor ScanSnapshotCache {
         }
 
         let start = ContinuousClock.now
-        // Digest + encode off the actor: a concurrent save of the same
-        // target cannot interleave here (a target's next scan cannot finish
-        // while its previous save encodes), but loads of other targets must
-        // not wait behind this.
+        let targetID = snapshot.target.id
+        // Readable from memory while the encode runs, and the claim that
+        // gates the write below.
+        savingByTargetID[targetID] = snapshot
+        defer {
+            if savingByTargetID[targetID]?.id == snapshot.id {
+                savingByTargetID.removeValue(forKey: targetID)
+            }
+        }
+        // Digest + encode off the actor: loads must not wait behind this —
+        // other targets decode meanwhile, and this target is served from
+        // `savingByTargetID`.
+        let gate = encodeGateForTesting
         let (digest, data) = try await Task.detached {
-            try ScanTiming.measure("snapshot.encode", detail: "nodes=\(snapshot.treeStore.nodeCount)") {
+            await gate?()
+            return try ScanTiming.measure("snapshot.encode", detail: "nodes=\(snapshot.treeStore.nodeCount)") {
                 let digest = ScanChangeList.contentDigest(of: snapshot.treeStore)
                 return (digest, try ScanSnapshotCodec.encode(
                     snapshot,
@@ -149,6 +176,18 @@ public actor ScanSnapshotCache {
                 ))
             }
         }.value
+        guard savingByTargetID[targetID]?.id == snapshot.id else {
+            // While the encode was detached, this target's slots were
+            // removed (Settings → clear) or claimed by a newer save;
+            // writing now would resurrect stale bytes. Report the slots
+            // as they are.
+            return SnapshotSaveOutcome(
+                rotatedPrevious: false,
+                hasPreviousSnapshot: FileManager.default.fileExists(
+                    atPath: previousFileURL(forTargetID: targetID).path
+                )
+            )
+        }
         try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
 
         let latestURL = fileURL(forTargetID: snapshot.target.id)
@@ -190,7 +229,13 @@ public actor ScanSnapshotCache {
     /// Unreadable files (corruption, old format versions) are deleted so they
     /// never fail twice.
     public func loadSnapshot(for target: ScanTarget) async -> ScanSnapshot? {
-        await loadSnapshot(for: target, at: fileURL(forTargetID: target.id))
+        // A save still encoding holds the freshest complete scan of this
+        // target in memory; serving it beats both missing it (first save:
+        // no file on disk yet) and decoding the older file's stale bytes.
+        if let saving = savingByTargetID[target.id] {
+            return saving
+        }
+        return await loadSnapshot(for: target, at: fileURL(forTargetID: target.id))
     }
 
     /// Returns the rotated previous snapshot for a target — the scan before
@@ -457,6 +502,8 @@ public actor ScanSnapshotCache {
     }
 
     public func removeSnapshot(forTargetID targetID: String) {
+        // Also invalidates any in-flight save of this target (see save()).
+        savingByTargetID.removeValue(forKey: targetID)
         try? FileManager.default.removeItem(at: fileURL(forTargetID: targetID))
         try? FileManager.default.removeItem(at: previousFileURL(forTargetID: targetID))
         try? FileManager.default.removeItem(at: auxiliaryFileURL(forTargetID: targetID))
@@ -465,6 +512,8 @@ public actor ScanSnapshotCache {
     }
 
     public func removeAll() {
+        // Also invalidates every in-flight save (see save()).
+        savingByTargetID.removeAll()
         for url in cacheFileURLs() + auxiliaryFileURLs() + changeListFileURLs() + duplicateResultsFileURLs()
             + [duplicateHashCacheFileURL()] {
             try? FileManager.default.removeItem(at: url)

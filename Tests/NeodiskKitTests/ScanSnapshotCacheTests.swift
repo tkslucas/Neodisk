@@ -628,6 +628,114 @@ import Testing
 
     // MARK: - Helpers
 
+    // MARK: - In-flight saves
+
+    /// One-shot gate holding a save's detached encode open: `waitUntilEntered`
+    /// resumes once the encode reaches the gate, `open` lets it proceed.
+    private struct EncodeGate: Sendable {
+        private let entered: AsyncStream<Void>
+        private let enteredContinuation: AsyncStream<Void>.Continuation
+        private let release: AsyncStream<Void>
+        private let releaseContinuation: AsyncStream<Void>.Continuation
+
+        init() {
+            (entered, enteredContinuation) = AsyncStream.makeStream(of: Void.self)
+            (release, releaseContinuation) = AsyncStream.makeStream(of: Void.self)
+        }
+
+        var closure: @Sendable () async -> Void {
+            { [enteredContinuation, release] in
+                enteredContinuation.yield(())
+                for await _ in release { break }
+            }
+        }
+
+        func waitUntilEntered() async {
+            for await _ in entered { break }
+        }
+
+        func open() {
+            releaseContinuation.finish()
+        }
+    }
+
+    @Test func testLoadDuringInFlightSaveReturnsTheSavingSnapshot() async throws {
+        let cacheDirectory = makeTemporaryCacheDirectory()
+        defer { try? FileManager.default.removeItem(at: cacheDirectory) }
+        let cache = ScanSnapshotCache(directoryURL: cacheDirectory, isLoggingEnabled: false)
+        let target = makeTestTarget("/inflight")
+        let snapshot = makeFileSnapshot(target: target, files: [("a.bin", 100)])
+
+        let gate = EncodeGate()
+        await cache.setEncodeGateForTesting(gate.closure)
+        let save = Task { try await cache.save(snapshot) }
+        await gate.waitUntilEntered()
+
+        // Nothing on disk yet — the load must be served from memory, not
+        // reported as a miss (the miss made callers forget the target and
+        // rescan it from scratch).
+        #expect(cacheFileURLs(in: cacheDirectory).isEmpty)
+        let loaded = await cache.loadSnapshot(for: target)
+        #expect(loaded?.id == snapshot.id)
+
+        gate.open()
+        _ = try await save.value
+        #expect(singleCacheFileURL(in: cacheDirectory) != nil)
+
+        // The in-flight window is over; loads decode the persisted file.
+        let persisted = try #require(await cache.loadSnapshot(for: target))
+        #expect(persisted.isComplete)
+        #expect(persisted.target.id == target.id)
+    }
+
+    @Test func testRemoveAllDuringInFlightSaveDropsTheWrite() async throws {
+        let cacheDirectory = makeTemporaryCacheDirectory()
+        defer { try? FileManager.default.removeItem(at: cacheDirectory) }
+        let cache = ScanSnapshotCache(directoryURL: cacheDirectory, isLoggingEnabled: false)
+        let target = makeTestTarget("/cleared")
+        let snapshot = makeFileSnapshot(target: target, files: [("a.bin", 100)])
+
+        let gate = EncodeGate()
+        await cache.setEncodeGateForTesting(gate.closure)
+        let save = Task { try await cache.save(snapshot) }
+        await gate.waitUntilEntered()
+
+        // The user clears the cache while the save is still encoding; the
+        // late write must not resurrect the snapshot.
+        await cache.removeAll()
+        gate.open()
+        let outcome = try await save.value
+        #expect(!outcome.rotatedPrevious)
+        #expect(!outcome.hasPreviousSnapshot)
+        #expect(cacheFileURLs(in: cacheDirectory).isEmpty)
+        #expect(await cache.loadSnapshot(for: target) == nil)
+    }
+
+    @Test func testNewerSaveSupersedesInFlightSaveOfSameTarget() async throws {
+        let cacheDirectory = makeTemporaryCacheDirectory()
+        defer { try? FileManager.default.removeItem(at: cacheDirectory) }
+        let cache = ScanSnapshotCache(directoryURL: cacheDirectory, isLoggingEnabled: false)
+        let target = makeTestTarget("/superseded")
+        let older = makeFileSnapshot(target: target, files: [("a.bin", 100)])
+        let newer = makeFileSnapshot(target: target, files: [("b.bin", 222)])
+
+        let gate = EncodeGate()
+        await cache.setEncodeGateForTesting(gate.closure)
+        let olderSave = Task { try await cache.save(older) }
+        await gate.waitUntilEntered()
+        await cache.setEncodeGateForTesting(nil)
+
+        // A newer save of the same target (a subtree splice can finish while
+        // the full scan's save still encodes) claims the slot and lands.
+        _ = try await cache.save(newer)
+        gate.open()
+        _ = try await olderSave.value
+
+        let loaded = try #require(await cache.loadSnapshot(for: target))
+        let loadedNames = loaded.treeStore.children(of: loaded.treeStore.rootID).map(\.name)
+        #expect(loadedNames == ["b.bin"])
+    }
+
     private func duplicateResultsFileURLs(in directory: URL) -> [URL] {
         let contents = (try? FileManager.default.contentsOfDirectory(
             at: directory, includingPropertiesForKeys: nil

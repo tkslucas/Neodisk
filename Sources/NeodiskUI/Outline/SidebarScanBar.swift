@@ -4,7 +4,8 @@
 //
 //  The striped progress bar a sidebar row shows in its capacity-bar slot
 //  while that location is scanning off-screen (a background scan a
-//  navigate-away demotion left running), plus its hover bubble.
+//  navigate-away demotion left running), plus its hover bubble and the
+//  store + overlay layer that draw the bubble above the List's cells.
 //
 
 import SwiftUI
@@ -31,11 +32,53 @@ struct SidebarScanTooltipData: Equatable {
     }
 }
 
+/// Frames and hover state for the visible background-scan bars, kept outside
+/// SidebarPane's view state on purpose: a bar's frame changes on every scroll
+/// tick, and routing that through pane `@State` would re-run the whole pane
+/// body (List included) per tick. Only `SidebarScanTooltipLayer` observes
+/// this store, so frame churn re-renders just the bubble layer.
+@MainActor
+final class SidebarScanTooltipStore: ObservableObject {
+    /// Global frames of visible background-scan bars, keyed by target ID.
+    @Published private(set) var barFrames: [String: CGRect] = [:]
+    /// The bar currently hovered, if any.
+    @Published private(set) var hoveredTargetID: String?
+
+    /// Records a bar's global frame, or forgets the bar on nil (its row left
+    /// the table). Never animated: the bubble must track scrolling exactly.
+    func setFrame(_ frame: CGRect?, forTargetID targetID: String) {
+        var transaction = Transaction()
+        transaction.animation = nil
+        withTransaction(transaction) {
+            if let frame {
+                guard barFrames[targetID] != frame else { return }
+                barFrames[targetID] = frame
+            } else {
+                barFrames.removeValue(forKey: targetID)
+                if hoveredTargetID == targetID {
+                    hoveredTargetID = nil
+                }
+            }
+        }
+    }
+
+    /// Ordering-safe hover update: a late exit event from one bar must not
+    /// clobber a fresh hover on another.
+    func setHovering(_ hovering: Bool, targetID: String, reduceMotion: Bool) {
+        guard hovering || hoveredTargetID == targetID else { return }
+        withAnimation(reduceMotion ? .easeOut(duration: 0.1) : .spring(duration: 0.28)) {
+            hoveredTargetID = hovering ? targetID : nil
+        }
+    }
+}
+
 /// The striped bar shown in a scanning row's capacity-bar slot. A leaf view
 /// bound to the session's `ScanProgressState`, so the ~10Hz progress churn
 /// re-renders only this bar — never the row or the List, which invalidate
 /// solely when a scan starts or stops (a registry insert/remove). Hovering
-/// shows the live percent and item count in the capacity bar's tooltip chrome.
+/// shows the live percent and item count in the capacity bar's tooltip
+/// chrome; frame and hover reports flow to `SidebarScanTooltipStore`, so
+/// they never invalidate the row or the List either.
 struct SidebarScanBar: View {
     let targetID: String
     @ObservedObject var progress: ScanProgressState
@@ -67,6 +110,41 @@ struct SidebarScanBar: View {
                 }
                 onFrameChange(targetID, nil)
             }
+    }
+}
+
+/// The List overlay that draws every scan bubble; the only observer of the
+/// tooltip store, so per-scroll-tick frame updates re-render this layer
+/// alone. Bar frames arrive in global coordinates because the reporting leaf
+/// is hosted inside AppKit's table; convert them back into overlay space.
+struct SidebarScanTooltipLayer: View {
+    @ObservedObject var store: SidebarScanTooltipStore
+    /// Resolves a target's running background scan; nil once it stops.
+    let progressFor: (String) -> ScanProgressState?
+
+    var body: some View {
+        GeometryReader { proxy in
+            let overlayFrame = proxy.frame(in: .global)
+            ZStack(alignment: .topLeading) {
+                ForEach(store.barFrames.keys.sorted(), id: \.self) { targetID in
+                    if let globalBarFrame = store.barFrames[targetID],
+                       let progress = progressFor(targetID) {
+                        let localBarFrame = globalBarFrame.offsetBy(
+                            dx: -overlayFrame.minX,
+                            dy: -overlayFrame.minY
+                        )
+                        SidebarScanTooltipOverlay(
+                            progress: progress,
+                            barFrame: localBarFrame,
+                            isHovering: store.hoveredTargetID == targetID
+                        )
+                        .zIndex(store.hoveredTargetID == targetID ? 1 : 0)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .allowsHitTesting(false)
     }
 }
 

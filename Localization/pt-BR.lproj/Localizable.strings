@@ -240,10 +240,7 @@
 "Rescan Now" = "Analisar Agora";
 
 /* MARK: - Warnings panel */
-"Warnings" = "Avisos";
 "Dismiss" = "Dispensar";
-"Dismiss all warnings" = "Dispensar todos os avisos";
-"Dismiss this warning" = "Dispensar este aviso";
 
 /* MARK: - Menu bar commands */
 "Find" = "Buscar";

@@ -239,10 +239,7 @@
 "Rescan Now" = "今すぐ再スキャン";
 
 /* MARK: - Warnings panel */
-"Warnings" = "警告";
 "Dismiss" = "閉じる";
-"Dismiss all warnings" = "すべての警告を閉じる";
-"Dismiss this warning" = "この警告を閉じる";
 
 /* MARK: - Menu bar commands */
 "Find" = "検索";

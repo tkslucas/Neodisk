@@ -279,62 +279,18 @@ import NeodiskKit
         model.hoveredNodeID = file.id
         model.zoomRootID = targetA.id
         model.expandedAggregateIDs = [targetA.id]
-        model.warnings.dismiss(warning.id)
         model.stopScan()
         #expect(model.scanWasStopped)
 
         // Scanning a DIFFERENT target wipes selection/hover/zoom, empties the
-        // expanded sets, clears dismissed warnings, and unsets scanWasStopped.
+        // expanded sets, and unsets scanWasStopped.
         model.startScan(targetB)
         #expect(model.selectedNodeID == nil)
         #expect(model.hoveredNodeID == nil)
         #expect(model.zoomRootID == nil)
         #expect(model.expandedNodeIDs.isEmpty)
         #expect(model.expandedAggregateIDs.isEmpty)
-        #expect(model.warnings.dismissedWarningIDs.isEmpty)
         #expect(!model.scanWasStopped)
-        model.stopScan()
-    }
-
-    @Test func testDismissedWarningsResurfaceOnRescan() async throws {
-        let environment = try TestEnvironment()
-        defer { environment.tearDown() }
-        let target = makeTestTarget("/reset/warnings")
-        environment.sidebarFolderStore.add(target)
-        let model = environment.makeModel()
-
-        let warningA = ScanWarning(path: "/reset/warnings/one", message: "skipped", category: .fileSystem)
-        let warningB = ScanWarning(path: "/reset/warnings/two", message: "skipped", category: .fileSystem)
-        let file = makeTestFileNode(id: target.id + "/file.txt", name: "file.txt", size: 12)
-        let root = makeTestDirectoryNode(id: target.id, name: target.displayName, children: [file])
-        let store = FileTreeStore(root: root, childrenByID: [root.id: [file]])
-        func warned() -> ScanSnapshot {
-            makeTestSnapshot(target: target, root: root, store: store, warnings: [warningA, warningB])
-        }
-
-        model.startScan(target)
-        environment.scanService.yield(.finished(warned()), scanIndex: 0)
-        environment.scanService.finish(scanIndex: 0)
-        try await waitUntilAsync("scan persisted") {
-            await environment.cache.loadSnapshot(for: target) != nil
-        }
-        #expect(model.warnings.visible.count == 2)
-
-        // Dismissing one shrinks the panel; dismissing all empties it.
-        model.warnings.dismiss(warningA.id)
-        #expect(model.warnings.visible.map(\.id) == [warningB.id])
-        model.warnings.dismissAll()
-        #expect(model.warnings.visible.isEmpty)
-
-        // A rescan resets the dismissals, so the same still-current warnings
-        // come back once the refreshed snapshot lands.
-        model.rescan()
-        environment.scanService.yield(.finished(warned()), scanIndex: 1)
-        environment.scanService.finish(scanIndex: 1)
-        try await waitUntilAsync("warnings resurfaced after rescan") {
-            model.warnings.visible.count == 2
-        }
-        #expect(Set(model.warnings.visible.map(\.id)) == [warningA.id, warningB.id])
         model.stopScan()
     }
 

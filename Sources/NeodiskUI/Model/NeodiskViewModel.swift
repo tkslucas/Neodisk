@@ -124,8 +124,8 @@ final class NeodiskViewModel {
 
     // MARK: Scan warnings
 
-    /// Floating-panel warning visibility, dismissals, and the Full Disk
-    /// Access probe; see ScanWarningsModel.
+    /// Notice-strip warning visibility, popover grouping, and the Full
+    /// Disk Access probe; see ScanWarningsModel.
     let warnings: ScanWarningsModel
     /// The sidebar's Folders section: seeded with the common folders on
     /// first launch, extended by Add Folder, every entry removable.
@@ -384,7 +384,6 @@ final class NeodiskViewModel {
         ages.reset()
         changes.reset()
         scanWasStopped = false
-        warnings.reset()
     }
 
     private func bindPreferences() {

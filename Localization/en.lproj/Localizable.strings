@@ -239,10 +239,7 @@
 "Rescan Now" = "Rescan Now";
 
 /* MARK: - Warnings panel */
-"Warnings" = "Warnings";
 "Dismiss" = "Dismiss";
-"Dismiss all warnings" = "Dismiss all warnings";
-"Dismiss this warning" = "Dismiss this warning";
 
 /* MARK: - Menu bar commands */
 "Find" = "Find";

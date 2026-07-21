@@ -295,13 +295,8 @@ private struct WorkspaceView: View {
         model.vizViewMode != .sunburst && model.outlinePosition == .bottom
     }
 
-    private var permissionDeniedCount: Int {
-        // With Full Disk Access granted the remaining unreadable locations
-        // are protected for reasons no grant can fix, so the notice strip
-        // (like the warnings panel) stays hidden.
-        guard model.warnings.fullDiskAccessStatus != .granted,
-              let snapshot = model.coordinator.snapshot, snapshot.isComplete else { return 0 }
-        return snapshot.scanWarnings.count { $0.category == .permissionDenied }
+    private var warningCount: Int {
+        model.warnings.visible.count
     }
 
     var body: some View {
@@ -351,12 +346,8 @@ private struct WorkspaceView: View {
                 .animation(.easeInOut(duration: 0.22), value: model.showKindStats)
                 .clipped()
 
-                VStack(alignment: .trailing, spacing: 0) {
-                    SnapshotNoticePanel(model: model)
-                    WarningsPanel(model: model)
-                }
-                .animation(.easeInOut(duration: 0.2), value: model.warnings.visible.isEmpty)
-                .animation(.easeInOut(duration: 0.2), value: model.session.snapshotNotice)
+                SnapshotNoticePanel(model: model)
+                    .animation(.easeInOut(duration: 0.2), value: model.session.snapshotNotice)
             }
 
             if model.coordinator.isScanning || model.scanWasStopped {
@@ -368,9 +359,9 @@ private struct WorkspaceView: View {
                     onStop: { model.stopScan() },
                     onResume: { model.resumeScan() }
                 )
-            } else if permissionDeniedCount > 0 {
+            } else if warningCount > 0 {
                 Divider()
-                PermissionNoticeStrip(count: permissionDeniedCount)
+                ScanIssuesStrip(model: model, count: warningCount)
             }
 
             Divider()
@@ -380,28 +371,91 @@ private struct WorkspaceView: View {
 }
 
 /// Shown after a scan that hit unreadable locations: totals are
-/// underreported until the app gets Full Disk Access. Only mounted while
-/// access is not granted (WorkspaceView zeroes the count otherwise), so it
-/// always offers the Grant button.
-private struct PermissionNoticeStrip: View {
+/// underreported until every location can be read. Clicking opens the
+/// grouped details popover; the inline Full Disk Access shortcut appears
+/// only when granting would actually unlock a failed path.
+private struct ScanIssuesStrip: View {
+    let model: NeodiskViewModel
     let count: Int
+
+    @State private var showingDetails = false
+
+    private var allPermissionDenied: Bool {
+        model.warnings.visible.allSatisfy { $0.category == .permissionDenied }
+    }
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "lock.fill")
+            Button {
+                showingDetails.toggle()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: allPermissionDenied ? "lock.fill" : "exclamationmark.triangle.fill")
+                    Text("\(count.formatted()) locations couldn't be read — sizes may be underreported.")
+                        .lineLimit(1)
+                    Image(systemName: "chevron.up")
+                        .font(.system(size: 8, weight: .semibold))
+                }
                 .foregroundStyle(.secondary)
-            Text("\(count.formatted()) locations couldn't be read — sizes may be underreported.")
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-            Button("Grant Full Disk Access…") {
-                _ = SystemIntegration.prepareAndOpenFullDiskAccessSettings()
+                .contentShape(Rectangle())
             }
-            .controlSize(.small)
+            .buttonStyle(.plain)
+            .popover(isPresented: $showingDetails, arrowEdge: .top) {
+                ScanIssuesPopover(model: model)
+            }
+            if model.warnings.suggestFullDiskAccess {
+                Button("Grant Full Disk Access…") {
+                    _ = SystemIntegration.prepareAndOpenFullDiskAccessSettings()
+                }
+                .controlSize(.small)
+            }
             Spacer()
         }
         .font(.system(size: 11))
         .padding(.horizontal, 10)
         .padding(.vertical, 4)
+    }
+}
+
+/// The strip's on-demand detail: one row per failed ancestor with a member
+/// count, exact paths and errors in the row tooltip.
+private struct ScanIssuesPopover: View {
+    let model: NeodiskViewModel
+
+    var body: some View {
+        let groups = model.warnings.groups
+        VStack(alignment: .leading, spacing: 0) {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(groups) { group in
+                        HStack(spacing: 8) {
+                            Image(systemName: group.isPermissionDenied
+                                ? "lock.fill"
+                                : "exclamationmark.triangle.fill")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 14)
+                            Text((group.path as NSString).abbreviatingWithTildeInPath)
+                                .font(.system(size: 11, weight: .medium))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Spacer(minLength: 8)
+                            Text(group.count.formatted())
+                                .font(.system(size: 11).monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 5)
+                        .help(group.details.joined(separator: "\n"))
+                    }
+                }
+                .padding(.vertical, 6)
+            }
+            // ScrollView greedily fills a proposed max height, so size it to
+            // the rows and clamp instead of leaving dead space under few rows.
+            .frame(height: min(280, CGFloat(groups.count) * 27 + 12))
+        }
+        .frame(width: 340)
     }
 }
 

@@ -89,3 +89,29 @@ enum OutlineRowMetrics {
         return width
     }
 }
+
+/// Reveals an outline row without changing horizontal scroll. AppKit's table
+/// header overlays the top of its clip view, so callers with a header supply
+/// that covered height instead of treating the whole clip bounds as visible.
+@MainActor
+func scrollOutlineRowVertically(
+    _ rowRect: NSRect,
+    in scrollView: NSScrollView,
+    topOcclusion: CGFloat = 0
+) {
+    let clip = scrollView.contentView
+    let occlusion = min(max(topOcclusion, 0), clip.bounds.height)
+    let visibleTop = clip.bounds.minY + occlusion
+    var origin = clip.bounds.origin
+
+    if rowRect.minY < visibleTop {
+        origin.y = rowRect.minY - occlusion
+    } else if rowRect.maxY > clip.bounds.maxY {
+        origin.y = rowRect.maxY - clip.bounds.height
+    } else {
+        return
+    }
+
+    clip.scroll(to: origin)
+    scrollView.reflectScrolledClipView(clip)
+}

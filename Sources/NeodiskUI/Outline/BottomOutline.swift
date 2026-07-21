@@ -289,18 +289,11 @@ struct BottomOutlineTable: NSViewRepresentable {
         /// position when the columns overflow a narrow pane.
         private func scrollToRowVerticalOnly(_ row: Int) {
             guard let tableView, let scrollView else { return }
-            let clip = scrollView.contentView
-            let rowRect = tableView.rect(ofRow: row)
-            var origin = clip.bounds.origin
-            if rowRect.minY < clip.bounds.minY {
-                origin.y = rowRect.minY
-            } else if rowRect.maxY > clip.bounds.maxY {
-                origin.y = rowRect.maxY - clip.bounds.height
-            } else {
-                return
-            }
-            clip.scroll(to: origin)
-            scrollView.reflectScrolledClipView(clip)
+            scrollOutlineRowVertically(
+                tableView.rect(ofRow: row),
+                in: scrollView,
+                topOcclusion: tableView.headerView?.frame.height ?? 0
+            )
         }
 
         // MARK: NSTableViewDataSource / Delegate

@@ -26,6 +26,9 @@ struct SidebarTargetRow: View {
     /// A background scan running for this location: its progress supersedes
     /// the capacity bar with a striped progress bar in the same slot.
     var scanProgress: ScanProgressState?
+    /// Lifts the scan tooltip into SidebarPane's overlay, above List cells.
+    var onScanBarFrameChange: (String, CGRect?) -> Void = { _, _ in }
+    var onScanBarHover: (String, Bool) -> Void = { _, _ in }
 
     var body: some View {
         HStack(spacing: 8) {
@@ -49,7 +52,12 @@ struct SidebarTargetRow: View {
                         .lineLimit(1)
                 }
                 if let scanProgress {
-                    SidebarScanBar(progress: scanProgress)
+                    SidebarScanBar(
+                        targetID: target.id,
+                        progress: scanProgress,
+                        onFrameChange: onScanBarFrameChange,
+                        onHover: onScanBarHover
+                    )
                         .padding(.top, 3)
                         .padding(.bottom, 1)
                         .padding(.trailing, 2)
@@ -62,10 +70,6 @@ struct SidebarTargetRow: View {
             }
             Spacer(minLength: 0)
         }
-        // The scan bubble rises just beyond the normal two-line row. Keep
-        // that last bit inside the List cell so AppKit does not clip its top
-        // edge; its anchor and spacing from the bar stay unchanged.
-        .padding(.top, scanProgress != nil && lastScanned == nil ? 8 : 0)
         .padding(.vertical, 1)
     }
 

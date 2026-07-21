@@ -37,30 +37,54 @@ struct SidebarScanTooltipData: Equatable {
 /// solely when a scan starts or stops (a registry insert/remove). Hovering
 /// shows the live percent and item count in the capacity bar's tooltip chrome.
 struct SidebarScanBar: View {
+    let targetID: String
     @ObservedObject var progress: ScanProgressState
+    var onFrameChange: (String, CGRect?) -> Void
+    var onHover: (String, Bool) -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        StripedProgressBar(value: progress.metrics.progressFraction)
+            .contentShape(Rectangle())
+            .background {
+                GeometryReader { proxy in
+                    let frame = proxy.frame(in: .global)
+                    Color.clear
+                        .onAppear { onFrameChange(targetID, frame) }
+                        .onChange(of: frame) { _, newFrame in
+                            onFrameChange(targetID, newFrame)
+                        }
+                }
+            }
+            .onHover { hovering in
+                isHovering = hovering
+                onHover(targetID, hovering)
+            }
+            .onDisappear {
+                if isHovering {
+                    onHover(targetID, false)
+                }
+                onFrameChange(targetID, nil)
+            }
+    }
+}
+
+/// The bubble itself lives in the sidebar overlay rather than this bar's List
+/// cell. Its global bar frame is converted to overlay coordinates by the
+/// parent, so the same centered anchor is preserved without row clipping.
+struct SidebarScanTooltipOverlay: View {
+    @ObservedObject var progress: ScanProgressState
+    let barFrame: CGRect
+    let isHovering: Bool
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var isHovering = false
     @State private var tooltipSize: CGSize = .zero
 
     /// Gap between the tooltip's tail tip and the top of the bar.
     private static let tooltipGap: CGFloat = 6
 
     var body: some View {
-        StripedProgressBar(value: progress.metrics.progressFraction)
-            .contentShape(Rectangle())
-            .onHover { hovering in
-                withAnimation(reduceMotion ? .easeOut(duration: 0.1) : .spring(duration: 0.28)) {
-                    isHovering = hovering
-                }
-            }
-            .overlay(alignment: .top) { tooltip }
-    }
-
-    /// Centered above the bar; the tail points down at the bar's middle.
-    /// Offsetting clear of the bar needs the bubble's height, so it reports
-    /// its size via preference and stays hidden until measured.
-    private var tooltip: some View {
         SidebarScanTooltip(
             data: SidebarScanTooltipData(
                 progressFraction: progress.metrics.progressFraction,
@@ -73,7 +97,10 @@ struct SidebarScanBar: View {
         })
         .scaleEffect(isHovering || reduceMotion ? 1 : 0.35, anchor: .bottom)
         .opacity(tooltipSize == .zero || !isHovering ? 0 : 1)
-        .offset(y: -(tooltipSize.height + Self.tooltipGap))
+        .offset(
+            x: barFrame.midX - (tooltipSize.width / 2),
+            y: barFrame.minY - tooltipSize.height - Self.tooltipGap
+        )
         .allowsHitTesting(false)
         .onPreferenceChange(VolumeBarTooltipSizeKey.self) { tooltipSize = $0 }
     }

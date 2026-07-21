@@ -20,6 +20,12 @@ struct SidebarPane: View {
     @State private var volumeBars: [String: VolumeBarData] = [:]
     /// The cloud account a sign-out confirmation is pending for.
     @State private var signOutTarget: ScanTarget?
+    /// Global frames of visible background-scan bars. Their hover bubbles are
+    /// rendered by the List overlay so table cells cannot clip them.
+    @State private var scanBarFrames: [String: CGRect] = [:]
+    @State private var hoveredScanBarID: String?
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Sidebar folders, minus any that duplicate a built-in location.
     private var visibleFolders: [ScanTarget] {
@@ -65,7 +71,9 @@ struct SidebarPane: View {
                             subtitle: model.cloudAccounts.integration?.accountSubtitle(forTargetID: target.id) ?? target.id,
                             lastScanned: model.session.cachedScanInfo[target.id]?.lastScanDate,
                             now: now,
-                            scanProgress: backgroundScanProgress(for: target)
+                            scanProgress: backgroundScanProgress(for: target),
+                            onScanBarFrameChange: updateScanBarFrame,
+                            onScanBarHover: updateScanBarHover
                         )
                         .tag(target.id)
                         .contextMenu {
@@ -87,7 +95,9 @@ struct SidebarPane: View {
                         lastScanned: model.session.cachedScanInfo[target.id]?.lastScanDate,
                         now: now,
                         bar: cloudBar(for: target),
-                        scanProgress: backgroundScanProgress(for: target)
+                        scanProgress: backgroundScanProgress(for: target),
+                        onScanBarFrameChange: updateScanBarFrame,
+                        onScanBarHover: updateScanBarHover
                     )
                     .tag(target.id)
                     .contextMenu { removeMenu(clicked: target) }
@@ -114,6 +124,7 @@ struct SidebarPane: View {
             }
         }
         .listStyle(.sidebar)
+        .overlay { scanTooltipOverlay }
         .dropDestination(for: URL.self) { urls, _ in
             model.addDroppedFolders(urls)
         }
@@ -204,10 +215,65 @@ struct SidebarPane: View {
     /// mutate each session's own `ScanProgressState`, which the leaf
     /// `SidebarScanBar` observes in isolation.
     private func backgroundScanProgress(for target: ScanTarget) -> ScanProgressState? {
-        guard let session = model.session.activeSessions[target.id], session.state == .running else {
+        backgroundScanProgress(forTargetID: target.id)
+    }
+
+    private func backgroundScanProgress(forTargetID targetID: String) -> ScanProgressState? {
+        guard let session = model.session.activeSessions[targetID], session.state == .running else {
             return nil
         }
         return session.progress
+    }
+
+    /// The overlay shares the List's size but not its table-cell clipping.
+    /// Bar frames arrive in global coordinates because the reporting leaf is
+    /// hosted inside AppKit's table; convert them back into overlay space.
+    private var scanTooltipOverlay: some View {
+        GeometryReader { proxy in
+            let overlayFrame = proxy.frame(in: .global)
+            ZStack(alignment: .topLeading) {
+                ForEach(scanBarFrames.keys.sorted(), id: \.self) { targetID in
+                    if let globalBarFrame = scanBarFrames[targetID],
+                       let progress = backgroundScanProgress(forTargetID: targetID) {
+                        let localBarFrame = globalBarFrame.offsetBy(
+                            dx: -overlayFrame.minX,
+                            dy: -overlayFrame.minY
+                        )
+                        SidebarScanTooltipOverlay(
+                            progress: progress,
+                            barFrame: localBarFrame,
+                            isHovering: hoveredScanBarID == targetID
+                        )
+                        .zIndex(hoveredScanBarID == targetID ? 1 : 0)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .allowsHitTesting(false)
+    }
+
+    private func updateScanBarFrame(targetID: String, frame: CGRect?) {
+        var transaction = Transaction()
+        transaction.animation = nil
+        withTransaction(transaction) {
+            if let frame {
+                guard scanBarFrames[targetID] != frame else { return }
+                scanBarFrames[targetID] = frame
+            } else {
+                scanBarFrames.removeValue(forKey: targetID)
+                if hoveredScanBarID == targetID {
+                    hoveredScanBarID = nil
+                }
+            }
+        }
+    }
+
+    private func updateScanBarHover(targetID: String, isHovering: Bool) {
+        guard isHovering || hoveredScanBarID == targetID else { return }
+        withAnimation(reduceMotion ? .easeOut(duration: 0.1) : .spring(duration: 0.28)) {
+            hoveredScanBarID = isHovering ? targetID : nil
+        }
     }
 
     /// True while any scan (foreground or a demoted background one) is running
@@ -290,7 +356,9 @@ struct SidebarPane: View {
             lastScanned: model.session.cachedScanInfo[target.id]?.lastScanDate,
             now: now,
             bar: bar,
-            scanProgress: backgroundScanProgress(for: target)
+            scanProgress: backgroundScanProgress(for: target),
+            onScanBarFrameChange: updateScanBarFrame,
+            onScanBarHover: updateScanBarHover
         )
         .tag(target.id)
         .contextMenu {

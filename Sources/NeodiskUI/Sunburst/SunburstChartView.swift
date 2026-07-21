@@ -128,6 +128,7 @@ struct SunburstChartView: View {
             VizHoverTooltipLayer(
                 data: VizHoverTooltipData(
                     segment: segment,
+                    node: segment.nodeID.flatMap(treeStore.node(id:)),
                     basis: rootNode,
                     includingCloudOnly: includeCloudOnly
                 ),

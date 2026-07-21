@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 import NeodiskKit
 @testable import NeodiskUI
@@ -34,6 +35,35 @@ import NeodiskKit
         )
         // No basis to divide by: the detail line is just the size.
         #expect(data.secondaryText == NeodiskFormatters.size(4096))
+    }
+
+    @Test func testCloudMovieUsesExistingCategorySymbolAndCloudGlyph() {
+        let movie = FileNodeRecord(
+            id: "/Cloud/movie.mov",
+            url: URL(filePath: "/Cloud/movie.mov"),
+            name: "movie.mov",
+            isDirectory: false,
+            isSymbolicLink: false,
+            allocatedSize: 0,
+            logicalSize: 2048,
+            descendantFileCount: 1,
+            lastModified: nil,
+            isPackage: false,
+            isAccessible: true,
+            isSelfAccessible: true,
+            isSynthetic: false,
+            isAutoSummarized: false,
+            isDataless: true
+        )
+        let data = VizHoverTooltipData(
+            item: movie,
+            sizeBytes: movie.logicalSize,
+            basisBytes: 4096,
+            basisName: "Cloud"
+        )
+
+        #expect(data.itemSymbolName == "film.fill")
+        #expect(data.showsCloudGlyph)
     }
 
     @Test func testAggregateTitleAndPercent() {

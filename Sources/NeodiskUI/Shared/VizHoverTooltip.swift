@@ -35,6 +35,12 @@ struct VizHoverTooltipData: Equatable {
     /// Display name of the percent basis (drill root or scan root), used in
     /// "… of <name>".
     var basisName: String
+    /// Existing category symbol for a real file/folder. Special space and
+    /// aggregate blocks stay text-only.
+    var itemSymbolName: String? = nil
+    /// A filled cloud immediately before the size marks a genuinely dataless
+    /// file. Directories with some cloud-only descendants do not wear it.
+    var showsCloudGlyph = false
 
     /// First line: the item/aggregate name, or "Free space · <size>".
     var primaryText: String {
@@ -81,6 +87,22 @@ struct VizHoverTooltipData: Equatable {
 }
 
 extension VizHoverTooltipData {
+    /// Builds the metadata for a real node. Category symbols are shared with
+    /// file-result lists, but the hover card renders them without their
+    /// category colors.
+    init(item node: FileNodeRecord, sizeBytes: Int64, basisBytes: Int64, basisName: String) {
+        self.init(
+            kind: .item(name: node.name),
+            sizeBytes: sizeBytes,
+            basisBytes: basisBytes,
+            basisName: basisName,
+            itemSymbolName: FileKindClassifier.categorySymbol(
+                forID: FileKindClassifier.kindID(for: node, mode: .categories)
+            ),
+            showsCloudGlyph: node.isDataless
+        )
+    }
+
     /// Builds the tooltip content from the shared hover state (treemap), or
     /// nil when nothing informative is hovered. Reads the model but never
     /// mutates it, so NeodiskViewModel's hover semantics stay untouched.
@@ -100,7 +122,12 @@ extension VizHoverTooltipData {
             return VizHoverTooltipData(kind: .aggregate(itemCount: aggregate.itemCount), sizeBytes: aggregate.totalSize, basisBytes: basisBytes, basisName: basisName)
         }
         if let node = model.hoveredNode {
-            return VizHoverTooltipData(kind: .item(name: node.name), sizeBytes: node.displayWeight(includingCloudOnly: model.showsCloudOnlyFiles), basisBytes: basisBytes, basisName: basisName)
+            return VizHoverTooltipData(
+                item: node,
+                sizeBytes: node.displayWeight(includingCloudOnly: model.showsCloudOnlyFiles),
+                basisBytes: basisBytes,
+                basisName: basisName
+            )
         }
         return nil
     }
@@ -108,7 +135,12 @@ extension VizHoverTooltipData {
     /// Builds the tooltip content from a hovered sunburst segment against the
     /// chart's drill root. Uses the segment's own weight/label so the size
     /// matches what the arc draws.
-    init(segment: SunburstSegment, basis: FileNodeRecord, includingCloudOnly: Bool) {
+    init(
+        segment: SunburstSegment,
+        node: FileNodeRecord?,
+        basis: FileNodeRecord,
+        includingCloudOnly: Bool
+    ) {
         let basisBytes = basis.displayWeight(includingCloudOnly: includingCloudOnly)
         let basisName = basis.name
         if segment.isFreeSpace {
@@ -117,6 +149,8 @@ extension VizHoverTooltipData {
             self.init(kind: .hiddenSpace, sizeBytes: segment.totalSize, basisBytes: basisBytes, basisName: basisName)
         } else if segment.isAggregate {
             self.init(kind: .aggregate(itemCount: segment.itemCount), sizeBytes: segment.totalSize, basisBytes: basisBytes, basisName: basisName)
+        } else if let node {
+            self.init(item: node, sizeBytes: segment.totalSize, basisBytes: basisBytes, basisName: basisName)
         } else {
             self.init(kind: .item(name: segment.label), sizeBytes: segment.totalSize, basisBytes: basisBytes, basisName: basisName)
         }
@@ -132,16 +166,28 @@ struct VizHoverTooltip: View {
     static let maxWidth: CGFloat = 280
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(data.primaryText)
-                .font(.callout.weight(.medium))
-                .lineLimit(1)
-                .truncationMode(.middle)
-            Text(data.secondaryText)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(3)
-                .fixedSize(horizontal: false, vertical: true)
+        Group {
+            if let symbolName = data.itemSymbolName {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 5) {
+                        neutralSymbol(symbolName, size: 11)
+                        primaryText
+                    }
+                    HStack(spacing: 5) {
+                        if data.showsCloudGlyph {
+                            neutralSymbol("cloud.fill", size: 9)
+                        } else {
+                            Color.clear.frame(width: 13, height: 1)
+                        }
+                        secondaryText
+                    }
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 2) {
+                    primaryText
+                    secondaryText
+                }
+            }
         }
         .frame(maxWidth: Self.maxWidth, alignment: .leading)
         .padding(.horizontal, 10)
@@ -154,6 +200,29 @@ struct VizHoverTooltip: View {
         .shadow(color: .black.opacity(0.16), radius: 6, y: 2)
         .fixedSize(horizontal: true, vertical: false)
         .allowsHitTesting(false)
+    }
+
+    private var primaryText: some View {
+        Text(data.primaryText)
+            .font(.callout.weight(.medium))
+            .lineLimit(1)
+            .truncationMode(.middle)
+    }
+
+    private var secondaryText: some View {
+        Text(data.secondaryText)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(3)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func neutralSymbol(_ name: String, size: CGFloat) -> some View {
+        Image(systemName: name)
+            .symbolRenderingMode(.monochrome)
+            .font(.system(size: size, weight: .medium))
+            .foregroundStyle(.secondary)
+            .frame(width: 13)
     }
 }
 

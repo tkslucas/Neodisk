@@ -2,10 +2,10 @@ import Foundation
 import Testing
 @testable import NeodiskUI
 
-/// The sidebar background-scan bar's native hover help. The detail line is
-/// view-model-free, so its composition can be exercised directly. Percent and
-/// count use the host locale's conventions, so the checks recompute the parts
-/// rather than hardcoding
+/// Stage 3 of parallel scanning: the sidebar background-scan bar's hover
+/// bubble. The detail line is view-model-free, so its composition can be
+/// exercised directly. Percent and count are formatted with the host locale's
+/// conventions, so the checks recompute the parts rather than hardcoding
 /// English digits.
 @Suite struct SidebarScanTooltipTests {
     @Test func testDetailLineComposesPercentThenItemCount() {

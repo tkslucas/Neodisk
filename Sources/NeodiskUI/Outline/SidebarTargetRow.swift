@@ -62,6 +62,10 @@ struct SidebarTargetRow: View {
             }
             Spacer(minLength: 0)
         }
+        // The scan bubble rises just beyond the normal two-line row. Keep
+        // that last bit inside the List cell so AppKit does not clip its top
+        // edge; its anchor and spacing from the bar stay unchanged.
+        .padding(.top, scanProgress != nil && lastScanned == nil ? 8 : 0)
         .padding(.vertical, 1)
     }
 

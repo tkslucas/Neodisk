@@ -375,3 +375,6 @@
 "%@ smaller items" = "小さい項目 %@個";
 "%@ · %@ of %@" = "%1$@ · %3$@ の %2$@";
 "Space available on this volume." = "このボリュームで使用可能な空き容量です。";
+
+/* Pane divider accessibility (2026-07-21) */
+"Pane divider" = "ペインの区切り";

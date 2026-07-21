@@ -281,9 +281,13 @@ private struct WorkspaceView: View {
 
     // Defaults leave the treemap clearly dominant on a fresh install's
     // default-size window; all panes stay user-resizable (persisted).
-    @AppStorage("outlinePaneWidth") private var outlinePaneWidth = 300.0
-    @AppStorage("kindStatsPaneWidth") private var kindStatsPaneWidth = 230.0
-    @AppStorage("bottomOutlinePaneHeight") private var bottomOutlinePaneHeight = 200.0
+    // Bounds and window-aware clamping live in PaneLayout.
+    @AppStorage("outlinePaneWidth")
+    private var outlinePaneWidth = PaneLayout.outlineDefaultWidth
+    @AppStorage("kindStatsPaneWidth")
+    private var kindStatsPaneWidth = PaneLayout.analysisDefaultWidth
+    @AppStorage("bottomOutlinePaneHeight")
+    private var bottomOutlinePaneHeight = PaneLayout.bottomOutlineDefaultHeight
 
     /// The sunburst brings its own legend list, so the outline is
     /// treemap-only in both dock positions.
@@ -301,53 +305,12 @@ private struct WorkspaceView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ZStack(alignment: .bottomTrailing) {
-                HStack(spacing: 0) {
-                    if showsLeadingOutline {
-                        OutlinePane(model: model)
-                            .frame(width: outlinePaneWidth)
-
-                        PaneSplitter(width: $outlinePaneWidth, range: 240...600, edge: .leading)
-                    }
-
-                    VStack(spacing: 0) {
-                        TreemapBreadcrumbBar(
-                            model: model,
-                            isProminent: model.vizViewMode == .sunburst
-                        )
-                        if model.vizViewMode == .sunburst {
-                            SunburstPane(model: model)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        } else {
-                            TreemapPane(model: model)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        }
-                        // Bottom dock: the wide multi-column file list sits
-                        // under the map only — the analysis pane keeps its
-                        // full height beside both.
-                        if showsBottomOutline {
-                            RowSplitter(
-                                height: $bottomOutlinePaneHeight, range: 120...440, edge: .bottom
-                            )
-                            BottomOutlinePane(model: model)
-                                .frame(height: bottomOutlinePaneHeight)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .layoutPriority(1)
-
-                    if model.showKindStats {
-                        PaneSplitter(width: $kindStatsPaneWidth, range: 200...340, edge: .trailing)
-                        AnalysisPane(model: model)
-                            .frame(width: kindStatsPaneWidth)
-                            .transition(.move(edge: .trailing))
-                    }
-                }
-                .animation(.easeInOut(duration: 0.22), value: model.showKindStats)
-                .clipped()
-
-                SnapshotNoticePanel(model: model)
-                    .animation(.easeInOut(duration: 0.2), value: model.session.snapshotNotice)
+            // Pane sizes are clamped against the actual workspace geometry
+            // (WorkspacePaneMetrics), so the map keeps a usable size however
+            // small the window gets and however wide the panes were dragged.
+            GeometryReader { proxy in
+                let metrics = paneMetrics(available: proxy.size)
+                workspacePanes(metrics: metrics)
             }
 
             if let superseded = model.session.supersededScanNotice {
@@ -373,6 +336,81 @@ private struct WorkspaceView: View {
 
             Divider()
             StatusBar(model: model)
+        }
+    }
+
+    private func paneMetrics(available: CGSize) -> WorkspacePaneMetrics {
+        WorkspacePaneMetrics(
+            available: available,
+            showsLeadingOutline: showsLeadingOutline,
+            showsAnalysis: model.showKindStats,
+            storedOutlineWidth: outlinePaneWidth,
+            storedAnalysisWidth: kindStatsPaneWidth,
+            storedBottomOutlineHeight: bottomOutlinePaneHeight
+        )
+    }
+
+    private func workspacePanes(metrics: WorkspacePaneMetrics) -> some View {
+        ZStack(alignment: .bottomTrailing) {
+            HStack(spacing: 0) {
+                if showsLeadingOutline {
+                    OutlinePane(model: model)
+                        .frame(width: metrics.outlineWidth)
+
+                    PaneSplitter(
+                        size: $outlinePaneWidth,
+                        range: metrics.outlineRange,
+                        defaultSize: PaneLayout.outlineDefaultWidth,
+                        paneEdge: .leading
+                    )
+                }
+
+                VStack(spacing: 0) {
+                    TreemapBreadcrumbBar(
+                        model: model,
+                        isProminent: model.vizViewMode == .sunburst
+                    )
+                    if model.vizViewMode == .sunburst {
+                        SunburstPane(model: model)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        TreemapPane(model: model)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                    // Bottom dock: the wide multi-column file list sits
+                    // under the map only — the analysis pane keeps its
+                    // full height beside both.
+                    if showsBottomOutline {
+                        PaneSplitter(
+                            size: $bottomOutlinePaneHeight,
+                            range: metrics.bottomOutlineRange,
+                            defaultSize: PaneLayout.bottomOutlineDefaultHeight,
+                            paneEdge: .bottom
+                        )
+                        BottomOutlinePane(model: model)
+                            .frame(height: metrics.bottomOutlineHeight)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .layoutPriority(1)
+
+                if model.showKindStats {
+                    PaneSplitter(
+                        size: $kindStatsPaneWidth,
+                        range: metrics.analysisRange,
+                        defaultSize: PaneLayout.analysisDefaultWidth,
+                        paneEdge: .trailing
+                    )
+                    AnalysisPane(model: model)
+                        .frame(width: metrics.analysisWidth)
+                        .transition(.move(edge: .trailing))
+                }
+            }
+            .animation(.easeInOut(duration: 0.22), value: model.showKindStats)
+            .clipped()
+
+            SnapshotNoticePanel(model: model)
+                .animation(.easeInOut(duration: 0.2), value: model.session.snapshotNotice)
         }
     }
 }

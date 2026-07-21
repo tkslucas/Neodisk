@@ -31,6 +31,11 @@ struct SunburstPane: View {
     /// row hover must never move the preview (no flicker).
     @State private var previewFolderID: String?
 
+    /// User-resizable, clamped on read against the pane width so the chart
+    /// keeps a usable diameter (see SunburstLegendMetrics).
+    @AppStorage("sunburstLegendWidth")
+    private var legendWidth = PaneLayout.sunburstLegendDefaultWidth
+
     var body: some View {
         if let store = model.store,
            let snapshot = model.coordinator.snapshot,
@@ -40,60 +45,77 @@ struct SunburstPane: View {
             let freeSpaceBytes = gatedFreeSpaceBytes
             let hiddenSpaceBytes = gatedHiddenSpaceBytes
             let displayedFolder = displayedFolder(rootNode: rootNode, in: store)
-            HStack(spacing: 0) {
-                SunburstChartView(
-                    rootNode: rootNode,
-                    parentNode: store.parent(of: rootID),
-                    treeStore: store,
-                    selectedNodeID: model.selectedNodeID,
-                    selectedAncestorIDs: selectedAncestorIDs(in: store),
-                    depthLimit: Self.depthLimit,
-                    layoutID: Self.layoutID(
-                        snapshotID: snapshot.id,
-                        rootID: rootID,
+            GeometryReader { proxy in
+                let legend = SunburstLegendMetrics(
+                    availableWidth: proxy.size.width, storedWidth: legendWidth
+                )
+                HStack(spacing: 0) {
+                    SunburstChartView(
+                        rootNode: rootNode,
+                        parentNode: store.parent(of: rootID),
+                        treeStore: store,
+                        selectedNodeID: model.selectedNodeID,
+                        selectedAncestorIDs: selectedAncestorIDs(in: store),
+                        depthLimit: Self.depthLimit,
+                        layoutID: Self.layoutID(
+                            snapshotID: snapshot.id,
+                            rootID: rootID,
+                            freeSpaceBytes: freeSpaceBytes,
+                            hiddenSpaceBytes: hiddenSpaceBytes,
+                            expandedAggregateIDs: model.expandedAggregateIDs,
+                            includeCloudOnly: model.showsCloudOnlyFiles
+                        ),
+                        style: style,
                         freeSpaceBytes: freeSpaceBytes,
                         hiddenSpaceBytes: hiddenSpaceBytes,
                         expandedAggregateIDs: model.expandedAggregateIDs,
-                        includeCloudOnly: model.showsCloudOnlyFiles
-                    ),
-                    style: style,
-                    freeSpaceBytes: freeSpaceBytes,
-                    hiddenSpaceBytes: hiddenSpaceBytes,
-                    expandedAggregateIDs: model.expandedAggregateIDs,
-                    includeCloudOnly: model.showsCloudOnlyFiles,
-                    centerSizeText: NeodiskFormatters.size(
-                        displayedFolder.displayWeight(includingCloudOnly: model.showsCloudOnlyFiles)
-                    ),
-                    onHoverSegment: { handleHover($0) },
-                    onClickSegment: { handleClick($0) },
-                    onPinchDrillSegment: { handlePinchDrill($0) },
-                    onNavigateToParent: { model.zoomOut() },
-                    onKeyDown: { handleKey($0) },
-                    contextMenu: { contextMenu(for: $0) },
-                    chartModel: chartModel
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        includeCloudOnly: model.showsCloudOnlyFiles,
+                        centerSizeText: NeodiskFormatters.size(
+                            displayedFolder.displayWeight(includingCloudOnly: model.showsCloudOnlyFiles)
+                        ),
+                        onHoverSegment: { handleHover($0) },
+                        onClickSegment: { handleClick($0) },
+                        onPinchDrillSegment: { handlePinchDrill($0) },
+                        onNavigateToParent: { model.zoomOut() },
+                        onKeyDown: { handleKey($0) },
+                        contextMenu: { contextMenu(for: $0) },
+                        chartModel: chartModel
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                SunburstLegendList(
-                    model: model,
-                    chartModel: chartModel,
-                    displayedFolder: displayedFolder,
-                    chartRootID: rootID,
-                    style: style,
-                    onHoverRow: { handleRowHover($0) },
-                    onClickRow: { handleRowClick($0) },
-                    onPinchRow: { handleRowPinch($0, direction: $1) }
-                )
-            }
-            // A new root (drill, breadcrumb, rescan) invalidates the preview.
-            .onChange(of: model.effectiveRootID) { _, _ in
-                resetPreviewFolder()
-            }
-            // Switching back to the treemap must not leave the status bar
-            // holding the last-hovered sunburst item.
-            .onDisappear {
-                clearHover()
-                resetPreviewFolder()
+                    // Too narrow for a usable chart plus a usable legend →
+                    // the legend (and its divider) hides and the chart takes
+                    // the full pane.
+                    if let resolvedLegendWidth = legend.width {
+                        PaneSplitter(
+                            size: $legendWidth,
+                            range: legend.range,
+                            defaultSize: PaneLayout.sunburstLegendDefaultWidth,
+                            paneEdge: .trailing
+                        )
+                        SunburstLegendList(
+                            model: model,
+                            chartModel: chartModel,
+                            displayedFolder: displayedFolder,
+                            chartRootID: rootID,
+                            style: style,
+                            onHoverRow: { handleRowHover($0) },
+                            onClickRow: { handleRowClick($0) },
+                            onPinchRow: { handleRowPinch($0, direction: $1) }
+                        )
+                        .frame(width: resolvedLegendWidth)
+                    }
+                }
+                // A new root (drill, breadcrumb, rescan) invalidates the preview.
+                .onChange(of: model.effectiveRootID) { _, _ in
+                    resetPreviewFolder()
+                }
+                // Switching back to the treemap must not leave the status bar
+                // holding the last-hovered sunburst item.
+                .onDisappear {
+                    clearHover()
+                    resetPreviewFolder()
+                }
             }
         } else {
             Color.clear

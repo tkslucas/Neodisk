@@ -375,3 +375,6 @@
 "%@ smaller items" = "%@ smaller items";
 "%@ · %@ of %@" = "%@ · %@ of %@";
 "Space available on this volume." = "Space available on this volume.";
+
+/* Pane divider accessibility (2026-07-21) */
+"Pane divider" = "Pane divider";

@@ -375,3 +375,6 @@
 "%@ smaller items" = "%@ elementi più piccoli";
 "%@ · %@ of %@" = "%@ · %@ di %@";
 "Space available on this volume." = "Spazio disponibile su questo volume.";
+
+/* Pane divider accessibility (2026-07-21) */
+"Pane divider" = "Divisore dei pannelli";

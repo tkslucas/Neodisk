@@ -375,3 +375,6 @@
 "%@ smaller items" = "%@ 个较小项目";
 "%@ · %@ of %@" = "%1$@ · %3$@ 的 %2$@";
 "Space available on this volume." = "此宗卷上的可用空间。";
+
+/* Pane divider accessibility (2026-07-21) */
+"Pane divider" = "面板分隔条";

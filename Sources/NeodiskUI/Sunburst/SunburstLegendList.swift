@@ -14,8 +14,6 @@ import SwiftUI
 import NeodiskKit
 
 struct SunburstLegendList: View {
-    static let width: CGFloat = 340
-
     let model: NeodiskViewModel
     @ObservedObject var chartModel: SunburstChartModel
     /// The folder the list describes: the chart-hover preview folder when
@@ -81,7 +79,8 @@ struct SunburstLegendList: View {
             .id(displayedFolder.id)
             .transition(.opacity)
         }
-        .frame(width: Self.width)
+        // Width is owned by SunburstPane: user-resizable, clamped against
+        // the pane so the chart keeps a usable diameter (SunburstLegendMetrics).
         .simultaneousGesture(pinchDrillGesture(rows: rows))
     }
 

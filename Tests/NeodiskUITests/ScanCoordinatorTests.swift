@@ -4,6 +4,7 @@ import Foundation
 import NeodiskKit
 @testable import NeodiskUI
 
+extension ScanTimingSuites {
 @Suite(.serialized) struct ScanCoordinatorTests {
     @MainActor
     @Test func testStartAndFinishScanState() async throws {
@@ -12,7 +13,7 @@ import NeodiskKit
         let target = makeCoordinatorTarget("/scan/root")
         let snapshot = makeCoordinatorSnapshot(target: target)
 
-        coordinator.startScan(target, options: ScanOptions())
+        attachLiveScan(coordinator, target: target)
 
         #expect(coordinator.phase == .scanning)
         #expect(coordinator.selectedTarget == target)
@@ -62,7 +63,7 @@ import NeodiskKit
         let coordinator = ScanCoordinator(scanService: service, progressThrottleDuration: .milliseconds(40))
         let target = makeCoordinatorTarget("/scan/cancel")
 
-        coordinator.startScan(target, options: ScanOptions())
+        attachLiveScan(coordinator, target: target)
         coordinator.stopScan()
 
         try await waitUntil("stream cancellation") {
@@ -88,8 +89,8 @@ import NeodiskKit
         let firstSnapshot = makeCoordinatorSnapshot(target: firstTarget)
         let secondSnapshot = makeCoordinatorSnapshot(target: secondTarget)
 
-        coordinator.startScan(firstTarget, options: ScanOptions())
-        coordinator.startScan(secondTarget, options: ScanOptions())
+        attachLiveScan(coordinator, target: firstTarget)
+        attachLiveScan(coordinator, target: secondTarget)
 
         #expect(service.requests.map(\.target) == [firstTarget, secondTarget])
 
@@ -122,19 +123,19 @@ import NeodiskKit
 
         // Scan first, then second: first's snapshot leaves the screen but
         // stays remembered in memory.
-        coordinator.startScan(firstTarget, options: ScanOptions())
+        attachLiveScan(coordinator, target: firstTarget)
         service.yield(.finished(firstSnapshot), scanIndex: 0)
         service.finish(scanIndex: 0)
         try await waitUntil("first displayed") { coordinator.phase == .displaying }
 
-        coordinator.startScan(secondTarget, options: ScanOptions())
+        attachLiveScan(coordinator, target: secondTarget)
         service.yield(.finished(secondSnapshot), scanIndex: 1)
         service.finish(scanIndex: 1)
         try await waitUntil("second displayed") { coordinator.snapshot?.target == secondTarget }
 
         // Switching back shows first's map synchronously — no decode, no
         // transition screen — with the refresh scan running behind it.
-        coordinator.startRefreshScan(firstTarget, options: ScanOptions())
+        attachRefreshScan(coordinator, target: firstTarget)
         #expect(coordinator.snapshot?.id == firstSnapshot.id)
         #expect(coordinator.phase == .scanning)
         #expect(coordinator.suppressesPartialEvents)
@@ -147,15 +148,23 @@ import NeodiskKit
     @MainActor
     @Test func testProgressEventsAreThrottledToLatestPendingMetrics() async throws {
         let service = ControlledScanService()
-        let coordinator = ScanCoordinator(scanService: service, progressThrottleDuration: .milliseconds(90))
+        // A wide throttle window: the burst events are consumed off the async
+        // stream, so under a loaded machine the gap between consuming them can
+        // stretch past a tight window and defeat coalescing. A window that
+        // dwarfs scheduler jitter keeps the coalescing (not the assertion)
+        // deterministic.
+        let coordinator = ScanCoordinator(scanService: service, progressThrottleDuration: .milliseconds(500))
         var publishedPaths: [String] = []
+
+        attachLiveScan(coordinator, target: makeCoordinatorTarget("/scan/progress"))
+
+        // Each session owns its progress, so subscribe after the scan starts —
+        // `coordinator.progress` is the displayed session's instance from here.
         let cancellable = coordinator.progress.$metrics
             .sink { metrics in
                 guard !metrics.currentPath.isEmpty else { return }
                 publishedPaths.append(metrics.currentPath)
             }
-
-        coordinator.startScan(makeCoordinatorTarget("/scan/progress"), options: ScanOptions())
 
         service.yield(.progress(makeCoordinatorMetrics(path: "first", filesVisited: 1)), scanIndex: 0)
         service.yield(.progress(makeCoordinatorMetrics(path: "second", filesVisited: 2)), scanIndex: 0)
@@ -164,7 +173,7 @@ import NeodiskKit
         // "first" publishes immediately; "second" is superseded by "third" within the
         // throttle window, so the single trailing publish is "third". Assert on the
         // eventual state rather than a fixed-delay snapshot to avoid timing races.
-        try await waitUntil("throttled trailing progress publish", timeout: 1.5) {
+        try await waitUntil("throttled trailing progress publish", timeout: 4) {
             publishedPaths == ["first", "third"]
         }
 
@@ -178,7 +187,7 @@ import NeodiskKit
     @Test func testDisplayedScanCountersNeverDecrease() async throws {
         let service = ControlledScanService()
         let coordinator = ScanCoordinator(scanService: service, progressThrottleDuration: .zero)
-        coordinator.startScan(makeCoordinatorTarget("/scan/monotonic"), options: ScanOptions())
+        attachLiveScan(coordinator, target: makeCoordinatorTarget("/scan/monotonic"))
 
         service.yield(.progress(makeCoordinatorMetrics(path: "higher", filesVisited: 100)), scanIndex: 0)
         try await waitUntil("higher counters published") {
@@ -202,13 +211,17 @@ import NeodiskKit
         let target = makeCoordinatorTarget("/scan/finish-flush")
         let snapshot = makeCoordinatorSnapshot(target: target)
         var publishedPaths: [String] = []
+
+        attachLiveScan(coordinator, target: target)
+
+        // Subscribe after the scan starts: the displayed session's own progress
+        // is what `coordinator.progress` returns from here.
         let cancellable = coordinator.progress.$metrics
             .sink { metrics in
                 guard !metrics.currentPath.isEmpty else { return }
                 publishedPaths.append(metrics.currentPath)
             }
 
-        coordinator.startScan(target, options: ScanOptions())
         service.yield(.progress(makeCoordinatorMetrics(path: "first", filesVisited: 1)), scanIndex: 0)
 
         try await waitUntil("first progress publish") {
@@ -242,7 +255,6 @@ import NeodiskKit
             _ = coordinator.phase
             _ = coordinator.snapshot
             _ = coordinator.selectedTarget
-            _ = coordinator.completedScanSnapshot
             _ = coordinator.scanErrorMessage
             _ = coordinator.expandingNodeID
             _ = coordinator.displaySource
@@ -335,7 +347,7 @@ import NeodiskKit
         let target = makeCoordinatorTarget("/scan/refresh")
         let cached = makeCoordinatorSnapshot(target: target)
 
-        coordinator.startRefreshScan(target, options: ScanOptions())
+        let session = attachRefreshScan(coordinator, target: target)
         #expect(coordinator.phase == .scanning)
         #expect(coordinator.snapshot == nil)
 
@@ -344,7 +356,8 @@ import NeodiskKit
         try await Task.sleep(for: .milliseconds(30))
         #expect(coordinator.snapshot == nil)
 
-        coordinator.displayCachedSnapshot(cached)
+        session.refreshBaseline = cached
+        coordinator.showRefreshBaselineIfAttached(session)
         #expect(coordinator.phase == .scanning)
         #expect(coordinator.snapshot?.id == cached.id)
         #expect(coordinator.snapshot?.isComplete == true)
@@ -378,7 +391,7 @@ import NeodiskKit
         let current = makeCoordinatorSnapshot(target: target)
         coordinator.restoreCompletedSnapshot(current)
 
-        coordinator.startRefreshScan(target, options: ScanOptions())
+        attachRefreshScan(coordinator, target: target)
 
         #expect(coordinator.phase == .scanning)
         #expect(coordinator.snapshot?.id == current.id)
@@ -398,7 +411,7 @@ import NeodiskKit
         let cached = makeCoordinatorSnapshot(target: target)
         let fresh = makeCoordinatorSnapshot(target: target)
 
-        coordinator.startRefreshScan(target, options: ScanOptions())
+        let session = attachRefreshScan(coordinator, target: target)
         service.yield(.finished(fresh), scanIndex: 0)
         service.finish(scanIndex: 0)
         try await waitUntil("fresh scan finished") {
@@ -406,13 +419,15 @@ import NeodiskKit
         }
 
         // A slow cache decode arriving after the fresh finish is ignored.
-        coordinator.displayCachedSnapshot(cached)
+        session.refreshBaseline = cached
+        coordinator.showRefreshBaselineIfAttached(session)
         #expect(coordinator.snapshot?.id == fresh.id)
 
-        // And one arriving after the user switched targets is ignored too.
+        // And one arriving after the user switched targets — the first
+        // session is no longer displayed — is ignored too.
         let otherTarget = makeCoordinatorTarget("/scan/other")
-        coordinator.startRefreshScan(otherTarget, options: ScanOptions())
-        coordinator.displayCachedSnapshot(cached)
+        attachRefreshScan(coordinator, target: otherTarget)
+        coordinator.showRefreshBaselineIfAttached(session)
         #expect(coordinator.snapshot == nil)
         coordinator.stopScan()
     }
@@ -423,17 +438,26 @@ import NeodiskKit
         let coordinator = ScanCoordinator(scanService: service, progressThrottleDuration: .milliseconds(40))
         let target = makeCoordinatorTarget("/scan/abandon")
 
-        coordinator.startRefreshScan(target, options: ScanOptions())
+        let session = attachRefreshScan(coordinator, target: target)
 
-        // Abandoning for a different target changes nothing.
-        coordinator.abandonCachedSnapshotDisplay(forTargetID: "/scan/other")
+        // Abandoning a session that is not the one on screen changes nothing.
+        let otherSession = ScanSession(
+            target: makeCoordinatorTarget("/scan/other"),
+            options: ScanOptions(),
+            kind: .fresh,
+            service: service,
+            showsStandInWhileScanning: true,
+            progress: ScanProgressState(),
+            progressThrottleDuration: .milliseconds(40)
+        )
+        coordinator.abandonRefreshBaselineIfAttached(otherSession)
         let droppedPartial = makeCoordinatorSnapshot(target: target)
         service.yield(.partial(droppedPartial.treeStore), scanIndex: 0)
         try await Task.sleep(for: .milliseconds(30))
         #expect(coordinator.snapshot == nil)
 
-        // Abandoning for the scanned target lets partials through again.
-        coordinator.abandonCachedSnapshotDisplay(forTargetID: target.id)
+        // Abandoning the on-screen session lets partials through again.
+        coordinator.abandonRefreshBaselineIfAttached(session)
         service.yield(.partial(droppedPartial.treeStore), scanIndex: 0)
         try await waitUntil("partial tree published") {
             coordinator.snapshot != nil
@@ -442,6 +466,7 @@ import NeodiskKit
         coordinator.stopScan()
     }
 
+}
 }
 
 

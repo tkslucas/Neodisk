@@ -306,7 +306,7 @@ import NeodiskKit
         // index isn't ready, so model.startScan would take the refresh branch
         // (which suppresses partials). The plain scan path is what streams a
         // live partial tree, and this test is about that path.
-        model.coordinator.startScan(target, options: ScanOptions())
+        attachLiveScan(model.coordinator, target: target)
         // A partial tree puts results on screen without finishing the scan.
         let file = makeTestFileNode(id: target.id + "/file.txt", name: "file.txt", size: 5)
         let root = makeTestDirectoryNode(id: target.id, name: target.displayName, children: [file])

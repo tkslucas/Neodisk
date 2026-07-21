@@ -9,6 +9,7 @@ import NeodiskKit
 /// CURRENT behavior ahead of a refactor of the scan lifecycle; they are not
 /// aspirational. Scenarios already covered by
 /// NeodiskViewModelSnapshotCacheTests are intentionally not duplicated here.
+extension ScanTimingSuites {
 @MainActor
 @Suite(.serialized) struct ScanLifecycleTests {
     /// Switching back to a location scanned earlier this session shows its map
@@ -344,4 +345,6 @@ import NeodiskKit
             finishedAt: finishedAt
         )
     }
+}
+
 }

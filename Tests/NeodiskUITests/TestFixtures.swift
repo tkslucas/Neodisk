@@ -3,6 +3,15 @@ import Testing
 import NeodiskKit
 @testable import NeodiskUI
 
+/// Serialized parent for the timing-sensitive scan suites. `.serialized` on an
+/// individual suite only serializes the tests WITHIN it — sibling suites still
+/// run concurrently, and the scan suites each spin real async scan tasks that
+/// then pile onto the main actor together and starve each other's
+/// eventual-state waits on a loaded test bundle. Nesting them here runs them
+/// serially relative to each other, which keeps those waits converging
+/// promptly. Lightweight suites stay top-level and parallel.
+@Suite(.serialized) enum ScanTimingSuites {}
+
 /// Tears down a per-test UserDefaults suite without leaving a plist behind.
 /// removePersistentDomain alone is not enough: cfprefsd answers it by
 /// persisting an *empty* domain, so every test run used to leave another
@@ -159,14 +168,127 @@ final class ControlledScanService: ScanEventStreaming, @unchecked Sendable {
     }
 }
 
+// MARK: - Driving the coordinator directly
+
+/// Builds a scan session bound to a coordinator and wires its hooks exactly as
+/// ScanSessionModel does, so coordinator-only tests drive the display through
+/// the same path production does. The single construction point for the
+/// coordinator suites since `attach`/`detach` replaced the scan wrappers.
+@MainActor
+private func makeCoordinatorSession(
+    _ coordinator: ScanCoordinator,
+    target: ScanTarget,
+    options: ScanOptions,
+    kind: ScanSession.Kind,
+    showsStandInWhileScanning: Bool,
+    baselineProvider: (@Sendable () async -> ScanSnapshot?)? = nil,
+    refreshBaseline: ScanSnapshot? = nil
+) -> ScanSession {
+    let session = ScanSession(
+        target: target,
+        options: options,
+        kind: kind,
+        service: coordinator.scanService,
+        baselineProvider: baselineProvider,
+        showsStandInWhileScanning: showsStandInWhileScanning,
+        refreshBaseline: refreshBaseline,
+        progress: ScanProgressState(),
+        progressThrottleDuration: coordinator.progressThrottleDuration
+    )
+    session.onSnapshotUpdate = { coordinator.showDisplayedPartial(from: $0) }
+    session.onCompletion = { coordinator.settleDisplayedCompletion(from: $0) }
+    return session
+}
+
+/// Starts a cold live scan on `coordinator`, mirroring ScanSessionModel.
+@MainActor
+@discardableResult
+func attachLiveScan(
+    _ coordinator: ScanCoordinator,
+    target: ScanTarget,
+    options: ScanOptions = ScanOptions()
+) -> ScanSession {
+    let session = makeCoordinatorSession(
+        coordinator, target: target, options: options,
+        kind: .fresh, showsStandInWhileScanning: false
+    )
+    coordinator.attach(session, mode: .live, displaying: session.latestSnapshot)
+    session.start()
+    return session
+}
+
+/// Starts a refresh-behind-cache scan on `coordinator`, mirroring
+/// ScanSessionModel's retention of a same-target complete snapshot.
+@MainActor
+@discardableResult
+func attachRefreshScan(
+    _ coordinator: ScanCoordinator,
+    target: ScanTarget,
+    options: ScanOptions = ScanOptions(),
+    baselineProvider: (@Sendable () async -> ScanSnapshot?)? = nil
+) -> ScanSession {
+    let retained = coordinator.snapshot?.isComplete == true
+        && coordinator.snapshot?.target.id == target.id
+        ? coordinator.snapshot
+        : coordinator.recentSnapshot(forTargetID: target.id)
+    let effectiveBaselineProvider = retained.map { r in { @Sendable in r } } ?? baselineProvider
+    let session = makeCoordinatorSession(
+        coordinator, target: target, options: options,
+        kind: effectiveBaselineProvider == nil ? .fresh : .refresh,
+        showsStandInWhileScanning: true,
+        baselineProvider: effectiveBaselineProvider,
+        refreshBaseline: retained
+    )
+    coordinator.attach(
+        session,
+        mode: .refreshBehindCache(scanDate: retained.map { $0.finishedAt ?? $0.startedAt }),
+        displaying: retained
+    )
+    session.start()
+    return session
+}
+
+// MARK: - Deterministic persistence await
+
+/// Runs `trigger` (which finishes a scan) and suspends until that scan's
+/// snapshot has been fully persisted, using the model's persist seam rather
+/// than a wall-clock poll. A background scan's completion is a low-urgency
+/// main-actor task that can starve arbitrarily long under the parallel test
+/// bundle; awaiting the seam has no deadline to miss, so the assertion that
+/// follows is deterministic regardless of machine load.
+@MainActor
+func awaitSnapshotPersist(
+    on model: NeodiskViewModel,
+    of target: ScanTarget,
+    trigger: () -> Void
+) async {
+    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+        model.session.onSnapshotPersistedForTesting = { snapshot in
+            guard snapshot.target.id == target.id else { return }
+            // Resume once, then unhook so a later persist can't fire again.
+            model.session.onSnapshotPersistedForTesting = nil
+            continuation.resume()
+        }
+        trigger()
+    }
+}
+
 // MARK: - Eventual-state assertions
 
 /// Polls until the condition holds, recording a test failure on timeout.
 /// The async-condition form; the sync overload below forwards here.
+///
+/// The default timeout has a little slack because the bundle still runs many
+/// suites in parallel: a poll that converges in milliseconds in isolation can
+/// wait longer when the main actor is momentarily congested. Waiting costs
+/// nothing on the happy path (the poll returns the instant the condition
+/// holds) — it only bounds how long a genuinely stuck condition takes to fail.
+/// The timing-sensitive scan suites additionally run serially as a group (see
+/// ScanTimingSuites) so their async scan tasks do not starve these waits.
 @MainActor
 func waitUntilAsync(
     _ description: String,
-    timeout: TimeInterval = 2,
+    timeout: TimeInterval = 5,
     condition: () async -> Bool
 ) async throws {
     let deadline = Date().addingTimeInterval(timeout)
@@ -182,7 +304,7 @@ func waitUntilAsync(
 @MainActor
 func waitUntil(
     _ description: String,
-    timeout: TimeInterval = 2,
+    timeout: TimeInterval = 5,
     condition: () -> Bool
 ) async throws {
     try await waitUntilAsync(description, timeout: timeout, condition: condition)

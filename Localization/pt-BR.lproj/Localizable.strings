@@ -34,6 +34,7 @@
 "Scanning %@…" = "Analisando %@…";
 "%@ files · %@" = "%@ arquivos · %@";
 "Stop Scan" = "Parar Análise";
+"%@ · %@ items" = "%@ · %@ itens";
 "Opening last scan of %@…" = "Abrindo a última análise de %@…";
 
 /* MARK: - Scan failed */
@@ -49,6 +50,7 @@
 "Stopped — showing last scan" = "Interrompida — mostrando a última análise";
 "Stopped — showing partial results" = "Interrompida — mostrando resultados parciais";
 "Last scanned %@ — refreshing…" = "Última análise %@ — atualizando…";
+"Stopped scanning %@ to start the new scan." = "Análise de %@ interrompida para iniciar a nova.";
 "Finishing up…" = "Finalizando…";
 "Scanning…" = "Analisando…";
 

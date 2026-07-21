@@ -33,6 +33,7 @@
 "Scanning %@…" = "正在扫描 %@…";
 "%@ files · %@" = "%@ 个文件 · %@";
 "Stop Scan" = "停止扫描";
+"%@ · %@ items" = "%@ · %@ 个项目";
 "Opening last scan of %@…" = "正在打开 %@ 的上次扫描…";
 
 /* MARK: - 扫描失败 */
@@ -48,6 +49,7 @@
 "Stopped — showing last scan" = "已停止，显示上次扫描结果";
 "Stopped — showing partial results" = "已停止，显示部分结果";
 "Last scanned %@ — refreshing…" = "上次扫描于 %@，正在刷新…";
+"Stopped scanning %@ to start the new scan." = "已停止扫描 %@ 以开始新的扫描。";
 "Finishing up…" = "正在完成…";
 "Scanning…" = "正在扫描…";
 

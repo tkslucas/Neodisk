@@ -64,11 +64,14 @@ struct SidebarPane: View {
                             target: target,
                             subtitle: model.cloudAccounts.integration?.accountSubtitle(forTargetID: target.id) ?? target.id,
                             lastScanned: model.session.cachedScanInfo[target.id]?.lastScanDate,
-                            now: now
+                            now: now,
+                            scanProgress: backgroundScanProgress(for: target)
                         )
                         .tag(target.id)
                         .contextMenu {
                             Button("Sign Out…") { signOutTarget = target }
+                                .disabled(isScanning(target.id))
+                            stopScanButton(for: target)
                         }
                     }
 
@@ -83,7 +86,8 @@ struct SidebarPane: View {
                         subtitle: capacityByPath[target.id] ?? target.id,
                         lastScanned: model.session.cachedScanInfo[target.id]?.lastScanDate,
                         now: now,
-                        bar: cloudBar(for: target)
+                        bar: cloudBar(for: target),
+                        scanProgress: backgroundScanProgress(for: target)
                     )
                     .tag(target.id)
                     .contextMenu { removeMenu(clicked: target) }
@@ -193,6 +197,26 @@ struct SidebarPane: View {
         model.builtInLocations + visibleFolders
     }
 
+    /// A background scan running for this location — the demoted scans in the
+    /// session registry, NOT the foreground displayed one (that has the full
+    /// scan page). Reading the registry ties the list to scan start/stop only:
+    /// the dictionary changes identity on insert/remove, while progress ticks
+    /// mutate each session's own `ScanProgressState`, which the leaf
+    /// `SidebarScanBar` observes in isolation.
+    private func backgroundScanProgress(for target: ScanTarget) -> ScanProgressState? {
+        guard let session = model.session.activeSessions[target.id], session.state == .running else {
+            return nil
+        }
+        return session.progress
+    }
+
+    /// True while any scan (foreground or a demoted background one) is running
+    /// for this location: mirrors the model guards that refuse removing it or
+    /// signing it out mid-scan.
+    private func isScanning(_ targetID: String) -> Bool {
+        model.session.activeSession(forTargetID: targetID) != nil
+    }
+
     /// The Cloud Drives footer button, styled like "Add Folder…". A single
     /// configured provider is a plain button; multiple become a menu. When
     /// CloudScan is built in but no provider is configured (e.g. a release
@@ -265,12 +289,26 @@ struct SidebarPane: View {
             subtitle: capacityByPath[target.id] ?? target.id,
             lastScanned: model.session.cachedScanInfo[target.id]?.lastScanDate,
             now: now,
-            bar: bar
+            bar: bar,
+            scanProgress: backgroundScanProgress(for: target)
         )
         .tag(target.id)
         .contextMenu {
             Button("Reveal in Finder") {
                 SystemIntegration.reveal(target.url)
+            }
+            stopScanButton(for: target)
+        }
+    }
+
+    /// A "Stop Scan" item for rows with a running background scan. Foreground
+    /// scans have the scan page's own stop controls, so they are excluded.
+    @ViewBuilder
+    private func stopScanButton(for target: ScanTarget) -> some View {
+        if model.session.activeSessions[target.id] != nil {
+            Divider()
+            Button("Stop Scan") {
+                model.session.stopSession(forTargetID: target.id)
             }
         }
     }
@@ -285,11 +323,16 @@ struct SidebarPane: View {
         Button("Reveal in Finder") {
             SystemIntegration.reveal(target.url)
         }
+        stopScanButton(for: target)
         Divider()
+        // Refuse removal while a scan is in flight — dropping the cache mid-
+        // scan would orphan the session (the model guard backs this). A bulk
+        // remove stays live as long as one selected folder is idle.
         Button(ids.count > 1 ? "Remove \(ids.count) Folders from Sidebar" : "Remove from Sidebar") {
             model.removeSidebarFolders(ids: ids)
             selection.subtract(ids)
         }
+        .disabled(ids.allSatisfy { isScanning($0) })
     }
 
     private func removeSelectedFolders() {

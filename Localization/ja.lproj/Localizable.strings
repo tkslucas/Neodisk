@@ -33,6 +33,7 @@
 "Scanning %@…" = "%@をスキャン中…";
 "%@ files · %@" = "%@個のファイル · %@";
 "Stop Scan" = "スキャンを停止";
+"%@ · %@ items" = "%@ · %@項目";
 "Opening last scan of %@…" = "%@の前回のスキャンを開いています…";
 
 /* MARK: - Scan failed */
@@ -48,6 +49,7 @@
 "Stopped — showing last scan" = "停止中 — 前回のスキャンを表示";
 "Stopped — showing partial results" = "停止中 — 途中経過を表示";
 "Last scanned %@ — refreshing…" = "前回のスキャン: %@ — 更新中…";
+"Stopped scanning %@ to start the new scan." = "新しいスキャンを開始するため、%@ のスキャンを停止しました。";
 "Finishing up…" = "仕上げ中…";
 "Scanning…" = "スキャン中…";
 

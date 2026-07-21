@@ -75,6 +75,10 @@ final class CloudAccountsModel {
     /// account is what's on screen.
     func signOut(targetID: String) {
         guard let integration else { return }
+        // Refuse while the account is scanning (foreground or a demoted
+        // background scan): revoking its credentials and cache mid-scan would
+        // orphan the session. Stage 3 disables the menu item.
+        guard model?.session.activeSession(forTargetID: targetID) == nil else { return }
         let wasDisplayed = coordinator.selectedTarget?.id == targetID
         Task { [weak self, snapshotCache] in
             await integration.signOut(targetID: targetID)

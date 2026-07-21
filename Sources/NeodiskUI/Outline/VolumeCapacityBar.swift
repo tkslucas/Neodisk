@@ -288,7 +288,10 @@ struct VolumeCapacityBar: View {
     }
 }
 
-private struct VolumeBarTooltipSizeKey: PreferenceKey {
+/// Reports a measured tooltip bubble size; shared by the capacity bar and the
+/// sidebar's background-scan bar so each can offset its bubble clear of the
+/// bar (and stay hidden until the first measurement lands).
+struct VolumeBarTooltipSizeKey: PreferenceKey {
     nonisolated static let defaultValue: CGSize = .zero
 
     nonisolated static func reduce(value: inout CGSize, nextValue: () -> CGSize) {
@@ -299,42 +302,58 @@ private struct VolumeBarTooltipSizeKey: PreferenceKey {
     }
 }
 
-/// The hover bubble for one capacity-bar stretch: kind name over its size,
-/// in a rounded bubble with a tail pointing down at the hovered spot.
-private struct VolumeBarTooltip: View {
-    static let tailHeight: CGFloat = 5
+/// The shared hover-bubble chrome: content in a rounded card with a downward
+/// tail at `tailX`, drawn as one path so fill, stroke, and shadow stay
+/// continuous across the tail joint. Worn by the capacity bar's segment
+/// tooltip and the sidebar's background-scan bar.
+struct TooltipBubble<Content: View>: View {
+    static var tailHeight: CGFloat { 5 }
 
+    /// Tail tip x in bubble coordinates; nil centers it (pre-measurement).
+    var tailX: CGFloat?
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        content
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .padding(.bottom, Self.tailHeight)
+            .background {
+                let bubble = TooltipBubbleShape(tailHeight: Self.tailHeight, tailX: tailX)
+                bubble
+                    .fill(Color(nsColor: .controlBackgroundColor))
+                    .overlay(bubble.stroke(Color.primary.opacity(0.15), lineWidth: 0.5))
+                    .compositingGroup()
+                    .shadow(color: Color.black.opacity(0.22), radius: 3, y: 1)
+            }
+    }
+}
+
+/// The hover bubble for one capacity-bar stretch: kind name over its size,
+/// in the shared bubble with a tail pointing down at the hovered spot.
+private struct VolumeBarTooltip: View {
     let label: String
     let size: Int64
     /// Tail tip x in bubble coordinates; nil centers it (pre-measurement).
     let tailX: CGFloat?
 
     var body: some View {
-        VStack(spacing: 1) {
-            Text(LocalizedStringKey(label))
-                .font(.system(size: 11, weight: .semibold))
-            Text(verbatim: NeodiskFormatters.size(size))
-                .font(.system(size: 10))
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 5)
-        .padding(.bottom, Self.tailHeight)
-        .background {
-            let bubble = TooltipBubbleShape(tailHeight: Self.tailHeight, tailX: tailX)
-            bubble
-                .fill(Color(nsColor: .controlBackgroundColor))
-                .overlay(bubble.stroke(Color.primary.opacity(0.15), lineWidth: 0.5))
-                .compositingGroup()
-                .shadow(color: Color.black.opacity(0.22), radius: 3, y: 1)
+        TooltipBubble(tailX: tailX) {
+            VStack(spacing: 1) {
+                Text(LocalizedStringKey(label))
+                    .font(.system(size: 11, weight: .semibold))
+                Text(verbatim: NeodiskFormatters.size(size))
+                    .font(.system(size: 10))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 }
 
 /// Rounded rectangle with a downward tail at `tailX`, drawn as one path so
 /// fill, stroke, and shadow stay continuous across the tail joint.
-private struct TooltipBubbleShape: Shape {
+struct TooltipBubbleShape: Shape {
     var cornerRadius: CGFloat = 7
     var tailWidth: CGFloat = 12
     var tailHeight: CGFloat

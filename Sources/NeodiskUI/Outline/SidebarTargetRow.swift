@@ -23,6 +23,9 @@ struct SidebarTargetRow: View {
     /// scan). Scanned cloud locations and folders: the on-this-Mac /
     /// cloud-only proportion bar.
     var bar: VolumeBarData?
+    /// A background scan running for this location: its progress supersedes
+    /// the capacity bar with a striped progress bar in the same slot.
+    var scanProgress: ScanProgressState?
 
     var body: some View {
         HStack(spacing: 8) {
@@ -45,7 +48,12 @@ struct SidebarTargetRow: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
-                if let bar {
+                if let scanProgress {
+                    SidebarScanBar(progress: scanProgress)
+                        .padding(.top, 3)
+                        .padding(.bottom, 1)
+                        .padding(.trailing, 2)
+                } else if let bar {
                     VolumeCapacityBar(data: bar)
                         .padding(.top, 3)
                         .padding(.bottom, 1)

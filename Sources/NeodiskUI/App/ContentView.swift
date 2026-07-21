@@ -350,6 +350,13 @@ private struct WorkspaceView: View {
                     .animation(.easeInOut(duration: 0.2), value: model.session.snapshotNotice)
             }
 
+            if let superseded = model.session.supersededScanNotice {
+                Divider()
+                SupersededScanStrip(displayName: superseded.displayName) {
+                    model.session.supersededScanNotice = nil
+                }
+            }
+
             if model.coordinator.isScanning || model.scanWasStopped {
                 Divider()
                 LiveScanStrip(
@@ -456,6 +463,39 @@ private struct ScanIssuesPopover: View {
             .frame(height: min(280, CGFloat(groups.count) * 27 + 12))
         }
         .frame(width: 340)
+    }
+}
+
+/// Passive one-line mention shown when an explicit new scan took a contended
+/// disk from a scan the app stopped for it. Dismissable; clears on its own
+/// when the new scan finishes.
+private struct SupersededScanStrip: View {
+    let displayName: String
+    var onDismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "stop.circle")
+                .foregroundStyle(.secondary)
+            Text(String(format: NSLocalizedString(
+                "Stopped scanning %@ to start the new scan.",
+                comment: "Passive strip, an explicit scan stopped another on the same disk"
+            ), displayName))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Spacer()
+            Button {
+                onDismiss()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Dismiss")
+        }
+        .font(.system(size: 11))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
     }
 }
 

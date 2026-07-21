@@ -33,6 +33,7 @@
 "Scanning %@…" = "Scansione di %@…";
 "%@ files · %@" = "%@ file · %@";
 "Stop Scan" = "Interrompi scansione";
+"%@ · %@ items" = "%@ · %@ elementi";
 "Opening last scan of %@…" = "Apertura dell'ultima scansione di %@…";
 
 /* MARK: - Scan failed */
@@ -48,6 +49,7 @@
 "Stopped — showing last scan" = "Interrotta — visualizzazione dell'ultima scansione";
 "Stopped — showing partial results" = "Interrotta — visualizzazione dei risultati parziali";
 "Last scanned %@ — refreshing…" = "Ultima scansione %@ — aggiornamento…";
+"Stopped scanning %@ to start the new scan." = "Scansione di %@ interrotta per avviare la nuova.";
 "Finishing up…" = "Completamento…";
 "Scanning…" = "Scansione…";
 

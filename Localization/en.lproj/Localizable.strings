@@ -33,6 +33,7 @@
 "Scanning %@…" = "Scanning %@…";
 "%@ files · %@" = "%@ files · %@";
 "Stop Scan" = "Stop Scan";
+"%@ · %@ items" = "%@ · %@ items";
 "Opening last scan of %@…" = "Opening last scan of %@…";
 
 /* MARK: - Scan failed */
@@ -48,6 +49,7 @@
 "Stopped — showing last scan" = "Stopped — showing last scan";
 "Stopped — showing partial results" = "Stopped — showing partial results";
 "Last scanned %@ — refreshing…" = "Last scanned %@ — refreshing…";
+"Stopped scanning %@ to start the new scan." = "Stopped scanning %@ to start the new scan.";
 "Finishing up…" = "Finishing up…";
 "Scanning…" = "Scanning…";
 

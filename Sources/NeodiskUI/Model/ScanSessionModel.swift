@@ -24,6 +24,21 @@ final class ScanSessionModel {
     /// the floating notice offering the rescan the app didn't start.
     var snapshotNotice: SnapshotNotice?
 
+    /// Set when an explicit new scan took a contended disk from a running
+    /// scan the app stopped for it — a passive strip mention, dismissable.
+    var supersededScanNotice: SupersededScanNotice?
+
+    /// Running scans that are NOT the one on screen, keyed by target id — the
+    /// background scans a navigate-away demotion left running. The foreground
+    /// scan lives on the coordinator (`displayedSession`), not here, so this
+    /// dictionary is exactly the set Stage 3's sidebar rows observe. The
+    /// invariant is one running session per target across both.
+    private(set) var activeSessions: [String: ScanSession] = [:]
+
+    struct SupersededScanNotice: Equatable {
+        let displayName: String
+    }
+
     /// Under the smart auto-rescan policy: rescans that finished faster than
     /// this last time keep the original click-to-rescan behavior; slower ones
     /// display their snapshot and leave rescanning to the user (via the
@@ -58,10 +73,21 @@ final class ScanSessionModel {
     @ObservationIgnored private let diff: DiffModel
     @ObservationIgnored private let changes: ChangesModel
     @ObservationIgnored private let duplicates: DuplicatesModel
+    /// Resolves a target's disk identity for the concurrent-scan ruling.
+    /// Injected so tests can force same/different-device, network, and cloud
+    /// verdicts without touching the filesystem.
+    @ObservationIgnored var sourceIdentityProvider: (ScanTarget) -> ScanSourceIdentity
     /// Back-reference for the per-scan UI state reset that must run when a
     /// new scan or snapshot takes the screen — the same idiom DiffModel and
     /// ChangesModel use. Assigned right after init.
     @ObservationIgnored weak var model: NeodiskViewModel?
+
+    /// Test seam fired once a completed snapshot's full persistence pipeline
+    /// (cache index, snapshot save, kind-stats sidecar + generation bump,
+    /// change list) has run to the end. Tests await it to observe a background
+    /// scan's persistence at a deterministic point instead of polling under
+    /// the parallel test bundle's main-actor load.
+    @ObservationIgnored var onSnapshotPersistedForTesting: ((ScanSnapshot) -> Void)?
 
     init(
         coordinator: ScanCoordinator,
@@ -69,7 +95,8 @@ final class ScanSessionModel {
         kinds: KindStatsModel,
         diff: DiffModel,
         changes: ChangesModel,
-        duplicates: DuplicatesModel
+        duplicates: DuplicatesModel,
+        sourceIdentityProvider: @escaping (ScanTarget) -> ScanSourceIdentity = { ScanSourceIdentity.detect(for: $0) }
     ) {
         self.coordinator = coordinator
         self.snapshotCache = snapshotCache
@@ -77,18 +104,171 @@ final class ScanSessionModel {
         self.diff = diff
         self.changes = changes
         self.duplicates = duplicates
+        self.sourceIdentityProvider = sourceIdentityProvider
     }
 
-    /// Coordinator hook for a finished scan: persist it and run the opt-in
-    /// conveniences.
-    func scanDidFinish(_ snapshot: ScanSnapshot) {
-        persistCompletedSnapshot(snapshot)
-        // Opt-in convenience: kick off the duplicate content scan the
-        // moment a scan lands, so the Duplicates tab is ready (or at
-        // least underway) by the time the user opens it.
-        if preferences?.autoScanDuplicates == true {
-            duplicates.startScan()
+    // MARK: - Session registry
+
+    /// The running scan of a target, whether it is the one on screen or a
+    /// demoted background scan — the single source of truth for "is this
+    /// location scanning right now".
+    func activeSession(forTargetID targetID: String) -> ScanSession? {
+        if let displayed = coordinator.displayedSession,
+           displayed.target.id == targetID, displayed.state == .running {
+            return displayed
         }
+        if let background = activeSessions[targetID], background.state == .running {
+            return background
+        }
+        return nil
+    }
+
+    /// Stops the running scan of a target — the foreground one via the
+    /// coordinator, a background one directly — and drops it from the registry.
+    func stopSession(forTargetID targetID: String) {
+        if let background = activeSessions.removeValue(forKey: targetID) {
+            background.cancel()
+        }
+        if coordinator.displayedSession?.target.id == targetID {
+            coordinator.stopScan()
+        }
+    }
+
+    /// One running session per target: a background scan of the target we are
+    /// about to display is superseded before the new display takes over.
+    private func supersedeBackgroundSession(forTargetID targetID: String) {
+        guard let existing = activeSessions.removeValue(forKey: targetID) else { return }
+        existing.cancel()
+    }
+
+    /// The single scan-session factory: constructs a session on the
+    /// coordinator's scan service and wires its hooks to route back here. Every
+    /// session — cold, refresh, foreground, or one that will be demoted — is
+    /// born here, so display vs. background is a routing decision (which
+    /// session the coordinator currently shows), not a wiring one.
+    private func makeSession(
+        _ target: ScanTarget,
+        options: ScanOptions,
+        kind: ScanSession.Kind,
+        baselineProvider: (@Sendable () async -> ScanSnapshot?)? = nil,
+        showsStandInWhileScanning: Bool,
+        refreshBaseline: ScanSnapshot? = nil
+    ) -> ScanSession {
+        let session = ScanSession(
+            target: target,
+            options: options,
+            kind: kind,
+            service: coordinator.scanService,
+            baselineProvider: baselineProvider,
+            showsStandInWhileScanning: showsStandInWhileScanning,
+            refreshBaseline: refreshBaseline,
+            progress: ScanProgressState(),
+            progressThrottleDuration: coordinator.progressThrottleDuration
+        )
+        session.onSnapshotUpdate = { [weak self] session in
+            self?.coordinator.showDisplayedPartial(from: session)
+        }
+        session.onCompletion = { [weak self] session in
+            self?.sessionDidComplete(session)
+        }
+        return session
+    }
+
+    /// Starts a cold live scan of `target` and puts its growing map on screen.
+    private func startLiveScan(_ target: ScanTarget, options: ScanOptions) {
+        FeltTiming.noteScanStart()
+        let session = makeSession(target, options: options, kind: .fresh, showsStandInWhileScanning: false)
+        coordinator.attach(session, mode: .live, displaying: nil)
+        session.start()
+    }
+
+    /// Starts a refresh of `target` behind a complete stand-in. The displayed
+    /// or recently displayed snapshot of the same target holds the screen (and
+    /// doubles as the incremental baseline); otherwise `baselineProvider` seeds
+    /// the engine and a decode lands the stand-in on the session later.
+    @discardableResult
+    private func startRefreshScan(
+        _ target: ScanTarget,
+        options: ScanOptions,
+        baselineProvider: (@Sendable () async -> ScanSnapshot?)? = nil
+    ) -> ScanSession {
+        // Prefer what the display already holds: the on-screen snapshot, or a
+        // recently displayed one of the same target. Either keeps the map up
+        // through the refresh with no decode, and doubles as the incremental
+        // baseline (it IS the target's last complete scan).
+        let retained = coordinator.snapshot?.isComplete == true
+            && coordinator.snapshot?.target.id == target.id
+            ? coordinator.snapshot
+            : coordinator.recentSnapshot(forTargetID: target.id)
+        let effectiveBaselineProvider = retained.map { r in { @Sendable in r } } ?? baselineProvider
+
+        FeltTiming.noteScanStart()
+        let session = makeSession(
+            target,
+            options: options,
+            kind: effectiveBaselineProvider == nil ? .fresh : .refresh,
+            baselineProvider: effectiveBaselineProvider,
+            showsStandInWhileScanning: true,
+            refreshBaseline: retained
+        )
+        if retained != nil {
+            FeltTiming.noteCachedSnapshotDisplayed()
+        }
+        coordinator.attach(
+            session,
+            mode: .refreshBehindCache(scanDate: retained.map { $0.finishedAt ?? $0.startedAt }),
+            displaying: retained
+        )
+        session.start()
+        return session
+    }
+
+    /// A scan session reached a terminal state. One handler for both the scan
+    /// on screen and a demoted background scan — which it is is decided by
+    /// whether the coordinator currently displays it, not by how the hook was
+    /// wired. The displayed finish settles the display and runs the on-screen
+    /// conveniences (the duplicate scan); a background finish only leaves the
+    /// registry and is remembered for an instant return. Both persist through
+    /// the same path (cachedScanInfo + snapshot save + kind-stats sidecar +
+    /// generation bump → the sidebar's bars refresh). `saveSnapshotToCache`'s
+    /// diff/changes rotation hooks self-gate to the displayed target, so a
+    /// background save never disturbs a displayed diff of another target.
+    private func sessionDidComplete(_ session: ScanSession) {
+        let isDisplayed = coordinator.displayedSession === session
+        if isDisplayed {
+            coordinator.settleDisplayedCompletion(from: session)
+        } else if activeSessions[session.target.id] === session {
+            activeSessions.removeValue(forKey: session.target.id)
+        }
+
+        guard session.state == .finished,
+              let snapshot = session.latestSnapshot, snapshot.isComplete else { return }
+
+        if isDisplayed {
+            // The scan the user was watching finished, so the "stopped the old
+            // scan for this one" mention has served its purpose.
+            supersededScanNotice = nil
+            persistCompletedSnapshot(snapshot)
+            // Opt-in convenience: kick off the duplicate content scan the
+            // moment the on-screen scan lands, so the Duplicates tab is ready
+            // (or at least underway) by the time the user opens it.
+            if preferences?.autoScanDuplicates == true {
+                duplicates.startScan()
+            }
+        } else {
+            coordinator.insertRecentSnapshot(snapshot)
+            persistCompletedSnapshot(snapshot)
+        }
+    }
+
+    /// Detaches the on-screen session from the display and keeps it running as
+    /// a background scan: it stays in the registry and its progress keeps
+    /// updating its own instance for a sidebar row to observe. Its hooks still
+    /// route through the model, which gates them on the displayed session, so
+    /// its partials now reach nothing and its finish takes the background path.
+    private func demoteToBackground(_ session: ScanSession) {
+        coordinator.detach()
+        activeSessions[session.target.id] = session
     }
 
     /// Drops cache entries for locations no longer in the sidebar and
@@ -114,6 +294,156 @@ final class ScanSessionModel {
     }
 
     func startScan(_ target: ScanTarget, forcesRescan: Bool = false) {
+        // The clicked target may already have a running scan of its own — a
+        // background scan a previous navigate-away demoted. Unless the user
+        // explicitly forces a fresh rescan, that scan IS what to show: promote
+        // it rather than starting a second (one running session per target).
+        let attachable = forcesRescan ? nil : activeSessions[target.id]
+
+        // Leaving a still-running scan for a different target: the concurrent-
+        // scan ruling decides whether it keeps running in the background, is
+        // stopped for this one, or (with nothing to attach) whether this one
+        // defers to it and shows a cached map instead.
+        let navigateAway = evaluateNavigateAway(
+            to: target,
+            forcesRescan: forcesRescan,
+            hasAttachTarget: attachable != nil
+        )
+        if case .deferredToCache = navigateAway {
+            supersededScanNotice = nil
+            return
+        }
+
+        if let attachable {
+            attachBackgroundSession(attachable, to: target)
+        } else {
+            // A forced rescan of a target with a background scan cancels it
+            // first (one running session per target); other selections have
+            // nothing to supersede here.
+            supersedeBackgroundSession(forTargetID: target.id)
+            startScanBranch(target, forcesRescan: forcesRescan)
+        }
+
+        if case .cancelledRunningScan(let displayName) = navigateAway {
+            supersededScanNotice = SupersededScanNotice(displayName: displayName)
+        } else {
+            supersededScanNotice = nil
+        }
+    }
+
+    /// Promotes a running background scan of `target` back to the display: it
+    /// leaves the registry (its sidebar background row disappears), per-scan UI
+    /// state resets as any navigate-back does, and the coordinator resumes its
+    /// display exactly as it left the screen — a cold scan's live partial map,
+    /// or a refresh's stand-in with partials still suppressed. Subsequent
+    /// partials and the finish flow to the display through the session's hooks,
+    /// and the per-session progress keeps the bar where it left off.
+    private func attachBackgroundSession(_ session: ScanSession, to target: ScanTarget) {
+        activeSessions.removeValue(forKey: session.target.id)
+        prepareForNewDisplay()
+        // A navigation to an existing scan, not a new scan start.
+        FeltTiming.noteScanStart(restore: true)
+
+        if session.showsStandInWhileScanning {
+            let standIn = session.refreshBaseline
+            coordinator.attach(
+                session,
+                mode: .refreshBehindCache(scanDate: standIn.map { $0.finishedAt ?? $0.startedAt }),
+                displaying: standIn
+            )
+            if standIn != nil {
+                FeltTiming.noteCachedSnapshotDisplayed()
+            }
+        } else {
+            coordinator.attach(session, mode: .live, displaying: session.latestSnapshot)
+        }
+    }
+
+    /// The outcome of leaving a running scan to select a different target.
+    private enum NavigateAwayOutcome {
+        /// No running scan to leave, or the same target — nothing to decide.
+        case none
+        /// The running scan was demoted and keeps going in the background.
+        case demoted
+        /// The running scan was left for the branches to stop; its name feeds
+        /// the passive "stopped X for this scan" mention.
+        case cancelledRunningScan(String)
+        /// This selection deferred to the running scan and displayed the
+        /// target from cache instead — the normal branches must not run.
+        case deferredToCache
+    }
+
+    /// Applies the concurrent-scan ruling when selecting a target different
+    /// from the one currently scanning on screen. Runs before the ordinary
+    /// startScan branches.
+    private func evaluateNavigateAway(
+        to target: ScanTarget,
+        forcesRescan: Bool,
+        hasAttachTarget: Bool
+    ) -> NavigateAwayOutcome {
+        guard let displayed = coordinator.displayedSession,
+              displayed.state == .running,
+              displayed.target.id != target.id else { return .none }
+
+        let newScanIsExplicit = forcesRescan || !hasDisplayableCache(for: target)
+        let ruling = ScanSourceIdentity.ruling(
+            running: sourceIdentityProvider(displayed.target),
+            new: sourceIdentityProvider(target),
+            newScanIsExplicit: newScanIsExplicit
+        )
+        switch ruling {
+        case .runBoth:
+            demoteToBackground(displayed)
+            return .demoted
+        case .cancelOld:
+            // The startScan branches below cancel the on-screen session when
+            // they take over the display; name it here for the mention.
+            return .cancelledRunningScan(displayed.target.displayName)
+        case .deferNew:
+            demoteToBackground(displayed)
+            // When the target has its own running scan to attach, its live map
+            // beats a cached stand-in — attach it instead of deferring.
+            if !hasAttachTarget, displayTargetFromCacheDeferringRefresh(target) {
+                return .deferredToCache
+            }
+            // Launch race with nothing cached to show: the deferral has no
+            // stand-in, so fall through to a normal scan with the old one
+            // still running in the background.
+            return .demoted
+        }
+    }
+
+    /// Whether a target has a cached or recently displayed snapshot to stand
+    /// in without scanning — the difference between an implicit refresh (which
+    /// may defer) and cold, explicit intent (which may not).
+    private func hasDisplayableCache(for target: ScanTarget) -> Bool {
+        coordinator.recentSnapshot(forTargetID: target.id) != nil
+            || cachedScanInfo[target.id] != nil
+            || !hasIndexedSnapshotCache
+    }
+
+    /// Shows a target from its cache without starting a refresh scan, reusing
+    /// the snapshot-only display path and its manual-rescan notice. Returns
+    /// false only in the launch race where nothing is cached yet.
+    private func displayTargetFromCacheDeferringRefresh(_ target: ScanTarget) -> Bool {
+        if let info = cachedScanInfo[target.id] {
+            displaySnapshotWithoutRescan(for: target, info: info)
+            return true
+        }
+        if let recent = coordinator.recentSnapshot(forTargetID: target.id) {
+            prepareForNewDisplay()
+            coordinator.restoreCompletedSnapshot(recent)
+            syncCachedScanDate(with: recent)
+            snapshotNotice = SnapshotNotice(for: recent, lastScanDuration: nil)
+            snapshotWasRestoredWithoutRescan()
+            return true
+        }
+        return false
+    }
+
+    /// The pre-Stage-2 startScan body: the restore / refresh-behind-the-map /
+    /// live-scan branch choice for the target that will take the screen.
+    private func startScanBranch(_ target: ScanTarget, forcesRescan: Bool) {
         let options = scanOptions(for: target)
         let displaysTargetAlready = coordinator.snapshot?.isComplete == true
             && coordinator.snapshot?.target.id == target.id
@@ -126,7 +456,7 @@ final class ScanSessionModel {
             }
             // Rescan of the location on screen: keep the map, refresh behind it.
             prepareForNewDisplay()
-            coordinator.startRefreshScan(target, options: options)
+            startRefreshScan(target, options: options)
         } else if !forcesRescan,
                   let info = cachedScanInfo[target.id],
                   shouldSkipAutoRescan(lastScanDuration: info.lastScanDuration) {
@@ -139,7 +469,7 @@ final class ScanSessionModel {
             // memory (startRefreshScan retains it and uses it as the
             // incremental baseline) — no disk decode, no transition screen.
             prepareForNewDisplay()
-            coordinator.startRefreshScan(target, options: options)
+            startRefreshScan(target, options: options)
         } else if cachedScanInfo[target.id] != nil || !hasIndexedSnapshotCache {
             // A persisted snapshot exists (or the launch index isn't ready
             // yet and one might): show it as soon as it decodes, refreshing
@@ -150,15 +480,20 @@ final class ScanSessionModel {
             let load = Task { [snapshotCache, kinds] in
                 await Self.loadSeededSnapshot(for: target, in: snapshotCache, seeding: kinds)
             }
-            coordinator.startRefreshScan(
+            let session = startRefreshScan(
                 target,
                 options: options,
                 baselineProvider: { await load.value.snapshot }
             )
-            restoreCachedSnapshot(for: target, canCancelRefresh: !forcesRescan, load: load)
+            restoreCachedSnapshot(
+                for: target,
+                session: session,
+                canCancelRefresh: !forcesRescan,
+                load: load
+            )
         } else {
             prepareForNewDisplay()
-            coordinator.startScan(target, options: options)
+            startLiveScan(target, options: options)
         }
     }
 
@@ -222,7 +557,7 @@ final class ScanSessionModel {
             } else {
                 // Corrupt or vanished: forget the cache entry and scan live.
                 self.cachedScanInfo.removeValue(forKey: target.id)
-                self.coordinator.startScan(target, options: self.scanOptions(for: target))
+                self.startLiveScan(target, options: self.scanOptions(for: target))
             }
         }
     }
@@ -347,6 +682,7 @@ final class ScanSessionModel {
 
     private func restoreCachedSnapshot(
         for target: ScanTarget,
+        session: ScanSession,
         canCancelRefresh: Bool = false,
         load: Task<(snapshot: ScanSnapshot?, sidecar: KindStatsSidecar?), Never>? = nil
     ) {
@@ -361,7 +697,13 @@ final class ScanSessionModel {
             }
             guard let self else { return }
             if let cached {
-                self.coordinator.displayCachedSnapshot(cached)
+                // The decode lands on the SESSION, not the display: if the
+                // user navigated away mid-decode the refresh is now a
+                // background scan, and the stand-in it belongs to must ride
+                // along so a return can still show it. The coordinator applies
+                // it to the screen only while this session is the one on it.
+                session.refreshBaseline = cached
+                self.coordinator.showRefreshBaselineIfAttached(session)
                 // The pre-index launch race can start a refresh scan before
                 // anything reveals that the last scan of this location was
                 // expensive. The decoded snapshot itself carries the proof —
@@ -371,10 +713,11 @@ final class ScanSessionModel {
                 // as the indexed path would have.
                 let lastDuration = cached.finishedAt.map { $0.timeIntervalSince(cached.startedAt) }
                 self.syncCachedScanDate(with: cached)
+                let standingIn = self.coordinator.displayedSession === session
+                    && self.coordinator.snapshot?.id == cached.id
                 if canCancelRefresh,
                    shouldSkipAutoRescan(lastScanDuration: lastDuration),
-                   self.coordinator.isScanning,
-                   self.coordinator.snapshot?.id == cached.id {
+                   standingIn {
                     self.coordinator.restoreCompletedSnapshot(cached)
                     self.snapshotNotice = SnapshotNotice(for: cached, lastScanDuration: lastDuration)
                     self.snapshotWasRestoredWithoutRescan()
@@ -386,18 +729,26 @@ final class ScanSessionModel {
                         in: snapshotCache
                     )
                     self.kindStatsSidecarGeneration += 1
-                } else if self.coordinator.isScanning, self.coordinator.snapshot?.id == cached.id {
+                } else if standingIn {
                     FileHandle.standardError.write(
                         Data("Neodisk: showing cached scan of \(target.id) while the refresh runs\n".utf8)
                     )
                 }
             } else {
-                // Corrupt or vanished: forget it and let the live scan
-                // stream — unless the scan finished during the probe and
-                // just recorded a fresh snapshot for this very target.
-                self.coordinator.abandonCachedSnapshotDisplay(forTargetID: target.id)
-                let freshlyCompleted = self.coordinator.snapshot?.isComplete == true
-                    && self.coordinator.snapshot?.target.id == target.id
+                // Corrupt or vanished: this refresh has no stand-in after all,
+                // so it streams partials like a cold scan from here — flip the
+                // session's display intent (so a re-attach streams too) and
+                // revert its display to live streaming if it is still on
+                // screen. Forget the cache entry — but not when this scan has
+                // since finished and persisted a fresh snapshot: a demoted
+                // background scan completes off screen, so the displayed
+                // snapshot is another target's; the session's own terminal
+                // state is what says its result superseded the stale cache.
+                session.showsStandInWhileScanning = false
+                self.coordinator.abandonRefreshBaselineIfAttached(session)
+                let freshlyCompleted = session.state == .finished
+                    || (self.coordinator.snapshot?.isComplete == true
+                        && self.coordinator.snapshot?.target.id == target.id)
                 if !freshlyCompleted {
                     self.cachedScanInfo.removeValue(forKey: target.id)
                 }
@@ -452,6 +803,9 @@ final class ScanSessionModel {
 
     private func saveSnapshotToCache(_ snapshot: ScanSnapshot) {
         Task { [weak self, snapshotCache] in
+            // Signals the end of the persistence pipeline (success or failure)
+            // for the test seam; runs after every await below completes.
+            defer { self?.onSnapshotPersistedForTesting?(snapshot) }
             do {
                 let outcome = try await snapshotCache.save(snapshot)
                 // The optimistic index entry guessed hasPreviousSnapshot

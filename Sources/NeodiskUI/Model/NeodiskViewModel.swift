@@ -245,10 +245,6 @@ final class NeodiskViewModel {
             self?.snapshotDidChange(snapshot)
         }
 
-        coordinator.onScanFinished = { [weak self] snapshot in
-            self?.session.scanDidFinish(snapshot)
-        }
-
         // Drop cache entries for locations no longer in the sidebar and
         // learn which targets can open instantly from cache. A NEODISK_AUTOSCAN
         // dev-hook target is kept too even when it is not a sidebar location,
@@ -534,7 +530,13 @@ final class NeodiskViewModel {
         return true
     }
 
-    func removeSidebarFolders(ids: Set<String>) {
+    func removeSidebarFolders(ids requestedIDs: Set<String>) {
+        // A location with a scan in flight (foreground or a demoted background
+        // scan) must not be pulled out from under it — dropping its cache mid-
+        // scan would orphan the session. Refuse those; Stage 3 disables the UI.
+        let ids = requestedIDs.filter { session.activeSession(forTargetID: $0) == nil }
+        guard !ids.isEmpty else { return }
+
         for target in sidebarFolders where ids.contains(target.id) {
             sidebarFolderStore.remove(target)
         }

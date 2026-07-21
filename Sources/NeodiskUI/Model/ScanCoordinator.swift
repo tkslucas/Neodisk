@@ -98,17 +98,32 @@ final class ScanCoordinator {
         }
     }
     var selectedTarget: ScanTarget?
-    private(set) var completedScanSnapshot: ScanSnapshot?
     private(set) var scanErrorMessage: String?
     private(set) var expandingNodeID: FileNodeRecord.ID?
     /// See DisplaySource — all transitions live in this class.
     private(set) var displaySource: DisplaySource = .none
-    let progress: ScanProgressState
 
-    @ObservationIgnored private let scanService: any ScanEventStreaming
+    /// The scan whose stream and progress currently drive the display. Each
+    /// session owns a distinct `ScanProgressState`, so `progress` changes
+    /// identity when the displayed session does — this is tracked (not
+    /// `@ObservationIgnored`) precisely so `progress` readers re-bind when the
+    /// displayed session swaps (a demoted background scan, a new foreground
+    /// scan). `idleProgress` stands in between scans.
+    private(set) var displayedSession: ScanSession?
+    @ObservationIgnored private let idleProgress: ScanProgressState
+
+    /// The metrics of the scan on screen — the displayed session's own
+    /// progress, falling back to the idle instance between scans.
+    var progress: ScanProgressState {
+        displayedSession?.progress ?? idleProgress
+    }
+
+    /// The scan service and throttle back both node expansion here and the
+    /// scan sessions ScanSessionModel constructs — the single scan-session
+    /// factory reads them so all sessions share this coordinator's service.
+    @ObservationIgnored let scanService: any ScanEventStreaming
+    @ObservationIgnored let progressThrottleDuration: Duration
     @ObservationIgnored private let snapshotTransformService: any ScanSnapshotTransforming
-    @ObservationIgnored private let progressThrottleDuration: Duration
-    @ObservationIgnored private let progressClock = ContinuousClock()
 
     /// True while a refresh scan runs behind a displayed cached snapshot.
     var suppressesPartialEvents: Bool {
@@ -138,15 +153,8 @@ final class ScanCoordinator {
     private static let maxRecentSnapshots = 4
     private static let recentSnapshotNodeBudget = 4_000_000
 
-    @ObservationIgnored private var scanTask: Task<Void, Never>?
     @ObservationIgnored private var expandTask: Task<ScanExpansionResult, Never>?
-    @ObservationIgnored private var progressPublishTask: Task<Void, Never>?
-    @ObservationIgnored private var activeScanID: UUID?
-    @ObservationIgnored private var activeScanStartDate: Date?
     @ObservationIgnored private var activeExpansionID: UUID?
-    @ObservationIgnored private var pendingProgressMetrics: ScanMetrics?
-    @ObservationIgnored private var lastProgressPublishTime: ContinuousClock.Instant?
-    @ObservationIgnored var onScanFinished: ((ScanSnapshot) -> Void)?
     /// Fires after every displayed-snapshot change (partials included) with
     /// the new value — the @Observable replacement for the old `$snapshot`
     /// publisher the view model subscribed to.
@@ -161,7 +169,7 @@ final class ScanCoordinator {
         self.scanService = scanService
         self.snapshotTransformService = snapshotTransformService
         self.progressThrottleDuration = progressThrottleDuration
-        self.progress = progress
+        self.idleProgress = progress
     }
 
     var scanMetrics: ScanMetrics {
@@ -181,66 +189,63 @@ final class ScanCoordinator {
         snapshot?.source ?? .live
     }
 
-    func startScan(
-        _ target: ScanTarget,
-        options: ScanOptions,
-        prepare: () -> Void = {}
-    ) {
-        beginScan(target, options: options, retainedSnapshot: nil, prepare: prepare)
+    /// How live events treat the display of a newly attached session — the
+    /// two shapes `beginScan` used to fork on, now named so a re-attached
+    /// background scan resumes in the same shape it left the screen.
+    enum AttachMode: Equatable {
+        /// A cold scan streaming to the screen: partials display as they grow.
+        case live
+        /// A refresh runs behind a complete stand-in: partials are suppressed
+        /// until the fresh finish. `scanDate` is the stand-in's finish date for
+        /// "Last scanned … — refreshing…", nil until a stand-in has displayed.
+        case refreshBehindCache(scanDate: Date?)
     }
 
-    /// Starts a scan that refreshes an already-known result: the current
-    /// snapshot stays on screen when it is a complete scan of the same
-    /// target (otherwise the caller feeds one in via
-    /// `displayCachedSnapshot`), and `.partial` events are suppressed until
-    /// the fresh `.finished` snapshot replaces it.
-    ///
-    /// `baselineProvider` hands the scan service the target's last complete
-    /// snapshot so it can rescan incrementally; when nil, the displayed
-    /// same-target snapshot (if complete) serves as the baseline.
-    func startRefreshScan(
-        _ target: ScanTarget,
-        options: ScanOptions,
-        baselineProvider: (@Sendable () async -> ScanSnapshot?)? = nil,
-        prepare: () -> Void = {}
-    ) {
-        // Prefer what this session already holds: the displayed snapshot, or
-        // a recently displayed one of the same target. Either keeps the map
-        // on screen through the refresh with no cache decode, and doubles as
-        // the incremental baseline (it IS the target's last complete scan).
-        let retainedSnapshot = snapshot?.isComplete == true && snapshot?.target.id == target.id
-            ? snapshot
-            : recentSnapshot(forTargetID: target.id)
-        let baselineProvider = retainedSnapshot.map { retained in
-            { @Sendable in retained }
-        } ?? baselineProvider
-        beginScan(
-            target,
-            options: options,
-            retainedSnapshot: retainedSnapshot,
-            baselineProvider: baselineProvider,
-            prepare: prepare
-        )
-        displaySource = .cachedWhileRefreshing(
-            scanDate: retainedSnapshot.map { $0.finishedAt ?? $0.startedAt }
-        )
+    /// Makes `session` the displayed scan and sets the display up for `mode`,
+    /// standing `displaying` in on screen (a live partial for a re-attached
+    /// cold scan, a complete stand-in for a refresh, or nil for a scan that
+    /// has nothing to show yet). The single path that puts a scan on screen,
+    /// for both freshly created and re-attached background sessions. The
+    /// caller (ScanSessionModel) has already reset per-scan UI state and wired
+    /// the session's hooks; whatever was displayed is cancelled unless a
+    /// demote detached it first.
+    func attach(_ session: ScanSession, mode: AttachMode, displaying standIn: ScanSnapshot?) {
+        stopScan(resetState: false)
+
+        selectedTarget = session.target
+        scanErrorMessage = nil
+        phase = .scanning
+
+        snapshot = standIn
+        switch mode {
+        case .live:
+            displaySource = .liveStreaming
+        case .refreshBehindCache(let scanDate):
+            displaySource = .cachedWhileRefreshing(scanDate: scanDate)
+        }
+
+        // Each session owns its progress, so binding the displayed session
+        // rebinds `progress` to its accumulated metrics — a re-attached
+        // background scan keeps its bar where it left off (monotonic across
+        // detach/re-attach), a fresh session starts from zero.
+        displayedSession = session
     }
 
-    /// Swaps a cached snapshot in as the displayed result while a refresh
-    /// scan is still running. Ignored once the fresh scan has finished (or
-    /// the user moved on to another target) so a slow decode can never
-    /// clobber newer data.
-    func displayCachedSnapshot(_ cached: ScanSnapshot) {
-        guard cached.isComplete,
+    /// Shows a refresh session's decoded stand-in — but only while that very
+    /// session is the one on screen and still suppressing partials with
+    /// nothing complete yet shown. A decode that lands after the session was
+    /// demoted (or the display moved on) is ignored here; the snapshot stays on
+    /// `session.refreshBaseline` so a re-attach can still show it.
+    func showRefreshBaselineIfAttached(_ session: ScanSession) {
+        guard session === displayedSession,
+              let cached = session.refreshBaseline, cached.isComplete,
               isScanning,
               case .cachedWhileRefreshing = displaySource,
-              selectedTarget?.id == cached.target.id,
               snapshot?.isComplete != true else {
             return
         }
         FeltTiming.noteCachedSnapshotDisplayed()
         apply(snapshot: cached)
-        completedScanSnapshot = cached
         displaySource = .cachedWhileRefreshing(scanDate: cached.finishedAt ?? cached.startedAt)
     }
 
@@ -259,9 +264,7 @@ final class ScanCoordinator {
         scanErrorMessage = nil
         scanMetrics = ScanMetrics()
         snapshot = nil
-        completedScanSnapshot = nil
         displaySource = .none
-        resetProgressThrottling()
     }
 
     /// Displays the decoded snapshot of a restore begun with
@@ -276,61 +279,77 @@ final class ScanCoordinator {
         restoreCompletedSnapshot(snapshot)
     }
 
-    /// Reverts a refresh scan to normal live streaming when the cached
-    /// snapshot it was waiting for turned out to be unreadable.
-    func abandonCachedSnapshotDisplay(forTargetID targetID: String) {
-        guard isScanning,
+    /// Reverts a refresh session to normal live streaming when the stand-in it
+    /// was waiting for turned out to be unreadable — but only while that
+    /// session is still the one on screen.
+    func abandonRefreshBaselineIfAttached(_ session: ScanSession) {
+        guard session === displayedSession,
+              isScanning,
               case .cachedWhileRefreshing = displaySource,
-              selectedTarget?.id == targetID,
               snapshot?.isComplete != true else {
             return
         }
         displaySource = .liveStreaming
     }
 
-    private func beginScan(
-        _ target: ScanTarget,
-        options: ScanOptions,
-        retainedSnapshot: ScanSnapshot?,
-        baselineProvider: (@Sendable () async -> ScanSnapshot?)? = nil,
-        prepare: () -> Void
-    ) {
-        stopScan(resetState: false)
-        prepare()
+    /// The displayed session recorded a new partial tree — show it unless a
+    /// stand-in snapshot is holding the screen for a refresh. Self-gates on the
+    /// displayed session so a background scan's partials reach nothing.
+    func showDisplayedPartial(from session: ScanSession) {
+        guard session === displayedSession, !suppressesPartialEvents else { return }
+        guard let partial = session.latestSnapshot, !partial.isComplete else { return }
+        snapshot = partial
+    }
 
-        // Felt-time: full vs rescan is resolved by whether a cached map shows
-        // before the engine finishes (see FeltTiming), not by the branch taken.
-        FeltTiming.noteScanStart()
-        if retainedSnapshot != nil {
-            FeltTiming.noteCachedSnapshotDisplayed()
-        }
+    /// The displayed session reached a terminal state — settle the display and
+    /// phase from it. Self-gates on the displayed session; a background scan's
+    /// completion (persistence, LRU) is the session model's concern. The finish
+    /// case updates the display only; the model persists off the same event.
+    func settleDisplayedCompletion(from session: ScanSession) {
+        guard session === displayedSession else { return }
 
-        selectedTarget = target
-        phase = .scanning
-        scanErrorMessage = nil
-        scanMetrics = ScanMetrics()
-        snapshot = retainedSnapshot
-        completedScanSnapshot = retainedSnapshot
-        // startRefreshScan upgrades this to .cachedWhileRefreshing.
-        displaySource = .liveStreaming
-        resetProgressThrottling()
-
-        let scanID = UUID()
-        activeScanID = scanID
-        activeScanStartDate = Date()
-        let stream = baselineProvider.map { provider in
-            scanService.rescan(target: target, options: options, baselineProvider: provider)
-        } ?? scanService.scan(target: target, options: options)
-        scanTask = Task { [weak self] in
-            await self?.consumeScanStream(stream, scanID: scanID)
+        switch session.state {
+        case .finished:
+            guard let finished = session.latestSnapshot, finished.isComplete else { return }
+            FeltTiming.noteEngineFinished(snapshotID: finished.id)
+            apply(snapshot: finished)
+            displaySource = .liveStreaming
+            phase = .displaying
+        case .failed(let message):
+            displaySource = .none
+            phase = .failed
+            scanErrorMessage = message
+        case .cancelled:
+            phase = snapshot == nil ? .idle : .displaying
+        case .running:
+            break
         }
     }
 
+    /// Releases the displayed session WITHOUT cancelling it: the scan keeps
+    /// running, and the caller (the session model) keeps it in the
+    /// active-session registry as a background scan (its hooks already route
+    /// through the model, which gates them on the displayed session). The
+    /// display state (snapshot, phase, source) is left as-is for the caller's
+    /// next foreground scan or restore to reset.
+    @discardableResult
+    func detach() -> ScanSession? {
+        guard let session = displayedSession else { return nil }
+        displayedSession = nil
+        return session
+    }
+
+    /// Records a complete snapshot into the recent-snapshot LRU without
+    /// putting it on screen — a background scan's finished tree, so switching
+    /// to that target returns it instantly. Partials are rejected.
+    func insertRecentSnapshot(_ snapshot: ScanSnapshot) {
+        guard snapshot.isComplete else { return }
+        rememberRecentSnapshot(snapshot)
+    }
+
     func stopScan(resetState: Bool = true) {
-        activeScanID = nil
-        scanTask?.cancel()
-        scanTask = nil
-        resetProgressThrottling()
+        displayedSession?.cancel()
+        displayedSession = nil
         cancelExpansion()
 
         var metrics = scanMetrics
@@ -346,7 +365,6 @@ final class ScanCoordinator {
         stopScan(resetState: false)
         selectedTarget = nil
         snapshot = nil
-        completedScanSnapshot = nil
         displaySource = .none
         scanMetrics = ScanMetrics()
         phase = .idle
@@ -418,9 +436,7 @@ final class ScanCoordinator {
         FeltTiming.noteRestoreCompleted(snapshotID: snapshot.id)
         selectedTarget = snapshot.target
         scanErrorMessage = nil
-        resetProgressThrottling()
         apply(snapshot: snapshot)
-        completedScanSnapshot = snapshot.source.isPersistable ? snapshot : nil
         displaySource = .restoredWithoutScan
 
         var metrics = ScanMetrics()
@@ -459,26 +475,6 @@ final class ScanCoordinator {
         return result
     }
 
-    private func consumeScanStream(
-        _ stream: AsyncThrowingStream<ScanProgressEvent, Error>,
-        scanID: UUID
-    ) async {
-        do {
-            for try await event in stream {
-                guard activeScanID == scanID else { break }
-                handle(event, scanID: scanID)
-            }
-        } catch is CancellationError {
-            completeCancelledScan(scanID: scanID)
-            return
-        } catch {
-            failScan(error, scanID: scanID)
-            return
-        }
-
-        completeScanIfActive(scanID: scanID)
-    }
-
     private func consumeExpansionStream(
         _ stream: AsyncThrowingStream<ScanProgressEvent, Error>,
         node: FileNodeRecord,
@@ -513,179 +509,8 @@ final class ScanCoordinator {
         }
     }
 
-    private func handle(_ event: ScanProgressEvent, scanID: UUID) {
-        guard activeScanID == scanID else { return }
-
-        switch event {
-        case .progress(let metrics):
-            handleProgress(metrics, scanID: scanID)
-        case .warning:
-            break
-        case .partial(let store):
-            handlePartialTree(store, scanID: scanID)
-        case .finished(let snapshot):
-            finishScan(with: snapshot, scanID: scanID)
-        }
-    }
-
-    /// Publishes an in-progress tree so the UI can render a live, growing
-    /// map. The phase stays `.scanning`; `finished` replaces this best-effort
-    /// snapshot with exact data.
-    private func handlePartialTree(_ store: FileTreeStore, scanID: UUID) {
-        guard activeScanID == scanID, !suppressesPartialEvents, let selectedTarget else { return }
-
-
-        snapshot = ScanSnapshot(
-            target: selectedTarget,
-            treeStore: store,
-            startedAt: activeScanStartDate ?? Date(),
-            finishedAt: nil,
-            scanWarnings: [],
-            aggregateStats: store.aggregateStats,
-            isComplete: false
-        )
-    }
-
-    private func handleProgress(_ metrics: ScanMetrics, scanID: UUID) {
-        guard activeScanID == scanID else { return }
-
-        if shouldPublishProgressImmediately {
-            publishProgress(metrics)
-            return
-        }
-
-        pendingProgressMetrics = metrics
-        schedulePendingProgressPublish(scanID: scanID)
-    }
-
-    private var shouldPublishProgressImmediately: Bool {
-        guard progressThrottleDuration > .zero else { return true }
-        guard let lastProgressPublishTime else { return true }
-
-        return lastProgressPublishTime.duration(to: progressClock.now) >= progressThrottleDuration
-    }
-
-    private func schedulePendingProgressPublish(scanID: UUID) {
-        guard progressPublishTask == nil else { return }
-
-        let delay: Duration
-        if let lastProgressPublishTime {
-            let elapsed = lastProgressPublishTime.duration(to: progressClock.now)
-            delay = elapsed >= progressThrottleDuration ? .zero : progressThrottleDuration - elapsed
-        } else {
-            delay = .zero
-        }
-
-        progressPublishTask = Task { [weak self] in
-            do {
-                try await Task.sleep(for: delay)
-            } catch {
-                return
-            }
-
-            self?.publishPendingProgress(scanID: scanID)
-        }
-    }
-
-    private func publishPendingProgress(scanID: UUID) {
-        guard activeScanID == scanID else { return }
-        progressPublishTask = nil
-        guard let pendingProgressMetrics else { return }
-        publishProgress(pendingProgressMetrics)
-    }
-
-    private func publishProgress(_ metrics: ScanMetrics) {
-        progressPublishTask?.cancel()
-        progressPublishTask = nil
-        pendingProgressMetrics = nil
-        lastProgressPublishTime = progressClock.now
-        var monotonicMetrics = metrics
-        if isScanning {
-            // Progress comes from the traversal coordinator and pooled summary
-            // workers. Even with engine-side serialization, exact final
-            // hard-link/clone accounting may be lower than the live estimate.
-            // The strip is a discovery counter, so it must never count down.
-            monotonicMetrics.filesVisited = max(
-                monotonicMetrics.filesVisited,
-                scanMetrics.filesVisited
-            )
-            monotonicMetrics.bytesDiscovered = max(
-                monotonicMetrics.bytesDiscovered,
-                scanMetrics.bytesDiscovered
-            )
-        }
-        scanMetrics = monotonicMetrics
-    }
-
-    private func finishScan(with snapshot: ScanSnapshot, scanID: UUID) {
-        guard activeScanID == scanID else { return }
-
-        flushPendingProgress(scanID: scanID)
-        FeltTiming.noteEngineFinished(snapshotID: snapshot.id)
-        apply(snapshot: snapshot)
-        completedScanSnapshot = snapshot
-        displaySource = .liveStreaming
-
-        var completedMetrics = scanMetrics
-        completedMetrics.recalculateProgress(isComplete: true)
-        publishProgress(completedMetrics)
-
-        activeScanID = nil
-        scanTask = nil
-        phase = .displaying
-        onScanFinished?(snapshot)
-    }
-
     private func apply(snapshot: ScanSnapshot) {
         self.snapshot = snapshot
-    }
-
-    private func completeCancelledScan(scanID: UUID) {
-        guard activeScanID == scanID else { return }
-
-        resetProgressThrottling()
-        if snapshot == nil {
-            phase = .idle
-        }
-        activeScanID = nil
-        scanTask = nil
-    }
-
-    private func failScan(_ error: Error, scanID: UUID) {
-        guard activeScanID == scanID else { return }
-
-        resetProgressThrottling()
-        displaySource = .none
-        phase = .failed
-        scanErrorMessage = error.localizedDescription
-        activeScanID = nil
-        scanTask = nil
-    }
-
-    private func completeScanIfActive(scanID: UUID) {
-        guard activeScanID == scanID else { return }
-
-        resetProgressThrottling()
-        phase = snapshot == nil ? .idle : .displaying
-        activeScanID = nil
-        scanTask = nil
-    }
-
-    private func flushPendingProgress(scanID: UUID) {
-        guard activeScanID == scanID else { return }
-        progressPublishTask?.cancel()
-        progressPublishTask = nil
-
-        if let pendingProgressMetrics {
-            publishProgress(pendingProgressMetrics)
-        }
-    }
-
-    private func resetProgressThrottling() {
-        progressPublishTask?.cancel()
-        progressPublishTask = nil
-        pendingProgressMetrics = nil
-        lastProgressPublishTime = nil
     }
 
     private func cancelExpansion() {

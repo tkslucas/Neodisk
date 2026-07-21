@@ -13,7 +13,7 @@
 import Foundation
 import Darwin
 
-nonisolated enum ScanSourceProfile: Sendable {
+public nonisolated enum ScanSourceProfile: Sendable {
     /// Internal APFS is the one source class where broad directory parallelism
     /// is predictably beneficial.
     case localParallel
@@ -25,28 +25,107 @@ nonisolated enum ScanSourceProfile: Sendable {
     case unsupported
 
     static func detect(for url: URL) -> ScanSourceProfile {
+        probe(for: url).profile
+    }
+
+    /// One `statfs` yielding both the traversal profile and the mount's
+    /// device identity, so callers that need both (concurrency ruling) don't
+    /// pay two syscalls. `deviceID` is nil only when the path can't be
+    /// stat'd; the profile then falls back to `.unsupported`.
+    static func probe(for url: URL) -> (profile: ScanSourceProfile, deviceID: UInt64?) {
         var fileSystemStats = statfs()
         let statResult = url.withUnsafeFileSystemRepresentation { path in
             guard let path else { return Int32(-1) }
             return statfs(path, &fileSystemStats)
         }
-        guard statResult == 0 else { return .unsupported }
-        guard fileSystemStats.f_flags & UInt32(MNT_LOCAL) != 0 else { return .network }
+        guard statResult == 0 else { return (.unsupported, nil) }
+        let deviceID = deviceID(from: fileSystemStats.f_fsid)
+        guard fileSystemStats.f_flags & UInt32(MNT_LOCAL) != 0 else { return (.network, deviceID) }
 
         let fileSystemType = withUnsafeBytes(of: fileSystemStats.f_fstypename) { rawBuffer -> String in
             guard let base = rawBuffer.bindMemory(to: CChar.self).baseAddress else { return "" }
             return String(cString: base).lowercased()
         }
-        guard fileSystemType == "apfs" else { return .unsupported }
+        guard fileSystemType == "apfs" else { return (.unsupported, deviceID) }
 
         let values = try? url.resourceValues(forKeys: [
             .volumeIsInternalKey,
             .volumeIsRemovableKey
         ])
         if values?.volumeIsInternal == true, values?.volumeIsRemovable != true {
-            return .localParallel
+            return (.localParallel, deviceID)
         }
-        return .localConservative
+        return (.localConservative, deviceID)
+    }
+
+    private static func deviceID(from fsid: fsid_t) -> UInt64 {
+        let high = UInt64(UInt32(bitPattern: fsid.val.0)) << 32
+        let low = UInt64(UInt32(bitPattern: fsid.val.1))
+        return high | low
+    }
+}
+
+/// A scan target's traversal profile paired with the physical device it lives
+/// on — the inputs the concurrency ruling needs to decide whether two scans
+/// can share the machine without fighting over one disk.
+public nonisolated struct ScanSourceIdentity: Sendable, Equatable {
+    public let profile: ScanSourceProfile
+    /// The mount's `statfs` fsid; nil for `cloudscan://` targets, which have
+    /// no local device and never contend with an on-disk scan.
+    public let deviceID: UInt64?
+
+    public init(profile: ScanSourceProfile, deviceID: UInt64?) {
+        self.profile = profile
+        self.deviceID = deviceID
+    }
+
+    public static func detect(for target: ScanTarget) -> ScanSourceIdentity {
+        if target.kind == .cloud {
+            // Cloud accounts stream over the network; no local device.
+            return ScanSourceIdentity(profile: .network, deviceID: nil)
+        }
+        let probe = ScanSourceProfile.probe(for: target.url)
+        return ScanSourceIdentity(profile: probe.profile, deviceID: probe.deviceID)
+    }
+}
+
+/// How a new scan should treat one already running: run alongside it, hold
+/// off, or take its place.
+public enum ConcurrentScanRuling: Sendable, Equatable {
+    /// The two sources don't contend — scan both at once.
+    case runBoth
+    /// Same contended disk and the new scan is an unsolicited refresh —
+    /// leave the running scan alone and show the new target from cache.
+    case deferNew
+    /// Same contended disk and the new scan is explicit — stop the running
+    /// one so the user's request gets the disk.
+    case cancelOld
+}
+
+extension ScanSourceIdentity {
+    /// Whether a new scan may run concurrently with one already in flight.
+    /// Different devices, a cloud source on either side (no local device), or
+    /// a network source on either side never contend, so they run together.
+    /// On one local device, only the internally-parallel profile fans out
+    /// safely to two scans; conservative/exotic disks serialize — an explicit
+    /// new scan wins the disk, an implicit refresh yields to the running one.
+    public static func ruling(
+        running: ScanSourceIdentity,
+        new: ScanSourceIdentity,
+        newScanIsExplicit: Bool
+    ) -> ConcurrentScanRuling {
+        if running.deviceID == nil || new.deviceID == nil
+            || running.deviceID != new.deviceID
+            || running.profile == .network || new.profile == .network {
+            return .runBoth
+        }
+        // Same local device from here.
+        switch new.profile {
+        case .localParallel:
+            return .runBoth
+        case .localConservative, .unsupported, .network:
+            return newScanIsExplicit ? .cancelOld : .deferNew
+        }
     }
 }
 

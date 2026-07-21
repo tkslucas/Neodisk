@@ -62,6 +62,13 @@ final class SplitterNSView: NSView {
     /// True when the splitter lies between stacked panes: horizontal
     /// hairline, up-down cursor, drag reports deltaY.
     private let betweenStackedPanes: Bool
+    private var hoverTrackingArea: NSTrackingArea?
+    private var isPointerInside = false
+    private var isDragging = false
+
+    private var resizeCursor: NSCursor {
+        betweenStackedPanes ? .resizeUpDown : .resizeLeftRight
+    }
 
     init(betweenStackedPanes: Bool) {
         self.betweenStackedPanes = betweenStackedPanes
@@ -74,11 +81,56 @@ final class SplitterNSView: NSView {
     }
 
     override func resetCursorRects() {
-        addCursorRect(bounds, cursor: betweenStackedPanes ? .resizeUpDown : .resizeLeftRight)
+        addCursorRect(bounds, cursor: resizeCursor)
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverTrackingArea {
+            removeTrackingArea(hoverTrackingArea)
+        }
+        let area = NSTrackingArea(
+            rect: .zero,
+            options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        hoverTrackingArea = area
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        isPointerInside = true
+        resizeCursor.set()
+        needsDisplay = true
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        isPointerInside = false
+        needsDisplay = true
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        isDragging = true
+        resizeCursor.set()
+        needsDisplay = true
     }
 
     override func mouseDragged(with event: NSEvent) {
+        resizeCursor.set()
         onDrag?(betweenStackedPanes ? event.deltaY : event.deltaX)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        isDragging = false
+        isPointerInside = bounds.contains(convert(event.locationInWindow, from: nil))
+        needsDisplay = true
+        window?.invalidateCursorRects(for: self)
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -88,5 +140,30 @@ final class SplitterNSView: NSView {
         } else {
             NSRect(x: bounds.midX - 0.5, y: 0, width: 1, height: bounds.height).fill()
         }
+
+        guard isPointerInside || isDragging else { return }
+        drawHighlight()
+    }
+
+    /// The colored line stays visually quiet at its ends, then eases toward
+    /// the accent at center. The full eight-point view remains the hit target;
+    /// only this two-point strip becomes visible on hover or drag.
+    private func drawHighlight() {
+        let accent = NSColor.controlAccentColor
+        let strength = isDragging ? 0.85 : 0.55
+        let gradient = NSGradient(colors: [
+            accent.withAlphaComponent(0),
+            accent.withAlphaComponent(strength * 0.25),
+            accent.withAlphaComponent(strength),
+            accent.withAlphaComponent(strength * 0.25),
+            accent.withAlphaComponent(0),
+        ])
+        let lineRect: NSRect
+        if betweenStackedPanes {
+            lineRect = NSRect(x: 0, y: bounds.midY - 1, width: bounds.width, height: 2)
+        } else {
+            lineRect = NSRect(x: bounds.midX - 1, y: 0, width: 2, height: bounds.height)
+        }
+        gradient?.draw(in: lineRect, angle: betweenStackedPanes ? 0 : 90)
     }
 }

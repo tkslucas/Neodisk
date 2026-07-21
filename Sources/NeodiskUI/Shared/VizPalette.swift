@@ -13,12 +13,14 @@
 //  sequence — green, blue, red, magenta/pink, yellow, orange, purple,
 //  cyan/aqua, then the tail — so any prefix spreads across the color wheel,
 //  and switching palettes re-skins the map without reshuffling which family
-//  each rank, category, or branch gets. Classic, Vivid, and Colorblind
-//  derive categories through the shared role map below; Retro and Neon
-//  carry terminal-scheme accent sets (warm faded amber-and-olive, and soft
-//  neon on a dark canvas) — saturation-punched for area fills via
-//  `punched` — whose maps differ only in the two tail categories their
-//  schemes lack colors for. Colorblind is the Okabe-Ito
+//  each rank, category, or branch gets. Classic, Vivid, Graphite, and
+//  Colorblind derive categories through the shared role map below;
+//  Graphite is monochrome — one grey-to-deep-blue span for kinds,
+//  categories, age, and branches alike, so its "hue families" are shades.
+//  Retro and Neon carry terminal-scheme accent sets (warm faded
+//  amber-and-olive, and soft neon on a dark canvas) — saturation-punched
+//  for area fills via `punched` — whose maps differ only in the two tail
+//  categories their schemes lack colors for. Colorblind is the Okabe-Ito
 //  qualitative palette (designed to stay distinct under deuteranopia/
 //  protanopia/tritanopia) with the viridis ramp for age — perceptually
 //  uniform and monotonic in lightness so it still reads in greyscale.
@@ -56,7 +58,7 @@ struct VizPalette: Sendable, Equatable, Identifiable {
     // MARK: - Registry
 
     /// Every selectable palette, in the order the Settings picker lists them.
-    static let all: [VizPalette] = [.standard, .vivid, .retro, .neon, .colorblind]
+    static let all: [VizPalette] = [.standard, .vivid, .graphite, .retro, .neon, .colorblind]
 
     /// The palette persisted under `id`, or the default for unknown ids
     /// (never fails: a stale preference falls back gracefully).
@@ -87,6 +89,43 @@ struct VizPalette: Sendable, Equatable, Identifiable {
         // matching the punched-up kind table.
         sunburst: SunburstPalette(branchHues: .wheel(saturationScale: 1.3, brightnessScale: 1))
     )
+
+    /// Monochrome: every mode draws in one grey-blue span, and depth of
+    /// blue is the only signal — the biggest kind, the biggest branch, and
+    /// the oldest age bucket draw deepest; selection, hover, and highlights
+    /// carry the emphasis instead of hue. Kind identity is deliberately
+    /// soft (kinds differ by shade alone); the ramp is monotonic in
+    /// lightness so every mode also reads in greyscale.
+    static let graphite = VizPalette(
+        id: "graphite",
+        title: "Graphite",
+        kindPalette: graphiteKinds,
+        categoryRoles: classicCategoryRoles,
+        ageRamp: [
+            SIMD3(0.831, 0.847, 0.863), // light grey — newest
+            SIMD3(0.678, 0.722, 0.769),
+            SIMD3(0.514, 0.600, 0.686),
+            SIMD3(0.357, 0.482, 0.616),
+            SIMD3(0.204, 0.376, 0.569),
+            SIMD3(0.059, 0.286, 0.510), // deep blue — oldest
+            FileKindCatalog.otherRGB,
+        ],
+        sunburst: .ramp(graphiteBranchRamp)
+    )
+
+    /// The age ramp's grey-blue span at branch-table resolution: eight
+    /// even RGB steps, deep blue (midpoint 0, the largest branch) → light
+    /// grey, so size position reads as depth of blue.
+    private static let graphiteBranchRamp: [SIMD3<Float>] = [
+        SIMD3(0.059, 0.286, 0.510), // deep blue — largest
+        SIMD3(0.169, 0.366, 0.560),
+        SIMD3(0.280, 0.446, 0.611),
+        SIMD3(0.390, 0.527, 0.661),
+        SIMD3(0.500, 0.607, 0.712),
+        SIMD3(0.610, 0.687, 0.762),
+        SIMD3(0.721, 0.767, 0.813),
+        SIMD3(0.831, 0.847, 0.863), // light grey — smallest
+    ]
 
     /// Warm faded terminal tones — brick red, olive green, amber, muted
     /// blue-grey. Branch mode quantizes the midpoint wheel into the table,
@@ -216,6 +255,16 @@ struct VizPalette: Sendable, Equatable, Identifiable {
         SIMD3(0.43, 0.63, 0.04), // olive
         SIMD3(0.62, 0.22, 0.43), // plum
     ]
+
+    /// A 14-step rank ramp over the same grey-blue span as the age and
+    /// branch ramps: the biggest kind draws deepest blue. Categories map
+    /// through the shared role map, so the canonical slots keep every
+    /// category on a stable shade.
+    private static let graphiteKinds: [SIMD3<Float>] = {
+        let deep = SIMD3<Float>(0.059, 0.286, 0.510)
+        let light = SIMD3<Float>(0.831, 0.847, 0.863)
+        return (0..<14).map { deep + (light - deep) * (Float($0) / 13) }
+    }()
 
     /// The retro accents punched up for the map (see `punched`); everything
     /// palette-side — kinds, categories, age ramp, quantized branch table —

@@ -70,10 +70,11 @@ public struct SunburstPalette: Equatable, Sendable {
         /// scales tilt the whole envelope; (1, 1) is the plain look.
         case wheel(saturationScale: Double, brightnessScale: Double)
         /// Hues restricted to a fixed accent table: the midpoint quantizes
-        /// into the hue-sorted table, so the wheel's geometry (children near
-        /// their parent, siblings spreading with size) survives while every
-        /// color stays in the scheme. Build via `quantized(_:)`, which
-        /// hue-sorts the entries.
+        /// into the table in its stored order, so the wheel's geometry
+        /// (children near their parent, siblings spreading with size)
+        /// survives while every color stays in the scheme. Build via
+        /// `quantized(_:)` (hue-sorts a qualitative accent set) or
+        /// `ramp(_:)` (keeps an ordinal ramp's own order).
         case table([SIMD3<Float>])
     }
 
@@ -98,6 +99,14 @@ public struct SunburstPalette: Equatable, Sendable {
             SunburstColorResolver.hsb(fromRGB: $0).0 < SunburstColorResolver.hsb(fromRGB: $1).0
         }
         return SunburstPalette(branchHues: .table(sorted))
+    }
+
+    /// A table palette from an ordinal ramp: entries keep the caller's
+    /// order (hue-sorting a monochrome ramp would scramble its lightness
+    /// progression), so the midpoint sweeps the ramp end to end — position
+    /// in the size-sorted tree reads as position on the ramp.
+    public static func ramp(_ entries: [SIMD3<Float>]) -> SunburstPalette {
+        SunburstPalette(branchHues: .table(entries))
     }
 }
 

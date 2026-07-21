@@ -31,7 +31,9 @@ import SunburstCore
     @Test func testClassicRolePalettesShareColorMeaning() {
         // Classic and Vivid keep one hue-role order: each category maps to
         // the same kind-table slot, so switching between them changes the
-        // look, never what a color means.
+        // look, never what a color means. (Graphite shares the category
+        // roles but swaps the age ramp for its grey-blue ordinal ramp, so
+        // it sits out the age assertions here.)
         for palette in [VizPalette.vivid] {
             for (category, rgb) in VizPalette.standard.categoryRGB where category != "cat-other" {
                 let index = VizPalette.standard.kindPalette.firstIndex(of: rgb)
@@ -128,6 +130,23 @@ import SunburstCore
                 #expect(index >= previousIndex, "hue order regressed at midpoint \(midpoint)")
                 previousIndex = index
             }
+        }
+    }
+
+    @Test func testGraphiteBranchRampSweepsDarkToLight() {
+        // Graphite's branch table is an ordinal ramp, not a hue-sorted
+        // accent set: as the midpoint sweeps the size order, brightness
+        // must rise monotonically (deep blue on the largest branch → light
+        // grey on the smallest) — hue-sorting would scramble it.
+        var previous = -1.0
+        for step in 0..<8 {
+            let midpoint = (Double(step) + 0.5) / 8
+            let components = SunburstColorResolver.components(
+                for: SunburstColorToken(midpoint: midpoint, depth: 1, role: .normal),
+                palette: VizPalette.graphite.sunburst
+            )
+            #expect(components.brightness > previous, "ramp order broken at midpoint \(midpoint)")
+            previous = components.brightness
         }
     }
 

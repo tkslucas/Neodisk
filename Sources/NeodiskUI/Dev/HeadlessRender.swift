@@ -77,8 +77,8 @@ public enum HeadlessRender {
                 let store = snapshot.treeStore
                 let environment = ProcessInfo.processInfo.environment
                 // NEODISK_RENDER_PALETTE=<id> renders with that VizPalette
-                // (standard, vivid, pastel, earth, colorblind); unknown ids
-                // fall back to standard.
+                // (any id in VizPalette.all); unknown ids fall back to
+                // standard.
                 let palette = VizPalette.named(
                     environment["NEODISK_RENDER_PALETTE"] ?? VizPalette.standard.id
                 )

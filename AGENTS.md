@@ -99,6 +99,8 @@ Swift/SwiftUI practices and keep the scanning core UI-free.
   - `NEODISK_TREEMAP_STYLE=<cushion|flat>` — show that treemap style on
     launch without persisting the preference (`NEODISK_RENDER_STYLE=flat`
     is the `--render-png` equivalent).
+  - `NEODISK_OUTLINE_POSITION=<leading|bottom>` — dock the file list left of
+    or below the treemap on launch without persisting the preference.
   - `NEODISK_UPDATE_STATE=<checking|available|downloading|readyToInstall|upToDate|failed>`
     — force the toolbar update pill into a non-idle state at launch (inert
     closures), so headless snapshots can capture the indicator without a live

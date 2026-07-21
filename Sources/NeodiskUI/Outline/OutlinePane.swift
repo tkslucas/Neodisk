@@ -22,11 +22,10 @@ import SwiftUI
 
 struct OutlinePane: View {
     let model: NeodiskViewModel
-    @FocusState private var isSearchFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
-            searchField
+            OutlineSearchField(model: model)
             Divider()
             if let results = model.search.results {
                 OutlineSearchResultsList(model: model, results: results)
@@ -36,9 +35,26 @@ struct OutlinePane: View {
         }
     }
 
-    /// Entire-scan fuzzy search. Filtering never navigates or zooms — the
-    /// treemap stays exactly where it is; only this pane's list changes.
-    private var searchField: some View {
+    /// The AppKit-backed tree. The search field and search results live
+    /// outside it and never pan horizontally.
+    private var outlineTree: some View {
+        OutlineTreeTable(
+            model: model,
+            rows: model.visibleOutlineRows(),
+            selectedID: model.selectedNodeID,
+            baseline: model.diff.baseline
+        )
+    }
+}
+
+/// Entire-scan fuzzy search, shared by both outline layouts. Filtering
+/// never navigates or zooms — the treemap stays exactly where it is; only
+/// the outline's list changes.
+struct OutlineSearchField: View {
+    let model: NeodiskViewModel
+    @FocusState private var isSearchFocused: Bool
+
+    var body: some View {
         @Bindable var search = model.search
         return HStack(spacing: 4) {
             Image(systemName: "magnifyingglass")
@@ -69,16 +85,5 @@ struct OutlinePane: View {
         .onChange(of: model.search.focusToken) { _, _ in
             isSearchFocused = true
         }
-    }
-
-    /// The AppKit-backed tree. The search field and search results live
-    /// outside it and never pan horizontally.
-    private var outlineTree: some View {
-        OutlineTreeTable(
-            model: model,
-            rows: model.visibleOutlineRows(),
-            selectedID: model.selectedNodeID,
-            baseline: model.diff.baseline
-        )
     }
 }

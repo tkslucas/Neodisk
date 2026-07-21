@@ -51,6 +51,14 @@ enum DevLaunchHooks {
             model.treemapStyle = style
         }
 
+        // NEODISK_OUTLINE_POSITION=<leading|bottom> docks the file list
+        // without persisting the preference.
+        if let rawPosition = environment["NEODISK_OUTLINE_POSITION"],
+           let position = OutlinePosition(rawValue: rawPosition) {
+            model.devOutlinePositionOverride = position
+            model.outlinePosition = position
+        }
+
         // NEODISK_UPDATE_STATE=<checking|available|downloading|readyToInstall|
         // upToDate|failed> forces the update pill into a non-idle state at
         // launch (with inert closures), so headless snapshots can capture the

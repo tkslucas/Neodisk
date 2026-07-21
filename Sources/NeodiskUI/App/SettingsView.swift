@@ -129,6 +129,19 @@ private struct ViewSettingsTab: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
+
+            Section("File List") {
+                Picker("Position", selection: Binding(
+                    get: { preferences.outlinePosition },
+                    set: { preferences.outlinePosition = $0 }
+                )) {
+                    Text("Below the treemap").tag(OutlinePosition.bottom)
+                    Text("Left of the treemap").tag(OutlinePosition.leading)
+                }
+                Text("Below the treemap shows a wide table with percentage, size, file count, and modified-date columns; click a column header to sort. Applies immediately.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
     }

@@ -280,9 +280,20 @@ private struct WorkspaceView: View {
     let model: NeodiskViewModel
 
     // Defaults leave the treemap clearly dominant on a fresh install's
-    // default-size window; both panes stay user-resizable (persisted).
+    // default-size window; all panes stay user-resizable (persisted).
     @AppStorage("outlinePaneWidth") private var outlinePaneWidth = 300.0
     @AppStorage("kindStatsPaneWidth") private var kindStatsPaneWidth = 230.0
+    @AppStorage("bottomOutlinePaneHeight") private var bottomOutlinePaneHeight = 200.0
+
+    /// The sunburst brings its own legend list, so the outline is
+    /// treemap-only in both dock positions.
+    private var showsLeadingOutline: Bool {
+        model.vizViewMode != .sunburst && model.outlinePosition == .leading
+    }
+
+    private var showsBottomOutline: Bool {
+        model.vizViewMode != .sunburst && model.outlinePosition == .bottom
+    }
 
     private var permissionDeniedCount: Int {
         // With Full Disk Access granted the remaining unreadable locations
@@ -297,10 +308,7 @@ private struct WorkspaceView: View {
         VStack(spacing: 0) {
             ZStack(alignment: .bottomTrailing) {
                 HStack(spacing: 0) {
-                    // The sunburst brings its own legend list; the outline
-                    // pane would be a third redundant column, so it is
-                    // treemap-only (the analysis pane behaves as always).
-                    if model.vizViewMode != .sunburst {
+                    if showsLeadingOutline {
                         OutlinePane(model: model)
                             .frame(width: outlinePaneWidth)
 
@@ -318,6 +326,16 @@ private struct WorkspaceView: View {
                         } else {
                             TreemapPane(model: model)
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
+                        // Bottom dock: the wide multi-column file list sits
+                        // under the map only — the analysis pane keeps its
+                        // full height beside both.
+                        if showsBottomOutline {
+                            RowSplitter(
+                                height: $bottomOutlinePaneHeight, range: 120...440, edge: .bottom
+                            )
+                            BottomOutlinePane(model: model)
+                                .frame(height: bottomOutlinePaneHeight)
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)

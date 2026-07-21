@@ -120,6 +120,20 @@ struct NeodiskCommands: Commands {
             }
             .keyboardShortcut("3", modifiers: [.command, .option])
             .disabled(model.coordinator.snapshot == nil)
+
+            Divider()
+
+            // Same preference as the Settings picker; the menu adds
+            // discoverability and a checkmark for the current state. In
+            // sunburst the list is hidden either way — the toggle still
+            // flips the preference for the trip back to the treemap.
+            Toggle(isOn: Binding(
+                get: { model.outlinePosition == .bottom },
+                set: { model.preferences?.outlinePosition = $0 ? .bottom : .leading }
+            )) {
+                Label("File List Below Treemap", systemImage: "rectangle.bottomthird.inset.filled")
+            }
+            .disabled(model.coordinator.snapshot == nil)
         }
 
         // Finder-style Go menu for the drill and selection axes. The same

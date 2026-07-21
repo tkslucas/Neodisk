@@ -19,6 +19,9 @@ struct OutlineNameSection: View {
     let model: NeodiskViewModel
     let row: NeodiskViewModel.OutlineRow
     let state: OutlineRowSelectionState
+    /// The bottom table's name column truncates in place (middle ellipsis)
+    /// instead of panning; the left pane keeps the full-width pan behavior.
+    var truncatesName = false
 
     var body: some View {
         HStack(spacing: 4) {
@@ -51,7 +54,8 @@ struct OutlineNameSection: View {
 
             Text(row.node.name)
                 .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
+                .truncationMode(.middle)
+                .fixedSize(horizontal: !truncatesName, vertical: false)
                 .foregroundStyle(state.showsAccentSelection
                     ? AnyShapeStyle(.white)
                     : AnyShapeStyle(.primary))
@@ -83,6 +87,9 @@ struct OutlineTrailingSection: View {
     let model: NeodiskViewModel
     let row: NeodiskViewModel.OutlineRow
     let state: OutlineRowSelectionState
+    /// The left pane pins this cluster at its 16pt edge inset; the bottom
+    /// table's size column brings its own, much tighter padding.
+    var trailingPadding: CGFloat = OutlineRowMetrics.contentInset
 
     var body: some View {
         HStack(spacing: 4) {
@@ -105,7 +112,7 @@ struct OutlineTrailingSection: View {
                 .fixedSize(horizontal: true, vertical: false)
         }
         .font(.system(size: 12))
-        .padding(.trailing, OutlineRowMetrics.contentInset)
+        .padding(.trailing, trailingPadding)
         .frame(maxHeight: .infinity)
     }
 }

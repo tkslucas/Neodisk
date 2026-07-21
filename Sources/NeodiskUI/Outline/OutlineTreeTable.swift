@@ -548,8 +548,9 @@ final class OutlineRowSelectionState {
 
 /// NSTableView that toggles Quick Look on space, like the SwiftUI lists'
 /// `quickLookOnSpace`. Key events only reach the table while it is first
-/// responder, so typing spaces into the search field is unaffected.
-private final class OutlineNSTableView: NSTableView {
+/// responder, so typing spaces into the search field is unaffected. Shared
+/// by both outline layouts (left column and bottom table).
+final class OutlineNSTableView: NSTableView {
     var quickLookRequested: () -> Bool = { false }
     /// True while a click's mouse-tracking session is running. The table
     /// applies a click's selection at mouseDown but fires the delegate only

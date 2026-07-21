@@ -148,6 +148,14 @@ import NeodiskKit
             target.id + "/file1.txt",
         ])
 
+        // The diff ordering outranks a bottom-table header sort, so the
+        // changes read top-down in both outline layouts.
+        let sortedDiffOrder = model
+            .visibleOutlineRows(sortedBy: OutlineSort(field: .name, ascending: true))
+            .filter { $0.id != target.id }
+            .map(\.id)
+        #expect(sortedDiffOrder == diffOrder)
+
         // Leaving the tab drops the baseline; ordering reverts to the store's
         // own size-descending order: file3(15), file1(11), file2(10).
         model.analysisTab = .largest
@@ -160,6 +168,86 @@ import NeodiskKit
             target.id + "/file1.txt",
             target.id + "/file2.txt",
         ])
+    }
+
+    @Test func testVisibleOutlineRowsComputeFractionOfParent() throws {
+        let environment = try TestEnvironment()
+        defer { environment.tearDown() }
+        let target = makeTestTarget("/outline/fractions")
+        let model = environment.makeModel()
+        model.coordinator.replaceCurrentSnapshot(makeMultiLevelSnapshot(target: target))
+        model.toggleExpansion(target.id + "/dirA")
+
+        // Root totals 190 (dirA 150 + dirB 30 + file4 10); each row's
+        // fraction is its share of its own parent, not of the root.
+        let fractions = Dictionary(
+            uniqueKeysWithValues: model.visibleOutlineRows().map { ($0.id, $0.fractionOfParent) }
+        )
+        #expect(fractions[target.id] == 1)
+        #expect(fractions[target.id + "/dirA"] == 150.0 / 190.0)
+        #expect(fractions[target.id + "/dirB"] == 30.0 / 190.0)
+        #expect(fractions[target.id + "/file4.bin"] == 10.0 / 190.0)
+        #expect(fractions[target.id + "/dirA/file1.bin"] == 100.0 / 150.0)
+        #expect(fractions[target.id + "/dirA/file2.bin"] == 50.0 / 150.0)
+    }
+
+    @Test func testHeaderSortReordersSiblingsPerLevel() throws {
+        let environment = try TestEnvironment()
+        defer { environment.tearDown() }
+        let target = makeTestTarget("/outline/sorted")
+        let model = environment.makeModel()
+        model.coordinator.replaceCurrentSnapshot(makeMultiLevelSnapshot(target: target))
+
+        func topLevel(_ sort: OutlineSort) -> [String] {
+            model.visibleOutlineRows(sortedBy: sort)
+                .filter { $0.depth == 1 }
+                .map(\.node.name)
+        }
+
+        #expect(topLevel(OutlineSort(field: .name, ascending: true))
+            == ["dirA", "dirB", "file4.bin"])
+        #expect(topLevel(OutlineSort(field: .name, ascending: false))
+            == ["file4.bin", "dirB", "dirA"])
+        // Size ascending inverts the store's default descending order.
+        #expect(topLevel(OutlineSort(field: .size, ascending: true))
+            == ["file4.bin", "dirB", "dirA"])
+        // File counts: dirA 2, dirB 1, file4 1 — the tie between dirB and
+        // file4 falls back to descending size (30 vs 10) either direction.
+        #expect(topLevel(OutlineSort(field: .files, ascending: false))
+            == ["dirA", "dirB", "file4.bin"])
+        #expect(topLevel(OutlineSort(field: .files, ascending: true))
+            == ["dirB", "file4.bin", "dirA"])
+    }
+
+    @Test func testModifiedSortTreatsUnknownDatesAsOldest() throws {
+        let environment = try TestEnvironment()
+        defer { environment.tearDown() }
+        let target = makeTestTarget("/outline/modified")
+        let model = environment.makeModel()
+
+        let older = Date(timeIntervalSince1970: 1_000)
+        let newer = Date(timeIntervalSince1970: 2_000)
+        let dateless = makeTestFileNode(id: target.id + "/a.txt", name: "a.txt", size: 99)
+        let old = makeTestFileNode(
+            id: target.id + "/b.txt", name: "b.txt", size: 1, lastModified: older
+        )
+        let new = makeTestFileNode(
+            id: target.id + "/c.txt", name: "c.txt", size: 1, lastModified: newer
+        )
+        let root = makeTestDirectoryNode(
+            id: target.id, name: target.displayName, children: [dateless, old, new]
+        )
+        let store = FileTreeStore(root: root, childrenByID: [root.id: [dateless, old, new]])
+        model.coordinator.replaceCurrentSnapshot(makeTestSnapshot(target: target, root: root, store: store))
+
+        func names(ascending: Bool) -> [String] {
+            model.visibleOutlineRows(sortedBy: OutlineSort(field: .modified, ascending: ascending))
+                .filter { $0.depth == 1 }
+                .map(\.node.name)
+        }
+
+        #expect(names(ascending: false) == ["c.txt", "b.txt", "a.txt"])
+        #expect(names(ascending: true) == ["a.txt", "b.txt", "c.txt"])
     }
 
     // MARK: - Per-scan state reset

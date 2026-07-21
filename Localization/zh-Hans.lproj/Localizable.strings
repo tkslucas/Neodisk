@@ -282,6 +282,19 @@
 "Colorblind-safe" = "色盲友好";
 "The color set the visualizations draw with. Colorblind-safe stays distinct with common color vision differences. Applies immediately." = "可视化使用的配色方案。色盲友好在常见色觉差异下仍可区分。立即生效。";
 
+/* MARK: - File list position */
+"File List" = "文件列表";
+"Position" = "位置";
+"Left of the treemap" = "矩形树图左侧";
+"Below the treemap" = "矩形树图下方";
+"Below the treemap shows a wide table with percentage, size, file count, and modified-date columns; click a column header to sort. Applies immediately." = "「矩形树图下方」显示一个宽表格，包含占比、大小、文件数和修改日期列；点按列标题即可排序。立即生效。";
+"Name" = "名称";
+"%" = "%";
+"Size" = "大小";
+"Files" = "文件数";
+"Modified" = "修改日期";
+"File List Below Treemap" = "文件列表位于矩形树图下方";
+
 /* MARK: - Sunburst & view switcher */
 "View" = "视图";
 "Treemap" = "矩形树图";

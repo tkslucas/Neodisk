@@ -86,6 +86,13 @@ final class AppPreferences: ObservableObject {
     /// How the treemap draws: classic cushion shading, or the flat
     /// nested-box style. See TreemapStyle.
     @AppStorage("treemapStyle") var treemapStyleRaw = TreemapStyle.cushion.rawValue
+    /// Where the file outline docks (bottom table — the default — or the
+    /// compact left column). See OutlinePosition.
+    @AppStorage("outlinePosition") var outlinePositionRaw = OutlinePosition.bottom.rawValue
+    /// The bottom outline table's header sort (column + direction). The
+    /// left column has no headers and ignores these.
+    @AppStorage("outlineSortField") var outlineSortFieldRaw = OutlineSortField.size.rawValue
+    @AppStorage("outlineSortAscending") var outlineSortAscending = false
     /// Decode the previous snapshot whenever a complete tree lands on screen
     /// — a scan finishing, or a saved snapshot opening without a rescan — so
     /// the Changes toggle shows instantly instead of loading on click. The
@@ -137,6 +144,15 @@ final class AppPreferences: ObservableObject {
         )
         _treemapStyleRaw = AppStorage(
             wrappedValue: TreemapStyle.cushion.rawValue, "treemapStyle", store: defaults
+        )
+        _outlinePositionRaw = AppStorage(
+            wrappedValue: OutlinePosition.bottom.rawValue, "outlinePosition", store: defaults
+        )
+        _outlineSortFieldRaw = AppStorage(
+            wrappedValue: OutlineSortField.size.rawValue, "outlineSortField", store: defaults
+        )
+        _outlineSortAscending = AppStorage(
+            wrappedValue: false, "outlineSortAscending", store: defaults
         )
         _prepareChangesAfterScan = AppStorage(
             wrappedValue: true, "prepareChangesAfterScan", store: defaults
@@ -200,6 +216,24 @@ final class AppPreferences: ObservableObject {
     var treemapStyle: TreemapStyle {
         get { TreemapStyle(rawValue: treemapStyleRaw) ?? .cushion }
         set { treemapStyleRaw = newValue.rawValue }
+    }
+
+    var outlinePosition: OutlinePosition {
+        get { OutlinePosition(rawValue: outlinePositionRaw) ?? .bottom }
+        set { outlinePositionRaw = newValue.rawValue }
+    }
+
+    var outlineSort: OutlineSort {
+        get {
+            OutlineSort(
+                field: OutlineSortField(rawValue: outlineSortFieldRaw) ?? .size,
+                ascending: outlineSortAscending
+            )
+        }
+        set {
+            outlineSortFieldRaw = newValue.field.rawValue
+            outlineSortAscending = newValue.ascending
+        }
     }
 
     /// Patterns parsed from the exclusions text, empty when disabled.

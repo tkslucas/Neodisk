@@ -8,6 +8,7 @@
 //  expandedNodeIDs) stays in NeodiskViewModel.swift; this file only moves.
 //
 
+import Foundation
 import NeodiskKit
 
 extension NeodiskViewModel {
@@ -188,24 +189,32 @@ extension NeodiskViewModel {
         let node: FileNodeRecord
         let depth: Int
         let isExpandable: Bool
+        /// This node's share of its parent's displayed weight (1 for the
+        /// root row); drives the bottom table's percentage bar.
+        let fractionOfParent: Double
 
         var id: String { node.id }
     }
 
     /// Depth-first flattening of the expanded portion of the tree. In diff
     /// mode, siblings order by how much they changed since the baseline
-    /// (largest magnitude first, growth or shrinkage alike) instead of the
-    /// store's size order — everything that moved reads top-down.
-    func visibleOutlineRows() -> [OutlineRow] {
+    /// (largest magnitude first, growth or shrinkage alike) — that ordering
+    /// outranks a header sort so the diff reads top-down in both outline
+    /// layouts. Otherwise `sortedBy` (the bottom table's header sort)
+    /// reorders siblings; nil keeps the store's size order.
+    func visibleOutlineRows(sortedBy sort: OutlineSort? = nil) -> [OutlineRow] {
         guard let store, let effectiveRootID,
               let root = store.node(id: effectiveRootID) else { return [] }
 
+        let includeCloudOnly = showsCloudOnlyFiles
         var rows: [OutlineRow] = []
-        var stack: [(node: FileNodeRecord, depth: Int)] = [(root, 0)]
+        var stack: [(node: FileNodeRecord, depth: Int, fraction: Double)] = [(root, 0, 1)]
 
-        while let (node, depth) = stack.popLast() {
+        while let (node, depth, fraction) = stack.popLast() {
             let isExpandable = node.isDirectory && store.containsChildren(id: node.id)
-            rows.append(OutlineRow(node: node, depth: depth, isExpandable: isExpandable))
+            rows.append(OutlineRow(
+                node: node, depth: depth, isExpandable: isExpandable, fractionOfParent: fraction
+            ))
 
             if isExpandable, expandedNodeIDs.contains(node.id) {
                 var children = store.children(of: node.id)
@@ -213,9 +222,15 @@ extension NeodiskViewModel {
                     children.sort {
                         baseline.sizeDelta(for: $0).magnitude > baseline.sizeDelta(for: $1).magnitude
                     }
+                } else if let sort {
+                    children.sort(by: sort.areInIncreasingOrder(includingCloudOnly: includeCloudOnly))
                 }
+                let parentWeight = Double(node.displayWeight(includingCloudOnly: includeCloudOnly))
                 for child in children.reversed() {
-                    stack.append((child, depth + 1))
+                    let childWeight = Double(child.displayWeight(includingCloudOnly: includeCloudOnly))
+                    stack.append((
+                        child, depth + 1, parentWeight > 0 ? childWeight / parentWeight : 0
+                    ))
                 }
             }
         }
@@ -227,6 +242,53 @@ extension NeodiskViewModel {
             expandedNodeIDs.remove(nodeID)
         } else {
             expandedNodeIDs.insert(nodeID)
+        }
+    }
+}
+
+extension OutlineSort {
+    /// Sibling comparator for the flattened outline. Ties fall back to
+    /// descending size then name, so every sort stays deterministic and the
+    /// familiar biggest-first order shows through equal keys.
+    func areInIncreasingOrder(
+        includingCloudOnly: Bool
+    ) -> (FileNodeRecord, FileNodeRecord) -> Bool {
+        let field = field
+        let ascending = ascending
+        return { a, b in
+            let comparison: ComparisonResult
+            switch field {
+            case .name:
+                comparison = a.name.localizedStandardCompare(b.name)
+            case .size:
+                let weightA = a.displayWeight(includingCloudOnly: includingCloudOnly)
+                let weightB = b.displayWeight(includingCloudOnly: includingCloudOnly)
+                comparison = weightA == weightB
+                    ? .orderedSame
+                    : (weightA < weightB ? .orderedAscending : .orderedDescending)
+            case .files:
+                comparison = a.descendantFileCount == b.descendantFileCount
+                    ? .orderedSame
+                    : (a.descendantFileCount < b.descendantFileCount
+                        ? .orderedAscending : .orderedDescending)
+            case .modified:
+                // Unknown dates sort as oldest, so they gather at the
+                // ascending end instead of interleaving.
+                let dateA = a.lastModified ?? .distantPast
+                let dateB = b.lastModified ?? .distantPast
+                comparison = dateA == dateB
+                    ? .orderedSame
+                    : (dateA < dateB ? .orderedAscending : .orderedDescending)
+            }
+            if comparison != .orderedSame {
+                return ascending
+                    ? comparison == .orderedAscending
+                    : comparison == .orderedDescending
+            }
+            let sizeA = a.displayWeight(includingCloudOnly: includingCloudOnly)
+            let sizeB = b.displayWeight(includingCloudOnly: includingCloudOnly)
+            if sizeA != sizeB { return sizeA > sizeB }
+            return a.name.localizedStandardCompare(b.name) == .orderedAscending
         }
     }
 }

@@ -282,6 +282,19 @@
 "Colorblind-safe" = "Adapté au daltonisme";
 "The color set the visualizations draw with. Colorblind-safe stays distinct with common color vision differences. Applies immediately." = "Le jeu de couleurs utilisé par les visualisations. Adapté au daltonisme reste distinct avec les différences de vision des couleurs courantes. S'applique immédiatement.";
 
+/* MARK: - File list position */
+"File List" = "Liste des fichiers";
+"Position" = "Position";
+"Left of the treemap" = "À gauche de la carte proportionnelle";
+"Below the treemap" = "Sous la carte proportionnelle";
+"Below the treemap shows a wide table with percentage, size, file count, and modified-date columns; click a column header to sort. Applies immediately." = "« Sous la carte proportionnelle » affiche un tableau large avec des colonnes pourcentage, taille, nombre de fichiers et date de modification ; cliquez sur un en-tête de colonne pour trier. S'applique immédiatement.";
+"Name" = "Nom";
+"%" = "%";
+"Size" = "Taille";
+"Files" = "Fichiers";
+"Modified" = "Modifié";
+"File List Below Treemap" = "Liste des fichiers sous la carte proportionnelle";
+
 /* MARK: - Sunburst & view switcher */
 "View" = "Présentation";
 "Treemap" = "Carte proportionnelle";

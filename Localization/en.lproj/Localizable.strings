@@ -282,6 +282,19 @@
 "Colorblind-safe" = "Colorblind-safe";
 "The color set the visualizations draw with. Colorblind-safe stays distinct with common color vision differences. Applies immediately." = "The color set the visualizations draw with. Colorblind-safe stays distinct with common color vision differences. Applies immediately.";
 
+/* MARK: - File list position */
+"File List" = "File List";
+"Position" = "Position";
+"Left of the treemap" = "Left of the treemap";
+"Below the treemap" = "Below the treemap";
+"Below the treemap shows a wide table with percentage, size, file count, and modified-date columns; click a column header to sort. Applies immediately." = "Below the treemap shows a wide table with percentage, size, file count, and modified-date columns; click a column header to sort. Applies immediately.";
+"Name" = "Name";
+"%" = "%";
+"Size" = "Size";
+"Files" = "Files";
+"Modified" = "Modified";
+"File List Below Treemap" = "File List Below Treemap";
+
 /* MARK: - Sunburst & view switcher */
 "View" = "View";
 "Treemap" = "Treemap";

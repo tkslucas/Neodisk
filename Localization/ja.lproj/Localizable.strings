@@ -282,6 +282,19 @@
 "Colorblind-safe" = "色覚対応";
 "The color set the visualizations draw with. Colorblind-safe stays distinct with common color vision differences. Applies immediately." = "ビジュアライゼーションが使用する配色です。色覚対応は一般的な色覚特性でも見分けやすい配色を保ちます。即座に適用されます。";
 
+/* MARK: - File list position */
+"File List" = "ファイルリスト";
+"Position" = "位置";
+"Left of the treemap" = "ツリーマップの左";
+"Below the treemap" = "ツリーマップの下";
+"Below the treemap shows a wide table with percentage, size, file count, and modified-date columns; click a column header to sort. Applies immediately." = "「ツリーマップの下」では、割合・サイズ・ファイル数・変更日の列を持つ幅広の表を表示します。列見出しをクリックすると並べ替えられます。すぐに適用されます。";
+"Name" = "名前";
+"%" = "%";
+"Size" = "サイズ";
+"Files" = "ファイル数";
+"Modified" = "変更日";
+"File List Below Treemap" = "ファイルリストをツリーマップの下に表示";
+
 /* MARK: - Sunburst & view switcher */
 "View" = "表示";
 "Treemap" = "ツリーマップ";

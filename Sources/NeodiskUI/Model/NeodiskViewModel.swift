@@ -70,6 +70,16 @@ final class NeodiskViewModel {
     /// Mirror of the persisted treemap style (cushion or flat), synced by
     /// bindPreferences — same pattern as vizViewMode.
     var treemapStyle: TreemapStyle = .cushion
+    /// Mirror of the persisted outline dock position (left column or bottom
+    /// table), synced by bindPreferences — same pattern as vizViewMode.
+    var outlinePosition: OutlinePosition = .bottom
+    /// Mirror of the bottom table's persisted header sort, synced by
+    /// bindPreferences. The left column ignores it (fixed size order).
+    var outlineSort = OutlineSort(field: .size, ascending: false)
+    /// NEODISK_OUTLINE_POSITION dev hook: pins the dock position for this
+    /// run. Without it, any preferences change would re-sync the persisted
+    /// position over the hook's non-persisted one mid-capture.
+    @ObservationIgnored var devOutlinePositionOverride: OutlinePosition?
 
     // MARK: Kind statistics
 
@@ -389,12 +399,14 @@ final class NeodiskViewModel {
                 self?.syncVizViewMode()
                 self?.syncTreemapStyle()
                 self?.syncCloudOnlyPreference()
+                self?.syncOutlinePreferences()
             }
         freeSpace.update()
         syncVizPalette()
         syncVizViewMode()
         syncTreemapStyle()
         syncCloudOnlyPreference()
+        syncOutlinePreferences()
     }
 
     /// Mirror the persisted treemap style onto the model so the treemap pane
@@ -419,6 +431,20 @@ final class NeodiskViewModel {
         guard let preferences else { return }
         if vizViewMode != preferences.vizViewMode {
             vizViewMode = preferences.vizViewMode
+        }
+    }
+
+    /// Mirror the persisted outline dock position and bottom-table sort so
+    /// the workspace re-lays-out when the Settings picker or a column
+    /// header flips them.
+    private func syncOutlinePreferences() {
+        guard let preferences else { return }
+        let position = devOutlinePositionOverride ?? preferences.outlinePosition
+        if outlinePosition != position {
+            outlinePosition = position
+        }
+        if outlineSort != preferences.outlineSort {
+            outlineSort = preferences.outlineSort
         }
     }
 

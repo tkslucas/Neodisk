@@ -288,10 +288,9 @@ struct VolumeCapacityBar: View {
     }
 }
 
-/// Reports a measured tooltip bubble size; shared by the capacity bar and the
-/// sidebar's background-scan bar so each can offset its bubble clear of the
-/// bar (and stay hidden until the first measurement lands).
-struct VolumeBarTooltipSizeKey: PreferenceKey {
+/// Reports the measured capacity tooltip size so it can be offset clear of
+/// the bar and stay hidden until the first measurement lands.
+private struct VolumeBarTooltipSizeKey: PreferenceKey {
     nonisolated static let defaultValue: CGSize = .zero
 
     nonisolated static func reduce(value: inout CGSize, nextValue: () -> CGSize) {
@@ -302,11 +301,9 @@ struct VolumeBarTooltipSizeKey: PreferenceKey {
     }
 }
 
-/// The shared hover-bubble chrome: content in a rounded card with a downward
-/// tail at `tailX`, drawn as one path so fill, stroke, and shadow stay
-/// continuous across the tail joint. Worn by the capacity bar's segment
-/// tooltip and the sidebar's background-scan bar.
-struct TooltipBubble<Content: View>: View {
+/// Capacity tooltip chrome: content in a rounded card with a downward tail at
+/// `tailX`, drawn as one path so fill, stroke, and shadow stay continuous.
+private struct TooltipBubble<Content: View>: View {
     static var tailHeight: CGFloat { 5 }
 
     /// Tail tip x in bubble coordinates; nil centers it (pre-measurement).
@@ -353,7 +350,7 @@ private struct VolumeBarTooltip: View {
 
 /// Rounded rectangle with a downward tail at `tailX`, drawn as one path so
 /// fill, stroke, and shadow stay continuous across the tail joint.
-struct TooltipBubbleShape: Shape {
+private struct TooltipBubbleShape: Shape {
     var cornerRadius: CGFloat = 7
     var tailWidth: CGFloat = 12
     var tailHeight: CGFloat

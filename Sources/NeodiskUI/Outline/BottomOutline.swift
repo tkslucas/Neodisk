@@ -66,6 +66,9 @@ struct BottomOutlineTable: NSViewRepresentable {
         tableView.quickLookRequested = { [weak coordinator] in
             coordinator?.toggleQuickLook() ?? false
         }
+        tableView.hierarchyNavigationRequested = { [weak coordinator] direction in
+            coordinator?.navigateHierarchy(direction)
+        }
         tableView.clickTrackingEnded = { [weak coordinator] in
             coordinator?.resyncSelectionAfterClick()
         }
@@ -387,6 +390,16 @@ struct BottomOutlineTable: NSViewRepresentable {
             guard let node = model.selectedNode else { return false }
             QuickLookPresenter.shared.togglePreview(for: node)
             return true
+        }
+
+        func navigateHierarchy(_ direction: OutlineHierarchyDirection) {
+            guard let tableView else { return }
+            let performed = OutlineKeyboardNavigation.perform(
+                direction, in: tableView, rows: rows, model: model
+            )
+            if case .selectRow(let row) = performed {
+                scrollToRowVerticalOnly(row)
+            }
         }
     }
 }

@@ -35,6 +35,9 @@ struct OutlineTreeTable: NSViewRepresentable {
         tableView.quickLookRequested = { [weak coordinator] in
             coordinator?.toggleQuickLook() ?? false
         }
+        tableView.hierarchyNavigationRequested = { [weak coordinator] direction in
+            coordinator?.navigateHierarchy(direction)
+        }
         tableView.clickTrackingEnded = { [weak coordinator] in
             coordinator?.resyncSelectionAfterClick()
         }
@@ -338,6 +341,16 @@ struct OutlineTreeTable: NSViewRepresentable {
             QuickLookPresenter.shared.togglePreview(for: node)
             return true
         }
+
+        func navigateHierarchy(_ direction: OutlineHierarchyDirection) {
+            guard let tableView else { return }
+            let performed = OutlineKeyboardNavigation.perform(
+                direction, in: tableView, rows: rows, model: model
+            )
+            if case .selectRow(let row) = performed {
+                scrollToRowVerticalOnly(row)
+            }
+        }
     }
 }
 
@@ -509,6 +522,7 @@ final class OutlineRowSelectionState {
 /// by both outline layouts (left column and bottom table).
 final class OutlineNSTableView: NSTableView {
     var quickLookRequested: () -> Bool = { false }
+    var hierarchyNavigationRequested: (OutlineHierarchyDirection) -> Void = { _ in }
     /// True while a click's mouse-tracking session is running. The table
     /// applies a click's selection at mouseDown but fires the delegate only
     /// when tracking ends, so mid-click the selection legitimately disagrees
@@ -519,6 +533,21 @@ final class OutlineNSTableView: NSTableView {
     override func keyDown(with event: NSEvent) {
         if event.charactersIgnoringModifiers == " ", quickLookRequested() {
             return
+        }
+        let hierarchyModifiers = event.modifierFlags.intersection([
+            .command, .control, .option, .shift,
+        ])
+        if hierarchyModifiers.isEmpty {
+            switch event.specialKey {
+            case .leftArrow:
+                hierarchyNavigationRequested(.left)
+                return
+            case .rightArrow:
+                hierarchyNavigationRequested(.right)
+                return
+            default:
+                break
+            }
         }
         super.keyDown(with: event)
     }

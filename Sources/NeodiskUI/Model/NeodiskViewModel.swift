@@ -32,16 +32,34 @@ final class NeodiskViewModel {
             QuickLookPresenter.shared.selectionDidChange(to: selectedNode)
         }
     }
-    var hoveredNodeID: String?
-    /// Set while the cursor is over a merged "smaller items" treemap cell;
+    private(set) var visualizationHover: VisualizationHover?
+
+    /// Publish a complete hover identity in one observation transaction.
+    /// Re-entering the same cell/segment is a true no-op.
+    @discardableResult
+    func setVisualizationHover(_ hover: VisualizationHover?) -> Bool {
+        guard visualizationHover != hover else { return false }
+        visualizationHover = hover
+        return true
+    }
+
+    var hoveredNodeID: String? { visualizationHover?.nodeID }
+    /// Set while the cursor is over a merged "smaller items" cell;
     /// `hoveredNodeID` then points at the containing folder.
-    var hoveredAggregate: TreemapCell.AggregateInfo?
-    /// True while the cursor is over the synthetic free-space cell (whose
-    /// node exists in no tree store).
-    var hoveredCellIsFreeSpace = false
-    /// True while the cursor is over the synthetic hidden-space cell (whose
-    /// node exists in no tree store).
-    var hoveredCellIsHiddenSpace = false
+    var hoveredAggregate: TreemapCell.AggregateInfo? {
+        guard case .aggregate(_, let itemCount, let totalSize, _) = visualizationHover else {
+            return nil
+        }
+        return TreemapCell.AggregateInfo(itemCount: itemCount, totalSize: totalSize)
+    }
+    var hoveredCellIsFreeSpace: Bool {
+        guard case .freeSpace = visualizationHover else { return false }
+        return true
+    }
+    var hoveredCellIsHiddenSpace: Bool {
+        guard case .hiddenSpace = visualizationHover else { return false }
+        return true
+    }
     /// Node the treemap is currently zoomed into; nil means the snapshot root.
     var zoomRootID: String?
     /// Folders whose "smaller items" cell the user clicked open — their
@@ -118,7 +136,24 @@ final class NeodiskViewModel {
     /// Outline "search entire scan" feature state; see SearchModel.
     let search: SearchModel
 
-    var expandedNodeIDs: Set<String> = []
+    private(set) var expandedNodeIDs: Set<String> = []
+    /// Changes only when the expansion set actually changes. Outline row
+    /// caches key off this scalar instead of hashing every expanded ID on
+    /// each selection update.
+    private(set) var outlineExpansionRevision: UInt64 = 0
+    @ObservationIgnored let outlineRowsCache = OutlineRowsCache()
+
+    func replaceExpandedOutlineNodes(with nodeIDs: Set<String>) {
+        guard expandedNodeIDs != nodeIDs else { return }
+        expandedNodeIDs = nodeIDs
+        outlineExpansionRevision &+= 1
+    }
+
+    func expandOutlineNodes<S: Sequence>(_ nodeIDs: S) where S.Element == String {
+        var expanded = expandedNodeIDs
+        expanded.formUnion(nodeIDs)
+        replaceExpandedOutlineNodes(with: expanded)
+    }
     var actionErrorMessage: String?
     /// True after the user stops a scan mid-flight while partial results are
     /// on screen: the scan strip stays visible offering Resume.
@@ -375,9 +410,9 @@ final class NeodiskViewModel {
     /// the scan session, whose branches decide when a new scan takes over.
     func resetPerScanState() {
         selectedNodeID = nil
-        hoveredNodeID = nil
+        setVisualizationHover(nil)
         zoomRootID = nil
-        expandedNodeIDs = []
+        replaceExpandedOutlineNodes(with: [])
         expandedAggregateIDs = []
         kinds.reset()
         largest.reset()
@@ -582,7 +617,7 @@ final class NeodiskViewModel {
         guard let snapshot else { return }
 
         // Expand the root row by default so the outline isn't a single line.
-        expandedNodeIDs.insert(snapshot.treeStore.root.id)
+        expandOutlineNodes([snapshot.treeStore.root.id])
     }
 
     // MARK: - Subtree refresh
@@ -653,8 +688,7 @@ final class NeodiskViewModel {
     private func handleSubtreeRefresh(_ result: ScanExpansionResult) {
         switch result {
         case .expanded(let replacementRootID):
-            revealInOutline(replacementRootID)
-            expandedNodeIDs.insert(replacementRootID)
+            revealInOutline(replacementRootID, includingNode: true)
             session.persistSplicedSnapshot()
         case .failed(let message):
             actionErrorMessage = message

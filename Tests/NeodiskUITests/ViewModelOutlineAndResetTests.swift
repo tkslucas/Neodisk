@@ -133,12 +133,16 @@ import NeodiskKit
             model.session.cachedScanInfo[target.id]?.hasPreviousSnapshot == true
         }
 
+        let beforeDiff = model.outlineRowsSnapshot()
+
         // Opening the Changes tab arms the diff; siblings then order by
         // |sizeDelta| descending: file2(−20), file3(+5), file1(+1).
         model.analysisTab = .changes
         try await waitUntilAsync("baseline loaded") {
             model.diff.baseline != nil
         }
+        let withDiff = model.outlineRowsSnapshot()
+        #expect(withDiff.structuralVersion != beforeDiff.structuralVersion)
         let diffOrder = model.visibleOutlineRows()
             .filter { $0.id != target.id }
             .map(\.id)
@@ -160,6 +164,7 @@ import NeodiskKit
         // own size-descending order: file3(15), file1(11), file2(10).
         model.analysisTab = .largest
         #expect(model.diff.baseline == nil)
+        #expect(model.outlineRowsSnapshot().structuralVersion != withDiff.structuralVersion)
         let storeOrder = model.visibleOutlineRows()
             .filter { $0.id != target.id }
             .map(\.id)
@@ -250,7 +255,177 @@ import NeodiskKit
         #expect(names(ascending: true) == ["a.txt", "b.txt", "c.txt"])
     }
 
+    @Test func testSelectionOnlyReusesRowsAndSkipsBothCoordinatorApplies() throws {
+        let environment = try TestEnvironment()
+        defer { environment.tearDown() }
+        let target = makeTestTarget("/outline/selection-fast-path")
+        let model = environment.makeModel()
+        model.coordinator.replaceCurrentSnapshot(makeMultiLevelSnapshot(target: target))
+        model.toggleExpansion(target.id + "/dirA")
+
+        let leading = model.outlineRowsSnapshot()
+        let bottom = model.outlineRowsSnapshot(sortedBy: model.outlineSort)
+        let buildCount = model.outlineRowsCache.buildCount
+        let expansionRevision = model.outlineExpansionRevision
+
+        let leadingCoordinator = OutlineTreeTable.Coordinator(model: model)
+        let bottomCoordinator = BottomOutlineTable.Coordinator(model: model)
+        leadingCoordinator.apply(snapshot: leading)
+        bottomCoordinator.apply(snapshot: bottom)
+        #expect(leadingCoordinator.structuralApplyCount == 1)
+        #expect(bottomCoordinator.structuralApplyCount == 1)
+
+        // The selected file is already visible. Revealing its ancestors is
+        // therefore a true no-op and must not invalidate structural rows.
+        model.select(target.id + "/dirA/file2.bin")
+        let leadingAfterSelection = model.outlineRowsSnapshot()
+        let bottomAfterSelection = model.outlineRowsSnapshot(sortedBy: model.outlineSort)
+
+        #expect(model.outlineExpansionRevision == expansionRevision)
+        #expect(model.outlineRowsCache.buildCount == buildCount)
+        #expect(leadingAfterSelection.structuralVersion == leading.structuralVersion)
+        #expect(bottomAfterSelection.structuralVersion == bottom.structuralVersion)
+        #expect(leadingAfterSelection.rowIndexByID[target.id + "/dirA/file2.bin"] == 3)
+
+        leadingCoordinator.apply(snapshot: leadingAfterSelection)
+        bottomCoordinator.apply(snapshot: bottomAfterSelection)
+        #expect(leadingCoordinator.structuralApplyCount == 1)
+        #expect(bottomCoordinator.structuralApplyCount == 1)
+    }
+
+    @Test func testOutlineCacheInvalidatesForEveryStructuralInput() throws {
+        let environment = try TestEnvironment()
+        defer { environment.tearDown() }
+        let target = makeTestTarget("/outline/cache-inputs")
+        let model = environment.makeModel()
+        model.coordinator.replaceCurrentSnapshot(makeMultiLevelSnapshot(target: target))
+
+        let initial = model.outlineRowsSnapshot()
+        #expect(model.outlineRowsSnapshot().structuralVersion == initial.structuralVersion)
+
+        // One reveal operation may add several ancestors, but advances the
+        // revision exactly once and causes one new flatten.
+        let revision = model.outlineExpansionRevision
+        model.revealInOutline(target.id + "/dirA/file1.bin")
+        #expect(model.outlineExpansionRevision == revision + 1)
+        let expanded = model.outlineRowsSnapshot()
+        #expect(expanded.structuralVersion != initial.structuralVersion)
+
+        model.zoomRootID = target.id + "/dirA"
+        let rerooted = model.outlineRowsSnapshot()
+        #expect(rerooted.structuralVersion != expanded.structuralVersion)
+
+        let sizeSort = model.outlineRowsSnapshot(
+            sortedBy: OutlineSort(field: .size, ascending: false)
+        )
+        let nameSort = model.outlineRowsSnapshot(
+            sortedBy: OutlineSort(field: .name, ascending: true)
+        )
+        #expect(nameSort.structuralVersion != sizeSort.structuralVersion)
+        #expect(model.outlineRowsSnapshot(
+            sortedBy: OutlineSort(field: .name, ascending: true)
+        ).structuralVersion == nameSort.structuralVersion)
+
+        // A subtree splice and any other store replacement create a new
+        // snapshot UUID, even when target, root, and expansion stay equal.
+        model.coordinator.replaceCurrentSnapshot(makeMultiLevelSnapshot(target: target))
+        let replaced = model.outlineRowsSnapshot()
+        #expect(replaced.structuralVersion != rerooted.structuralVersion)
+    }
+
+    @Test func testOutlineCacheInvalidatesWhenCloudWeightingChanges() throws {
+        let environment = try TestEnvironment()
+        defer { environment.tearDown() }
+        let target = makeTestTarget("/outline/cloud-weight")
+        let model = environment.makeModel()
+        let cloud = FileNodeRecord(
+            id: target.id + "/remote.bin",
+            url: URL(filePath: target.id + "/remote.bin"),
+            name: "remote.bin",
+            isDirectory: false,
+            isSymbolicLink: false,
+            allocatedSize: 0,
+            logicalSize: 100,
+            descendantFileCount: 1,
+            lastModified: nil,
+            isPackage: false,
+            isAccessible: true,
+            isSelfAccessible: true,
+            isSynthetic: false,
+            isAutoSummarized: false,
+            isDataless: true
+        )
+        let root = makeTestDirectoryNode(id: target.id, name: target.displayName, children: [cloud])
+        let store = FileTreeStore(root: root, childrenByID: [root.id: [cloud]])
+        model.coordinator.replaceCurrentSnapshot(
+            makeTestSnapshot(target: target, root: root, store: store)
+        )
+
+        #expect(model.showsCloudOnlyFiles)
+        let included = model.outlineRowsSnapshot()
+        model.showCloudOnlyFilesPreferred = false
+        #expect(!model.showsCloudOnlyFiles)
+        let excluded = model.outlineRowsSnapshot()
+        #expect(excluded.structuralVersion != included.structuralVersion)
+        #expect(excluded.rows[1].fractionOfParent != included.rows[1].fractionOfParent)
+    }
+
+    /// Release-mode call-count probe for the real problem size. Run with:
+    /// `NEODISK_OUTLINE_BENCH=1 swift test -c release --filter outline100kSelectionProbe`
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["NEODISK_OUTLINE_BENCH"] == "1"))
+    func outline100kSelectionProbe() throws {
+        let environment = try TestEnvironment()
+        defer { environment.tearDown() }
+        let target = makeTestTarget("/outline/100k")
+        let model = environment.makeModel()
+        let files = (0..<100_000).map { index in
+            makeTestFileNode(
+                id: target.id + "/\(index).bin",
+                name: "\(index).bin",
+                size: Int64(100_000 - index)
+            )
+        }
+        let root = makeTestDirectoryNode(id: target.id, name: target.displayName, children: files)
+        let store = FileTreeStore(root: root, childrenByID: [root.id: files])
+        model.coordinator.replaceCurrentSnapshot(
+            makeTestSnapshot(target: target, root: root, store: store)
+        )
+
+        let initial = model.outlineRowsSnapshot()
+        let builds = model.outlineRowsCache.buildCount
+        for row in stride(from: 1, to: initial.rows.count, by: 997) {
+            model.selectedNodeID = initial.rows[row].id
+            #expect(model.outlineRowsSnapshot().structuralVersion == initial.structuralVersion)
+        }
+        #expect(model.outlineRowsCache.buildCount == builds)
+    }
+
     // MARK: - Per-scan state reset
+
+    @Test func visualizationHoverPublishesAtomicallyAndDeduplicatesIdentity() throws {
+        let environment = try TestEnvironment()
+        defer { environment.tearDown() }
+        let model = environment.makeModel()
+        let swatch = SIMD3<Float>(0.1, 0.2, 0.3)
+
+        #expect(model.setVisualizationHover(.node(id: "/file", swatchRGB: swatch)))
+        #expect(model.hoveredNodeID == "/file")
+        #expect(model.hoveredAggregate == nil)
+        #expect(!model.setVisualizationHover(.node(id: "/file", swatchRGB: swatch)))
+
+        #expect(model.setVisualizationHover(.aggregate(
+            folderID: "/folder", itemCount: 7, totalSize: 42, swatchRGB: swatch
+        )))
+        #expect(model.hoveredNodeID == "/folder")
+        #expect(model.hoveredAggregate == .init(itemCount: 7, totalSize: 42))
+        #expect(!model.hoveredCellIsFreeSpace)
+        #expect(!model.hoveredCellIsHiddenSpace)
+
+        #expect(model.setVisualizationHover(.freeSpace(swatchRGB: swatch)))
+        #expect(model.hoveredNodeID == nil)
+        #expect(model.hoveredCellIsFreeSpace)
+        #expect(!model.hoveredCellIsHiddenSpace)
+    }
 
     @Test func testStartScanOfNewTargetResetsPerScanState() async throws {
         let environment = try TestEnvironment()
@@ -276,7 +451,7 @@ import NeodiskKit
 
         // Dirty every axis the reset is supposed to clear.
         model.selectedNodeID = file.id
-        model.hoveredNodeID = file.id
+        model.setVisualizationHover(.node(id: file.id, swatchRGB: .zero))
         model.zoomRootID = targetA.id
         model.expandedAggregateIDs = [targetA.id]
         model.stopScan()

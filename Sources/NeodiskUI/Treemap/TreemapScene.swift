@@ -326,6 +326,14 @@ struct TreemapScene: Sendable {
                         // leaving the border frame and header strip visible.
                         // Emitted before the children so the flat renderer's
                         // in-order pass resolves the overdraw correctly.
+                        let swatchRGB = resolvedRGB(
+                            for: node, colorMode: colorMode, catalog: catalog,
+                            palette: palette, color: color,
+                            // Status-bar branch swatches historically use
+                            // the treemap's calm structural tint in both
+                            // drawing styles.
+                            globalDepth: rootDepth + depth, style: .flat, store: store
+                        )
                         var rgb = resolvedRGB(
                             for: node, colorMode: colorMode, catalog: catalog,
                             palette: palette, color: color,
@@ -344,6 +352,7 @@ struct TreemapScene: Sendable {
                             nodeID: node.id,
                             rect: rect,
                             rgb: rgb,
+                            swatchRGB: swatchRGB,
                             surface: surface,
                             isDirectory: true,
                             isContainer: true,
@@ -447,6 +456,9 @@ struct TreemapScene: Sendable {
                             nodeID: node.id,
                             rect: aggregateRect,
                             rgb: aggregateRGB,
+                            // Preserve the existing status-bar contract for
+                            // pooled items, independent of branch coloring.
+                            swatchRGB: FileKindCatalog.otherRGB,
                             surface: aggregateSurface,
                             isDirectory: true,
                             aggregate: TreemapCell.AggregateInfo(
@@ -464,11 +476,21 @@ struct TreemapScene: Sendable {
 
             let isFreeSpace = node.id == freeSpaceNode?.id
             let isHiddenSpace = node.id == hiddenSpaceNode?.id
-            var rgb: SIMD3<Float>
+            let swatchRGB: SIMD3<Float>
             if isFreeSpace {
-                rgb = SyntheticSpaceColors.freeSpaceRGB
+                swatchRGB = SyntheticSpaceColors.freeSpaceRGB
             } else if isHiddenSpace {
-                rgb = SyntheticSpaceColors.hiddenSpaceRGB
+                swatchRGB = SyntheticSpaceColors.hiddenSpaceRGB
+            } else {
+                swatchRGB = resolvedRGB(
+                    for: node, colorMode: colorMode, catalog: catalog,
+                    palette: palette, color: color,
+                    globalDepth: rootDepth + depth, style: .flat, store: store
+                )
+            }
+            var rgb: SIMD3<Float>
+            if isFreeSpace || isHiddenSpace {
+                rgb = swatchRGB
             } else {
                 rgb = resolvedRGB(
                     for: node, colorMode: colorMode, catalog: catalog,
@@ -497,6 +519,7 @@ struct TreemapScene: Sendable {
                 nodeID: node.id,
                 rect: rect,
                 rgb: rgb,
+                swatchRGB: swatchRGB,
                 surface: surface,
                 isDirectory: node.isDirectory,
                 isFreeSpace: isFreeSpace,

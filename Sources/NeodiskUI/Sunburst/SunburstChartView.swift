@@ -64,6 +64,9 @@ struct SunburstChartView: View {
     /// Cursor position within the chart (top-left origin), or nil when off an
     /// arc or over the center — drives the hover tooltip's placement.
     @State private var hoverLocation: CGPoint?
+    /// Last identity sent to the model-facing pane. Cursor movement inside
+    /// one arc updates only the tooltip coordinate.
+    @State private var publishedHoverIdentity = HoverIdentityGate<SunburstSegment.ID>()
 
     private var loadingDiskMapProgressTaskID: String {
         "\(layoutID)|\(chartModel.isLayoutPending)"
@@ -338,6 +341,7 @@ struct SunburstChartView: View {
         // The drill moves to a new root; the last hover is stale until the
         // pointer moves over the new layout.
         hoverLocation = nil
+        publishHoverIfChanged(nil)
         guard !reduceMotion else {
             zoomTransition = nil
             return
@@ -452,7 +456,7 @@ struct SunburstChartView: View {
             isHoveringCenter = false
             hoverLocation = nil
             chartModel.setHoveredSegmentID(nil)
-            onHoverSegment(nil)
+            publishHoverIfChanged(nil)
             return
         }
 
@@ -460,7 +464,7 @@ struct SunburstChartView: View {
             isHoveringCenter = true
             hoverLocation = nil
             chartModel.setHoveredSegmentID(nil)
-            onHoverSegment(nil)
+            publishHoverIfChanged(nil)
             return
         }
 
@@ -468,7 +472,12 @@ struct SunburstChartView: View {
         let nextSegment = hitTest(at: location, in: frame)
         hoverLocation = nextSegment == nil ? nil : location
         chartModel.setHoveredSegmentID(nextSegment?.id)
-        onHoverSegment(nextSegment)
+        publishHoverIfChanged(nextSegment)
+    }
+
+    private func publishHoverIfChanged(_ segment: SunburstSegment?) {
+        guard publishedHoverIdentity.transition(to: segment?.id) else { return }
+        onHoverSegment(segment)
     }
 
     private func handleClick(at location: CGPoint, in frame: CGRect, clickCount: Int) {

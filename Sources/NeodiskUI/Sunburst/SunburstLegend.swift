@@ -31,6 +31,8 @@ struct SunburstLegendRow: Identifiable, Equatable {
     let size: Int64
     /// The exact fill the chart draws (or would draw) for this entry.
     let dotColor: Color
+    /// Undimmed semantic color published with hover for the status bar.
+    let swatchRGB: SIMD3<Float>
     /// Aggregate and free/hidden-space rows render muted, like their
     /// segments.
     let isDimmed: Bool
@@ -40,6 +42,57 @@ struct SunburstLegendRow: Identifiable, Equatable {
     /// toggle is on and the node has some) — rendered as a small cloud
     /// glyph beside the size.
     var showsCloudGlyph: Bool = false
+}
+
+/// Structural legend output reused while only hover or selection changes.
+struct SunburstLegendPresentation: Equatable {
+    let header: SunburstLegendRow
+    let rows: [SunburstLegendRow]
+    let rowIDs: Set<String>
+    let aggregateRowID: String?
+    let freeSpaceRowID: String?
+    let hiddenSpaceRowID: String?
+
+    init(header: SunburstLegendRow, rows: [SunburstLegendRow]) {
+        self.header = header
+        self.rows = rows
+        rowIDs = Set(rows.map(\.id))
+        aggregateRowID = rows.first { $0.target == .aggregate }?.id
+        freeSpaceRowID = rows.first { $0.target == .freeSpace }?.id
+        hiddenSpaceRowID = rows.first { $0.target == .hiddenSpace }?.id
+    }
+}
+
+struct SunburstLegendPresentationKey: Equatable {
+    let renderedLayoutVersion: Int
+    let displayedFolderID: String
+    let chartRootID: String
+    let style: SunburstColorStyle
+    let includeCloudOnly: Bool
+    let headerSizeOverride: Int64?
+}
+
+/// A single-entry cache is sufficient: previewing another folder is an
+/// intentional structural replacement, while hover inside that presentation
+/// should only change cheap highlight overlays.
+struct SunburstLegendPresentationCache {
+    private var entry: (key: SunburstLegendPresentationKey, value: SunburstLegendPresentation)?
+    private(set) var buildCount = 0
+
+    mutating func value(
+        for key: SunburstLegendPresentationKey,
+        build: () -> SunburstLegendPresentation
+    ) -> SunburstLegendPresentation {
+        if let entry, entry.key == key { return entry.value }
+        let value = build()
+        entry = (key, value)
+        buildCount += 1
+        return value
+    }
+
+    mutating func removeAll() {
+        entry = nil
+    }
 }
 
 enum SunburstLegend {
@@ -97,6 +150,9 @@ enum SunburstLegend {
                     label: child.name,
                     size: size,
                     dotColor: SunburstChartStyler.baseStyle(for: segment).fillColor,
+                    swatchRGB: SunburstLayout.semanticFillRGB(
+                        for: child, token: segment.colorToken, style: style
+                    ),
                     isDimmed: false,
                     itemCount: 0,
                     showsCloudGlyph: showsCloudGlyph
@@ -108,15 +164,17 @@ enum SunburstLegend {
             } else {
                 // No ring rendered for this folder's children (beyond the
                 // depth limit): color the row the way the chart would.
+                let colors = fallbackColors(
+                    for: child, chartRootID: chartRootID, in: store,
+                    style: style, includeCloudOnly: includeCloudOnly
+                )
                 rows.append(SunburstLegendRow(
                     id: child.id,
                     target: .node(id: child.id, isDirectory: child.isSunburstFolder(in: store)),
                     label: child.name,
                     size: size,
-                    dotColor: fallbackDotColor(
-                        for: child, chartRootID: chartRootID, in: store,
-                        style: style, includeCloudOnly: includeCloudOnly
-                    ),
+                    dotColor: colors.dot,
+                    swatchRGB: colors.swatch,
                     isDimmed: false,
                     itemCount: 0,
                     showsCloudGlyph: showsCloudGlyph
@@ -131,6 +189,7 @@ enum SunburstLegend {
                 label: NSLocalizedString("Smaller Items", comment: "Sunburst legend pooled row"),
                 size: aggregateSegment.totalSize,
                 dotColor: SunburstChartStyler.baseStyle(for: aggregateSegment).fillColor,
+                swatchRGB: FileKindCatalog.otherRGB,
                 isDimmed: true,
                 itemCount: aggregateSegment.itemCount
             ))
@@ -143,6 +202,7 @@ enum SunburstLegend {
                 label: NSLocalizedString("Hidden Space", comment: "Sunburst legend hidden-space row"),
                 size: hiddenSpaceSegment.totalSize,
                 dotColor: SunburstChartStyler.baseStyle(for: hiddenSpaceSegment).fillColor,
+                swatchRGB: SyntheticSpaceColors.hiddenSpaceRGB,
                 isDimmed: true,
                 itemCount: 0
             ))
@@ -155,6 +215,7 @@ enum SunburstLegend {
                 label: NSLocalizedString("Free Space", comment: "Sunburst legend free-space row"),
                 size: freeSpaceSegment.totalSize,
                 dotColor: SunburstChartStyler.baseStyle(for: freeSpaceSegment).fillColor,
+                swatchRGB: SyntheticSpaceColors.freeSpaceRGB,
                 isDimmed: true,
                 itemCount: 0
             ))
@@ -176,11 +237,16 @@ enum SunburstLegend {
         includeCloudOnly: Bool = false,
         sizeOverride: Int64? = nil
     ) -> SunburstLegendRow {
-        let dotColor: Color
+        let colors: (dot: Color, swatch: SIMD3<Float>)
         if let segment = segments.first(where: { $0.nodeID == folder.id }) {
-            dotColor = SunburstChartStyler.baseStyle(for: segment).fillColor
+            colors = (
+                SunburstChartStyler.baseStyle(for: segment).fillColor,
+                SunburstLayout.semanticFillRGB(
+                    for: folder, token: segment.colorToken, style: style
+                )
+            )
         } else {
-            dotColor = fallbackDotColor(
+            colors = fallbackColors(
                 for: folder, chartRootID: chartRootID, in: store,
                 style: style, includeCloudOnly: includeCloudOnly
             )
@@ -190,7 +256,8 @@ enum SunburstLegend {
             target: .node(id: folder.id, isDirectory: folder.isSunburstFolder(in: store)),
             label: folder.name,
             size: sizeOverride ?? folder.displayWeight(includingCloudOnly: includeCloudOnly),
-            dotColor: dotColor,
+            dotColor: colors.dot,
+            swatchRGB: colors.swatch,
             isDimmed: false,
             itemCount: 0,
             // A disk-based override is never a cloud-inclusive figure.
@@ -222,13 +289,13 @@ enum SunburstLegend {
     /// resolved fill (kind/age modes) or midpoint color token (Largest),
     /// styled by SunburstChartStyler. The token carries the node's global
     /// color coordinate, so it yields the same color a real layout would.
-    private nonisolated static func fallbackDotColor(
+    private nonisolated static func fallbackColors(
         for node: FileNodeRecord,
         chartRootID: String,
         in store: FileTreeStore,
         style: SunburstColorStyle,
         includeCloudOnly: Bool
-    ) -> Color {
+    ) -> (dot: Color, swatch: SIMD3<Float>) {
         let coordinate = SunburstLayout.colorCoordinate(
             for: node.id, in: store, includeCloudOnly: includeCloudOnly
         ) ?? (start: 0, span: 1, depth: 0)
@@ -251,6 +318,9 @@ enum SunburstLegend {
             totalSize: node.allocatedSize,
             isAggregate: false
         )
-        return SunburstChartStyler.baseStyle(for: synthetic).fillColor
+        return (
+            SunburstChartStyler.baseStyle(for: synthetic).fillColor,
+            SunburstLayout.semanticFillRGB(for: node, token: token, style: style)
+        )
     }
 }

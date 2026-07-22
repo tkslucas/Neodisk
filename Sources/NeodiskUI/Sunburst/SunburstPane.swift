@@ -30,11 +30,17 @@ struct SunburstPane: View {
     /// segment; nil shows the chart root. Driven ONLY by chart hover — list
     /// row hover must never move the preview (no flicker).
     @State private var previewFolderID: String?
+    /// Segment currently hovered by the chart itself. Legend-row hover also
+    /// highlights a chart segment, so keep this separate when refreshing a
+    /// stationary chart hover after a palette/style change.
+    @State private var chartHoveredSegmentID: SunburstSegment.ID?
 
     /// User-resizable, clamped on read against the pane width so the chart
     /// keeps a usable diameter (see SunburstLegendMetrics).
     @AppStorage("sunburstLegendWidth")
     private var legendWidth = PaneLayout.sunburstLegendDefaultWidth
+    /// Pointer-drag deltas stay local; the final width persists on mouse-up.
+    @State private var transientLegendWidth: Double?
 
     var body: some View {
         if let store = model.store,
@@ -47,7 +53,8 @@ struct SunburstPane: View {
             let displayedFolder = displayedFolder(rootNode: rootNode, in: store)
             GeometryReader { proxy in
                 let legend = SunburstLegendMetrics(
-                    availableWidth: proxy.size.width, storedWidth: legendWidth
+                    availableWidth: proxy.size.width,
+                    storedWidth: transientLegendWidth ?? legendWidth
                 )
                 HStack(spacing: 0) {
                     SunburstChartView(
@@ -88,10 +95,14 @@ struct SunburstPane: View {
                     // the full pane.
                     if let resolvedLegendWidth = legend.width {
                         PaneSplitter(
-                            size: $legendWidth,
+                            size: liveLegendWidth,
                             range: legend.range,
                             defaultSize: PaneLayout.sunburstLegendDefaultWidth,
-                            paneEdge: .trailing
+                            paneEdge: .trailing,
+                            onCommit: {
+                                legendWidth = $0
+                                transientLegendWidth = nil
+                            }
                         )
                         SunburstLegendList(
                             model: model,
@@ -110,16 +121,27 @@ struct SunburstPane: View {
                 .onChange(of: model.effectiveRootID) { _, _ in
                     resetPreviewFolder()
                 }
+                .onChange(of: style) { _, _ in
+                    refreshChartHoverSwatch(in: store)
+                }
                 // Switching back to the treemap must not leave the status bar
                 // holding the last-hovered sunburst item.
                 .onDisappear {
                     clearHover()
                     resetPreviewFolder()
+                    transientLegendWidth = nil
                 }
             }
         } else {
             Color.clear
         }
+    }
+
+    private var liveLegendWidth: Binding<Double> {
+        Binding(
+            get: { transientLegendWidth ?? legendWidth },
+            set: { transientLegendWidth = $0 }
+        )
     }
 
     /// The folder the legend and center hole describe: the hover-preview
@@ -200,6 +222,7 @@ struct SunburstPane: View {
     // MARK: - Interaction
 
     private func handleHover(_ segment: SunburstSegment?) {
+        chartHoveredSegmentID = segment?.id
         guard let segment else {
             clearHover()
             setPreviewFolder(nil)
@@ -207,22 +230,27 @@ struct SunburstPane: View {
         }
 
         if segment.isFreeSpace || segment.isHiddenSpace {
-            model.hoveredNodeID = nil
-            model.hoveredAggregate = nil
-            model.hoveredCellIsFreeSpace = segment.isFreeSpace
-            model.hoveredCellIsHiddenSpace = segment.isHiddenSpace
+            model.setVisualizationHover(
+                segment.isFreeSpace
+                    ? .freeSpace(swatchRGB: SyntheticSpaceColors.freeSpaceRGB)
+                    : .hiddenSpace(swatchRGB: SyntheticSpaceColors.hiddenSpaceRGB)
+            )
             setPreviewFolder(nil)
             return
         }
 
         if segment.isAggregate {
-            model.hoveredNodeID = segment.parentFolderID
-            model.hoveredAggregate = TreemapCell.AggregateInfo(
+            guard let folderID = segment.parentFolderID else {
+                clearHover()
+                setPreviewFolder(nil)
+                return
+            }
+            model.setVisualizationHover(.aggregate(
+                folderID: folderID,
                 itemCount: segment.itemCount,
-                totalSize: segment.totalSize
-            )
-            model.hoveredCellIsFreeSpace = false
-            model.hoveredCellIsHiddenSpace = false
+                totalSize: segment.totalSize,
+                swatchRGB: FileKindCatalog.otherRGB
+            ))
             // Preview the containing folder — its list holds the Smaller
             // Items row this segment pools, which highlights through the
             // hover state above.
@@ -230,10 +258,17 @@ struct SunburstPane: View {
             return
         }
 
-        model.hoveredNodeID = segment.nodeID
-        model.hoveredAggregate = nil
-        model.hoveredCellIsFreeSpace = false
-        model.hoveredCellIsHiddenSpace = false
+        if let nodeID = segment.nodeID,
+           let node = model.store?.node(id: nodeID) {
+            model.setVisualizationHover(.node(
+                id: nodeID,
+                swatchRGB: SunburstLayout.semanticFillRGB(
+                    for: node, token: segment.colorToken, style: colorStyle
+                )
+            ))
+        } else {
+            clearHover()
+        }
         // Hovering a directory previews its contents in the legend; files
         // (and childless folders, which have nothing to list) preview their
         // parent folder instead, so the legend shows the hovered item
@@ -248,6 +283,33 @@ struct SunburstPane: View {
             }
         } else {
             setPreviewFolder(nil)
+        }
+    }
+
+    /// The chart intentionally publishes only segment-identity edges. A style
+    /// change can recolor the same stationary segment, so refresh just its
+    /// semantic swatch without touching the legend preview.
+    private func refreshChartHoverSwatch(in store: FileTreeStore) {
+        guard let chartHoveredSegmentID,
+              let segment = chartModel.segment(forSegmentID: chartHoveredSegmentID) else { return }
+        if segment.isFreeSpace {
+            model.setVisualizationHover(.freeSpace(swatchRGB: SyntheticSpaceColors.freeSpaceRGB))
+        } else if segment.isHiddenSpace {
+            model.setVisualizationHover(.hiddenSpace(swatchRGB: SyntheticSpaceColors.hiddenSpaceRGB))
+        } else if segment.isAggregate, let folderID = segment.parentFolderID {
+            model.setVisualizationHover(.aggregate(
+                folderID: folderID,
+                itemCount: segment.itemCount,
+                totalSize: segment.totalSize,
+                swatchRGB: FileKindCatalog.otherRGB
+            ))
+        } else if let nodeID = segment.nodeID, let node = store.node(id: nodeID) {
+            model.setVisualizationHover(.node(
+                id: nodeID,
+                swatchRGB: SunburstLayout.semanticFillRGB(
+                    for: node, token: segment.colorToken, style: colorStyle
+                )
+            ))
         }
     }
 
@@ -270,10 +332,7 @@ struct SunburstPane: View {
     }
 
     private func clearHover() {
-        model.hoveredNodeID = nil
-        model.hoveredAggregate = nil
-        model.hoveredCellIsFreeSpace = false
-        model.hoveredCellIsHiddenSpace = false
+        model.setVisualizationHover(nil)
     }
 
     /// Sunburst drills are pure navigation: a successful
@@ -403,27 +462,25 @@ struct SunburstPane: View {
 
         switch row.target {
         case .node(let nodeID, _):
-            model.hoveredNodeID = nodeID
-            model.hoveredAggregate = nil
-            model.hoveredCellIsFreeSpace = false
-            model.hoveredCellIsHiddenSpace = false
+            model.setVisualizationHover(.node(id: nodeID, swatchRGB: row.swatchRGB))
             chartModel.setHoveredSegmentID(chartModel.segment(forNodeID: nodeID)?.id)
         case .aggregate:
             // Mirror hovering the aggregate segment itself: the status bar
             // reads "N smaller items in <displayed folder>".
-            model.hoveredNodeID = displayedFolderID
-            model.hoveredAggregate = TreemapCell.AggregateInfo(
+            guard let displayedFolderID else { return }
+            model.setVisualizationHover(.aggregate(
+                folderID: displayedFolderID,
                 itemCount: row.itemCount,
-                totalSize: row.size
-            )
-            model.hoveredCellIsFreeSpace = false
-            model.hoveredCellIsHiddenSpace = false
+                totalSize: row.size,
+                swatchRGB: row.swatchRGB
+            ))
             chartModel.setHoveredSegmentID(chartModel.segment(forSegmentID: row.id)?.id)
         case .freeSpace, .hiddenSpace:
-            model.hoveredNodeID = nil
-            model.hoveredAggregate = nil
-            model.hoveredCellIsFreeSpace = row.target == .freeSpace
-            model.hoveredCellIsHiddenSpace = row.target == .hiddenSpace
+            model.setVisualizationHover(
+                row.target == .freeSpace
+                    ? .freeSpace(swatchRGB: row.swatchRGB)
+                    : .hiddenSpace(swatchRGB: row.swatchRGB)
+            )
             chartModel.setHoveredSegmentID(chartModel.segment(forSegmentID: row.id)?.id)
         }
     }
@@ -497,4 +554,3 @@ struct SunburstPane: View {
         return NSMenu.fileNodeActions(for: node, model: model)
     }
 }
-

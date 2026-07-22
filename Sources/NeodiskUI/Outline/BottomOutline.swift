@@ -29,11 +29,11 @@ struct BottomOutlinePane: View {
             if let results = model.search.results {
                 OutlineSearchResultsList(model: model, results: results)
             } else {
+                let snapshot = model.outlineRowsSnapshot(sortedBy: model.outlineSort)
                 BottomOutlineTable(
                     model: model,
-                    rows: model.visibleOutlineRows(sortedBy: model.outlineSort),
+                    snapshot: snapshot,
                     selectedID: model.selectedNodeID,
-                    baseline: model.diff.baseline,
                     sort: model.outlineSort
                 )
             }
@@ -51,9 +51,8 @@ struct BottomOutlinePane: View {
 /// siblings in the model's flattening, never the store.
 struct BottomOutlineTable: NSViewRepresentable {
     let model: NeodiskViewModel
-    let rows: [NeodiskViewModel.OutlineRow]
+    let snapshot: NeodiskViewModel.OutlineRowsSnapshot
     let selectedID: String?
-    let baseline: ScanSizeBaseline?
     let sort: OutlineSort
 
     func makeCoordinator() -> Coordinator {
@@ -125,7 +124,7 @@ struct BottomOutlineTable: NSViewRepresentable {
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         let coordinator = context.coordinator
-        coordinator.apply(rows: rows, baseline: baseline)
+        coordinator.apply(snapshot: snapshot)
         coordinator.applySortIndicator(sort)
         coordinator.syncSelection(to: selectedID)
     }
@@ -174,14 +173,15 @@ struct BottomOutlineTable: NSViewRepresentable {
         private let model: NeodiskViewModel
         private(set) var rows: [NeodiskViewModel.OutlineRow] = []
         private var rowIndexByID: [String: Int] = [:]
-        private var fingerprints: [RowFingerprint] = []
+        private var appliedStructuralVersion: UInt64?
         private var isProgrammaticSelection = false
+        private(set) var structuralApplyCount = 0
         /// The selection the table last scrolled to: reveal again only when
         /// the model's selection actually changes, not on reloads.
         private var lastRevealedID: String?
-        /// Row list + baseline that arrived while a click was being
-        /// tracked; applied when the click finishes.
-        private var pendingApply: ([NeodiskViewModel.OutlineRow], ScanSizeBaseline?)?
+        /// Structural rows that arrived while a click was being tracked;
+        /// applied when the click finishes.
+        private var pendingApply: NeodiskViewModel.OutlineRowsSnapshot?
 
         weak var tableView: NSTableView?
         weak var scrollView: NSScrollView?
@@ -190,52 +190,20 @@ struct BottomOutlineTable: NSViewRepresentable {
             self.model = model
         }
 
-        /// Render-relevant identity of a row across all five columns:
-        /// reload only when the visible row list actually changes.
-        struct RowFingerprint: Equatable {
-            let id: String
-            let depth: Int
-            let isExpandable: Bool
-            let name: String
-            let size: Int64
-            let delta: Int64?
-            let files: Int
-            let modified: Date?
-            let fraction: Double
-        }
-
-        func apply(rows newRows: [NeodiskViewModel.OutlineRow], baseline: ScanSizeBaseline?) {
+        func apply(snapshot: NeodiskViewModel.OutlineRowsSnapshot) {
+            guard snapshot.structuralVersion != appliedStructuralVersion else { return }
             // Mid-click, reloading would clear the row the user is holding
             // the mouse on; keep the table frozen until tracking ends.
             if let outlineTable = tableView as? OutlineNSTableView,
                outlineTable.isTrackingClick {
-                pendingApply = (newRows, baseline)
+                pendingApply = snapshot
                 return
             }
             pendingApply = nil
-            let includeCloudOnly = model.showsCloudOnlyFiles
-            let newFingerprints = newRows.map {
-                RowFingerprint(
-                    id: $0.id,
-                    depth: $0.depth,
-                    isExpandable: $0.isExpandable,
-                    name: $0.node.name,
-                    size: $0.node.displayWeight(includingCloudOnly: includeCloudOnly),
-                    delta: baseline?.sizeDelta(for: $0.node),
-                    files: $0.node.descendantFileCount,
-                    modified: $0.node.lastModified,
-                    fraction: $0.fractionOfParent
-                )
-            }
-            guard newFingerprints != fingerprints else {
-                rows = newRows
-                return
-            }
-            rows = newRows
-            fingerprints = newFingerprints
-            rowIndexByID = Dictionary(
-                uniqueKeysWithValues: newRows.enumerated().map { ($0.element.id, $0.offset) }
-            )
+            appliedStructuralVersion = snapshot.structuralVersion
+            rows = snapshot.rows
+            rowIndexByID = snapshot.rowIndexByID
+            structuralApplyCount += 1
             tableView?.reloadData()
         }
 
@@ -279,8 +247,8 @@ struct BottomOutlineTable: NSViewRepresentable {
         }
 
         func resyncSelectionAfterClick() {
-            if let (newRows, baseline) = pendingApply {
-                apply(rows: newRows, baseline: baseline)
+            if let pendingApply {
+                apply(snapshot: pendingApply)
             }
             syncSelection(to: model.selectedNodeID)
         }

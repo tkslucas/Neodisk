@@ -84,6 +84,40 @@ import NeodiskKit
         #expect(scene.cell(at: center)?.nodeID == "/scan/a.mov")
     }
 
+    @Test func hoverSwatchStaysUndimmedWhenCellFillIsHighlighted() throws {
+        let store = makeStore()
+        let node = try #require(store.node(id: "/scan/a.mov"))
+        let expected = FileKindCatalog.empty.rgb(for: node)
+        let scene = TreemapScene.build(
+            store: store, rootID: "/scan",
+            size: CGSize(width: 400, height: 300),
+            catalog: .empty,
+            highlight: .nodes(["/different-node"])
+        )
+
+        let cell = try #require(scene.cells.first { $0.nodeID == node.id })
+        #expect(cell.swatchRGB == expected)
+        #expect(cell.rgb == TreemapScene.dimmedRGB(expected))
+    }
+
+    @Test func branchHoverSwatchKeepsExistingTintAcrossTreemapStyles() throws {
+        let store = makeStore()
+        let cushion = TreemapScene.build(
+            store: store, rootID: "/scan", style: .cushion,
+            size: CGSize(width: 400, height: 300), catalog: .empty,
+            colorMode: .branch
+        )
+        let flat = TreemapScene.build(
+            store: store, rootID: "/scan", style: .flat,
+            size: CGSize(width: 400, height: 300), catalog: .empty,
+            colorMode: .branch
+        )
+        let cushionCell = try #require(cushion.cells.first { $0.nodeID == "/scan/a.mov" })
+        let flatCell = try #require(flat.cells.first { $0.nodeID == "/scan/a.mov" })
+
+        #expect(cushionCell.swatchRGB == flatCell.swatchRGB)
+    }
+
     @Test func rectForNodeMatchesRenderedLeafCell() throws {
         let store = makeStore()
         let scene = TreemapScene.build(

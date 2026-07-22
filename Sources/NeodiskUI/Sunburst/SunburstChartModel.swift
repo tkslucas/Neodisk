@@ -65,6 +65,7 @@ final class SunburstChartModel: ObservableObject {
     private var activeLayoutID: String?
     private var layoutTask: Task<[SunburstSegment], Error>?
     private var selectionOverlayCache = SunburstSelectionOverlayCache(capacity: 8)
+    private var legendPresentationCache = SunburstLegendPresentationCache()
     /// The rendered layout before fills, kept so a style change re-resolves
     /// colors over the finished geometry instead of re-laying out.
     private var unstyledSegments: [SunburstSegment] = []
@@ -89,6 +90,49 @@ final class SunburstChartModel: ObservableObject {
 
     var renderedLayoutVersion: Int {
         renderState.version
+    }
+
+    var legendPresentationBuildCount: Int {
+        legendPresentationCache.buildCount
+    }
+
+    func legendPresentation(
+        displayedFolder: FileNodeRecord,
+        chartRootID: String,
+        in store: FileTreeStore,
+        style: SunburstColorStyle,
+        includeCloudOnly: Bool,
+        headerSizeOverride: Int64?
+    ) -> SunburstLegendPresentation {
+        let key = SunburstLegendPresentationKey(
+            renderedLayoutVersion: renderedLayoutVersion,
+            displayedFolderID: displayedFolder.id,
+            chartRootID: chartRootID,
+            style: style,
+            includeCloudOnly: includeCloudOnly,
+            headerSizeOverride: headerSizeOverride
+        )
+        return legendPresentationCache.value(for: key) {
+            SunburstLegendPresentation(
+                header: SunburstLegend.headerRow(
+                    forFolder: displayedFolder,
+                    chartRootID: chartRootID,
+                    in: store,
+                    segments: renderedSegments,
+                    style: style,
+                    includeCloudOnly: includeCloudOnly,
+                    sizeOverride: headerSizeOverride
+                ),
+                rows: SunburstLegend.rows(
+                    forFolder: displayedFolder.id,
+                    chartRootID: chartRootID,
+                    in: store,
+                    segments: renderedSegments,
+                    style: style,
+                    includeCloudOnly: includeCloudOnly
+                )
+            )
+        }
     }
 
     func setHoveredSegmentID(_ segmentID: SunburstSegment.ID?) {
@@ -205,6 +249,7 @@ final class SunburstChartModel: ObservableObject {
 
     private func apply(_ segments: [SunburstSegment], preservingHover: Bool = false) {
         selectionOverlayCache.removeAll()
+        legendPresentationCache.removeAll()
         renderState = SunburstChartRenderState(
             segments: segments,
             hoveredSegmentID: preservingHover ? renderState.hoveredSegmentID : nil,

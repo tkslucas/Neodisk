@@ -21,9 +21,8 @@ import NeodiskKit
 /// source of truth for rows, selection, and expansion.
 struct OutlineTreeTable: NSViewRepresentable {
     let model: NeodiskViewModel
-    let rows: [NeodiskViewModel.OutlineRow]
+    let snapshot: NeodiskViewModel.OutlineRowsSnapshot
     let selectedID: String?
-    let baseline: ScanSizeBaseline?
 
     func makeCoordinator() -> Coordinator {
         Coordinator(model: model)
@@ -125,7 +124,7 @@ struct OutlineTreeTable: NSViewRepresentable {
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         let coordinator = context.coordinator
-        coordinator.apply(rows: rows, baseline: baseline)
+        coordinator.apply(snapshot: snapshot)
         coordinator.applyColumnWidth()
         coordinator.syncSelection(to: selectedID)
     }
@@ -135,8 +134,9 @@ struct OutlineTreeTable: NSViewRepresentable {
         private let model: NeodiskViewModel
         private(set) var rows: [NeodiskViewModel.OutlineRow] = []
         private var rowIndexByID: [String: Int] = [:]
-        private var fingerprints: [RowFingerprint] = []
+        private var appliedStructuralVersion: UInt64?
         private var contentWidth: CGFloat = 0
+        private(set) var structuralApplyCount = 0
         /// Last measured gap between the table's frame and its single
         /// column (the style's horizontal padding).
         private var columnOverhead: CGFloat = 12
@@ -157,59 +157,27 @@ struct OutlineTreeTable: NSViewRepresentable {
             NotificationCenter.default.removeObserver(self)
         }
 
-        /// Render-relevant identity of a row: reload only when the visible
-        /// row list actually changes. Purely observable details (chevron
-        /// rotation, the expansion spinner) update in place through the
-        /// hosted SwiftUI rows without a reload.
-        struct RowFingerprint: Equatable {
-            let id: String
-            let depth: Int
-            let isExpandable: Bool
-            let name: String
-            let size: Int64
-            let delta: Int64?
-        }
-
-        /// Row list + baseline that arrived while a click was being tracked;
+        /// Structural rows that arrived while a click was being tracked;
         /// applied when the click finishes.
-        private var pendingApply: ([NeodiskViewModel.OutlineRow], ScanSizeBaseline?)?
+        private var pendingApply: NeodiskViewModel.OutlineRowsSnapshot?
 
-        func apply(rows newRows: [NeodiskViewModel.OutlineRow], baseline: ScanSizeBaseline?) {
+        func apply(snapshot: NeodiskViewModel.OutlineRowsSnapshot) {
+            guard snapshot.structuralVersion != appliedStructuralVersion else { return }
             // Mid-click, reloading would clear the row the user is holding
             // the mouse on (and the deferred delegate would then report an
             // empty selection). Keep the table frozen until tracking ends;
             // `rows` also stays consistent with what the click landed on.
             if let outlineTable = tableView as? OutlineNSTableView,
                outlineTable.isTrackingClick {
-                pendingApply = (newRows, baseline)
+                pendingApply = snapshot
                 return
             }
             pendingApply = nil
-            // Fingerprint the displayed size (cloud-only toggle included), so
-            // flipping the toggle reloads rows whose number or glyph changes.
-            let includeCloudOnly = model.showsCloudOnlyFiles
-            let newFingerprints = newRows.map {
-                RowFingerprint(
-                    id: $0.id,
-                    depth: $0.depth,
-                    isExpandable: $0.isExpandable,
-                    name: $0.node.name,
-                    size: $0.node.displayWeight(includingCloudOnly: includeCloudOnly),
-                    delta: baseline?.sizeDelta(for: $0.node)
-                )
-            }
-            guard newFingerprints != fingerprints else {
-                rows = newRows
-                return
-            }
-            rows = newRows
-            fingerprints = newFingerprints
-            rowIndexByID = Dictionary(
-                uniqueKeysWithValues: newRows.enumerated().map { ($0.element.id, $0.offset) }
-            )
-            contentWidth = OutlineRowMetrics.contentWidth(
-                for: newRows, baseline: baseline, includeCloudOnly: includeCloudOnly
-            )
+            appliedStructuralVersion = snapshot.structuralVersion
+            rows = snapshot.rows
+            rowIndexByID = snapshot.rowIndexByID
+            contentWidth = snapshot.contentWidth
+            structuralApplyCount += 1
             tableView?.reloadData()
         }
 
@@ -293,8 +261,8 @@ struct OutlineTreeTable: NSViewRepresentable {
         /// Click tracking finished and the delegate has run: apply any rows
         /// and model selection changes that arrived (and were held) mid-click.
         func resyncSelectionAfterClick() {
-            if let (newRows, baseline) = pendingApply {
-                apply(rows: newRows, baseline: baseline)
+            if let pendingApply {
+                apply(snapshot: pendingApply)
                 applyColumnWidth()
             }
             syncSelection(to: model.selectedNodeID)

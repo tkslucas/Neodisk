@@ -48,11 +48,10 @@ extension NeodiskViewModel {
     }
 
     /// Expands every ancestor so the outline shows the selected row.
-    func revealInOutline(_ nodeID: String) {
+    func revealInOutline(_ nodeID: String, includingNode: Bool = false) {
         guard let store else { return }
-        for ancestor in store.path(to: nodeID).dropLast() {
-            expandedNodeIDs.insert(ancestor.id)
-        }
+        let path = store.path(to: nodeID)
+        expandOutlineNodes((includingNode ? path[...] : path.dropLast()).map(\.id))
     }
 
     func zoomOut() {
@@ -203,6 +202,13 @@ extension NeodiskViewModel {
     /// layouts. Otherwise `sortedBy` (the bottom table's header sort)
     /// reorders siblings; nil keeps the store's size order.
     func visibleOutlineRows(sortedBy sort: OutlineSort? = nil) -> [OutlineRow] {
+        outlineRowsSnapshot(sortedBy: sort).rows
+    }
+
+    /// The structural cache's only flattening entry point. Kept separate
+    /// from `visibleOutlineRows` so selection-only calls can be proven to
+    /// reuse an existing snapshot.
+    func flattenVisibleOutlineRows(sortedBy sort: OutlineSort? = nil) -> [OutlineRow] {
         guard let store, let effectiveRootID,
               let root = store.node(id: effectiveRootID) else { return [] }
 
@@ -238,11 +244,11 @@ extension NeodiskViewModel {
     }
 
     func toggleExpansion(_ nodeID: String) {
-        if expandedNodeIDs.contains(nodeID) {
-            expandedNodeIDs.remove(nodeID)
-        } else {
-            expandedNodeIDs.insert(nodeID)
+        var expanded = expandedNodeIDs
+        if expanded.remove(nodeID) == nil {
+            expanded.insert(nodeID)
         }
+        replaceExpandedOutlineNodes(with: expanded)
     }
 }
 

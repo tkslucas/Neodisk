@@ -38,11 +38,11 @@ struct OutlinePane: View {
     /// The AppKit-backed tree. The search field and search results live
     /// outside it and never pan horizontally.
     private var outlineTree: some View {
-        OutlineTreeTable(
+        let snapshot = model.outlineRowsSnapshot()
+        return OutlineTreeTable(
             model: model,
-            rows: model.visibleOutlineRows(),
-            selectedID: model.selectedNodeID,
-            baseline: model.diff.baseline
+            snapshot: snapshot,
+            selectedID: model.selectedNodeID
         )
     }
 }

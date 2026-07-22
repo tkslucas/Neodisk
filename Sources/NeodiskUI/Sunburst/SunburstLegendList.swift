@@ -33,42 +33,48 @@ struct SunburstLegendList: View {
     /// The shared "one drill per pinch" latch, matching the chart overlay.
     @State private var pinchRecognizer = PinchDrillRecognizer()
 
+    @ViewBuilder
     var body: some View {
-        let rows = legendRows
-        let highlightedRowID = highlightedRowID(in: rows)
+        if let presentation = legendPresentation {
+            legendContent(presentation)
+                .simultaneousGesture(pinchDrillGesture(rows: presentation.rows))
+                .onChange(of: style) { _, _ in
+                    guard let hoveredRowID,
+                          let row = presentation.rows.first(where: { $0.id == hoveredRowID })
+                    else { return }
+                    onHoverRow(row)
+                }
+        } else {
+            Color.clear
+        }
+    }
 
-        ZStack {
+    private func legendContent(_ presentation: SunburstLegendPresentation) -> some View {
+        let rows = presentation.rows
+        let highlightedRowID = highlightedRowID(in: presentation)
+
+        return ZStack {
             VStack(spacing: 0) {
-                if let store = model.store {
-                    LegendRowView(
-                        row: SunburstLegend.headerRow(
-                            forFolder: displayedFolder,
-                            chartRootID: chartRootID,
-                            in: store,
-                            segments: chartModel.renderedSegments,
-                            style: style,
-                            includeCloudOnly: model.showsCloudOnlyFiles,
-                            sizeOverride: headerSizeOverride(store: store)
-                        ),
-                        isHeader: true,
-                        isSelected: false,
-                        isHighlighted: false,
-                        reservesCloudGlyphSlot: model.showsCloudOnlyFiles
-                    )
-                    .padding(.top, 10)
-                    .padding(.bottom, 4)
+                LegendRowView(
+                    row: presentation.header,
+                    isHeader: true,
+                    isSelected: false,
+                    isHighlighted: false,
+                    reservesCloudGlyphSlot: model.showsCloudOnlyFiles
+                )
+                .padding(.top, 10)
+                .padding(.bottom, 4)
 
-                    Divider()
-                        .padding(.horizontal, 10)
+                Divider()
+                    .padding(.horizontal, 10)
 
-                    ScrollView {
-                        LazyVStack(spacing: 1) {
-                            ForEach(rows) { row in
-                                interactiveRow(row, isHighlighted: row.id == highlightedRowID)
-                            }
+                ScrollView {
+                    LazyVStack(spacing: 1) {
+                        ForEach(rows) { row in
+                            interactiveRow(row, isHighlighted: row.id == highlightedRowID)
                         }
-                        .padding(.vertical, 6)
                     }
+                    .padding(.vertical, 6)
                 }
             }
             // Swapping the identity when the displayed folder changes (hover
@@ -81,7 +87,6 @@ struct SunburstLegendList: View {
         }
         // Width is owned by SunburstPane: user-resizable, clamped against
         // the pane so the chart keeps a usable diameter (SunburstLegendMetrics).
-        .simultaneousGesture(pinchDrillGesture(rows: rows))
     }
 
     // MARK: - Pinch to drill
@@ -117,15 +122,15 @@ struct SunburstLegendList: View {
         return model.freeSpace.finderUsedBytes
     }
 
-    private var legendRows: [SunburstLegendRow] {
-        guard let store = model.store else { return [] }
-        return SunburstLegend.rows(
-            forFolder: displayedFolder.id,
+    private var legendPresentation: SunburstLegendPresentation? {
+        guard let store = model.store else { return nil }
+        return chartModel.legendPresentation(
+            displayedFolder: displayedFolder,
             chartRootID: chartRootID,
             in: store,
-            segments: chartModel.renderedSegments,
             style: style,
-            includeCloudOnly: model.showsCloudOnlyFiles
+            includeCloudOnly: model.showsCloudOnlyFiles,
+            headerSizeOverride: headerSizeOverride(store: store)
         )
     }
 
@@ -181,28 +186,29 @@ struct SunburstLegendList: View {
     /// aggregate row, the hovered node's own row, or its top-level
     /// ancestor's row. List-row hover feeds the same model state, so a
     /// hovered row highlights itself through this too.
-    private func highlightedRowID(in rows: [SunburstLegendRow]) -> String? {
-        if model.hoveredCellIsFreeSpace {
-            return rows.first { $0.target == .freeSpace }?.id
-        }
-        if model.hoveredCellIsHiddenSpace {
-            return rows.first { $0.target == .hiddenSpace }?.id
+    private func highlightedRowID(in presentation: SunburstLegendPresentation) -> String? {
+        switch model.visualizationHover {
+        case .freeSpace:
+            return presentation.freeSpaceRowID
+        case .hiddenSpace:
+            return presentation.hiddenSpaceRowID
+        case .aggregate(let folderID, _, _, _) where folderID == displayedFolder.id:
+            return presentation.aggregateRowID
+        default:
+            break
         }
         guard let hoveredID = model.hoveredNodeID, let store = model.store else { return nil }
-        if model.hoveredAggregate != nil, hoveredID == displayedFolder.id {
-            return rows.first { $0.target == .aggregate }?.id
-        }
         guard hoveredID != displayedFolder.id,
               let rowNodeID = SunburstLegend.rowNodeID(
                 forHovered: hoveredID,
                 displayedFolderID: displayedFolder.id,
                 in: store
               ) else { return nil }
-        if rows.contains(where: { $0.id == rowNodeID }) {
+        if presentation.rowIDs.contains(rowNodeID) {
             return rowNodeID
         }
         // The containing child was pooled into the aggregate segment.
-        return rows.first { $0.target == .aggregate }?.id
+        return presentation.aggregateRowID
     }
 
     /// Same actions as the chart segments' context menu, gated the same way.

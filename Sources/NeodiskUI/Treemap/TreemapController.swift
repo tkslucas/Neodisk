@@ -61,6 +61,9 @@ final class TreemapController {
     private var selectedNodeID: String?
 
     private var renderTask: Task<Void, Never>?
+    /// Exact pane-size rendering waits for a short quiet period; the last
+    /// complete image stretches through `displayTransform` in the meantime.
+    private var resizeSettleTask: Task<Void, Never>?
     private var gestureStartScale: CGFloat = 1
     private var gestureNetMagnification: CGFloat = 1
 
@@ -87,6 +90,7 @@ final class TreemapController {
             onGestureActiveChange?(isGesturing)
             // The hover ring hides with the tooltip and must come back when
             // the map settles, even if the pointer never moves again.
+            if !isGesturing { resolveHoverAfterDisplayChange() }
             view?.refreshHoverLayer()
         }
     }
@@ -95,6 +99,41 @@ final class TreemapController {
     /// map. Kept so the hover ring can re-resolve its cell whenever the
     /// scene or transform changes under a stationary pointer.
     private var hoverPoint: CGPoint?
+    /// Cell resolved by the last pointer hit test. Its rect feeds the hover
+    /// layer directly, so moving inside one cell never hit-tests twice.
+    private var hoveredCell: HoveredCell?
+
+    private struct HoveredCell: Equatable {
+        let nodeID: String
+        let rect: CGRect
+        let aggregate: TreemapCell.AggregateInfo?
+        let isFreeSpace: Bool
+        let isHiddenSpace: Bool
+        let swatchRGB: SIMD3<Float>
+
+        init(_ cell: TreemapCell) {
+            nodeID = cell.nodeID
+            rect = cell.rect
+            aggregate = cell.aggregate
+            isFreeSpace = cell.isFreeSpace
+            isHiddenSpace = cell.isHiddenSpace
+            swatchRGB = cell.swatchRGB
+        }
+
+        var modelValue: VisualizationHover {
+            if isFreeSpace { return .freeSpace(swatchRGB: swatchRGB) }
+            if isHiddenSpace { return .hiddenSpace(swatchRGB: swatchRGB) }
+            if let aggregate {
+                return .aggregate(
+                    folderID: nodeID,
+                    itemCount: aggregate.itemCount,
+                    totalSize: aggregate.totalSize,
+                    swatchRGB: swatchRGB
+                )
+            }
+            return .node(id: nodeID, swatchRGB: swatchRGB)
+        }
+    }
     /// Momentum scroll/zoom has no explicit end event, so it self-clears after
     /// a brief idle; each event reschedules the reset.
     private var gestureIdleResetTask: Task<Void, Never>?
@@ -156,6 +195,7 @@ final class TreemapController {
         inputs = newInputs
         store = snapshot?.treeStore
         self.catalog = catalog
+        cancelDeferredResizeRender()
         cancelInFlightRender()
         startRender()
     }
@@ -170,9 +210,23 @@ final class TreemapController {
         guard size != viewSize else { return }
         viewSize = size
         viewport = viewport.clamped(viewSize: size)
-        // No cancel: mid-resize renders land and are immediately superseded,
-        // so the map tracks a splitter drag without ever going blank.
-        requestRender()
+        guard size.width >= 1, size.height >= 1 else {
+            cancelDeferredResizeRender()
+            cancelInFlightRender()
+            startRender()
+            return
+        }
+        guard scene != nil, image != nil else {
+            // First display has nothing useful to stretch; render immediately.
+            requestRender()
+            return
+        }
+
+        // Keep the last pixels filling the pane and stop obsolete renders from
+        // landing labels on MainActor. One exact render follows after idle.
+        cancelInFlightRender()
+        pushDisplay()
+        scheduleSettledResizeRender()
     }
 
     /// The window moved to a display with a different pixel density —
@@ -181,6 +235,7 @@ final class TreemapController {
     func backingScaleChanged() {
         let scale = view?.window?.backingScaleFactor ?? 2
         guard scale != renderedScale else { return }
+        cancelDeferredResizeRender()
         cancelInFlightRender()
         startRender()
     }
@@ -188,6 +243,7 @@ final class TreemapController {
     /// Light/dark switched: the flat style's fills are baked against the
     /// window background, so the pixels are stale — re-render.
     func appearanceChanged() {
+        cancelDeferredResizeRender()
         cancelInFlightRender()
         startRender()
     }
@@ -218,7 +274,12 @@ final class TreemapController {
     /// Transform placing the rendered content under the live viewport.
     var displayTransform: CGAffineTransform {
         guard let scene else { return .identity }
-        return viewport.displayTransform(fromRendered: scene.viewport)
+        return TreemapResizePolicy.displayTransform(
+            liveViewport: viewport,
+            liveSize: viewSize,
+            renderedViewport: scene.viewport,
+            renderedSize: scene.size
+        )
     }
 
     /// Selection rect in rendered-scene coordinates (the content layer's
@@ -230,35 +291,47 @@ final class TreemapController {
 
     /// Hovered cell's rect in rendered-scene coordinates, or nil when the
     /// pointer is off the map or a gesture is moving it (the ring hides
-    /// with the tooltip). Resolved from the stored pointer position on
-    /// every read, so it stays honest across re-renders and transforms.
+    /// with the tooltip). Re-resolved when the pointer crosses a cell and
+    /// whenever a render or gesture changes the displayed scene.
     var hoverRect: CGRect? {
-        guard !isGesturing, let hoverPoint else { return nil }
-        return cell(at: hoverPoint)?.rect
+        guard !isGesturing else { return nil }
+        return hoveredCell?.rect
     }
 
     // MARK: - Events from the view
 
     func hover(at point: CGPoint) {
-        guard let model else { return }
+        guard model != nil else { return }
         hoverPoint = point
-        let cell = cell(at: point)
-        model.hoveredNodeID = cell?.nodeID
-        model.hoveredAggregate = cell?.aggregate
-        model.hoveredCellIsFreeSpace = cell?.isFreeSpace == true
-        model.hoveredCellIsHiddenSpace = cell?.isHiddenSpace == true
-        onHoverPoint?(cell == nil ? nil : point)
-        view?.refreshHoverLayer()
+        let changed = setHoveredCell(cell(at: point))
+        onHoverPoint?(hoveredCell == nil ? nil : point)
+        if changed { view?.refreshHoverLayer() }
     }
 
     func hoverEnded() {
+        let hadHover = hoveredCell != nil
         hoverPoint = nil
-        model?.hoveredNodeID = nil
-        model?.hoveredAggregate = nil
-        model?.hoveredCellIsFreeSpace = false
-        model?.hoveredCellIsHiddenSpace = false
+        hoveredCell = nil
+        model?.setVisualizationHover(nil)
         onHoverPoint?(nil)
-        view?.refreshHoverLayer()
+        if hadHover { view?.refreshHoverLayer() }
+    }
+
+    @discardableResult
+    private func setHoveredCell(_ cell: TreemapCell?) -> Bool {
+        let next = cell.map(HoveredCell.init)
+        guard next != hoveredCell else { return false }
+        hoveredCell = next
+        model?.setVisualizationHover(next?.modelValue)
+        return true
+    }
+
+    /// A completed render or settled transform can move a cell under a
+    /// stationary pointer. Re-resolve once at that boundary, never again
+    /// while the pointer remains inside the same rendered cell.
+    private func resolveHoverAfterDisplayChange() {
+        guard let hoverPoint else { return }
+        _ = setHoveredCell(cell(at: hoverPoint))
     }
 
     func click(at point: CGPoint) {
@@ -529,6 +602,26 @@ final class TreemapController {
         renderTask = nil
     }
 
+    private func cancelDeferredResizeRender() {
+        resizeSettleTask?.cancel()
+        resizeSettleTask = nil
+    }
+
+    private func scheduleSettledResizeRender() {
+        resizeSettleTask?.cancel()
+        resizeSettleTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: TreemapResizePolicy.settleDelay)
+            } catch {
+                return
+            }
+            guard let self, !Task.isCancelled else { return }
+            self.resizeSettleTask = nil
+            self.cancelInFlightRender()
+            self.startRender()
+        }
+    }
+
     private func startRender() {
         guard let store, let rootID = inputs.rootID,
               viewSize.width >= 1, viewSize.height >= 1 else {
@@ -596,6 +689,7 @@ final class TreemapController {
             self.scene = result.0
             self.image = result.1
             self.renderedScale = scale
+            self.resolveHoverAfterDisplayChange()
             self.pushDisplay(contentsChanged: true)
             self.runPendingDrillAnimation()
             // Felt-time: the map's pixels just reached the layer tree. This is

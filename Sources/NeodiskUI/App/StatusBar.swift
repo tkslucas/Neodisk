@@ -18,11 +18,7 @@ struct StatusBar: View {
         HStack(spacing: 8) {
             if model.hoveredCellIsFreeSpace {
                 RoundedRectangle(cornerRadius: 2)
-                    .fill(Color(
-                        red: Double(SyntheticSpaceColors.freeSpaceRGB.x),
-                        green: Double(SyntheticSpaceColors.freeSpaceRGB.y),
-                        blue: Double(SyntheticSpaceColors.freeSpaceRGB.z)
-                    ))
+                    .fill(Color(rgb: model.visualizationHover?.swatchRGB ?? SyntheticSpaceColors.freeSpaceRGB))
                     .frame(width: 10, height: 10)
                 Text("Free space on this volume")
                 Spacer(minLength: 12)
@@ -38,11 +34,7 @@ struct StatusBar: View {
                 }
             } else if model.hoveredCellIsHiddenSpace {
                 RoundedRectangle(cornerRadius: 2)
-                    .fill(Color(
-                        red: Double(SyntheticSpaceColors.hiddenSpaceRGB.x),
-                        green: Double(SyntheticSpaceColors.hiddenSpaceRGB.y),
-                        blue: Double(SyntheticSpaceColors.hiddenSpaceRGB.z)
-                    ))
+                    .fill(Color(rgb: model.visualizationHover?.swatchRGB ?? SyntheticSpaceColors.hiddenSpaceRGB))
                     .frame(width: 10, height: 10)
                 Text("Hidden space on this volume")
                     .help("Purgeable space, local snapshots, and files the scan could not see.")
@@ -53,7 +45,7 @@ struct StatusBar: View {
                 }
             } else if let aggregate = model.hoveredAggregate, let folder = model.hoveredNode {
                 RoundedRectangle(cornerRadius: 2)
-                    .fill(FileKindCatalog.otherColor)
+                    .fill(Color(rgb: model.visualizationHover?.swatchRGB ?? FileKindCatalog.otherRGB))
                     .frame(width: 10, height: 10)
                 Text("\(aggregate.itemCount.formatted()) smaller items in \(folder.url.path)")
                     .lineLimit(1)
@@ -63,7 +55,7 @@ struct StatusBar: View {
                     .monospacedDigit()
             } else if let node = model.hoveredNode ?? model.selectedNode {
                 RoundedRectangle(cornerRadius: 2)
-                    .fill(model.displayColor(for: node))
+                    .fill(hoverOrSelectionSwatch(for: node))
                     .frame(width: 10, height: 10)
                 Text(node.url.path)
                     .lineLimit(1)
@@ -85,6 +77,13 @@ struct StatusBar: View {
         .font(.system(size: 11))
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
+    }
+
+    private func hoverOrSelectionSwatch(for node: FileNodeRecord) -> Color {
+        if case .node(let id, let rgb) = model.visualizationHover, id == node.id {
+            return Color(rgb: rgb)
+        }
+        return model.displayColor(for: node)
     }
 
     /// The free-space figure with its purgeable share spelled out, so the

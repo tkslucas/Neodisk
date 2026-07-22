@@ -289,6 +289,12 @@ private struct WorkspaceView: View {
     @AppStorage("bottomOutlinePaneHeight")
     private var bottomOutlinePaneHeight = PaneLayout.bottomOutlineDefaultHeight
 
+    // AppStorage writes synchronize through UserDefaults. Keep pointer-drag
+    // deltas local, then persist only the final size when the gesture ends.
+    @State private var transientOutlinePaneWidth: Double?
+    @State private var transientKindStatsPaneWidth: Double?
+    @State private var transientBottomOutlinePaneHeight: Double?
+
     private var fileListVisibility: WorkspaceFileListVisibility {
         WorkspaceFileListVisibility(
             viewMode: model.vizViewMode,
@@ -342,9 +348,31 @@ private struct WorkspaceView: View {
             available: available,
             showsLeadingOutline: fileListVisibility.showsLeading,
             showsAnalysis: model.showKindStats,
-            storedOutlineWidth: outlinePaneWidth,
-            storedAnalysisWidth: kindStatsPaneWidth,
-            storedBottomOutlineHeight: bottomOutlinePaneHeight
+            storedOutlineWidth: transientOutlinePaneWidth ?? outlinePaneWidth,
+            storedAnalysisWidth: transientKindStatsPaneWidth ?? kindStatsPaneWidth,
+            storedBottomOutlineHeight: transientBottomOutlinePaneHeight
+                ?? bottomOutlinePaneHeight
+        )
+    }
+
+    private var outlinePaneSize: Binding<Double> {
+        Binding(
+            get: { transientOutlinePaneWidth ?? outlinePaneWidth },
+            set: { transientOutlinePaneWidth = $0 }
+        )
+    }
+
+    private var kindStatsPaneSize: Binding<Double> {
+        Binding(
+            get: { transientKindStatsPaneWidth ?? kindStatsPaneWidth },
+            set: { transientKindStatsPaneWidth = $0 }
+        )
+    }
+
+    private var bottomOutlinePaneSize: Binding<Double> {
+        Binding(
+            get: { transientBottomOutlinePaneHeight ?? bottomOutlinePaneHeight },
+            set: { transientBottomOutlinePaneHeight = $0 }
         )
     }
 
@@ -356,10 +384,14 @@ private struct WorkspaceView: View {
                         .frame(width: metrics.outlineWidth)
 
                     PaneSplitter(
-                        size: $outlinePaneWidth,
+                        size: outlinePaneSize,
                         range: metrics.outlineRange,
                         defaultSize: PaneLayout.outlineDefaultWidth,
-                        paneEdge: .leading
+                        paneEdge: .leading,
+                        onCommit: {
+                            outlinePaneWidth = $0
+                            transientOutlinePaneWidth = nil
+                        }
                     )
                 }
 
@@ -380,10 +412,14 @@ private struct WorkspaceView: View {
                     // full height beside both.
                     if fileListVisibility.showsBottom {
                         PaneSplitter(
-                            size: $bottomOutlinePaneHeight,
+                            size: bottomOutlinePaneSize,
                             range: metrics.bottomOutlineRange,
                             defaultSize: PaneLayout.bottomOutlineDefaultHeight,
-                            paneEdge: .bottom
+                            paneEdge: .bottom,
+                            onCommit: {
+                                bottomOutlinePaneHeight = $0
+                                transientBottomOutlinePaneHeight = nil
+                            }
                         )
                         BottomOutlinePane(model: model)
                             .frame(height: metrics.bottomOutlineHeight)
@@ -394,10 +430,14 @@ private struct WorkspaceView: View {
 
                 if model.showKindStats {
                     PaneSplitter(
-                        size: $kindStatsPaneWidth,
+                        size: kindStatsPaneSize,
                         range: metrics.analysisRange,
                         defaultSize: PaneLayout.analysisDefaultWidth,
-                        paneEdge: .trailing
+                        paneEdge: .trailing,
+                        onCommit: {
+                            kindStatsPaneWidth = $0
+                            transientKindStatsPaneWidth = nil
+                        }
                     )
                     AnalysisPane(model: model)
                         .frame(width: metrics.analysisWidth)

@@ -118,22 +118,10 @@ extension SunburstLayout {
         token: SunburstColorToken,
         style: SunburstColorStyle
     ) -> SIMD3<Float>? {
-        var rgb: SIMD3<Float>
-        switch style.mode {
-        case .branch:
-            return SunburstColorResolver.rgb(for: token, palette: style.palette.sunburst)
-        case .kind:
-            rgb = style.catalog.rgb(for: node)
-        case .age(let referenceDate):
-            if FileKindClassifier.isLeafLike(node) {
-                rgb = style.palette.ageRGB(AgeBucket.bucket(for: node.lastModified, reference: referenceDate))
-            } else {
-                rgb = FileKindCatalog.directoryRGB
-            }
-        }
-        // Only .kind and .age reach here (.branch returns above), so the
-        // highlight-match predicate is shared with the treemap unchanged —
-        // map this mode onto the treemap's for the one .age case it reads.
+        var rgb = semanticFillRGB(for: node, token: token, style: style)
+        guard style.mode != .branch else { return rgb }
+        // Only .kind and .age reach here, so the highlight-match predicate
+        // is shared with the treemap unchanged.
         if let highlight = style.highlight,
            !TreemapScene.matches(
                node,
@@ -144,6 +132,29 @@ extension SunburstLayout {
             rgb = TreemapScene.dimmedRGB(rgb)
         }
         return rgb
+    }
+
+    /// Undimmed semantic fill for status-bar swatches. The segment's token
+    /// already carries its branch coordinate, so this is O(1) for every
+    /// color mode and never walks ancestors or siblings during hover.
+    nonisolated static func semanticFillRGB(
+        for node: FileNodeRecord,
+        token: SunburstColorToken,
+        style: SunburstColorStyle
+    ) -> SIMD3<Float> {
+        switch style.mode {
+        case .branch:
+            return SunburstColorResolver.rgb(for: token, palette: style.palette.sunburst)
+        case .kind:
+            return style.catalog.rgb(for: node)
+        case .age(let referenceDate):
+            if FileKindClassifier.isLeafLike(node) {
+                return style.palette.ageRGB(
+                    AgeBucket.bucket(for: node.lastModified, reference: referenceDate)
+                )
+            }
+            return FileKindCatalog.directoryRGB
+        }
     }
 }
 

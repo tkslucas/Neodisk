@@ -38,6 +38,10 @@ public struct TreemapCell: Sendable {
     public let nodeID: String
     public let rect: CGRect
     public let rgb: SIMD3<Float>
+    /// Undimmed semantic color for UI chrome such as the status-bar swatch.
+    /// Unlike `rgb`, this excludes highlight dimming, cloud treatment, and
+    /// flat-style compositing.
+    public let swatchRGB: SIMD3<Float>
     public let surface: CushionSurface
     public let isDirectory: Bool
     /// Set (flat style only) when this cell is a folder container whose
@@ -63,7 +67,7 @@ public struct TreemapCell: Sendable {
     /// of hue (and so it survives the colorblind palette).
     public var isDataless: Bool
 
-    public struct AggregateInfo: Sendable {
+    public struct AggregateInfo: Equatable, Sendable {
         public let itemCount: Int
         public let totalSize: Int64
 
@@ -77,6 +81,7 @@ public struct TreemapCell: Sendable {
         nodeID: String,
         rect: CGRect,
         rgb: SIMD3<Float>,
+        swatchRGB: SIMD3<Float>? = nil,
         surface: CushionSurface,
         isDirectory: Bool,
         isContainer: Bool = false,
@@ -88,6 +93,7 @@ public struct TreemapCell: Sendable {
         self.nodeID = nodeID
         self.rect = rect
         self.rgb = rgb
+        self.swatchRGB = swatchRGB ?? rgb
         self.surface = surface
         self.isDirectory = isDirectory
         self.isContainer = isContainer

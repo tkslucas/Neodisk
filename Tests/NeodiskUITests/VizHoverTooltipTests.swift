@@ -8,6 +8,24 @@ import NeodiskKit
 /// `Bundle.main`, so `NSLocalizedString` returns the English key templates —
 /// which is exactly the source phrasing being checked here.
 @Suite struct VizHoverTooltipTests {
+    @Test func hoverIdentityGatePublishesOnlyTargetEdges() {
+        var gate = HoverIdentityGate<String>()
+
+        let initialExit = gate.transition(to: nil)
+        let enteredA = gate.transition(to: "segment-a")
+        let stayedInA = gate.transition(to: "segment-a")
+        let enteredB = gate.transition(to: "segment-b")
+        let exited = gate.transition(to: nil)
+        let stayedOutside = gate.transition(to: nil)
+
+        #expect(!initialExit)
+        #expect(enteredA)
+        #expect(!stayedInA)
+        #expect(enteredB)
+        #expect(exited)
+        #expect(!stayedOutside)
+    }
+
     @Test func testItemLinesShowSizeAndPercentOfDrillRoot() {
         let data = VizHoverTooltipData(
             kind: .item(name: "Report.pdf"),

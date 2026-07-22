@@ -292,6 +292,88 @@ import NeodiskKit
             forHovered: "/root/sub", displayedFolderID: "/root/sub/deep", in: store
         ) == nil)
     }
+
+    // MARK: - Presentation cache
+
+    @Test func presentationCacheReusesStructureUntilAKeyInputChanges() throws {
+        let child = makeTestFileNode(id: "/root/file.mov", name: "file.mov", size: 10)
+        let store = makeLegendStore(children: [child])
+        let segments = SunburstLayout.segments(in: store, rootID: "/root", depthLimit: 1)
+        let root = try #require(store.node(id: "/root"))
+        let style = SunburstColorStyle()
+        let presentation = SunburstLegendPresentation(
+            header: SunburstLegend.headerRow(
+                forFolder: root, chartRootID: "/root", in: store,
+                segments: segments, style: style
+            ),
+            rows: SunburstLegend.rows(
+                forFolder: "/root", chartRootID: "/root", in: store,
+                segments: segments, style: style
+            )
+        )
+        var cache = SunburstLegendPresentationCache()
+        let key = SunburstLegendPresentationKey(
+            renderedLayoutVersion: 1,
+            displayedFolderID: "/root",
+            chartRootID: "/root",
+            style: style,
+            includeCloudOnly: false,
+            headerSizeOverride: nil
+        )
+
+        _ = cache.value(for: key) { presentation }
+        _ = cache.value(for: key) {
+            Issue.record("Identical presentation key rebuilt")
+            return presentation
+        }
+        #expect(cache.buildCount == 1)
+
+        let nextVersion = SunburstLegendPresentationKey(
+            renderedLayoutVersion: 2,
+            displayedFolderID: key.displayedFolderID,
+            chartRootID: key.chartRootID,
+            style: key.style,
+            includeCloudOnly: key.includeCloudOnly,
+            headerSizeOverride: key.headerSizeOverride
+        )
+        _ = cache.value(for: nextVersion) { presentation }
+        #expect(cache.buildCount == 2)
+
+        let cloudWeighted = SunburstLegendPresentationKey(
+            renderedLayoutVersion: nextVersion.renderedLayoutVersion,
+            displayedFolderID: nextVersion.displayedFolderID,
+            chartRootID: nextVersion.chartRootID,
+            style: nextVersion.style,
+            includeCloudOnly: true,
+            headerSizeOverride: nextVersion.headerSizeOverride
+        )
+        _ = cache.value(for: cloudWeighted) { presentation }
+        #expect(cache.buildCount == 3)
+    }
+
+    @Test func legendHoverSwatchIgnoresHighlightDimming() throws {
+        let child = makeTestFileNode(id: "/root/file.mov", name: "file.mov", size: 10)
+        let store = makeLegendStore(children: [child])
+        let catalog = FileKindCatalog.build(from: store, mode: .types)
+        let style = SunburstColorStyle(
+            mode: .kind,
+            catalog: catalog,
+            highlight: .nodes(["/different-node"])
+        )
+        let segments = SunburstLayout.segments(
+            in: store, rootID: "/root", depthLimit: 1, style: style
+        )
+        let segment = try #require(segments.first { $0.nodeID == child.id })
+        let rows = SunburstLegend.rows(
+            forFolder: "/root", chartRootID: "/root",
+            in: store, segments: segments, style: style
+        )
+        let row = try #require(rows.first { $0.id == child.id })
+        let semantic = catalog.rgb(for: child)
+
+        #expect(row.swatchRGB == semantic)
+        #expect(segment.fillRGB == TreemapScene.dimmedRGB(semantic))
+    }
 }
 
 // MARK: - Helpers

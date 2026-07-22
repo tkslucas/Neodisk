@@ -224,4 +224,79 @@ import Testing
         #expect(splitter(.bottom).orientation == .row)
         #expect(splitter(.bottom).deltaSign == -1)
     }
+
+    @Test func mouseDragEndsExactlyOnceOnMouseUp() throws {
+        let view = SplitterNSView(orientation: .column)
+        var beganCount = 0
+        var endedCount = 0
+        view.onDragBegan = { beganCount += 1 }
+        view.onDragEnded = { endedCount += 1 }
+
+        view.mouseDown(with: try mouseEvent(type: .leftMouseDown, clickCount: 1))
+        #expect(beganCount == 1)
+        #expect(endedCount == 0)
+
+        view.mouseUp(with: try mouseEvent(type: .leftMouseUp, clickCount: 1))
+        #expect(endedCount == 1)
+
+        // Stray mouse-up events are not resize commits.
+        view.mouseUp(with: try mouseEvent(type: .leftMouseUp, clickCount: 1))
+        #expect(endedCount == 1)
+    }
+
+    @Test func doubleClickResetsWithoutEndingADrag() throws {
+        let view = SplitterNSView(orientation: .column)
+        var resetCount = 0
+        var endedCount = 0
+        view.onReset = { resetCount += 1 }
+        view.onDragEnded = { endedCount += 1 }
+
+        view.mouseDown(with: try mouseEvent(type: .leftMouseDown, clickCount: 2))
+        view.mouseUp(with: try mouseEvent(type: .leftMouseUp, clickCount: 2))
+
+        #expect(resetCount == 1)
+        #expect(endedCount == 0)
+    }
+
+    @Test func keyboardStepEndsImmediately() throws {
+        let view = SplitterNSView(orientation: .column)
+        var beganCount = 0
+        var deltas: [CGFloat] = []
+        var endedCount = 0
+        view.onDragBegan = { beganCount += 1 }
+        view.onDrag = { deltas.append($0) }
+        view.onDragEnded = { endedCount += 1 }
+
+        let event = try #require(NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: "\u{F703}",
+            charactersIgnoringModifiers: "\u{F703}",
+            isARepeat: false,
+            keyCode: 124
+        ))
+        view.keyDown(with: event)
+
+        #expect(beganCount == 1)
+        #expect(deltas == [SplitterNSView.keyboardStep])
+        #expect(endedCount == 1)
+    }
+
+    private func mouseEvent(type: NSEvent.EventType, clickCount: Int) throws -> NSEvent {
+        try #require(NSEvent.mouseEvent(
+            with: type,
+            location: .zero,
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            eventNumber: 0,
+            clickCount: clickCount,
+            pressure: 0
+        ))
+    }
 }

@@ -30,10 +30,15 @@ struct PaneSplitter: NSViewRepresentable {
     let defaultSize: Double
     /// Which side of the divider the resizable pane sits on.
     let paneEdge: Edge
+    /// Persists the final size after a mouse drag, keyboard step, or reset.
+    /// Callers that bind directly to persistent state can omit this hook.
+    var onCommit: ((Double) -> Void)? = nil
 
     final class Coordinator {
         /// The in-flight drag's accumulated size, before clamping.
         var unclampedSize: Double?
+        /// The last clamped value published during the current gesture.
+        var publishedSize: Double?
     }
 
     func makeCoordinator() -> Coordinator {
@@ -50,16 +55,30 @@ struct PaneSplitter: NSViewRepresentable {
     func updateNSView(_ view: SplitterNSView, context: Context) {
         let coordinator = context.coordinator
         view.onDragBegan = { [self] in
-            coordinator.unclampedSize = size.clamped(to: range)
+            let start = size.clamped(to: range)
+            coordinator.unclampedSize = start
+            coordinator.publishedSize = start
         }
         view.onDrag = { [self] rawDelta in
             guard let unclamped = coordinator.unclampedSize else { return }
             let next = unclamped + deltaSign * rawDelta
             coordinator.unclampedSize = next
-            size = next.clamped(to: range)
+            let published = next.clamped(to: range)
+            coordinator.publishedSize = published
+            size = published
+        }
+        view.onDragEnded = { [self] in
+            guard let published = coordinator.publishedSize else { return }
+            coordinator.unclampedSize = nil
+            coordinator.publishedSize = nil
+            onCommit?(published)
         }
         view.onReset = { [self] in
-            size = defaultSize.clamped(to: range)
+            let reset = defaultSize.clamped(to: range)
+            coordinator.unclampedSize = nil
+            coordinator.publishedSize = nil
+            size = reset
+            onCommit?(reset)
         }
     }
 
@@ -99,6 +118,8 @@ final class SplitterNSView: NSView {
     var onDragBegan: (() -> Void)?
     /// Raw AppKit delta along the divider's resize axis.
     var onDrag: ((CGFloat) -> Void)?
+    /// Fires on mouse-up, or immediately after a keyboard resize step.
+    var onDragEnded: (() -> Void)?
     /// Double-click: restore the pane's default size.
     var onReset: (() -> Void)?
 
@@ -197,10 +218,14 @@ final class SplitterNSView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
+        let endedDrag = isDragging
         isDragging = false
         isPointerInside = bounds.contains(convert(event.locationInWindow, from: nil))
         needsDisplay = true
         window?.invalidateCursorRects(for: self)
+        if endedDrag {
+            onDragEnded?()
+        }
     }
 
     // MARK: Keyboard resize
@@ -234,6 +259,7 @@ final class SplitterNSView: NSView {
         // Each press is its own one-step resize gesture.
         onDragBegan?()
         onDrag?(rawDelta)
+        onDragEnded?()
     }
 
     // MARK: Accessibility

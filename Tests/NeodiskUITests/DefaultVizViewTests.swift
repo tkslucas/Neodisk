@@ -66,4 +66,18 @@ import Testing
             #expect(preferences.defaultVizView == .lastViewed)
         }
     }
+
+    @Test func sunburstFileListDefaultsOffAndRestoreDefaultsTurnsItOff() {
+        withSuite { defaults in
+            let preferences = AppPreferences(defaults: defaults)
+            #expect(!preferences.showFileListBelowSunburst)
+
+            preferences.showFileListBelowSunburst = true
+            let relaunched = AppPreferences(defaults: defaults)
+            #expect(relaunched.showFileListBelowSunburst)
+
+            relaunched.restoreDefaults()
+            #expect(!relaunched.showFileListBelowSunburst)
+        }
+    }
 }

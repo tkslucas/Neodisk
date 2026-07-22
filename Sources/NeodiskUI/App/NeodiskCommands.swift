@@ -124,14 +124,24 @@ struct NeodiskCommands: Commands {
             Divider()
 
             // Same preference as the Settings picker; the menu adds
-            // discoverability and a checkmark for the current state. In
-            // sunburst the list is hidden either way — the toggle still
-            // flips the preference for the trip back to the treemap.
+            // discoverability and a checkmark for the current state. This
+            // treemap position stays independent of Sunburst's opt-in below.
             Toggle(isOn: Binding(
                 get: { model.outlinePosition == .bottom },
                 set: { model.preferences?.outlinePosition = $0 ? .bottom : .leading }
             )) {
                 Label("File List Below Treemap", systemImage: "rectangle.bottomthird.inset.filled")
+            }
+            .disabled(model.coordinator.snapshot == nil)
+
+            Toggle(isOn: Binding(
+                get: { model.showsFileListBelowSunburst },
+                set: { model.preferences?.showFileListBelowSunburst = $0 }
+            )) {
+                Label(
+                    "Show File List Below Sunburst",
+                    systemImage: "rectangle.bottomthird.inset.filled"
+                )
             }
             .disabled(model.coordinator.snapshot == nil)
         }

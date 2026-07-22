@@ -73,6 +73,10 @@ final class NeodiskViewModel {
     /// Mirror of the persisted outline dock position (left column or bottom
     /// table), synced by bindPreferences — same pattern as vizViewMode.
     var outlinePosition: OutlinePosition = .bottom
+    /// Separate opt-in for reusing the bottom table under Sunburst. The
+    /// treemap dock position remains independent so switching views never
+    /// moves the treemap's file list.
+    var showsFileListBelowSunburst = false
     /// Mirror of the bottom table's persisted header sort, synced by
     /// bindPreferences. The left column ignores it (fixed size order).
     var outlineSort = OutlineSort(field: .size, ascending: false)
@@ -429,14 +433,17 @@ final class NeodiskViewModel {
         }
     }
 
-    /// Mirror the persisted outline dock position and bottom-table sort so
-    /// the workspace re-lays-out when the Settings picker or a column
-    /// header flips them.
+    /// Mirror the persisted outline presentation and bottom-table sort so
+    /// the workspace re-lays-out when Settings, the View menu, or a column
+    /// header changes them.
     private func syncOutlinePreferences() {
         guard let preferences else { return }
         let position = devOutlinePositionOverride ?? preferences.outlinePosition
         if outlinePosition != position {
             outlinePosition = position
+        }
+        if showsFileListBelowSunburst != preferences.showFileListBelowSunburst {
+            showsFileListBelowSunburst = preferences.showFileListBelowSunburst
         }
         if outlineSort != preferences.outlineSort {
             outlineSort = preferences.outlineSort

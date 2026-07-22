@@ -287,12 +287,15 @@
 "Left of the treemap" = "ツリーマップの左";
 "Below the treemap" = "ツリーマップの下";
 "Below the treemap shows a wide table with percentage, size, file count, and modified-date columns; click a column header to sort. Applies immediately." = "「ツリーマップの下」では、割合・サイズ・ファイル数・変更日の列を持つ幅広の表を表示します。列見出しをクリックすると並べ替えられます。すぐに適用されます。";
+"Show below Sunburst" = "サンバーストの下に表示";
+"Shows the same resizable table below the sunburst. It follows the current drilled folder and never appears to the left. Applies immediately." = "サンバーストの下に同じサイズ変更可能な表を表示します。現在開いているフォルダに追従し、左側には表示されません。すぐに適用されます。";
 "Name" = "名前";
 "%" = "%";
 "Size" = "サイズ";
 "Files" = "ファイル数";
 "Modified" = "変更日";
 "File List Below Treemap" = "ファイルリストをツリーマップの下に表示";
+"Show File List Below Sunburst" = "ファイルリストをサンバーストの下に表示";
 
 /* MARK: - Sunburst & view switcher */
 "View" = "表示";

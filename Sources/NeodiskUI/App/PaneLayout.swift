@@ -44,6 +44,29 @@ enum PaneLayout {
     static let sunburstChartMinWidth = 320.0
 }
 
+/// Which form of the shared file list belongs in the current workspace.
+/// Treemap follows its left/bottom docking preference; Sunburst has a
+/// separate opt-in and always uses the bottom table to preserve chart width.
+struct WorkspaceFileListVisibility: Equatable {
+    let showsLeading: Bool
+    let showsBottom: Bool
+
+    init(
+        viewMode: VizViewMode,
+        treemapPosition: OutlinePosition,
+        showsBelowSunburst: Bool
+    ) {
+        switch viewMode {
+        case .treemap:
+            showsLeading = treemapPosition == .leading
+            showsBottom = treemapPosition == .bottom
+        case .sunburst:
+            showsLeading = false
+            showsBottom = showsBelowSunburst
+        }
+    }
+}
+
 /// Effective pane sizes and drag ranges for one workspace layout pass.
 ///
 /// Persisted pane sizes are clamped on read, never written back: a size that

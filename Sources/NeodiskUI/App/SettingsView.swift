@@ -141,6 +141,14 @@ private struct ViewSettingsTab: View {
                 Text("Below the treemap shows a wide table with percentage, size, file count, and modified-date columns; click a column header to sort. Applies immediately.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
+
+                Toggle(
+                    "Show below Sunburst",
+                    isOn: $preferences.showFileListBelowSunburst
+                )
+                Text("Shows the same resizable table below the sunburst. It follows the current drilled folder and never appears to the left. Applies immediately.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)

@@ -287,12 +287,15 @@
 "Left of the treemap" = "A sinistra della treemap";
 "Below the treemap" = "Sotto la treemap";
 "Below the treemap shows a wide table with percentage, size, file count, and modified-date columns; click a column header to sort. Applies immediately." = "«Sotto la treemap» mostra una tabella ampia con colonne per percentuale, dimensione, numero di file e data di modifica; fai clic sull'intestazione di una colonna per ordinare. Si applica subito.";
+"Show below Sunburst" = "Mostra sotto la sunburst";
+"Shows the same resizable table below the sunburst. It follows the current drilled folder and never appears to the left. Applies immediately." = "Mostra la stessa tabella ridimensionabile sotto la sunburst. Segue la cartella attualmente aperta e non compare mai a sinistra. Si applica immediatamente.";
 "Name" = "Nome";
 "%" = "%";
 "Size" = "Dimensione";
 "Files" = "File";
 "Modified" = "Modificato";
 "File List Below Treemap" = "Elenco file sotto la treemap";
+"Show File List Below Sunburst" = "Mostra elenco file sotto la sunburst";
 
 /* MARK: - Sunburst & view switcher */
 "View" = "Vista";

@@ -38,6 +38,44 @@ import Testing
         1_600 - m.outlineWidth - m.analysisWidth - 2 * PaneLayout.splitterThickness
     }
 
+    @Test func treemapFileListFollowsDockPosition() {
+        let leading = WorkspaceFileListVisibility(
+            viewMode: .treemap,
+            treemapPosition: .leading,
+            showsBelowSunburst: true
+        )
+        let bottom = WorkspaceFileListVisibility(
+            viewMode: .treemap,
+            treemapPosition: .bottom,
+            showsBelowSunburst: false
+        )
+
+        #expect(leading.showsLeading)
+        #expect(!leading.showsBottom)
+        #expect(!bottom.showsLeading)
+        #expect(bottom.showsBottom)
+    }
+
+    @Test func sunburstFileListIsBottomOnlyAndOptIn() {
+        for position in OutlinePosition.allCases {
+            let hidden = WorkspaceFileListVisibility(
+                viewMode: .sunburst,
+                treemapPosition: position,
+                showsBelowSunburst: false
+            )
+            let shown = WorkspaceFileListVisibility(
+                viewMode: .sunburst,
+                treemapPosition: position,
+                showsBelowSunburst: true
+            )
+
+            #expect(!hidden.showsLeading)
+            #expect(!hidden.showsBottom)
+            #expect(!shown.showsLeading)
+            #expect(shown.showsBottom)
+        }
+    }
+
     @Test func spaciousWindowHonorsStoredSizesAndStaticBounds() {
         let m = metrics(outline: 420, analysis: 300, bottom: 250)
         #expect(m.outlineWidth == 420)

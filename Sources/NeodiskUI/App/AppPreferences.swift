@@ -89,6 +89,10 @@ final class AppPreferences: ObservableObject {
     /// Where the file outline docks (bottom table — the default — or the
     /// compact left column). See OutlinePosition.
     @AppStorage("outlinePosition") var outlinePositionRaw = OutlinePosition.bottom.rawValue
+    /// Sunburst keeps its chart wide by default. Users who want the file
+    /// list there can opt into the existing bottom table; it is never shown
+    /// to the left of the chart.
+    @AppStorage("showFileListBelowSunburst") var showFileListBelowSunburst = false
     /// The bottom outline table's header sort (column + direction). The
     /// left column has no headers and ignores these.
     @AppStorage("outlineSortField") var outlineSortFieldRaw = OutlineSortField.size.rawValue
@@ -147,6 +151,9 @@ final class AppPreferences: ObservableObject {
         )
         _outlinePositionRaw = AppStorage(
             wrappedValue: OutlinePosition.bottom.rawValue, "outlinePosition", store: defaults
+        )
+        _showFileListBelowSunburst = AppStorage(
+            wrappedValue: false, "showFileListBelowSunburst", store: defaults
         )
         _outlineSortFieldRaw = AppStorage(
             wrappedValue: OutlineSortField.size.rawValue, "outlineSortField", store: defaults
@@ -274,6 +281,7 @@ final class AppPreferences: ObservableObject {
         defaultVizViewRaw = DefaultVizView.lastViewed.rawValue
         vizViewModeRaw = VizViewMode.treemap.rawValue
         treemapStyleRaw = TreemapStyle.cushion.rawValue
+        showFileListBelowSunburst = false
         prepareChangesAfterScan = true
         autoScanDuplicates = false
     }

@@ -287,12 +287,15 @@
 "Left of the treemap" = "Left of the treemap";
 "Below the treemap" = "Below the treemap";
 "Below the treemap shows a wide table with percentage, size, file count, and modified-date columns; click a column header to sort. Applies immediately." = "Below the treemap shows a wide table with percentage, size, file count, and modified-date columns; click a column header to sort. Applies immediately.";
+"Show below Sunburst" = "Show below Sunburst";
+"Shows the same resizable table below the sunburst. It follows the current drilled folder and never appears to the left. Applies immediately." = "Shows the same resizable table below the sunburst. It follows the current drilled folder and never appears to the left. Applies immediately.";
 "Name" = "Name";
 "%" = "%";
 "Size" = "Size";
 "Files" = "Files";
 "Modified" = "Modified";
 "File List Below Treemap" = "File List Below Treemap";
+"Show File List Below Sunburst" = "Show File List Below Sunburst";
 
 /* MARK: - Sunburst & view switcher */
 "View" = "View";

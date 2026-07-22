@@ -289,14 +289,12 @@ private struct WorkspaceView: View {
     @AppStorage("bottomOutlinePaneHeight")
     private var bottomOutlinePaneHeight = PaneLayout.bottomOutlineDefaultHeight
 
-    /// The sunburst brings its own legend list, so the outline is
-    /// treemap-only in both dock positions.
-    private var showsLeadingOutline: Bool {
-        model.vizViewMode != .sunburst && model.outlinePosition == .leading
-    }
-
-    private var showsBottomOutline: Bool {
-        model.vizViewMode != .sunburst && model.outlinePosition == .bottom
+    private var fileListVisibility: WorkspaceFileListVisibility {
+        WorkspaceFileListVisibility(
+            viewMode: model.vizViewMode,
+            treemapPosition: model.outlinePosition,
+            showsBelowSunburst: model.showsFileListBelowSunburst
+        )
     }
 
     private var warningCount: Int {
@@ -342,7 +340,7 @@ private struct WorkspaceView: View {
     private func paneMetrics(available: CGSize) -> WorkspacePaneMetrics {
         WorkspacePaneMetrics(
             available: available,
-            showsLeadingOutline: showsLeadingOutline,
+            showsLeadingOutline: fileListVisibility.showsLeading,
             showsAnalysis: model.showKindStats,
             storedOutlineWidth: outlinePaneWidth,
             storedAnalysisWidth: kindStatsPaneWidth,
@@ -353,7 +351,7 @@ private struct WorkspaceView: View {
     private func workspacePanes(metrics: WorkspacePaneMetrics) -> some View {
         ZStack(alignment: .bottomTrailing) {
             HStack(spacing: 0) {
-                if showsLeadingOutline {
+                if fileListVisibility.showsLeading {
                     OutlinePane(model: model)
                         .frame(width: metrics.outlineWidth)
 
@@ -380,7 +378,7 @@ private struct WorkspaceView: View {
                     // Bottom dock: the wide multi-column file list sits
                     // under the map only — the analysis pane keeps its
                     // full height beside both.
-                    if showsBottomOutline {
+                    if fileListVisibility.showsBottom {
                         PaneSplitter(
                             size: $bottomOutlinePaneHeight,
                             range: metrics.bottomOutlineRange,

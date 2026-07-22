@@ -287,12 +287,15 @@
 "Left of the treemap" = "À gauche de la carte proportionnelle";
 "Below the treemap" = "Sous la carte proportionnelle";
 "Below the treemap shows a wide table with percentage, size, file count, and modified-date columns; click a column header to sort. Applies immediately." = "« Sous la carte proportionnelle » affiche un tableau large avec des colonnes pourcentage, taille, nombre de fichiers et date de modification ; cliquez sur un en-tête de colonne pour trier. S'applique immédiatement.";
+"Show below Sunburst" = "Afficher sous le Sunburst";
+"Shows the same resizable table below the sunburst. It follows the current drilled folder and never appears to the left. Applies immediately." = "Affiche le même tableau redimensionnable sous le Sunburst. Il suit le dossier actuellement ouvert et n’apparaît jamais à gauche. S’applique immédiatement.";
 "Name" = "Nom";
 "%" = "%";
 "Size" = "Taille";
 "Files" = "Fichiers";
 "Modified" = "Modifié";
 "File List Below Treemap" = "Liste des fichiers sous la carte proportionnelle";
+"Show File List Below Sunburst" = "Afficher la liste des fichiers sous le Sunburst";
 
 /* MARK: - Sunburst & view switcher */
 "View" = "Présentation";

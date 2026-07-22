@@ -287,12 +287,15 @@
 "Left of the treemap" = "矩形树图左侧";
 "Below the treemap" = "矩形树图下方";
 "Below the treemap shows a wide table with percentage, size, file count, and modified-date columns; click a column header to sort. Applies immediately." = "「矩形树图下方」显示一个宽表格，包含占比、大小、文件数和修改日期列；点按列标题即可排序。立即生效。";
+"Show below Sunburst" = "在旭日图下方显示";
+"Shows the same resizable table below the sunburst. It follows the current drilled folder and never appears to the left. Applies immediately." = "在旭日图下方显示同一个可调整大小的表格。它会跟随当前钻取的文件夹，并且不会显示在左侧。立即生效。";
 "Name" = "名称";
 "%" = "%";
 "Size" = "大小";
 "Files" = "文件数";
 "Modified" = "修改日期";
 "File List Below Treemap" = "文件列表位于矩形树图下方";
+"Show File List Below Sunburst" = "在旭日图下方显示文件列表";
 
 /* MARK: - Sunburst & view switcher */
 "View" = "视图";

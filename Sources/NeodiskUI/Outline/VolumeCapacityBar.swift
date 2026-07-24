@@ -315,6 +315,7 @@ struct TooltipBubble<Content: View>: View {
 
     var body: some View {
         content
+            .foregroundStyle(Color(nsColor: .labelColor))
             .padding(.horizontal, 9)
             .padding(.vertical, 5)
             .padding(.bottom, Self.tailHeight)

@@ -27,8 +27,11 @@
 [**Download Neodisk.dmg**](https://github.com/tkslucas/Neodisk/releases/latest/download/Neodisk.dmg)
 and drag **Neodisk** onto the Applications folder.
 
-Versioned builds and a `.zip` fallback are on the
-[Releases](https://github.com/tkslucas/Neodisk/releases) page.
+Or with Homebrew:
+
+```sh
+brew install --cask neodisk
+```
 
 Requires macOS 14 (Sonoma) or later.
 
@@ -69,24 +72,8 @@ Command Line Tools are enough.
 swift run -c release Neodisk    # build and launch directly
 swift test                      # full test suite (engine + treemap + UI)
 ```
-
-## Structure
-
-One package, strictly layered targets:
-
-```
-Sources/
-├── NeodiskKit/   # UI-free scanning core (derived from Radix)
-├── NeodiskCLI/   # `diskscan`, the core's reference CLI
-├── TreemapKit/   # Pure treemap geometry, viewport, rasterizer
-├── NeodiskUI/    # SwiftUI/AppKit views, view model, scan lifecycle
-└── Neodisk/      # Thin executable entry point
-Localization/     # .lproj string catalogs, one per language
-```
-
 ## Planned
 
-- Add to Homebrew
 - Multiplatform: native Windows and Linux versions (a lot of work, will
   take a while)
 

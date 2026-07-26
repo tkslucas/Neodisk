@@ -198,11 +198,11 @@ import NeodiskKit
         }
     }
 
-    @Test func fallbackFillsMatchWhatTheChartWouldRenderAtThatDepth() throws {
+    @Test func beyondDepthLimitFolderShowsNoChildRows() throws {
         // /root/sub's children at depth 1: a depthLimit-2 layout renders
         // them; a depthLimit-1 layout does not (max-depth preview folder).
-        // The legend's fallback colors must equal the rendered ones — for
-        // both branch mode and layout-resolved kind mode.
+        // The legend must agree with the chart: when the chart has no arcs
+        // for a folder's children, the legend shows no child rows either.
         let nestedChildren = [
             makeTestFileNode(id: "/root/sub/one.mov", name: "one.mov", size: 30),
             makeTestFileNode(id: "/root/sub/two.jpg", name: "two.jpg", size: 20),
@@ -219,9 +219,6 @@ import NeodiskKit
             let shallow = SunburstLayout.segments(
                 in: store, rootID: "/root", depthLimit: 1, style: style
             )
-            let deep = SunburstLayout.segments(
-                in: store, rootID: "/root", depthLimit: 2, style: style
-            )
             #expect(!shallow.contains { $0.depth == 1 })
 
             let rows = SunburstLegend.rows(
@@ -229,11 +226,9 @@ import NeodiskKit
                 in: store, segments: shallow, style: style
             )
 
-            #expect(rows.count == nestedChildren.count)
-            for row in rows {
-                let renderedSegment = try #require(deep.first { $0.nodeID == row.id })
-                #expect(row.dotColor == SunburstChartStyler.baseStyle(for: renderedSegment).fillColor)
-            }
+            // Children beyond the depth limit have no segments and no
+            // aggregate — the legend shows no rows, matching the chart.
+            #expect(rows.isEmpty)
         }
     }
 

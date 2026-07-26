@@ -312,7 +312,13 @@ struct OutlineTreeTable: NSViewRepresentable {
             let newID = (row >= 0 && row < rows.count) ? rows[row].id : nil
             if model.selectedNodeID != newID {
                 lastRevealedID = newID
-                model.selectedNodeID = newID
+                // Defer to avoid a reentrant NSTableView operation: setting
+                // selectedNodeID publishes, which re-renders SwiftUI views,
+                // which may call syncSelection → selectRowIndexes before
+                // the table has finished processing this event.
+                DispatchQueue.main.async { [self] in
+                    model.selectedNodeID = newID
+                }
             }
         }
 

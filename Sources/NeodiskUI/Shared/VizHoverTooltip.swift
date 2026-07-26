@@ -160,10 +160,14 @@ extension VizHoverTooltipData {
 /// The tooltip card: two small lines in a quiet material panel. Never
 /// hit-tests, so it can't intercept clicks, context menus, or Quick Look.
 struct VizHoverTooltip: View {
+    @Environment(\.neoTextScale) private var textScale
+
     let data: VizHoverTooltipData
 
     /// Names middle-truncate past this; the card shrinks to fit shorter text.
-    static let maxWidth: CGFloat = 280
+    /// Grows with the text scale so a larger name still gets its ~30
+    /// characters before the ellipsis.
+    static func maxWidth(scale: CGFloat) -> CGFloat { 280 * scale }
 
     var body: some View {
         Group {
@@ -189,7 +193,7 @@ struct VizHoverTooltip: View {
                 }
             }
         }
-        .frame(maxWidth: Self.maxWidth, alignment: .leading)
+        .frame(maxWidth: Self.maxWidth(scale: textScale), alignment: .leading)
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -204,14 +208,14 @@ struct VizHoverTooltip: View {
 
     private var primaryText: some View {
         Text(data.primaryText)
-            .font(.callout.weight(.medium))
+            .neoFont(12, weight: .medium)
             .lineLimit(1)
             .truncationMode(.middle)
     }
 
     private var secondaryText: some View {
         Text(data.secondaryText)
-            .font(.caption)
+            .neoFont(.caption)
             .foregroundStyle(.secondary)
             .lineLimit(3)
             .fixedSize(horizontal: false, vertical: true)
@@ -220,9 +224,9 @@ struct VizHoverTooltip: View {
     private func neutralSymbol(_ name: String, size: CGFloat) -> some View {
         Image(systemName: name)
             .symbolRenderingMode(.monochrome)
-            .font(.system(size: size, weight: .medium))
+            .neoFont(size, weight: .medium)
             .foregroundStyle(.secondary)
-            .frame(width: 13)
+            .frame(width: (13 * textScale).rounded())
     }
 }
 

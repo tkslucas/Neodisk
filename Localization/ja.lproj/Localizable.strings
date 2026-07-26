@@ -381,3 +381,10 @@
 
 /* Pane divider accessibility (2026-07-21) */
 "Pane divider" = "ペインの区切り";
+
+/* MARK: - Workspace text size */
+"Text Size" = "文字サイズ";
+"Zoom In" = "拡大";
+"Zoom Out" = "縮小";
+"Actual Size" = "実際のサイズ";
+"Scales the text in the locations sidebar, the file lists, the treemap and sunburst labels, and the statistics panel. Applies immediately. View ▸ Zoom In and Zoom Out (⌘+ and ⌘−) change it without opening Settings." = "場所サイドバー、ファイルリスト、ツリーマップとサンバーストのラベル、統計パネルの文字を拡大縮小します。すぐに反映されます。表示 ▸ 拡大／縮小（⌘+ と ⌘−）でも設定を開かずに変更できます。";

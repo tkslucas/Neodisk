@@ -70,6 +70,11 @@ struct TreemapScene: Sendable {
     /// the model's `showsCloudOnlyFiles`. `rect(forNodeID:)` re-runs the layout
     /// and must weigh children exactly as `build` did, so the scene remembers.
     let includingCloudOnly: Bool
+    /// The workspace text scale this scene was laid out for. The label
+    /// gates and the flat header strip depend on it, and `rect(forNodeID:)`
+    /// re-runs the layout — so the scene remembers it, exactly as it
+    /// remembers `includingCloudOnly`.
+    let labelScale: CGFloat
     /// Coarse spatial buckets over `cells` so hover hit-testing doesn't
     /// linear-scan tens of thousands of cells per mouse-move.
     private let cellGrid: CellGrid
@@ -85,8 +90,10 @@ struct TreemapScene: Sendable {
         expandedAggregateIDs: Set<String>,
         freeSpaceNode: FileNodeRecord? = nil,
         hiddenSpaceNode: FileNodeRecord? = nil,
-        includingCloudOnly: Bool = false
+        includingCloudOnly: Bool = false,
+        labelScale: CGFloat = 1
     ) {
+        self.labelScale = labelScale
         self.rootID = rootID
         self.style = style
         self.size = size
@@ -121,9 +128,15 @@ struct TreemapScene: Sendable {
     /// tile (packages, summarized/inaccessible folders) — get their name
     /// drawn once their on-screen cell is big enough to carry it legibly;
     /// zooming in reveals more names as cells grow.
-    nonisolated static let labelMinCellWidth: CGFloat = 80
-    nonisolated static let labelMinCellHeight: CGFloat = 22
-    nonisolated static let labelMinCellArea: CGFloat = 4_000
+    /// Every gate below is written for 100% text and scaled by the
+    /// workspace text scale, so a bigger label still gets a cell big enough
+    /// to carry it instead of being dropped or overflowing. Area is a
+    /// two-dimensional measure, hence scale².
+    nonisolated static func labelMinCellWidth(scale: CGFloat = 1) -> CGFloat { 80 * scale }
+    nonisolated static func labelMinCellHeight(scale: CGFloat = 1) -> CGFloat { 22 * scale }
+    nonisolated static func labelMinCellArea(scale: CGFloat = 1) -> CGFloat {
+        4_000 * scale * scale
+    }
     /// Extra margin rendered around the visible window (fraction of the view
     /// size per side) so pans show real pixels while the next render lands.
     nonisolated static let overscanFraction: CGFloat = 0.3
@@ -133,9 +146,17 @@ struct TreemapScene: Sendable {
     /// inset region below it; smaller directories render as plain cells,
     /// which is the style's natural depth cutoff.
     nonisolated static let flatContainerInset: CGFloat = 2
-    nonisolated static let flatHeaderHeight: CGFloat = 18
-    nonisolated static let flatMinContainerWidth: CGFloat = 52
-    nonisolated static let flatMinContainerHeight: CGFloat = 46
+    nonisolated static func flatHeaderHeight(scale: CGFloat = 1) -> CGFloat {
+        (18 * scale).rounded()
+    }
+    nonisolated static func flatMinContainerWidth(scale: CGFloat = 1) -> CGFloat { 52 * scale }
+    /// The header plus the smallest content region worth nesting into. Only
+    /// the header grows with the text scale — the content region does not
+    /// need more room just because the label is bigger, and scaling the
+    /// whole threshold would thin the flat map's nesting at large sizes.
+    nonisolated static func flatMinContainerHeight(scale: CGFloat = 1) -> CGFloat {
+        flatHeaderHeight(scale: scale) + 28
+    }
     /// Directories deeper than this many levels below the scene root render
     /// as plain cells even when large enough to nest: past a handful of
     /// levels the boxes-in-boxes framing stops informing and only shreds the
@@ -147,18 +168,25 @@ struct TreemapScene: Sendable {
     /// These are a cheap pre-filter sized to where ~4 characters can fit;
     /// the exact keep-enough-characters rule runs where text is measured
     /// (`TreemapNSView.minUsefulTruncatedCharacters`).
-    nonisolated static let flatFolderLabelMinCellWidth: CGFloat = 40
-    nonisolated static let flatFolderLabelMinCellHeight: CGFloat = 15
+    nonisolated static func flatFolderLabelMinCellWidth(scale: CGFloat = 1) -> CGFloat {
+        40 * scale
+    }
+    nonisolated static func flatFolderLabelMinCellHeight(scale: CGFloat = 1) -> CGFloat {
+        15 * scale
+    }
 
     /// The region a flat container's children occupy, or nil when the rect
     /// is too small to nest — the caller then draws the directory as a
     /// plain cell.
-    nonisolated static func flatContentBounds(of rect: CGRect) -> CGRect? {
-        guard rect.width >= flatMinContainerWidth,
-              rect.height >= flatMinContainerHeight else { return nil }
+    nonisolated static func flatContentBounds(
+        of rect: CGRect, scale: CGFloat = 1
+    ) -> CGRect? {
+        guard rect.width >= flatMinContainerWidth(scale: scale),
+              rect.height >= flatMinContainerHeight(scale: scale) else { return nil }
+        let header = flatHeaderHeight(scale: scale)
         var content = rect.insetBy(dx: flatContainerInset, dy: flatContainerInset)
-        content.origin.y += flatHeaderHeight
-        content.size.height -= flatHeaderHeight
+        content.origin.y += header
+        content.size.height -= header
         guard content.width > 0, content.height > 0 else { return nil }
         return content
     }
@@ -209,7 +237,8 @@ struct TreemapScene: Sendable {
         hiddenSpaceBytes: Int64? = nil,
         includingCloudOnly: Bool = false,
         palette: VizPalette = .standard,
-        background: SIMD3<Float> = TreemapRasterTarget.backgroundRGB
+        background: SIMD3<Float> = TreemapRasterTarget.backgroundRGB,
+        labelScale: CGFloat = 1
     ) -> TreemapScene {
         var cells: [TreemapCell] = []
         var labels: [CellLabel] = []
@@ -285,7 +314,8 @@ struct TreemapScene: Sendable {
             if !subdividable {
                 childLayoutRect = nil
             } else if style == .flat, !isRoot {
-                childLayoutRect = depth < flatMaxContainerDepth ? flatContentBounds(of: rect) : nil
+                childLayoutRect = depth < flatMaxContainerDepth
+                    ? flatContentBounds(of: rect, scale: labelScale) : nil
             } else {
                 childLayoutRect = rect
             }
@@ -362,7 +392,7 @@ struct TreemapScene: Sendable {
                             x: rect.minX + flatContainerInset + 4,
                             y: rect.minY + flatContainerInset + 1,
                             width: rect.width - 2 * (flatContainerInset + 4),
-                            height: flatHeaderHeight - 4
+                            height: flatHeaderHeight(scale: labelScale) - 4
                         ).intersection(visibleBounds)
                         // Every container whose header strip shows emits a
                         // name candidate; the view drops it if the strip is
@@ -539,13 +569,14 @@ struct TreemapScene: Sendable {
             // truncation would keep too few characters to inform.
             let visiblePart = rect.intersection(visibleBounds)
             if style == .flat, node.isDirectory {
-                if visiblePart.width >= flatFolderLabelMinCellWidth,
-                   visiblePart.height >= flatFolderLabelMinCellHeight {
+                if visiblePart.width >= flatFolderLabelMinCellWidth(scale: labelScale),
+                   visiblePart.height >= flatFolderLabelMinCellHeight(scale: labelScale) {
                     labels.append(CellLabel(id: node.id, text: node.name, rect: visiblePart))
                 }
-            } else if visiblePart.width >= labelMinCellWidth,
-                      visiblePart.height >= labelMinCellHeight,
-                      visiblePart.width * visiblePart.height >= labelMinCellArea {
+            } else if visiblePart.width >= labelMinCellWidth(scale: labelScale),
+                      visiblePart.height >= labelMinCellHeight(scale: labelScale),
+                      visiblePart.width * visiblePart.height
+                        >= labelMinCellArea(scale: labelScale) {
                 labels.append(CellLabel(id: node.id, text: node.name, rect: visiblePart))
             }
         }
@@ -556,7 +587,8 @@ struct TreemapScene: Sendable {
             expandedAggregateIDs: expandedAggregateIDs,
             freeSpaceNode: freeSpaceNode,
             hiddenSpaceNode: hiddenSpaceNode,
-            includingCloudOnly: includingCloudOnly
+            includingCloudOnly: includingCloudOnly,
+            labelScale: labelScale
         )
     }
 
@@ -908,7 +940,9 @@ struct TreemapScene: Sendable {
                 // content region. A container too small to nest rendered no
                 // children, so the container itself is the best rect on offer
                 // (same contract as the aggregate fallback below).
-                guard let content = Self.flatContentBounds(of: rect) else { return rect }
+                guard let content = Self.flatContentBounds(of: rect, scale: labelScale) else {
+                    return rect
+                }
                 layoutRect = content
             }
             let layout = Self.layoutChildren(

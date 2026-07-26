@@ -24,7 +24,9 @@ struct OutlineNameSection: View {
     var truncatesName = false
 
     var body: some View {
-        HStack(spacing: 4) {
+        // Slot widths and glyph sizes come from OutlineRowMetrics, which the
+        // AppKit table also measures against — see the mirror note there.
+        HStack(spacing: OutlineRowMetrics.rowSpacing) {
             Color.clear
                 .frame(width: CGFloat(row.depth) * OutlineRowMetrics.indentPerDepth, height: 1)
 
@@ -34,7 +36,9 @@ struct OutlineNameSection: View {
                         model.toggleExpansion(row.node.id)
                     } label: {
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(.system(
+                                size: OutlineRowMetrics.chevronFontSize, weight: .semibold
+                            ))
                             .rotationEffect(
                                 .degrees(model.expandedNodeIDs.contains(row.node.id) ? 90 : 0)
                             )
@@ -45,12 +49,12 @@ struct OutlineNameSection: View {
                     Color.clear
                 }
             }
-            .frame(width: 14)
+            .frame(width: OutlineRowMetrics.chevronSlotWidth)
 
             Image(systemName: row.node.systemImageName)
-                .font(.system(size: 11))
+                .font(.system(size: OutlineRowMetrics.iconFontSize))
                 .foregroundStyle(iconColor)
-                .frame(width: 16)
+                .frame(width: OutlineRowMetrics.iconSlotWidth)
 
             Text(row.node.name)
                 .lineLimit(1)
@@ -62,7 +66,7 @@ struct OutlineNameSection: View {
 
             Spacer(minLength: 0)
         }
-        .font(.system(size: 12))
+        .font(.system(size: OutlineRowMetrics.fontSize))
         .padding(.leading, OutlineRowMetrics.contentInset)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
@@ -96,7 +100,7 @@ struct OutlineTrailingSection: View {
             if model.coordinator.expandingNodeID == row.node.id {
                 // A subtree rescan/expansion is scanning this folder.
                 ProgressView()
-                    .controlSize(.mini)
+                    .neoControlSize(base: .mini)
             }
 
             if let baseline = model.diff.baseline {
@@ -111,7 +115,7 @@ struct OutlineTrailingSection: View {
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
         }
-        .font(.system(size: 12))
+        .font(.system(size: OutlineRowMetrics.fontSize))
         .padding(.trailing, trailingPadding)
         .frame(maxHeight: .infinity)
     }
@@ -135,7 +139,7 @@ struct OutlineSearchResultsList: View {
         if results.ids.isEmpty {
             Spacer()
             Text("No matches")
-                .font(.system(size: 11))
+                .neoFont(11)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity)
             Spacer()
@@ -157,7 +161,7 @@ struct OutlineSearchResultsList: View {
             if results.ids.count < results.totalMatches {
                 Divider()
                 Text("Top \(results.ids.count.formatted()) of \(results.totalMatches.formatted()) matches — refine to narrow")
-                    .font(.system(size: 10))
+                    .neoFont(10)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 4)

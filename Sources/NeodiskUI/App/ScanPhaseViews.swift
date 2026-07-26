@@ -22,30 +22,35 @@ struct WelcomeView: View {
     var body: some View {
         VStack(spacing: 14) {
             Image(systemName: "internaldrive.fill")
-                .font(.system(size: 56))
+                .neoFont(56)
                 .foregroundStyle(.blue)
 
             Text("Choose a Folder or Disk")
-                .font(.title.weight(.semibold))
+                .neoFont(22, weight: .semibold)
 
             Text("Start from the sidebar, drop a folder into the window,\nor choose a location manually.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
 
             HStack(spacing: 10) {
-                Button("Choose Folder…") {
+                Button {
                     model.chooseFolderAndScan()
+                } label: {
+                    Text("Choose Folder…").neoFont(.body)
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut("o")
 
                 if let startupVolume {
-                    Button("Scan \(startupVolume.displayName)") {
+                    Button {
                         model.startScan(startupVolume)
+                    } label: {
+                        Text("Scan \(startupVolume.displayName)").neoFont(.body)
                     }
                     .buttonStyle(.bordered)
                 }
             }
+            .neoControlSize()
             .padding(.top, 6)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -77,19 +82,19 @@ private struct ScanProgressContent: View {
                 .frame(width: 340)
 
             Text(progress.metrics.progressFraction.formatted(.percent.precision(.fractionLength(0))))
-                .font(.subheadline.weight(.semibold))
+                .neoFont(11, weight: .semibold)
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
 
             Text(phaseTitle)
-                .font(.headline)
+                .neoFont(.headline)
 
             VStack(spacing: 4) {
                 Text("\(progress.metrics.filesVisited.formatted()) files · \(NeodiskFormatters.size(progress.metrics.bytesDiscovered))")
                     .monospacedDigit()
                 Text(progress.metrics.currentPath)
                     .foregroundStyle(.secondary)
-                    .font(.caption)
+                    .neoFont(.caption)
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .frame(width: 420)
@@ -125,9 +130,9 @@ struct SnapshotRestoreView: View {
     var body: some View {
         VStack(spacing: 14) {
             ProgressView()
-                .controlSize(.small)
+                .neoControlSize(base: .small)
             Text("Opening last scan of \(target?.displayName ?? "location")…")
-                .font(.headline)
+                .neoFont(.headline)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -142,10 +147,10 @@ struct ScanFailedView: View {
     var body: some View {
         VStack(spacing: 12) {
             Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 40))
+                .neoFont(40)
                 .foregroundStyle(.orange)
             Text("Scan failed")
-                .font(.headline)
+                .neoFont(.headline)
             if let message = model.coordinator.scanErrorMessage {
                 Text(message)
                     .foregroundStyle(.secondary)

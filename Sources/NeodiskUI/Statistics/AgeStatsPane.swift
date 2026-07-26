@@ -49,7 +49,7 @@ struct AgeStatsPane: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text("Last Modified")
-                    .font(.system(size: 11, weight: .semibold))
+                    .neoFont(11, weight: .semibold)
                     .foregroundStyle(.secondary)
                 Spacer()
             }
@@ -60,7 +60,7 @@ struct AgeStatsPane: View {
 
             if model.ages.catalog.stats.isEmpty {
                 Spacer()
-                ProgressView().controlSize(.small)
+                ProgressView().neoControlSize(base: .small)
                     .frame(maxWidth: .infinity)
                 Spacer()
             } else {

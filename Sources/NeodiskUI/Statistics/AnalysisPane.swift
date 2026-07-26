@@ -91,6 +91,8 @@ struct AnalysisPane: View {
 /// font size so narrow panes truncate long titles with an ellipsis instead
 /// of rendering neighboring tabs at mismatched scales.
 private struct AnalysisTabButton: View {
+    @Environment(\.neoTextScale) private var textScale
+
     let tab: AnalysisTab
     let isActive: Bool
     let namespace: Namespace.ID
@@ -101,7 +103,7 @@ private struct AnalysisTabButton: View {
     var body: some View {
         Button(action: action) {
             Text(LocalizedStringKey(tab.title))
-                .font(.system(size: 11, weight: .medium))
+                .neoFont(11, weight: .medium)
                 .foregroundStyle(
                     isActive ? Color.accentColor : isHovering ? Color.primary : Color.secondary
                 )
@@ -111,7 +113,7 @@ private struct AnalysisTabButton: View {
                     if isActive {
                         RoundedRectangle(cornerRadius: 1)
                             .fill(Color.accentColor)
-                            .frame(height: 2)
+                            .frame(height: (2 * textScale).rounded())
                             .matchedGeometryEffect(id: "analysisTabUnderline", in: namespace)
                     }
                 }
@@ -149,7 +151,7 @@ struct StatsFileListView: View {
                         onClose()
                     } label: {
                         Image(systemName: "chevron.left")
-                            .font(.system(size: 10, weight: .semibold))
+                            .neoFont(10, weight: .semibold)
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
@@ -163,12 +165,12 @@ struct StatsFileListView: View {
                             .frame(width: 12, height: 12)
                     }
                     Text(LocalizedStringKey(title))
-                        .font(.system(size: 11, weight: .semibold))
+                        .neoFont(11, weight: .semibold)
                         .lineLimit(1)
                         .truncationMode(.middle)
                 } else {
                     Text("Loading…")
-                        .font(.system(size: 11, weight: .semibold))
+                        .neoFont(11, weight: .semibold)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -178,11 +180,11 @@ struct StatsFileListView: View {
 
             HStack(spacing: 4) {
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: 10))
+                    .neoFont(10)
                     .foregroundStyle(.secondary)
                 TextField("Filter by name", text: $filterText)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 11))
+                    .neoFont(11)
             }
             .padding(.horizontal, 10)
             .padding(.bottom, 6)
@@ -191,7 +193,7 @@ struct StatsFileListView: View {
 
             if isLoading {
                 Spacer()
-                ProgressView().controlSize(.small)
+                ProgressView().neoControlSize(base: .small)
                     .frame(maxWidth: .infinity)
                 Spacer()
             } else {
@@ -216,7 +218,7 @@ struct StatsFileListView: View {
                 if visibleIDs.count < totalMatches {
                     Divider()
                     Text(footerText)
-                        .font(.system(size: 10))
+                        .neoFont(10)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4)

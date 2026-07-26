@@ -10,6 +10,8 @@ import SwiftUI
 import NeodiskKit
 
 struct SidebarTargetRow: View {
+    @Environment(\.neoTextScale) private var textScale
+
     let target: ScanTarget
     let subtitle: String
     /// When a persisted snapshot exists for this location, its scan date
@@ -31,23 +33,25 @@ struct SidebarTargetRow: View {
     var onScanBarHover: (String, Bool) -> Void = { _, _ in }
 
     var body: some View {
-        HStack(spacing: 8) {
+        // The icon slot and the gap after it follow the glyph, or a larger
+        // text size crowds the name right up against the icon.
+        HStack(spacing: (8 * textScale).rounded()) {
             Image(systemName: iconName)
-                .font(.system(size: 15))
+                .neoFont(15)
                 .foregroundStyle(.blue)
-                .frame(width: 22)
+                .frame(width: (22 * textScale).rounded())
 
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: (1 * textScale).rounded()) {
                 Text(target.displayName)
-                    .font(.system(size: 13, weight: .medium))
+                    .neoFont(13, weight: .medium)
                 Text(subtitle)
-                    .font(.system(size: 10.5))
+                    .neoFont(10.5)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
                 if let lastScanned {
                     Text("Scanned \(DisplayFormatters.relativeDate(lastScanned, relativeTo: now))")
-                        .font(.system(size: 10.5))
+                        .neoFont(10.5)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }

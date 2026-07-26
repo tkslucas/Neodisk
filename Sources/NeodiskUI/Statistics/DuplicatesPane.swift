@@ -72,7 +72,7 @@ struct DuplicatesPane: View {
             Button("Find Duplicates") {
                 model.duplicates.startScan()
             }
-            .controlSize(.small)
+            .neoControlSize(base: .small)
             .buttonStyle(.borderedProminent)
             .disabled(!model.duplicates.canScan)
             .padding(.top, 2)
@@ -98,11 +98,11 @@ struct DuplicatesPane: View {
             HStack(spacing: 6) {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(liveSummaryText)
-                        .font(.system(size: 11, weight: .semibold))
+                        .neoFont(11, weight: .semibold)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                     Text(scanningStatusText)
-                        .font(.system(size: 10))
+                        .neoFont(10)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
@@ -110,7 +110,7 @@ struct DuplicatesPane: View {
                 Button("Cancel") {
                     model.duplicates.cancelScan()
                 }
-                .controlSize(.small)
+                .neoControlSize(base: .small)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
@@ -120,7 +120,7 @@ struct DuplicatesPane: View {
             if model.duplicates.liveGroups.isEmpty {
                 Spacer()
                 Text("No duplicates found yet")
-                    .font(.system(size: 11))
+                    .neoFont(11)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity)
                 Spacer()
@@ -169,7 +169,7 @@ struct DuplicatesPane: View {
             Button("Try Again") {
                 model.duplicates.startScan()
             }
-            .controlSize(.small)
+            .neoControlSize(base: .small)
         }
     }
 }
@@ -183,12 +183,12 @@ private struct DuplicateResultsView: View {
             HStack(spacing: 6) {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(summaryText)
-                        .font(.system(size: 11, weight: .semibold))
+                        .neoFont(11, weight: .semibold)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                     if let computedText {
                         Text(computedText)
-                            .font(.system(size: 10))
+                            .neoFont(10)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
@@ -198,7 +198,7 @@ private struct DuplicateResultsView: View {
                     model.duplicates.startScan()
                 } label: {
                     Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 10, weight: .semibold))
+                        .neoFont(10, weight: .semibold)
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
@@ -213,7 +213,7 @@ private struct DuplicateResultsView: View {
             if results.groups.isEmpty {
                 Spacer()
                 Text("No duplicates found")
-                    .font(.system(size: 11))
+                    .neoFont(11)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity)
                 Spacer()
@@ -233,7 +233,7 @@ private struct DuplicateResultsView: View {
             if results.unreadableCount > 0 {
                 Divider()
                 Text(unreadableText)
-                    .font(.system(size: 10))
+                    .neoFont(10)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 4)
@@ -293,7 +293,7 @@ private struct DuplicateGroupRow: View {
                     .truncationMode(.middle)
                 Text(copiesText)
                     .foregroundStyle(.secondary)
-                    .font(.system(size: 10))
+                    .neoFont(10)
             }
 
             Spacer(minLength: 8)
@@ -303,7 +303,7 @@ private struct DuplicateGroupRow: View {
             if group.isAllClones {
                 Text("APFS clones")
                     .foregroundStyle(.secondary)
-                    .font(.system(size: 10))
+                    .neoFont(10)
                     .fixedSize(horizontal: true, vertical: false)
             } else {
                 Text(NeodiskFormatters.size(group.reclaimableBytes))
@@ -312,7 +312,7 @@ private struct DuplicateGroupRow: View {
                     .fixedSize(horizontal: true, vertical: false)
             }
         }
-        .font(.system(size: 12))
+        .neoFont(12)
     }
 
     /// Every copy in a group has identical content, so the first resolvable
@@ -352,7 +352,7 @@ private struct DuplicateGroupDetailView: View {
                     model.duplicates.closeGroup()
                 } label: {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 10, weight: .semibold))
+                        .neoFont(10, weight: .semibold)
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
@@ -360,11 +360,11 @@ private struct DuplicateGroupDetailView: View {
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(displayName)
-                        .font(.system(size: 11, weight: .semibold))
+                        .neoFont(11, weight: .semibold)
                         .lineLimit(1)
                         .truncationMode(.middle)
                     Text(subtitleText)
-                        .font(.system(size: 10))
+                        .neoFont(10)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()

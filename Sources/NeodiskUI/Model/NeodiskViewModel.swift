@@ -102,6 +102,11 @@ final class NeodiskViewModel {
     /// run. Without it, any preferences change would re-sync the persisted
     /// position over the hook's non-persisted one mid-capture.
     @ObservationIgnored var devOutlinePositionOverride: OutlinePosition?
+    /// Mirror of the persisted workspace text scale, synced by
+    /// bindPreferences — same pattern as treemapStyle. The workspace root
+    /// puts it in the environment for SwiftUI; the AppKit surfaces that draw
+    /// their own text (outline table, treemap labels) read it from here.
+    var textScale: Double = TextScale.standard
 
     // MARK: Kind statistics
 
@@ -434,6 +439,7 @@ final class NeodiskViewModel {
                 self?.syncTreemapStyle()
                 self?.syncCloudOnlyPreference()
                 self?.syncOutlinePreferences()
+                self?.syncTextScale()
             }
         freeSpace.update()
         syncVizPalette()
@@ -441,6 +447,37 @@ final class NeodiskViewModel {
         syncTreemapStyle()
         syncCloudOnlyPreference()
         syncOutlinePreferences()
+        syncTextScale()
+    }
+
+    /// Mirror the persisted text scale onto the model, and push it into the
+    /// AppKit outline metrics, which have no environment to read from.
+    private func syncTextScale() {
+        guard let preferences else { return }
+        let scale = preferences.textScale
+        guard textScale != scale else { return }
+        textScale = scale
+        OutlineRowMetrics.scale = CGFloat(scale)
+    }
+
+    // MARK: Text size
+
+    var canZoomTextIn: Bool { TextScale.larger(than: textScale) != nil }
+    var canZoomTextOut: Bool { TextScale.smaller(than: textScale) != nil }
+    var isTextSizeStandard: Bool { textScale == TextScale.standard }
+
+    func zoomTextIn() {
+        guard let next = TextScale.larger(than: textScale) else { return }
+        preferences?.textScale = next
+    }
+
+    func zoomTextOut() {
+        guard let next = TextScale.smaller(than: textScale) else { return }
+        preferences?.textScale = next
+    }
+
+    func resetTextSize() {
+        preferences?.textScale = TextScale.standard
     }
 
     /// Mirror the persisted treemap style onto the model so the treemap pane

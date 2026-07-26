@@ -21,8 +21,13 @@ import NeodiskKit
 /// on fully-local rows, so size digits right-align down a list.
 struct FileSizeLabel: View {
     /// Width of the trailing glyph slot; OutlineRowMetrics mirrors it (plus
-    /// the 3pt gap) when measuring the outline's trailing cluster.
-    static let glyphSlotWidth: CGFloat = 12
+    /// the 3pt gap) when measuring the outline's trailing cluster, so both
+    /// go through this one function rather than a shared literal.
+    static func glyphSlotWidth(scale: CGFloat) -> CGFloat {
+        (12 * scale).rounded()
+    }
+
+    @Environment(\.neoTextScale) private var textScale
 
     let node: FileNodeRecord
     let includeCloudOnly: Bool
@@ -32,9 +37,9 @@ struct FileSizeLabel: View {
             Text(NeodiskFormatters.size(node.displayWeight(includingCloudOnly: includeCloudOnly)))
             if includeCloudOnly {
                 Image(systemName: "cloud.fill")
-                    .font(.system(size: 9, weight: .medium))
+                    .neoFont(9, weight: .medium)
                     .opacity(node.cloudOnlyLogicalSize > 0 ? 1 : 0)
-                    .frame(width: Self.glyphSlotWidth)
+                    .frame(width: Self.glyphSlotWidth(scale: textScale))
             }
         }
     }
@@ -56,7 +61,7 @@ struct FileResultRow: View {
                     .truncationMode(.middle)
                 Text(containingFolder)
                     .foregroundStyle(.secondary)
-                    .font(.system(size: 10))
+                    .neoFont(10)
                     .lineLimit(1)
                     .truncationMode(.head)
             }
@@ -69,7 +74,7 @@ struct FileResultRow: View {
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
         }
-        .font(.system(size: 12))
+        .neoFont(12)
         .help(DisplayFormatters.displayPath(node.path))
     }
 
@@ -110,15 +115,17 @@ struct DeltaLabel: View {
 /// treemap's Categories palette, so the file lists and the map speak the
 /// same color language.
 struct FileCategoryIcon: View {
+    @Environment(\.neoTextScale) private var textScale
+
     let node: FileNodeRecord
     /// The active palette, so tints follow the colorblind Settings toggle.
     let palette: VizPalette
 
     var body: some View {
         Image(systemName: FileKindClassifier.categorySymbol(forID: categoryID))
-            .font(.system(size: 11, weight: .medium))
+            .neoFont(11, weight: .medium)
             .foregroundStyle(iconColor)
-            .frame(width: 16)
+            .frame(width: (16 * textScale).rounded())
     }
 
     private var categoryID: String {

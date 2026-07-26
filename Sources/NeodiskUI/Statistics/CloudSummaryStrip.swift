@@ -12,6 +12,8 @@ import SwiftUI
 import NeodiskKit
 
 struct CloudSummaryStrip: View {
+    @Environment(\.neoTextScale) private var textScale
+
     /// On-disk bytes of the scanned root.
     let onThisMac: Int64
     /// Bytes that live only in the cloud below the scanned root.
@@ -29,10 +31,10 @@ struct CloudSummaryStrip: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 5) {
                 Image(systemName: "cloud.fill")
-                    .font(.system(size: 10))
+                    .neoFont(10)
                     .foregroundStyle(.secondary)
                 Text("Cloud storage")
-                    .font(.system(size: 11, weight: .semibold))
+                    .neoFont(11, weight: .semibold)
                     .foregroundStyle(.secondary)
                 Spacer()
             }
@@ -48,7 +50,7 @@ struct CloudSummaryStrip: View {
                         .frame(width: width(cloudOnly, of: geometry.size.width))
                 }
             }
-            .frame(height: 6)
+            .frame(height: (6 * textScale).rounded())
 
             HStack(spacing: 0) {
                 legend(color: onThisMacColor, label: "On this Mac", bytes: onThisMac)
@@ -72,13 +74,13 @@ struct CloudSummaryStrip: View {
                             .clipShape(RoundedRectangle(cornerRadius: 2))
                     }
                 }
-                .frame(width: 8, height: 8)
+                .frame(width: (8 * textScale).rounded(), height: (8 * textScale).rounded())
             Text(label)
                 .foregroundStyle(.secondary)
             Text(NeodiskFormatters.size(bytes))
                 .monospacedDigit()
         }
-        .font(.system(size: 10))
+        .neoFont(10)
     }
 
     private func width(_ part: Int64, of totalWidth: CGFloat) -> CGFloat {

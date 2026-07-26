@@ -30,7 +30,7 @@ struct StatsLegendRow: View {
                     .truncationMode(.middle)
                 Text("\(fileCount.formatted()) files")
                     .foregroundStyle(.secondary)
-                    .font(.system(size: 10))
+                    .neoFont(10)
             }
 
             Spacer(minLength: 8)
@@ -43,11 +43,11 @@ struct StatsLegendRow: View {
                 ) {
                     Text(percent)
                         .foregroundStyle(.secondary)
-                        .font(.system(size: 10))
+                        .neoFont(10)
                         .monospacedDigit()
                 }
             }
         }
-        .font(.system(size: 12))
+        .neoFont(12)
     }
 }

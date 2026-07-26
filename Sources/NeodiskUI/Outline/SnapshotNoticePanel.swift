@@ -17,16 +17,16 @@ struct SnapshotNoticePanel: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "clock.arrow.circlepath")
-                        .font(.system(size: 12))
+                        .neoFont(12)
                         .foregroundStyle(.secondary)
                         .padding(.top, 1)
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Showing scan from \(DisplayFormatters.relativeDate(notice.scanDate))")
-                            .font(.system(size: 12, weight: .semibold))
+                            .neoFont(12, weight: .semibold)
                         if let duration = notice.lastScanDuration {
                             Text("Rescanning took about \(DisplayFormatters.roughDuration(duration)) last time.")
-                                .font(.system(size: 11))
+                                .neoFont(11)
                                 .foregroundStyle(.secondary)
                         }
                     }
@@ -46,7 +46,7 @@ struct SnapshotNoticePanel: View {
                 Button("Rescan Now") {
                     model.rescan()
                 }
-                .controlSize(.small)
+                .neoControlSize(base: .small)
             }
             .padding(12)
             .frame(width: 320, alignment: .leading)

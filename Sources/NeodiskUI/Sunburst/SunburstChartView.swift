@@ -235,7 +235,7 @@ struct SunburstChartView: View {
                         .transition(.opacity)
                 } else {
                     Text(verbatim: centerSizeText)
-                        .font(.system(size: 14, weight: .medium))
+                        .neoFont(14, weight: .medium)
                         .monospacedDigit()
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -257,12 +257,12 @@ struct SunburstChartView: View {
 
                 if showsLoadingDiskMapProgress {
                     ProgressView("Loading Disk Map…")
-                        .controlSize(.small)
+                        .neoControlSize(base: .small)
                         .transition(.opacity)
                 }
             } else if !chartModel.isLayoutPending, chartModel.renderedSegments.isEmpty {
                 ProgressView()
-                    .controlSize(.small)
+                    .neoControlSize(base: .small)
             }
         }
     }
@@ -614,7 +614,7 @@ private struct SunburstCenterAffordance: View, Equatable {
 
     var body: some View {
         Image(systemName: "chevron.up")
-            .font(.system(size: 16, weight: .semibold))
+            .neoFont(16, weight: .semibold)
             .foregroundStyle(.secondary)
             .shadow(color: Color.black.opacity(0.14), radius: 2, y: 1)
     }

@@ -102,11 +102,11 @@ import NeodiskKit
         let scene = buildFlat(size: CGSize(width: 300, height: 200))
 
         let child = try #require(scene.cells.first { $0.nodeID == "/scan/sub/c.txt" })
-        #expect(child.rect.width * child.rect.height < TreemapScene.labelMinCellArea)
+        #expect(child.rect.width * child.rect.height < TreemapScene.labelMinCellArea())
         #expect(!scene.labels.contains { $0.id == "/scan/sub/c.txt" })
 
         let big = try #require(scene.cells.first { $0.nodeID == "/scan/a.mov" })
-        #expect(big.rect.width * big.rect.height >= TreemapScene.labelMinCellArea)
+        #expect(big.rect.width * big.rect.height >= TreemapScene.labelMinCellArea())
         #expect(scene.labels.contains { $0.id == "/scan/a.mov" })
     }
 
@@ -142,7 +142,7 @@ import NeodiskKit
         let container = try #require(scene.cells.first { $0.nodeID == "/scan/sub" })
         let headerPoint = CGPoint(
             x: container.rect.midX,
-            y: container.rect.minY + TreemapScene.flatHeaderHeight / 2
+            y: container.rect.minY + TreemapScene.flatHeaderHeight() / 2
         )
         #expect(scene.cell(at: headerPoint)?.nodeID == "/scan/sub")
         #expect(scene.cell(at: headerPoint)?.isContainer == true)

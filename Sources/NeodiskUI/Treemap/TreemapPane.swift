@@ -85,7 +85,8 @@ private struct TreemapRepresentable: NSViewRepresentable {
             freeSpaceBytes: model.zoomRootID == nil ? model.freeSpace.treemapFreeSpaceBytes : nil,
             hiddenSpaceBytes: model.zoomRootID == nil ? model.freeSpace.treemapHiddenSpaceBytes : nil,
             includingCloudOnly: model.showsCloudOnlyFiles,
-            palette: model.vizPalette
+            palette: model.vizPalette,
+            labelScale: CGFloat(model.textScale)
         )
         controller.setSelectedNode(model.selectedNodeID)
     }

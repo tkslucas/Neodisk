@@ -135,6 +135,8 @@ nonisolated struct VolumeBarData: Equatable, Sendable {
 }
 
 struct VolumeCapacityBar: View {
+    @Environment(\.neoTextScale) private var textScale
+
     /// Sentinel hover ID for the empty (free-space) track after the
     /// segments.
     private static let freeTrackID = "free-track"
@@ -196,7 +198,9 @@ struct VolumeCapacityBar: View {
                 }
             }
         }
-        .frame(height: 5)
+        // Segments are the information here — a hairline bar next to
+        // scaled text hides the small ones entirely.
+        .frame(height: (5 * textScale).rounded())
         .onPreferenceChange(VolumeBarTooltipSizeKey.self) { tooltipSize = $0 }
     }
 
@@ -342,9 +346,9 @@ private struct VolumeBarTooltip: View {
         TooltipBubble(tailX: tailX) {
             VStack(spacing: 1) {
                 Text(LocalizedStringKey(label))
-                    .font(.system(size: 11, weight: .semibold))
+                    .neoFont(11, weight: .semibold)
                 Text(verbatim: NeodiskFormatters.size(size))
-                    .font(.system(size: 10))
+                    .neoFont(10)
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
             }

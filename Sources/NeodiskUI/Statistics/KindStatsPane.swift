@@ -38,7 +38,7 @@ struct KindStatsPane: View {
         return VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text("Group by")
-                    .font(.system(size: 11, weight: .semibold))
+                    .neoFont(11, weight: .semibold)
                     .foregroundStyle(.secondary)
                 Spacer()
                 Picker("", selection: $kinds.displayMode) {
@@ -47,7 +47,7 @@ struct KindStatsPane: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                .controlSize(.small)
+                .neoControlSize(base: .small)
                 .labelsHidden()
                 .fixedSize()
             }
@@ -61,7 +61,7 @@ struct KindStatsPane: View {
                 // and the catalog for the new mode is still building — don't
                 // show the stale list.
                 Spacer()
-                ProgressView().controlSize(.small)
+                ProgressView().neoControlSize(base: .small)
                     .frame(maxWidth: .infinity)
                 Spacer()
             } else {

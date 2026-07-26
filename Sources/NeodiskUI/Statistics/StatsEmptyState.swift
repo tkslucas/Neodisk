@@ -21,15 +21,15 @@ struct StatsEmptyState<Action: View>: View {
         VStack(spacing: 10) {
             Spacer()
             Image(systemName: symbol)
-                .font(.system(size: symbolSize))
+                .neoFont(symbolSize)
                 .foregroundStyle(.secondary)
             if let title {
                 title
-                    .font(.system(size: 12, weight: .semibold))
+                    .neoFont(12, weight: .semibold)
                     .multilineTextAlignment(.center)
             }
             message
-                .font(.system(size: 11))
+                .neoFont(11)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
             action

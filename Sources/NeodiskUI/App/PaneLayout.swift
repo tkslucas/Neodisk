@@ -15,17 +15,30 @@ import Foundation
 enum PaneLayout {
     static let splitterThickness = 8.0
 
-    static let outlineDefaultWidth = 300.0
-    static let outlineMinWidth = 240.0
-    static let outlineMaxWidth = 600.0
+    /// Every pane that carries text is sized for the workspace text scale
+    /// (see TextScale), so a larger text size widens the pane instead of
+    /// ellipsizing every name in it. All three bounds scale together —
+    /// a pane whose minimum lagged its text would just be a narrower pane.
 
-    static let analysisDefaultWidth = 230.0
-    static let analysisMinWidth = 200.0
-    static let analysisMaxWidth = 340.0
+    static func outlineDefaultWidth(scale: Double = 1) -> Double { 300 * scale }
+    static func outlineMinWidth(scale: Double = 1) -> Double { 240 * scale }
+    static func outlineMaxWidth(scale: Double = 1) -> Double { 600 * scale }
 
-    static let bottomOutlineDefaultHeight = 200.0
-    static let bottomOutlineMinHeight = 120.0
-    static let bottomOutlineMaxHeight = 440.0
+    static func analysisDefaultWidth(scale: Double = 1) -> Double { 230 * scale }
+    static func analysisMinWidth(scale: Double = 1) -> Double { 200 * scale }
+    static func analysisMaxWidth(scale: Double = 1) -> Double { 340 * scale }
+
+    static func bottomOutlineDefaultHeight(scale: Double = 1) -> Double { 200 * scale }
+    static func bottomOutlineMinHeight(scale: Double = 1) -> Double { 120 * scale }
+    static func bottomOutlineMaxHeight(scale: Double = 1) -> Double { 440 * scale }
+
+    static func sunburstLegendDefaultWidth(scale: Double = 1) -> Double { 340 * scale }
+    static func sunburstLegendMinWidth(scale: Double = 1) -> Double { 260 * scale }
+    static func sunburstLegendMaxWidth(scale: Double = 1) -> Double { 420 * scale }
+
+    // The map is graphics, not text. Its floors stay put at every text
+    // size, so a larger size spends the window's width on the panes that
+    // actually carry the text.
 
     /// The map (treemap/sunburst) is a primary navigation surface; side-pane
     /// ranges shrink before its width goes below this.
@@ -35,13 +48,19 @@ enum PaneLayout {
     /// the breadcrumb bar plus a usable map.
     static let mapColumnMinHeight = 240.0
 
-    static let sunburstLegendDefaultWidth = 340.0
-    static let sunburstLegendMinWidth = 260.0
-    static let sunburstLegendMaxWidth = 420.0
-
     /// Below this the rings are unreadable; the legend concedes and finally
     /// hides rather than squeeze the chart past it.
     static let sunburstChartMinWidth = 320.0
+
+    /// The window's own minimum. It grows more slowly than the panes do,
+    /// because the map's floor above does not grow at all: at 200% text the
+    /// widest arrangement (both side panes at their minimum plus a minimum
+    /// map) needs 1_196pt and this gives 1_350 — room to spare, without
+    /// demanding a window size a laptop display can't show.
+    static func windowMinWidth(scale: Double = 1) -> Double { 900 * damped(scale) }
+    static func windowMinHeight(scale: Double = 1) -> Double { 560 * damped(scale) }
+
+    private static func damped(_ scale: Double) -> Double { 1 + (scale - 1) * 0.5 }
 }
 
 /// Which form of the shared file list belongs in the current workspace.
@@ -93,7 +112,8 @@ struct WorkspacePaneMetrics: Equatable {
         showsAnalysis: Bool,
         storedOutlineWidth: Double,
         storedAnalysisWidth: Double,
-        storedBottomOutlineHeight: Double
+        storedBottomOutlineHeight: Double,
+        textScale: Double = 1
     ) {
         let splitter = PaneLayout.splitterThickness
 
@@ -101,27 +121,32 @@ struct WorkspacePaneMetrics: Equatable {
         // width, then the outline against the analysis's resolved width.
         let outlineFootprint = showsLeadingOutline
             ? storedOutlineWidth.clamped(
-                to: PaneLayout.outlineMinWidth...PaneLayout.outlineMaxWidth
+                to: PaneLayout.outlineMinWidth(scale: textScale) ...
+                    PaneLayout.outlineMaxWidth(scale: textScale)
             ) + splitter
             : 0
 
         let analysisCap = available.width - PaneLayout.mapMinWidth - outlineFootprint - splitter
         analysisRange = Self.range(
-            min: PaneLayout.analysisMinWidth, max: PaneLayout.analysisMaxWidth, cap: analysisCap
+            min: PaneLayout.analysisMinWidth(scale: textScale),
+            max: PaneLayout.analysisMaxWidth(scale: textScale),
+            cap: analysisCap
         )
         analysisWidth = storedAnalysisWidth.clamped(to: analysisRange)
 
         let analysisFootprint = showsAnalysis ? analysisWidth + splitter : 0
         let outlineCap = available.width - PaneLayout.mapMinWidth - analysisFootprint - splitter
         outlineRange = Self.range(
-            min: PaneLayout.outlineMinWidth, max: PaneLayout.outlineMaxWidth, cap: outlineCap
+            min: PaneLayout.outlineMinWidth(scale: textScale),
+            max: PaneLayout.outlineMaxWidth(scale: textScale),
+            cap: outlineCap
         )
         outlineWidth = storedOutlineWidth.clamped(to: outlineRange)
 
         let bottomCap = available.height - PaneLayout.mapColumnMinHeight - splitter
         bottomOutlineRange = Self.range(
-            min: PaneLayout.bottomOutlineMinHeight,
-            max: PaneLayout.bottomOutlineMaxHeight,
+            min: PaneLayout.bottomOutlineMinHeight(scale: textScale),
+            max: PaneLayout.bottomOutlineMaxHeight(scale: textScale),
             cap: bottomCap
         )
         bottomOutlineHeight = storedBottomOutlineHeight.clamped(to: bottomOutlineRange)
@@ -147,15 +172,16 @@ struct SunburstLegendMetrics: Equatable {
     var width: Double?
     var range: ClosedRange<Double>
 
-    init(availableWidth: Double, storedWidth: Double) {
+    init(availableWidth: Double, storedWidth: Double, textScale: Double = 1) {
+        let minimum = PaneLayout.sunburstLegendMinWidth(scale: textScale)
         let cap = availableWidth - PaneLayout.sunburstChartMinWidth - PaneLayout.splitterThickness
-        guard cap >= PaneLayout.sunburstLegendMinWidth else {
+        guard cap >= minimum else {
             width = nil
-            range = PaneLayout.sunburstLegendMinWidth...PaneLayout.sunburstLegendMinWidth
+            range = minimum...minimum
             return
         }
-        let upper = max(PaneLayout.sunburstLegendMinWidth, min(PaneLayout.sunburstLegendMaxWidth, cap))
-        range = PaneLayout.sunburstLegendMinWidth...upper
+        let upper = max(minimum, min(PaneLayout.sunburstLegendMaxWidth(scale: textScale), cap))
+        range = minimum...upper
         width = storedWidth.clamped(to: range)
     }
 }

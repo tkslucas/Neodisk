@@ -58,11 +58,11 @@ struct OutlineSearchField: View {
         @Bindable var search = model.search
         return HStack(spacing: 4) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 10))
+                .neoFont(10)
                 .foregroundStyle(.secondary)
             TextField("Search entire scan", text: $search.text)
                 .textFieldStyle(.plain)
-                .font(.system(size: 11))
+                .neoFont(11)
                 .focused($isSearchFocused)
                 .onExitCommand {
                     model.search.clear()
@@ -73,7 +73,7 @@ struct OutlineSearchField: View {
                     model.search.clear()
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 10))
+                        .neoFont(10)
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)

@@ -381,3 +381,10 @@
 
 /* Pane divider accessibility (2026-07-21) */
 "Pane divider" = "Pane divider";
+
+/* MARK: - Workspace text size */
+"Text Size" = "Text Size";
+"Zoom In" = "Zoom In";
+"Zoom Out" = "Zoom Out";
+"Actual Size" = "Actual Size";
+"Scales the text in the locations sidebar, the file lists, the treemap and sunburst labels, and the statistics panel. Applies immediately. View ▸ Zoom In and Zoom Out (⌘+ and ⌘−) change it without opening Settings." = "Scales the text in the locations sidebar, the file lists, the treemap and sunburst labels, and the statistics panel. Applies immediately. View ▸ Zoom In and Zoom Out (⌘+ and ⌘−) change it without opening Settings.";

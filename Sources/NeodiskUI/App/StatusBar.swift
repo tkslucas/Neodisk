@@ -74,7 +74,7 @@ struct StatusBar: View {
                 Spacer()
             }
         }
-        .font(.system(size: 11))
+        .neoFont(11)
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
     }

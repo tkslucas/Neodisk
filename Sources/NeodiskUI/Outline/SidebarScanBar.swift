@@ -193,9 +193,9 @@ private struct SidebarScanTooltip: View {
         TooltipBubble(tailX: nil) {
             VStack(spacing: 1) {
                 Text("Scanning…")
-                    .font(.system(size: 11, weight: .semibold))
+                    .neoFont(11, weight: .semibold)
                 Text(verbatim: data.detailText)
-                    .font(.system(size: 10))
+                    .neoFont(10)
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
             }

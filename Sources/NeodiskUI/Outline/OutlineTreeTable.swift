@@ -188,6 +188,11 @@ struct OutlineTreeTable: NSViewRepresentable {
         /// the widest row, at which point the horizontal scroller engages.
         func applyColumnWidth() {
             guard let column, let scrollView, let tableView else { return }
+            // Rows grow with the workspace text size; the widths measured
+            // below already come from the scaled OutlineRowMetrics fonts.
+            if tableView.rowHeight != OutlineRowMetrics.rowHeight {
+                tableView.rowHeight = OutlineRowMetrics.rowHeight
+            }
             let clipWidth = scrollView.contentView.bounds.width
             // The table lays itself out slightly wider than its single
             // column (style padding — 12pt observed even for .fullWidth),

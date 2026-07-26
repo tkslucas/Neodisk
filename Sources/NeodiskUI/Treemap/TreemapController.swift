@@ -43,6 +43,9 @@ final class TreemapController {
         var hiddenSpaceBytes: Int64?
         var includingCloudOnly = false
         var palette: VizPalette = .standard
+        /// Workspace text scale: label gates and the flat header strip are
+        /// sized from it, so a change rebuilds the scene like any other input.
+        var labelScale: CGFloat = 1
     }
 
     private(set) var viewport = TreemapViewport.identity
@@ -151,7 +154,8 @@ final class TreemapController {
         freeSpaceBytes: Int64? = nil,
         hiddenSpaceBytes: Int64? = nil,
         includingCloudOnly: Bool = false,
-        palette: VizPalette = .standard
+        palette: VizPalette = .standard,
+        labelScale: CGFloat = 1
     ) {
         let newInputs = Inputs(
             snapshotID: snapshot?.id,
@@ -164,7 +168,8 @@ final class TreemapController {
             freeSpaceBytes: freeSpaceBytes,
             hiddenSpaceBytes: hiddenSpaceBytes,
             includingCloudOnly: includingCloudOnly,
-            palette: palette
+            palette: palette,
+            labelScale: labelScale
         )
         guard newInputs != inputs else { return }
 
@@ -642,6 +647,7 @@ final class TreemapController {
         let hiddenSpaceBytes = inputs.hiddenSpaceBytes
         let includingCloudOnly = inputs.includingCloudOnly
         let palette = inputs.palette
+        let labelScale = inputs.labelScale
         let scale = view?.window?.backingScaleFactor ?? 2
         let background = windowBackgroundRGB()
         renderTask = Task { [weak self] in
@@ -661,7 +667,8 @@ final class TreemapController {
                     hiddenSpaceBytes: hiddenSpaceBytes,
                     includingCloudOnly: includingCloudOnly,
                     palette: palette,
-                    background: background
+                    background: background,
+                    labelScale: labelScale
                 )
                 guard !Task.isCancelled else { return nil }
                 let image = switch style {

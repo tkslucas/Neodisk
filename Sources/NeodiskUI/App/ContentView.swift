@@ -22,17 +22,32 @@ public struct ContentView: View {
         self.updates = updates
     }
 
+    private var textScale: CGFloat { CGFloat(model.textScale) }
+
     public var body: some View {
         NavigationSplitView(columnVisibility: $model.sidebarVisibility) {
             SidebarPane(model: model)
-                .navigationSplitViewColumnWidth(min: 210, ideal: 250, max: 320)
+                .navigationSplitViewColumnWidth(
+                    min: 210 * textScale, ideal: 250 * textScale, max: 320 * textScale
+                )
         } detail: {
             detailContent
                 .dropDestination(for: URL.self) { urls, _ in
                     model.addDroppedFolders(urls)
                 }
         }
-        .frame(minWidth: 900, minHeight: 560)
+        // The one place the workspace text scale enters the view tree; every
+        // `neoFont` below resolves against it. Window chrome (Settings,
+        // About, alerts) lives in other scenes and keeps the system size.
+        .environment(\.neoTextScale, textScale)
+        // Scaled default for everything that never names a font — plain
+        // Text, button titles, text fields. macOS's own default is 13pt, so
+        // at 100% this is exactly what those views already rendered at.
+        .font(.system(size: 13 * textScale))
+        .frame(
+            minWidth: PaneLayout.windowMinWidth(scale: model.textScale),
+            minHeight: PaneLayout.windowMinHeight(scale: model.textScale)
+        )
         .background(SnapshotWindowHider())
         .sheet(isPresented: $model.showWelcomeSheet) {
             WelcomeSheet(model: model)
@@ -283,11 +298,11 @@ private struct WorkspaceView: View {
     // default-size window; all panes stay user-resizable (persisted).
     // Bounds and window-aware clamping live in PaneLayout.
     @AppStorage("outlinePaneWidth")
-    private var outlinePaneWidth = PaneLayout.outlineDefaultWidth
+    private var outlinePaneWidth = PaneLayout.outlineDefaultWidth()
     @AppStorage("kindStatsPaneWidth")
-    private var kindStatsPaneWidth = PaneLayout.analysisDefaultWidth
+    private var kindStatsPaneWidth = PaneLayout.analysisDefaultWidth()
     @AppStorage("bottomOutlinePaneHeight")
-    private var bottomOutlinePaneHeight = PaneLayout.bottomOutlineDefaultHeight
+    private var bottomOutlinePaneHeight = PaneLayout.bottomOutlineDefaultHeight()
 
     // AppStorage writes synchronize through UserDefaults. Keep pointer-drag
     // deltas local, then persist only the final size when the gesture ends.
@@ -351,7 +366,8 @@ private struct WorkspaceView: View {
             storedOutlineWidth: transientOutlinePaneWidth ?? outlinePaneWidth,
             storedAnalysisWidth: transientKindStatsPaneWidth ?? kindStatsPaneWidth,
             storedBottomOutlineHeight: transientBottomOutlinePaneHeight
-                ?? bottomOutlinePaneHeight
+                ?? bottomOutlinePaneHeight,
+            textScale: model.textScale
         )
     }
 
@@ -386,7 +402,7 @@ private struct WorkspaceView: View {
                     PaneSplitter(
                         size: outlinePaneSize,
                         range: metrics.outlineRange,
-                        defaultSize: PaneLayout.outlineDefaultWidth,
+                        defaultSize: PaneLayout.outlineDefaultWidth(scale: model.textScale),
                         paneEdge: .leading,
                         onCommit: {
                             outlinePaneWidth = $0
@@ -414,7 +430,7 @@ private struct WorkspaceView: View {
                         PaneSplitter(
                             size: bottomOutlinePaneSize,
                             range: metrics.bottomOutlineRange,
-                            defaultSize: PaneLayout.bottomOutlineDefaultHeight,
+                            defaultSize: PaneLayout.bottomOutlineDefaultHeight(scale: model.textScale),
                             paneEdge: .bottom,
                             onCommit: {
                                 bottomOutlinePaneHeight = $0
@@ -432,7 +448,7 @@ private struct WorkspaceView: View {
                     PaneSplitter(
                         size: kindStatsPaneSize,
                         range: metrics.analysisRange,
-                        defaultSize: PaneLayout.analysisDefaultWidth,
+                        defaultSize: PaneLayout.analysisDefaultWidth(scale: model.textScale),
                         paneEdge: .trailing,
                         onCommit: {
                             kindStatsPaneWidth = $0
@@ -477,7 +493,7 @@ private struct ScanIssuesStrip: View {
                     Text("\(count.formatted()) locations couldn't be read — sizes may be underreported.")
                         .lineLimit(1)
                     Image(systemName: "chevron.up")
-                        .font(.system(size: 8, weight: .semibold))
+                        .neoFont(8, weight: .semibold)
                 }
                 .foregroundStyle(.secondary)
                 .contentShape(Rectangle())
@@ -490,11 +506,11 @@ private struct ScanIssuesStrip: View {
                 Button("Grant Full Disk Access…") {
                     _ = SystemIntegration.prepareAndOpenFullDiskAccessSettings()
                 }
-                .controlSize(.small)
+                .neoControlSize(base: .small)
             }
             Spacer()
         }
-        .font(.system(size: 11))
+        .neoFont(11)
         .padding(.horizontal, 10)
         .padding(.vertical, 4)
     }
@@ -503,6 +519,8 @@ private struct ScanIssuesStrip: View {
 /// The strip's on-demand detail: one row per failed ancestor with a member
 /// count, exact paths and errors in the row tooltip.
 private struct ScanIssuesPopover: View {
+    @Environment(\.neoTextScale) private var textScale
+
     let model: NeodiskViewModel
 
     var body: some View {
@@ -515,16 +533,17 @@ private struct ScanIssuesPopover: View {
                             Image(systemName: group.isPermissionDenied
                                 ? "lock.fill"
                                 : "exclamationmark.triangle.fill")
-                                .font(.system(size: 10))
+                                .neoFont(10)
                                 .foregroundStyle(.secondary)
                                 .frame(width: 14)
                             Text((group.path as NSString).abbreviatingWithTildeInPath)
-                                .font(.system(size: 11, weight: .medium))
+                                .neoFont(11, weight: .medium)
                                 .lineLimit(1)
                                 .truncationMode(.middle)
                             Spacer(minLength: 8)
                             Text(group.count.formatted())
-                                .font(.system(size: 11).monospacedDigit())
+                                .neoFont(11)
+                                .monospacedDigit()
                                 .foregroundStyle(.secondary)
                         }
                         .padding(.horizontal, 12)
@@ -536,9 +555,9 @@ private struct ScanIssuesPopover: View {
             }
             // ScrollView greedily fills a proposed max height, so size it to
             // the rows and clamp instead of leaving dead space under few rows.
-            .frame(height: min(280, CGFloat(groups.count) * 27 + 12))
+            .frame(height: min(280 * textScale, CGFloat(groups.count) * 27 * textScale + 12))
         }
-        .frame(width: 340)
+        .frame(width: 340 * textScale)
     }
 }
 
@@ -569,7 +588,7 @@ private struct SupersededScanStrip: View {
             .buttonStyle(.plain)
             .help("Dismiss")
         }
-        .font(.system(size: 11))
+        .neoFont(11)
         .padding(.horizontal, 10)
         .padding(.vertical, 4)
     }
@@ -603,10 +622,10 @@ private struct LiveScanStrip: View {
 
             if isStopped {
                 Button("Restart", action: { onResume?() })
-                    .controlSize(.small)
+                    .neoControlSize(base: .small)
             } else if let onStop {
                 Button("Stop", action: onStop)
-                    .controlSize(.small)
+                    .neoControlSize(base: .small)
             }
 
             Text(statusText)
@@ -621,7 +640,7 @@ private struct LiveScanStrip: View {
             }
             Spacer()
         }
-        .font(.system(size: 11))
+        .neoFont(11)
         .padding(.horizontal, 10)
         .padding(.vertical, 4)
     }

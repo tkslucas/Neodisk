@@ -232,6 +232,8 @@ struct SunburstLegendList: View {
 // MARK: - Row view
 
 private struct LegendRowView: View {
+    @Environment(\.neoTextScale) private var textScale
+
     let row: SunburstLegendRow
     let isHeader: Bool
     let isSelected: Bool
@@ -246,21 +248,21 @@ private struct LegendRowView: View {
                 .fill(row.dotColor)
                 .frame(width: dotSize, height: dotSize)
             Text(verbatim: row.label)
-                .font(labelFont)
+                .neoFont(labelFont)
                 .foregroundStyle(row.isDimmed ? .secondary : .primary)
                 .lineLimit(1)
                 .truncationMode(.middle)
             Spacer(minLength: 8)
             Text(verbatim: NeodiskFormatters.size(row.size))
-                .font(sizeFont)
+                .neoFont(sizeFont)
                 .monospacedDigit()
                 .foregroundStyle(isHeader ? .primary : .secondary)
             if reservesCloudGlyphSlot {
                 Image(systemName: "cloud.fill")
-                    .font(.system(size: 9, weight: .medium))
+                    .neoFont(9, weight: .medium)
                     .foregroundStyle(isHeader ? .primary : .secondary)
                     .opacity(row.showsCloudGlyph ? 1 : 0)
-                    .frame(width: FileSizeLabel.glyphSlotWidth)
+                    .frame(width: FileSizeLabel.glyphSlotWidth(scale: textScale))
             }
         }
         .padding(.horizontal, 12)
@@ -273,15 +275,15 @@ private struct LegendRowView: View {
     }
 
     private var dotSize: CGFloat {
-        isHeader ? 14 : 12
+        (isHeader ? 14 : 12) * textScale
     }
 
-    private var labelFont: Font {
-        isHeader ? .system(size: 16, weight: .semibold) : .system(size: 14)
+    private var labelFont: NeoFont {
+        isHeader ? NeoFont(16, weight: .semibold) : NeoFont(14)
     }
 
-    private var sizeFont: Font {
-        isHeader ? .system(size: 14, weight: .semibold) : .system(size: 13)
+    private var sizeFont: NeoFont {
+        isHeader ? NeoFont(14, weight: .semibold) : NeoFont(13)
     }
 
     private var backgroundColor: Color {

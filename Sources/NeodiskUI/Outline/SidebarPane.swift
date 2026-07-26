@@ -28,6 +28,7 @@ struct SidebarPane: View {
     @State private var scanTooltips = SidebarScanTooltipStore()
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.neoTextScale) private var textScale
 
     /// Sidebar folders, minus any that duplicate a built-in location.
     private var visibleFolders: [ScanTarget] {
@@ -111,10 +112,10 @@ struct SidebarPane: View {
                     HStack {
                         Spacer()
                         Label("Add Folder…", systemImage: "folder.badge.plus")
-                            .font(.system(size: 13, weight: .medium))
+                            .neoFont(13, weight: .medium)
                         Spacer()
                     }
-                    .padding(.vertical, 7)
+                    .padding(.vertical, (7 * textScale).rounded())
                     .background(
                         RoundedRectangle(cornerRadius: 7)
                             .fill(Color.primary.opacity(0.07))
@@ -153,7 +154,7 @@ struct SidebarPane: View {
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             Text("v\(AppVersion.string)")
-                .font(.system(size: 9))
+                .neoFont(9)
                 .foregroundStyle(.tertiary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 14)
@@ -295,10 +296,10 @@ struct SidebarPane: View {
         HStack {
             Spacer()
             Label(LocalizedStringKey(title), systemImage: systemImage)
-                .font(.system(size: 13, weight: .medium))
+                .neoFont(13, weight: .medium)
             Spacer()
         }
-        .padding(.vertical, 7)
+        .padding(.vertical, (7 * textScale).rounded())
         .background(
             RoundedRectangle(cornerRadius: 7)
                 .fill(Color.primary.opacity(0.07))

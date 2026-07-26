@@ -210,6 +210,26 @@ copies them into `Contents/Resources/` and `Info.plist` lists the languages.
 
 ## Notes
 
+- Workspace text scales with a user setting (`TextScale`, Settings ▸ View,
+  ⌘+/⌘−/⌘0). In workspace views write `.neoFont(12)` / `.neoFont(.callout)`,
+  never `.font(.system(size:))` — a literal font will not scale. Anything
+  sized around text (icon slots, fixed label widths, pane widths) reads
+  `@Environment(\.neoTextScale)`. AppKit surfaces have no environment: the
+  outline tables go through `OutlineRowMetrics.scale`, the treemap through
+  `TreemapScene.labelScale`. Window chrome — Settings, About, the menu bar,
+  the toolbar, alerts, the Welcome sheet — stays at the system size on
+  purpose, like a browser's own chrome under page zoom.
+- Two traps that version of the feature walked into, both invisible at 100%:
+  a `Text` with **no** font modifier used to inherit the system 13pt and
+  stayed small — ContentView now sets a scaled base font at the workspace
+  root, so plain text follows without naming a font. And a push button sizes
+  its chrome from `controlSize`, *not* from its label's font: scaling only
+  the title overflows the capsule. Give the button an explicit label with
+  `.neoFont(.body)` and add `.neoControlSize(base:)`, passing the size the
+  control already had — it steps up from there and returns `base` unchanged
+  at 100%. Inline bars (capacity, percentage, scan progress, cloud split)
+  and any strip whose height was tuned to its text scale too; a hairline bar
+  beside doubled text hides the very segments it exists to show.
 - Do not route treemap gesture frames through SwiftUI state. Gestures mutate the
   `CALayer` transform directly in `TreemapNSView`, and crisp renders swap in the
   same `CATransaction`; the SwiftUI-state version twitched.

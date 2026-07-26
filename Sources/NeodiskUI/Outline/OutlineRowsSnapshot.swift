@@ -32,7 +32,8 @@ extension NeodiskViewModel {
             sort: sort,
             baselineTargetID: diff.baseline?.targetID,
             baselineFinishedAt: diff.baseline?.finishedAt,
-            includesCloudOnly: showsCloudOnlyFiles
+            includesCloudOnly: showsCloudOnlyFiles,
+            textScale: textScale
         )
         return outlineRowsCache.snapshot(for: key) { version in
             let rows = flattenVisibleOutlineRows(sortedBy: sort)
@@ -68,6 +69,9 @@ final class OutlineRowsCache {
         let baselineTargetID: String?
         let baselineFinishedAt: Date?
         let includesCloudOnly: Bool
+        /// Row widths are measured in the scaled row font, so a text-size
+        /// change has to rebuild rather than serve a stale contentWidth.
+        let textScale: Double
     }
 
     private struct Entry {

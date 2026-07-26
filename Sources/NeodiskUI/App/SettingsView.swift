@@ -101,6 +101,20 @@ private struct ViewSettingsTab: View {
 
     var body: some View {
         Form {
+            Section("Text Size") {
+                Picker("Size", selection: Binding(
+                    get: { preferences.textScale },
+                    set: { preferences.textScale = $0 }
+                )) {
+                    ForEach(TextScale.steps, id: \.self) { step in
+                        Text(verbatim: TextScale.title(for: step)).tag(step)
+                    }
+                }
+                Text("Scales the text in the locations sidebar, the file lists, the treemap and sunburst labels, and the statistics panel. Applies immediately. View ▸ Zoom In and Zoom Out (⌘+ and ⌘−) change it without opening Settings.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Visualization") {
                 Picker("Default view", selection: Binding(
                     get: { preferences.defaultVizView },

@@ -381,3 +381,10 @@
 
 /* Pane divider accessibility (2026-07-21) */
 "Pane divider" = "面板分隔条";
+
+/* MARK: - Workspace text size */
+"Text Size" = "文字大小";
+"Zoom In" = "放大";
+"Zoom Out" = "缩小";
+"Actual Size" = "实际大小";
+"Scales the text in the locations sidebar, the file lists, the treemap and sunburst labels, and the statistics panel. Applies immediately. View ▸ Zoom In and Zoom Out (⌘+ and ⌘−) change it without opening Settings." = "缩放位置边栏、文件列表、树状图与旭日图标签以及统计面板中的文字。立即生效。“显示”▸“放大”和“缩小”（⌘+ 和 ⌘−）无需打开设置即可更改。";

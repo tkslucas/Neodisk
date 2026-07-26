@@ -81,11 +81,17 @@ struct BottomOutlineTable: NSViewRepresentable {
         tableView.allowsColumnReordering = false
         tableView.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
 
+        let textScale = OutlineRowMetrics.scale
+        coordinator.appliedTextScale = textScale
         for spec in Self.columns {
             let column = NSTableColumn(identifier: .init(spec.identifier))
             column.title = spec.title
-            column.width = spec.width
-            column.minWidth = spec.minWidth
+            // The numeric columns hold text that must not clip, so they take
+            // the text scale outright. Name is the autoresizing column — it
+            // lives on whatever the others leave and middle-truncates — so
+            // scaling its width too would just push the numbers off-screen.
+            column.width = spec.identifier == "name" ? spec.width : spec.width * textScale
+            column.minWidth = spec.minWidth * textScale
             column.resizingMask = spec.identifier == "name"
                 ? [.autoresizingMask, .userResizingMask]
                 : .userResizingMask
@@ -128,8 +134,15 @@ struct BottomOutlineTable: NSViewRepresentable {
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         let coordinator = context.coordinator
         coordinator.apply(snapshot: snapshot)
+        coordinator.applyTextScale(columnMinimums: Self.columnMinimums)
         coordinator.applySortIndicator(sort)
         coordinator.syncSelection(to: selectedID)
+    }
+
+    /// Per-column 100% minimum widths, keyed by identifier — the coordinator
+    /// rescales against these when the workspace text size changes.
+    private static var columnMinimums: [String: CGFloat] {
+        Dictionary(uniqueKeysWithValues: columns.map { ($0.identifier, $0.minWidth) })
     }
 
     private struct ColumnSpec {
@@ -187,10 +200,37 @@ struct BottomOutlineTable: NSViewRepresentable {
         private var pendingApply: NeodiskViewModel.OutlineRowsSnapshot?
 
         weak var tableView: NSTableView?
+        /// The workspace text scale the row height and columns were last
+        /// laid out for; a change rescales both (see applyTextScale).
+        var appliedTextScale: CGFloat = 1
         weak var scrollView: NSScrollView?
 
         init(model: NeodiskViewModel) {
             self.model = model
+        }
+
+        /// Follow a workspace text-size change: taller rows, and columns
+        /// rescaled by the same ratio. Widths scale from what is currently
+        /// there rather than from the spec, so a column the user widened
+        /// stays proportionally wide; the minimums come from the spec.
+        func applyTextScale(columnMinimums: [String: CGFloat]) {
+            guard let tableView else { return }
+            let scale = OutlineRowMetrics.scale
+            if tableView.rowHeight != OutlineRowMetrics.rowHeight {
+                tableView.rowHeight = OutlineRowMetrics.rowHeight
+            }
+            guard scale != appliedTextScale else { return }
+            let ratio = scale / appliedTextScale
+            appliedTextScale = scale
+            for column in tableView.tableColumns {
+                let minimum = (columnMinimums[column.identifier.rawValue] ?? 60) * scale
+                column.minWidth = minimum
+                // Name autoresizes into the leftover width; only its floor
+                // moves. See the makeNSView note.
+                let target = column.identifier.rawValue == "name"
+                    ? column.width : column.width * ratio
+                column.width = max(target, minimum)
+            }
         }
 
         func apply(snapshot: NeodiskViewModel.OutlineRowsSnapshot) {
@@ -415,6 +455,8 @@ enum BottomOutlineMetrics {
 /// Percentage-of-parent bar plus label — the column that makes the wide
 /// layout more than a rearranged left pane.
 private struct SubtreePercentCell: View {
+    @Environment(\.neoTextScale) private var textScale
+
     let fraction: Double
     let state: OutlineRowSelectionState
 
@@ -422,26 +464,28 @@ private struct SubtreePercentCell: View {
         HStack(spacing: 6) {
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 2)
+                    RoundedRectangle(cornerRadius: 2 * textScale)
                         .fill(state.showsAccentSelection
                             ? AnyShapeStyle(.white.opacity(0.25))
                             : AnyShapeStyle(.quaternary))
-                    RoundedRectangle(cornerRadius: 2)
+                    RoundedRectangle(cornerRadius: 2 * textScale)
                         .fill(state.showsAccentSelection
                             ? AnyShapeStyle(.white.opacity(0.9))
                             : AnyShapeStyle(Color.accentColor.opacity(0.65)))
                         .frame(width: geometry.size.width * min(max(fraction, 0), 1))
                 }
             }
-            .frame(height: 5)
+            .frame(height: (5 * textScale).rounded())
 
             Text(percentText)
-                .font(.system(size: 11))
+                .neoFont(11)
                 .monospacedDigit()
                 .foregroundStyle(state.showsAccentSelection
                     ? AnyShapeStyle(.white.opacity(0.85))
                     : AnyShapeStyle(.secondary))
-                .frame(width: 34, alignment: .trailing)
+                // "100%" at the row font; grows with it so the number
+                // never truncates against the bar.
+                .frame(width: (34 * textScale).rounded(), alignment: .trailing)
         }
         .padding(.horizontal, BottomOutlineMetrics.cellPadding)
         .frame(maxHeight: .infinity)
@@ -461,7 +505,7 @@ private struct BottomDetailText: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: 12))
+            .neoFont(12)
             .monospacedDigit()
             .lineLimit(1)
             .foregroundStyle(state.showsAccentSelection

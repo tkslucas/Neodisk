@@ -92,6 +92,38 @@ struct NeodiskCommands: Commands {
 
             Divider()
 
+            // Workspace text size. ⌘+/⌘− walk TextScale's steps and stop at
+            // the ends (disabled rather than silently inert). The scale
+            // reaches the sidebar, file lists, both visualizations, the
+            // statistics panel and the status bar — not this menu or the
+            // Settings window, the same way a browser's zoom leaves its own
+            // chrome alone.
+            Button {
+                model.zoomTextIn()
+            } label: {
+                Label("Zoom In", systemImage: "textformat.size.larger")
+            }
+            .keyboardShortcut("+", modifiers: .command)
+            .disabled(!model.canZoomTextIn)
+
+            Button {
+                model.zoomTextOut()
+            } label: {
+                Label("Zoom Out", systemImage: "textformat.size.smaller")
+            }
+            .keyboardShortcut("-", modifiers: .command)
+            .disabled(!model.canZoomTextOut)
+
+            Button {
+                model.resetTextSize()
+            } label: {
+                Label("Actual Size", systemImage: "textformat.size")
+            }
+            .keyboardShortcut("0", modifiers: .command)
+            .disabled(model.isTextSizeStandard)
+
+            Divider()
+
             // The three center views, mirroring the toolbar picker (same
             // two-preference write: a treemap item sets both, Sunburst keeps
             // the treemap style for the trip back).

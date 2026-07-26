@@ -46,9 +46,9 @@ struct ChangesPane: View {
         VStack(spacing: 10) {
             Spacer()
             ProgressView()
-                .controlSize(.small)
+                .neoControlSize(base: .small)
             Text("Comparing with the previous scan…")
-                .font(.system(size: 11))
+                .neoFont(11)
                 .foregroundStyle(.secondary)
             Spacer()
         }
@@ -76,10 +76,10 @@ private struct ChangeResultsView: View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 1) {
                 Text(sinceText)
-                    .font(.system(size: 11, weight: .semibold))
+                    .neoFont(11, weight: .semibold)
                     .lineLimit(1)
                 Text(summaryText)
-                    .font(.system(size: 10))
+                    .neoFont(10)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
@@ -94,7 +94,7 @@ private struct ChangeResultsView: View {
                 }
             }
             .pickerStyle(.segmented)
-            .controlSize(.small)
+            .neoControlSize(base: .small)
             .labelsHidden()
             .fixedSize()
             .frame(maxWidth: .infinity)
@@ -106,7 +106,7 @@ private struct ChangeResultsView: View {
             if entries.isEmpty {
                 Spacer()
                 Text(emptyText(for: filter))
-                    .font(.system(size: 11))
+                    .neoFont(11)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity)
                     .multilineTextAlignment(.center)
@@ -132,7 +132,7 @@ private struct ChangeResultsView: View {
                 if entries.count < list.totalCount(for: filter) {
                     Divider()
                     Text(footerText(entries: entries, filter: filter))
-                        .font(.system(size: 10))
+                        .neoFont(10)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4)
@@ -216,7 +216,7 @@ private struct ChangeEntryRow: View {
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: kindSymbol)
-                .font(.system(size: 11, weight: .medium))
+                .neoFont(11, weight: .medium)
                 .foregroundStyle(kindColor)
                 .frame(width: 16)
 
@@ -226,7 +226,7 @@ private struct ChangeEntryRow: View {
                     .truncationMode(.middle)
                 Text(subtitleText)
                     .foregroundStyle(.secondary)
-                    .font(.system(size: 10))
+                    .neoFont(10)
                     .lineLimit(1)
                     .truncationMode(.head)
             }
@@ -244,7 +244,7 @@ private struct ChangeEntryRow: View {
                 DeltaLabel(delta: entry.delta)
             }
         }
-        .font(.system(size: 12))
+        .neoFont(12)
         .help(helpText)
     }
 

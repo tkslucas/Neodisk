@@ -107,6 +107,10 @@ final class AppPreferences: ObservableObject {
     /// reads file contents, which costs real I/O and energy.
     @AppStorage("autoScanDuplicates") var autoScanDuplicates = false
     @AppStorage("hasSeenWelcome") var hasSeenWelcome = false
+    /// Workspace text size, as a multiplier of the standard sizes. Written
+    /// by the Settings picker and by View ▸ Zoom In/Out; read through
+    /// `textScale`, which snaps it to the ladder. See TextScale.
+    @AppStorage("textScale") var textScaleRaw = TextScale.standard
 
     /// Backing store defaults to UserDefaults.standard; tests pass their
     /// own suite so preference writes never leak into real settings.
@@ -166,6 +170,15 @@ final class AppPreferences: ObservableObject {
         )
         _autoScanDuplicates = AppStorage(wrappedValue: false, "autoScanDuplicates", store: defaults)
         _hasSeenWelcome = AppStorage(wrappedValue: false, "hasSeenWelcome", store: defaults)
+        _textScaleRaw = AppStorage(
+            wrappedValue: TextScale.standard, "textScale", store: defaults
+        )
+    }
+
+    /// The workspace text scale, always one of TextScale's steps.
+    var textScale: Double {
+        get { TextScale.snapped(textScaleRaw) }
+        set { textScaleRaw = TextScale.snapped(newValue) }
     }
 
     var theme: ThemePreference {
@@ -284,5 +297,6 @@ final class AppPreferences: ObservableObject {
         showFileListBelowSunburst = false
         prepareChangesAfterScan = true
         autoScanDuplicates = false
+        textScaleRaw = TextScale.standard
     }
 }

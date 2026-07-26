@@ -164,11 +164,15 @@ final class TreemapNSView: NSView {
         labelContainerLayer.sublayers = nil
         guard !scene.labels.isEmpty else { return }
 
-        let fileFont = NSFont.systemFont(ofSize: 11, weight: .medium)
+        // Label text follows the workspace text scale the scene was laid out
+        // for, so the gates that admitted a label and the text drawn into it
+        // can never disagree.
+        let fontSize = 11 * scene.labelScale
+        let fileFont = NSFont.systemFont(ofSize: fontSize, weight: .medium)
         // Flat container headers: the folder name sits left-aligned in the
         // header strip, bolder than file labels so hierarchy reads at a
         // glance.
-        let headerFont = NSFont.systemFont(ofSize: 11, weight: .semibold)
+        let headerFont = NSFont.systemFont(ofSize: fontSize, weight: .semibold)
         let backingScale = window?.backingScaleFactor ?? 2
         // Both styles composite over the window background, so light mode
         // needs dark text (and no shadow); dark mode keeps white-on-shadow.

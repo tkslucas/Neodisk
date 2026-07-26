@@ -18,6 +18,8 @@ import SwiftUI
 /// and a `repeatForever` animation restarted on re-render freezes or
 /// stutters. A clock-derived phase is immune to re-renders.
 struct StripedProgressBar: View {
+    @Environment(\.neoTextScale) private var textScale
+
     var value: Double
     var isActive = true
 
@@ -53,7 +55,7 @@ struct StripedProgressBar: View {
                 }
             }
         }
-        .frame(height: 5)
+        .frame(height: (5 * textScale).rounded())
     }
 }
 

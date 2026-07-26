@@ -382,3 +382,10 @@
 
 /* Pane divider accessibility (2026-07-21) */
 "Pane divider" = "Divisor de painéis";
+
+/* MARK: - Workspace text size */
+"Text Size" = "Tamanho do texto";
+"Zoom In" = "Aumentar";
+"Zoom Out" = "Diminuir";
+"Actual Size" = "Tamanho real";
+"Scales the text in the locations sidebar, the file lists, the treemap and sunburst labels, and the statistics panel. Applies immediately. View ▸ Zoom In and Zoom Out (⌘+ and ⌘−) change it without opening Settings." = "Redimensiona o texto da barra lateral de locais, das listas de arquivos, dos rótulos do treemap e do sunburst e do painel de estatísticas. Aplicado imediatamente. Visualizar ▸ Aumentar e Diminuir (⌘+ e ⌘−) mudam sem abrir os ajustes.";

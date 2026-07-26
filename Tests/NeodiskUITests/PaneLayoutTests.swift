@@ -19,9 +19,9 @@ import Testing
         height: Double = 900,
         showsLeadingOutline: Bool = true,
         showsAnalysis: Bool = true,
-        outline: Double = PaneLayout.outlineDefaultWidth,
-        analysis: Double = PaneLayout.analysisDefaultWidth,
-        bottom: Double = PaneLayout.bottomOutlineDefaultHeight
+        outline: Double = PaneLayout.outlineDefaultWidth(),
+        analysis: Double = PaneLayout.analysisDefaultWidth(),
+        bottom: Double = PaneLayout.bottomOutlineDefaultHeight()
     ) -> WorkspacePaneMetrics {
         WorkspacePaneMetrics(
             available: CGSize(width: width, height: height),
@@ -81,11 +81,11 @@ import Testing
         #expect(m.outlineWidth == 420)
         #expect(m.analysisWidth == 300)
         #expect(m.bottomOutlineHeight == 250)
-        #expect(m.outlineRange == PaneLayout.outlineMinWidth...PaneLayout.outlineMaxWidth)
-        #expect(m.analysisRange == PaneLayout.analysisMinWidth...PaneLayout.analysisMaxWidth)
+        #expect(m.outlineRange == PaneLayout.outlineMinWidth()...PaneLayout.outlineMaxWidth())
+        #expect(m.analysisRange == PaneLayout.analysisMinWidth()...PaneLayout.analysisMaxWidth())
         #expect(
             m.bottomOutlineRange
-                == PaneLayout.bottomOutlineMinHeight...PaneLayout.bottomOutlineMaxHeight
+                == PaneLayout.bottomOutlineMinHeight()...PaneLayout.bottomOutlineMaxHeight()
         )
     }
 
@@ -94,8 +94,8 @@ import Testing
         // window collapsed the map to zero.
         let m = metrics(
             width: 900,
-            outline: PaneLayout.outlineMaxWidth,
-            analysis: PaneLayout.analysisMaxWidth
+            outline: PaneLayout.outlineMaxWidth(),
+            analysis: PaneLayout.analysisMaxWidth()
         )
         let map = 900 - m.outlineWidth - m.analysisWidth - 2 * PaneLayout.splitterThickness
         #expect(map >= PaneLayout.mapMinWidth)
@@ -104,32 +104,32 @@ import Testing
     @Test func analysisPaneConcedesBeforeOutline() {
         let m = metrics(
             width: 900,
-            outline: PaneLayout.outlineMaxWidth,
-            analysis: PaneLayout.analysisMaxWidth
+            outline: PaneLayout.outlineMaxWidth(),
+            analysis: PaneLayout.analysisMaxWidth()
         )
-        #expect(m.analysisWidth == PaneLayout.analysisMinWidth)
-        #expect(m.outlineWidth > PaneLayout.outlineMinWidth)
+        #expect(m.analysisWidth == PaneLayout.analysisMinWidth())
+        #expect(m.outlineWidth > PaneLayout.outlineMinWidth())
     }
 
     @Test func hiddenAnalysisPaneFreesItsFootprintForTheOutline() {
-        let shown = metrics(width: 900, outline: PaneLayout.outlineMaxWidth)
+        let shown = metrics(width: 900, outline: PaneLayout.outlineMaxWidth())
         let hidden = metrics(
-            width: 900, showsAnalysis: false, outline: PaneLayout.outlineMaxWidth
+            width: 900, showsAnalysis: false, outline: PaneLayout.outlineMaxWidth()
         )
         #expect(hidden.outlineRange.upperBound > shown.outlineRange.upperBound)
     }
 
     @Test func hiddenOutlineFreesItsFootprintForAnalysis() {
-        let shown = metrics(width: 760, outline: PaneLayout.outlineMaxWidth)
+        let shown = metrics(width: 760, outline: PaneLayout.outlineMaxWidth())
         let hidden = metrics(
-            width: 760, showsLeadingOutline: false, outline: PaneLayout.outlineMaxWidth
+            width: 760, showsLeadingOutline: false, outline: PaneLayout.outlineMaxWidth()
         )
         #expect(hidden.analysisRange.upperBound > shown.analysisRange.upperBound)
     }
 
     @Test func shortWindowCapsBottomOutline() {
         // 560 (window minimum) − map column 240 − splitter 8 = 312 < 440.
-        let m = metrics(height: 560, bottom: PaneLayout.bottomOutlineMaxHeight)
+        let m = metrics(height: 560, bottom: PaneLayout.bottomOutlineMaxHeight())
         let cap = 560 - PaneLayout.mapColumnMinHeight - PaneLayout.splitterThickness
         #expect(m.bottomOutlineRange.upperBound == cap)
         #expect(m.bottomOutlineHeight == cap)
@@ -139,20 +139,20 @@ import Testing
         // Stale defaults entries (hand-edited, or written before bounds
         // changed) must not render out of range.
         let m = metrics(outline: 5_000, analysis: 10, bottom: -3)
-        #expect(m.outlineWidth == PaneLayout.outlineMaxWidth)
-        #expect(m.analysisWidth == PaneLayout.analysisMinWidth)
-        #expect(m.bottomOutlineHeight == PaneLayout.bottomOutlineMinHeight)
+        #expect(m.outlineWidth == PaneLayout.outlineMaxWidth())
+        #expect(m.analysisWidth == PaneLayout.analysisMinWidth())
+        #expect(m.bottomOutlineHeight == PaneLayout.bottomOutlineMinHeight())
     }
 
     @Test func pathologicalSizesStillYieldValidRanges() {
         // Below every pane's minimum the range degenerates to min...min
         // rather than crashing on an inverted ClosedRange.
         let m = metrics(width: 100, height: 50)
-        #expect(m.outlineRange == PaneLayout.outlineMinWidth...PaneLayout.outlineMinWidth)
-        #expect(m.analysisRange == PaneLayout.analysisMinWidth...PaneLayout.analysisMinWidth)
+        #expect(m.outlineRange == PaneLayout.outlineMinWidth()...PaneLayout.outlineMinWidth())
+        #expect(m.analysisRange == PaneLayout.analysisMinWidth()...PaneLayout.analysisMinWidth())
         #expect(
             m.bottomOutlineRange
-                == PaneLayout.bottomOutlineMinHeight...PaneLayout.bottomOutlineMinHeight
+                == PaneLayout.bottomOutlineMinHeight()...PaneLayout.bottomOutlineMinHeight()
         )
     }
 
@@ -160,9 +160,9 @@ import Testing
         // The guarantee behind "the minimum always wins": at the window's
         // minimum size (900×560, ContentView) even every pane at its minimum
         // plus the map minimum still fits.
-        let widthFloor = PaneLayout.outlineMinWidth + PaneLayout.analysisMinWidth
+        let widthFloor = PaneLayout.outlineMinWidth() + PaneLayout.analysisMinWidth()
             + 2 * PaneLayout.splitterThickness + PaneLayout.mapMinWidth
-        let heightFloor = PaneLayout.bottomOutlineMinHeight + PaneLayout.splitterThickness
+        let heightFloor = PaneLayout.bottomOutlineMinHeight() + PaneLayout.splitterThickness
             + PaneLayout.mapColumnMinHeight
         #expect(widthFloor <= 900)
         #expect(heightFloor <= 560)
@@ -174,14 +174,14 @@ import Testing
         let m = SunburstLegendMetrics(availableWidth: 1_200, storedWidth: 380)
         #expect(m.width == 380)
         #expect(
-            m.range == PaneLayout.sunburstLegendMinWidth...PaneLayout.sunburstLegendMaxWidth
+            m.range == PaneLayout.sunburstLegendMinWidth()...PaneLayout.sunburstLegendMaxWidth()
         )
     }
 
     @Test func narrowPaneCapsLegendToKeepChartUsable() {
         let available = 700.0
         let m = SunburstLegendMetrics(
-            availableWidth: available, storedWidth: PaneLayout.sunburstLegendMaxWidth
+            availableWidth: available, storedWidth: PaneLayout.sunburstLegendMaxWidth()
         )
         let chart = available - m.width! - PaneLayout.splitterThickness
         #expect(chart >= PaneLayout.sunburstChartMinWidth)
@@ -196,14 +196,14 @@ import Testing
 
     @Test func legendReturnsOnceThereIsRoomAgain() {
         let threshold = PaneLayout.sunburstChartMinWidth
-            + PaneLayout.splitterThickness + PaneLayout.sunburstLegendMinWidth
+            + PaneLayout.splitterThickness + PaneLayout.sunburstLegendMinWidth()
         #expect(SunburstLegendMetrics(availableWidth: threshold - 1, storedWidth: 340).width == nil)
         #expect(SunburstLegendMetrics(availableWidth: threshold, storedWidth: 340).width != nil)
     }
 
     @Test func outOfRangeStoredWidthClampsOnRead() {
         let m = SunburstLegendMetrics(availableWidth: 1_200, storedWidth: 5_000)
-        #expect(m.width == PaneLayout.sunburstLegendMaxWidth)
+        #expect(m.width == PaneLayout.sunburstLegendMaxWidth())
     }
 }
 

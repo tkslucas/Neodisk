@@ -14,6 +14,8 @@ import SwiftUI
 import NeodiskKit
 
 struct TreemapBreadcrumbBar: View {
+    @Environment(\.neoTextScale) private var textScale
+
     let model: NeodiskViewModel
     /// The sunburst's simplified layout leans on the bar for navigation, so
     /// it renders larger there; both treemap styles keep the compact strip.
@@ -45,7 +47,7 @@ struct TreemapBreadcrumbBar: View {
                     ForEach(Array(crumbs.enumerated()), id: \.element.id) { index, node in
                         if index > 0 {
                             Image(systemName: "chevron.compact.right")
-                                .font(isProminent ? .caption : .caption2)
+                                .neoFont(isProminent ? .caption : .caption2)
                                 .foregroundStyle(.tertiary)
                         }
                         Crumb(
@@ -78,7 +80,7 @@ struct TreemapBreadcrumbBar: View {
                 }
             }
         }
-        .frame(height: isProminent ? 34 : 26)
+        .frame(height: ((isProminent ? 34 : 26) * textScale).rounded())
         .background(.bar)
         .overlay(alignment: .bottom) { Divider() }
     }
@@ -98,7 +100,7 @@ private struct Crumb: View {
     var body: some View {
         Button(action: action) {
             Text(node.name.isEmpty ? "/" : node.name)
-                .font(isProminent ? .body : .caption)
+                .neoFont(isProminent ? .body : .caption)
                 .fontWeight(isLast ? .semibold : .regular)
                 .underline(isDrillRoot)
                 .lineLimit(1)

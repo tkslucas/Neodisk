@@ -38,7 +38,7 @@ struct SunburstPane: View {
     /// User-resizable, clamped on read against the pane width so the chart
     /// keeps a usable diameter (see SunburstLegendMetrics).
     @AppStorage("sunburstLegendWidth")
-    private var legendWidth = PaneLayout.sunburstLegendDefaultWidth
+    private var legendWidth = PaneLayout.sunburstLegendDefaultWidth()
     /// Pointer-drag deltas stay local; the final width persists on mouse-up.
     @State private var transientLegendWidth: Double?
 
@@ -54,7 +54,8 @@ struct SunburstPane: View {
             GeometryReader { proxy in
                 let legend = SunburstLegendMetrics(
                     availableWidth: proxy.size.width,
-                    storedWidth: transientLegendWidth ?? legendWidth
+                    storedWidth: transientLegendWidth ?? legendWidth,
+                    textScale: model.textScale
                 )
                 HStack(spacing: 0) {
                     SunburstChartView(
@@ -97,7 +98,7 @@ struct SunburstPane: View {
                         PaneSplitter(
                             size: liveLegendWidth,
                             range: legend.range,
-                            defaultSize: PaneLayout.sunburstLegendDefaultWidth,
+                            defaultSize: PaneLayout.sunburstLegendDefaultWidth(scale: model.textScale),
                             paneEdge: .trailing,
                             onCommit: {
                                 legendWidth = $0

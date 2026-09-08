@@ -109,6 +109,7 @@ struct FileKindCatalog: Sendable {
         var sizeByKindID: [String: (size: Int64, count: Int)] = [:]
 
         for node in store.allNodes {
+            if Task.isCancelled { break }
             guard FileKindClassifier.isKindCountable(node, in: store) else { continue }
             let kindID = FileKindClassifier.kindID(for: node, mode: mode)
             let existing = sizeByKindID[kindID] ?? (0, 0)
@@ -180,6 +181,7 @@ struct FileKindCatalog: Sendable {
         var typeSizes: [String: (size: Int64, count: Int)] = [:]
 
         for node in store.allNodes {
+            if Task.isCancelled { break }
             guard FileKindClassifier.isKindCountable(node, in: store) else { continue }
             let categoryID = FileKindClassifier.kindID(for: node, mode: .categories)
             let typeID = FileKindClassifier.kindID(for: node, mode: .types)

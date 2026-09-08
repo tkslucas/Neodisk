@@ -74,6 +74,41 @@ import Foundation
         return Int64(subdirectoryCount * filesPerSubdirectory * bytesPerFile)
     }
 
+    @Test(arguments: [true, false]) func summariesRespectOwnedDeviceBoundaries(bulk: Bool) async throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try populateTree(at: root, subdirectoryCount: 2, filesPerSubdirectory: 2, bytesPerFile: 100)
+        try Data(repeating: 1, count: 50).write(to: root.appendingPathComponent("local"))
+        let (pool, continuation) = makePool()
+        // The root was explicitly selected and is always scanned. Its children
+        // are on a device outside this deliberately disjoint ownership set.
+        var request = AtomicSummaryPoolRequest(
+            url: root, includeHiddenFiles: true, treatPackagesAsDirectories: true,
+            ownerNodeID: root.path,
+            exclusionMatcher: ScanExclusionMatcher(patterns: [], rootURL: root, includeCloudStorage: true),
+            metadataLoader: ScanMetadataLoader(), bulkEnumerationEnabled: bulk,
+            cancellationCheck: {}, ownedDeviceIDs: [UInt64.max - 1]
+        )
+        let bounded = try #require(try await pool.summarize(request))
+        #expect(bounded.descendantFileCount == 1)
+        #expect(bounded.logicalSize == 50)
+        request.ownedDeviceIDs = []
+        let unrestricted = try #require(try await pool.summarize(request))
+        #expect(unrestricted.descendantFileCount == 5)
+        #expect(unrestricted.logicalSize == 450)
+        await pool.finish()
+        continuation.finish()
+    }
+
+    @Test func progressTerminationCanReenterCoordinator() async {
+        let (_, continuation) = AsyncThrowingStream<ScanProgressEvent, Error>.makeStream()
+        let pool = AtomicDirectorySummaryPool(workerLimit: 1, continuation: continuation)
+        continuation.onTermination = { _ in pool.publishProgressBase(ScanMetrics()) }
+        pool.publishProgressBase(ScanMetrics())
+        continuation.finish()
+        await pool.finish()
+    }
+
     @Test func twoConcurrentJobsBothSummarizeFully() async throws {
         let root = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }

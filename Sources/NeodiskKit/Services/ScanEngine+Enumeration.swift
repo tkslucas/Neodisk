@@ -148,8 +148,7 @@ extension ScanEngine {
                         fileIdentity: completed.metadata.fileIdentity,
                         linkCount: completed.metadata.linkCount,
                         isPackage: completed.metadata.isPackage,
-                        isAccessible: completed.metadata.isReadable,
-                        childrenAreSorted: true
+                        isAccessible: completed.metadata.isReadable
                     )
                     resolvedNodeByKey[key] = assembled
                     childrenByID[assembled.id] = sortedChildren

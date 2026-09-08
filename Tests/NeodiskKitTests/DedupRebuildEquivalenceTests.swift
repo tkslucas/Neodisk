@@ -337,8 +337,7 @@ import Testing
                 fileIdentity: current.fileIdentity,
                 linkCount: current.linkCount,
                 isPackage: current.isPackage,
-                isAccessible: current.isSelfAccessible,
-                childrenAreSorted: true
+                isAccessible: current.isSelfAccessible
             )
         }
     }

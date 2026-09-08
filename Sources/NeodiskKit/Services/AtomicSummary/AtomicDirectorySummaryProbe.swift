@@ -172,7 +172,7 @@ extension AtomicDirectorySummarizer {
 
                 guard !childMetadata.isDirectory else {
                     profile.observedDirectoryCount += 1
-                    if child.directoryMountStatus & MountBoundaryPolicy.mountPointFlag != 0 {
+                    if MountBoundaryPolicy.isNestedMount(deviceID: child.deviceID, ownedDeviceIDs: ownedDeviceIDs, directoryMountStatus: child.directoryMountStatus) {
                         continue
                     }
                     if !isNodeDependencyLayout,
@@ -293,6 +293,13 @@ extension AtomicDirectorySummarizer {
             do {
                 let values = try childURL.resourceValues(forKeys: ScanMetadataLoader.atomicProbeResourceKeySet)
                 let isDirectory = values.isDirectory ?? false
+                if isDirectory, !ownedDeviceIDs.isEmpty {
+                    let metadata = metadataLoader.metadata(for: childURL, prefetchedResourceValues: values, captureDirectoryIdentity: true)
+                    if MountBoundaryPolicy.isNestedMount(deviceID: metadata.fileIdentity?.fileSystemDeviceID, ownedDeviceIDs: ownedDeviceIDs, directoryMountStatus: 0) {
+                        enumerator.skipDescendants()
+                        continue
+                    }
+                }
                 let isSymbolicLink = values.isSymbolicLink ?? false
 
                 if exclusionMatcher.excludes(childURL, isDirectory: isDirectory) {

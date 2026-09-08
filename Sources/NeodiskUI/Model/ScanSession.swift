@@ -63,7 +63,7 @@ final class ScanSession: Identifiable {
     var onCompletion: ((ScanSession) -> Void)?
 
     @ObservationIgnored private let scanService: any ScanEventStreaming
-    @ObservationIgnored private let baselineProvider: (@Sendable () async -> ScanSnapshot?)?
+    @ObservationIgnored private var baselineProvider: (@Sendable () async -> ScanSnapshot?)?
     @ObservationIgnored private let progressThrottleDuration: Duration
     @ObservationIgnored private let progressClock = ContinuousClock()
 
@@ -104,6 +104,7 @@ final class ScanSession: Identifiable {
         let stream = baselineProvider.map { provider in
             scanService.rescan(target: target, options: options, baselineProvider: provider)
         } ?? scanService.scan(target: target, options: options)
+        baselineProvider = nil
         scanTask = Task { [weak self] in
             await self?.consume(stream)
         }
@@ -116,8 +117,14 @@ final class ScanSession: Identifiable {
         guard state == .running else { return }
         state = .cancelled
         scanTask?.cancel()
-        scanTask = nil
+        releaseScanInputs()
         resetProgressThrottling()
+    }
+
+    private func releaseScanInputs() {
+        refreshBaseline = nil
+        baselineProvider = nil
+        scanTask = nil
     }
 
     // MARK: - Stream consumption
@@ -177,6 +184,7 @@ final class ScanSession: Identifiable {
 
         latestSnapshot = snapshot
         state = .finished
+        releaseScanInputs()
         onCompletion?(self)
     }
 
@@ -184,6 +192,7 @@ final class ScanSession: Identifiable {
         guard state == .running else { return }
         resetProgressThrottling()
         state = .failed(error.localizedDescription)
+        releaseScanInputs()
         onCompletion?(self)
     }
 
@@ -191,6 +200,8 @@ final class ScanSession: Identifiable {
         guard state == .running else { return }
         resetProgressThrottling()
         state = .cancelled
+        releaseScanInputs()
+        onCompletion?(self)
     }
 
     /// The stream closed without a final snapshot while still running (a
@@ -199,6 +210,7 @@ final class ScanSession: Identifiable {
         guard state == .running else { return }
         resetProgressThrottling()
         state = .cancelled
+        releaseScanInputs()
         onCompletion?(self)
     }
 

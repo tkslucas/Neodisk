@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import Dispatch
 
 /// Thrown by a job's cancellation token once the job is cancelled, so a worker
 /// abandons the item it is processing promptly instead of finishing a walk whose
@@ -40,6 +41,7 @@ nonisolated struct AtomicSummaryPoolRequest: @unchecked Sendable {
     let metadataLoader: ScanMetadataLoader
     let bulkEnumerationEnabled: Bool
     let cancellationCheck: CancellationCheck
+    var ownedDeviceIDs: Set<UInt64> = []
 }
 
 /// Publishes throttled current-path heartbeats while pooled jobs (and the
@@ -53,6 +55,7 @@ nonisolated private final class AtomicSummaryProgressHeartbeat: @unchecked Senda
     }
 
     private let lock = NSLock()
+    private let emissionQueue = DispatchQueue(label: "Neodisk.summaryProgress")
     private let continuation: AsyncThrowingStream<ScanProgressEvent, Error>.Continuation
     private let emissionInterval: TimeInterval
     private var base = ScanMetrics()
@@ -82,7 +85,7 @@ nonisolated private final class AtomicSummaryProgressHeartbeat: @unchecked Senda
         lock.lock()
         base = metrics
         hasBase = true
-        continuation.yield(.progress(metricsIncludingLiveContributionsLocked()))
+        enqueueLocked(metricsIncludingLiveContributionsLocked())
         lock.unlock()
     }
 
@@ -101,7 +104,7 @@ nonisolated private final class AtomicSummaryProgressHeartbeat: @unchecked Senda
         var snapshot = metricsIncludingLiveContributionsLocked()
         snapshot.currentPath = currentPath
         // AsyncThrowingStream continuations are thread-safe.
-        continuation.yield(.progress(snapshot))
+        enqueueLocked(snapshot)
         lock.unlock()
     }
 
@@ -132,7 +135,7 @@ nonisolated private final class AtomicSummaryProgressHeartbeat: @unchecked Senda
         lastEmission = now
         var snapshot = metricsIncludingLiveContributionsLocked()
         snapshot.currentPath = currentPath
-        continuation.yield(.progress(snapshot))
+        enqueueLocked(snapshot)
         lock.unlock()
     }
 
@@ -147,6 +150,15 @@ nonisolated private final class AtomicSummaryProgressHeartbeat: @unchecked Senda
         }
         lock.unlock()
     }
+
+    private func enqueueLocked(_ snapshot: ScanMetrics) {
+        // Keep publication ordered without yielding under the state lock:
+        // stream termination can synchronously cancel the summary workers.
+        let continuation = continuation
+        emissionQueue.async { continuation.yield(.progress(snapshot)) }
+    }
+
+    func flushEmissions() { emissionQueue.sync {} }
 
     private func metricsIncludingLiveContributionsLocked() -> ScanMetrics {
         var snapshot = base
@@ -283,6 +295,7 @@ nonisolated final class AtomicDirectorySummaryPool: @unchecked Sendable {
         for task in tasks {
             await task.value
         }
+        heartbeat.flushEmissions()
     }
 
     /// Fails all registered jobs, wakes workers, and awaits their termination.
@@ -291,6 +304,7 @@ nonisolated final class AtomicDirectorySummaryPool: @unchecked Sendable {
         for task in tasks {
             await task.value
         }
+        heartbeat.flushEmissions()
     }
 
     func summarize(_ request: AtomicSummaryPoolRequest) async throws -> AtomicDirectorySummary? {
@@ -325,7 +339,8 @@ nonisolated final class AtomicDirectorySummaryPool: @unchecked Sendable {
             AtomicSummaryWorkItem(
                 url: request.url,
                 treatPackagesAsDirectories: request.treatPackagesAsDirectories,
-                ownerNodeID: request.ownerNodeID
+                ownerNodeID: request.ownerNodeID,
+                ownedDeviceIDs: request.ownedDeviceIDs
             )
         ]
 
@@ -365,7 +380,7 @@ nonisolated final class AtomicDirectorySummaryPool: @unchecked Sendable {
     private func makeInitialPartial(for request: AtomicSummaryPoolRequest) -> AtomicDirectorySummaryPartial {
         var partial = AtomicDirectorySummaryPartial()
         do {
-            let values = try request.url.resourceValues(forKeys: ScanMetadataLoader.atomicSummaryResourceKeySet)
+            let values = try request.url.resourceValues(forKeys: [.isReadableKey])
             partial.updateAccessibility(values.isReadable ?? true)
         } catch {
             partial.recordWarning(for: request.url, error: error)

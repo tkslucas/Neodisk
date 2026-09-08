@@ -8,6 +8,8 @@
 //  behind the Settings toggle. Owned by NeodiskViewModel as `model.freeSpace`.
 //
 
+import AppKit
+import Combine
 import Foundation
 import Observation
 import NeodiskKit
@@ -46,9 +48,42 @@ final class FreeSpaceModel {
     /// immediately on reselect while a fresh figure is fetched.
     @ObservationIgnored private var cloudQuotaByTargetID: [String: (totalBytes: Int64?, usedBytes: Int64)] = [:]
 
-    init(coordinator: ScanCoordinator, cloudScan: (any CloudScanIntegrating)?) {
+    @ObservationIgnored private let loadVolume: @Sendable (URL) async -> VolumeSpaceInfo?
+    @ObservationIgnored private var volumeTask: Task<Void, Never>?
+    @ObservationIgnored private var volumeKey: VolumeKey?
+    @ObservationIgnored private var volumeInfo: VolumeSpaceInfo?
+    @ObservationIgnored private var mountObserver: AnyCancellable?
+
+    private struct VolumeKey: Equatable {
+        let targetID: String
+        let completedSnapshotID: UUID?
+    }
+
+    init(
+        coordinator: ScanCoordinator,
+        cloudScan: (any CloudScanIntegrating)?,
+        loadVolume: @escaping @Sendable (URL) async -> VolumeSpaceInfo? = { VolumeSpaceInfo.load(for: $0) }
+    ) {
         self.coordinator = coordinator
         self.cloudScan = cloudScan
+        self.loadVolume = loadVolume
+        let notifications = NSWorkspace.shared.notificationCenter
+        mountObserver = notifications.publisher(for: NSWorkspace.didMountNotification)
+            .merge(with: notifications.publisher(for: NSWorkspace.didUnmountNotification))
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                MainActor.assumeIsolated { self?.invalidateVolume() }
+            }
+    }
+
+    deinit { volumeTask?.cancel() }
+
+    func invalidateVolume() {
+        volumeTask?.cancel()
+        volumeTask = nil
+        volumeKey = nil
+        volumeInfo = nil
+        update()
     }
 
     /// The treemap's preference-gated view of the synthetic space: unlike
@@ -63,12 +98,46 @@ final class FreeSpaceModel {
 
     func update() {
         if coordinator.selectedTarget?.kind == .cloud {
+            volumeTask?.cancel()
+            volumeTask = nil
+            volumeKey = nil
+            volumeInfo = nil
             updateCloudFreeSpace()
             return
         }
-        guard let target = coordinator.selectedTarget,
-              target.kind == .volume,
-              let info = VolumeSpaceInfo.load(for: target.url) else {
+        guard let target = coordinator.selectedTarget, target.kind == .volume else {
+            volumeTask?.cancel()
+            volumeTask = nil
+            volumeKey = nil
+            volumeInfo = nil
+            applyVolumeInfo(nil)
+            return
+        }
+        // One cached result for the displayed volume. Partial trees and preference
+        // changes reuse it; completing a scan or remounting requests fresh values.
+        let key = VolumeKey(
+            targetID: target.id,
+            completedSnapshotID: coordinator.snapshot.flatMap { $0.isComplete ? $0.id : nil }
+        )
+        if key != volumeKey {
+            volumeTask?.cancel()
+            if key.targetID != volumeKey?.targetID { volumeInfo = nil }
+            volumeKey = key
+            volumeTask = Task { [weak self, loadVolume] in
+                let info = await loadVolume(target.url)
+                guard !Task.isCancelled, let self,
+                      self.volumeKey == key,
+                      self.coordinator.selectedTarget?.id == key.targetID else { return }
+                self.volumeInfo = info
+                self.volumeTask = nil
+                self.applyVolumeInfo(info)
+            }
+        }
+        applyVolumeInfo(volumeInfo)
+    }
+
+    private func applyVolumeInfo(_ info: VolumeSpaceInfo?) {
+        guard let info else {
             freeSpaceBytes = nil
             hiddenSpaceBytes = nil
             finderUsedBytes = nil

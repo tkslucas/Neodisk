@@ -1333,7 +1333,9 @@ import Foundation
         // Volume snapshots carry only scanned bytes on every filesystem;
         // the gap up to used capacity is the UI's hidden space, never a
         // synthetic node.
-        #expect(try !rootChildren(in: snapshot).contains(where: \.isSynthetic))
+        let children = try rootChildren(in: snapshot)
+        let hasSyntheticChild = children.contains { $0.isSynthetic }
+        #expect(!hasSyntheticChild)
         #expect(snapshot.root.isAccessible)
         #expect(snapshot.aggregateStats.totalAllocatedSize == snapshot.root.allocatedSize)
     }

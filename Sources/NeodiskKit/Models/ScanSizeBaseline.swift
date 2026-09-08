@@ -49,6 +49,7 @@ public struct ScanSizeBaseline: Sendable {
         var sizes = [UInt64: Int64](minimumCapacity: snapshot.treeStore.nodeCount)
         var identities: [UInt64: UInt64] = [:]
         for node in snapshot.treeStore.allNodes {
+            if Task.isCancelled { break }
             let hashedID = Self.hashedID(node.id)
             sizes[hashedID] = node.allocatedSize
             // Hard links share an identity across paths and synthetic nodes

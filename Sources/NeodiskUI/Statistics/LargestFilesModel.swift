@@ -143,7 +143,7 @@ final class LargestFilesModel {
             let store = snapshot.treeStore
             let result = await Task.detached(priority: .userInitiated) {
                 TopLargestFiles.select(from: store, limit: limit, includeCloudOnly: includeCloudOnly)
-            }.value
+            }.cancellableValue
             guard let self, !Task.isCancelled,
                   self.coordinator.snapshot?.id == snapshot.id,
                   self.filterText.trimmingCharacters(in: .whitespaces).isEmpty else { return }
@@ -170,7 +170,7 @@ final class LargestFilesModel {
             guard !Task.isCancelled else { return }
             let entries = await Task.detached(priority: .userInitiated) {
                 index.entries.filter(\.isKindCountable)
-            }.value
+            }.cancellableValue
             guard let self, !Task.isCancelled,
                   self.coordinator.snapshot?.id == snapshot.id else { return }
             self.entries = entries
@@ -201,7 +201,7 @@ final class LargestFilesModel {
                     }
                 }
                 return results
-            }.value
+            }.cancellableValue
             guard let self, !Task.isCancelled,
                   self.filterText.trimmingCharacters(in: .whitespaces) == query else {
                 return
@@ -237,6 +237,7 @@ private enum TopLargestFiles {
         heapIDs.reserveCapacity(limit)
 
         for node in store.allNodes {
+            if Task.isCancelled { break }
             guard FileKindClassifier.isKindCountable(node, in: store) else { continue }
             total += 1
             let size = node.displayWeight(includingCloudOnly: includeCloudOnly)

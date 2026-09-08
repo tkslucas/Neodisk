@@ -41,6 +41,44 @@ extension ScanTimingSuites {
     }
 
     @MainActor
+    @Test func testFinishedRefreshReleasesSessionAndKeepsFinalMetrics() async throws {
+        let service = ControlledScanService()
+        let coordinator = ScanCoordinator(scanService: service, progressThrottleDuration: .zero)
+        let target = makeCoordinatorTarget("/scan/release-refresh")
+        let old = makeCoordinatorSnapshot(target: target)
+        let fresh = makeCoordinatorSnapshot(target: target)
+        attachRefreshScan(coordinator, target: target)
+        let retainedSession = { [weak session = coordinator.displayedSession] in session }
+        retainedSession()?.refreshBaseline = old
+        coordinator.showRefreshBaselineIfAttached(retainedSession()!)
+        service.yield(.progress(makeCoordinatorMetrics(path: "finished", filesVisited: 42)), scanIndex: 0)
+        service.yield(.finished(fresh), scanIndex: 0)
+        service.finish(scanIndex: 0)
+        try await waitUntil("finished session released") { retainedSession() == nil }
+        #expect(coordinator.displayedSession == nil)
+        #expect(coordinator.snapshot?.id == fresh.id)
+        #expect(coordinator.recentSnapshot(forTargetID: target.id)?.id == fresh.id)
+        #expect(coordinator.scanMetrics.filesVisited == 42)
+        #expect(coordinator.scanMetrics.progressFraction == 1)
+    }
+
+    @MainActor
+    @Test func testCancelledRefreshDropsBaselineAndPreservesProgress() async throws {
+        let service = ControlledScanService()
+        let coordinator = ScanCoordinator(scanService: service, progressThrottleDuration: .zero)
+        let target = makeCoordinatorTarget("/scan/cancel-refresh")
+        attachRefreshScan(coordinator, target: target)
+        let session = try #require(coordinator.displayedSession)
+        session.refreshBaseline = makeCoordinatorSnapshot(target: target)
+        service.yield(.progress(makeCoordinatorMetrics(path: "stopped", filesVisited: 7)), scanIndex: 0)
+        try await waitUntil("progress received") { coordinator.scanMetrics.filesVisited == 7 }
+        coordinator.stopScan()
+        #expect(session.refreshBaseline == nil)
+        #expect(session.state == .cancelled)
+        #expect(coordinator.scanMetrics.filesVisited == 7)
+    }
+
+    @MainActor
     @Test func testRestoreCompletedSnapshotDisplaysWithoutScanRequest() {
         let service = ControlledScanService()
         let coordinator = ScanCoordinator(scanService: service, progressThrottleDuration: .milliseconds(40))
@@ -335,7 +373,7 @@ extension ScanTimingSuites {
         #expect(replacementRootID == summarizedNode.id)
         #expect(!(updatedNode.isAutoSummarized))
         #expect(updatedSnapshot.treeStore.children(of: summarizedNode.id).map(\.id) == [expandedFile.id])
-        #expect(updatedSnapshot.scanWarnings.map(\.path) == [existingWarning.path, expansionWarning.path])
+        #expect(updatedSnapshot.scanWarnings.map(\.path) == [expansionWarning.path])
         #expect(coordinator.snapshot?.treeStore.root.id == root.id)
         #expect(coordinator.expandingNodeID == nil)
     }

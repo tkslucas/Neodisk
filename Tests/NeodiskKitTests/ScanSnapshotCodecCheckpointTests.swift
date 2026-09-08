@@ -122,6 +122,38 @@ import Testing
         #expect(snapshot.incrementalCheckpoint == nil)
     }
 
+    @Test func decompressionRejectsOversizedOutputAndTruncation() throws {
+        let raw = Data(repeating: 0, count: 200_000)
+        let compressed = try (raw as NSData).compressed(using: .lzfse) as Data
+        #expect(throws: ScanSnapshotCacheError.self) {
+            try ScanSnapshotCodec.decompressPayload(compressed, maximumBytes: 199_999)
+        }
+        #expect(try ScanSnapshotCodec.decompressPayload(compressed, maximumBytes: 200_000) == raw)
+        #expect(throws: ScanSnapshotCacheError.self) {
+            try ScanSnapshotCodec.decompressPayload(compressed.dropLast(8))
+        }
+    }
+
+    @Test func invalidMetadataFailsHeaderOnlyAndFullDecode() throws {
+        let blob = try ScanSnapshotCodec.encode(makeSnapshot())
+        let length = Int(blob.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 8, as: UInt32.self).littleEndian })
+        for key in ["totalAllocatedSize", "totalLogicalSize", "fileCount", "directoryCount", "accessibleItemCount", "inaccessibleItemCount", "cloudOnlyLogicalSize", "nodeCount"] {
+            var json = try #require(JSONSerialization.jsonObject(with: blob.subdata(in: 12..<(12 + length))) as? [String: Any])
+            json[key] = -1
+            let metadata = try JSONSerialization.data(withJSONObject: json)
+            var invalid = Data(blob.prefix(8))
+            var size = UInt32(metadata.count).littleEndian
+            withUnsafeBytes(of: &size) { invalid.append(contentsOf: $0) }
+            invalid.append(metadata)
+            invalid.append(blob.dropFirst(12 + length))
+            #expect(throws: ScanSnapshotCacheError.self) { try ScanSnapshotCodec.decode(invalid) }
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            try invalid.write(to: url)
+            defer { try? FileManager.default.removeItem(at: url) }
+            #expect(throws: ScanSnapshotCacheError.self) { try ScanSnapshotCodec.readMetadata(fromFileAt: url) }
+        }
+    }
+
     /// Rebuilds a snapshot blob with the named top-level metadata keys removed
     /// and the length header corrected, mimicking a file from a writer that
     /// predates those keys. Layout: magic(4) · version(4) · metadataLength(4)

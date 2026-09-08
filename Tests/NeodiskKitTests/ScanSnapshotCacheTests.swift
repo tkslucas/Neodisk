@@ -3,6 +3,54 @@ import Testing
 @testable import NeodiskKit
 
 @Suite struct ScanSnapshotCacheTests {
+    @Test func testCancelledEncodeDoesNotPersistOrRemainReadable() async throws {
+        let directory = makeTemporaryCacheDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = ScanSnapshotCache(directoryURL: directory, isLoggingEnabled: false)
+        let snapshot = makeRichSnapshot(rootPath: "/cache/cancelled")
+        let gate = EncodeGate()
+        await cache.setEncodeGateForTesting(gate.closure)
+        let saving = Task { try await cache.save(snapshot) }
+        await gate.waitUntilEntered()
+        saving.cancel()
+        // AsyncStream observes detached-worker cancellation without opening
+        // the gate; an unforwarded cancellation would leave this suspended.
+        do {
+            _ = try await saving.value
+            Issue.record("Cancelled save completed")
+        } catch is CancellationError {} catch { throw error }
+        #expect(await cache.loadSnapshot(for: snapshot.target) == nil)
+        #expect(await cache.totalSizeOnDisk() == 0)
+    }
+
+    @Test func testComparisonSharesCompactResultAndRejectsStaleSnapshot() async throws {
+        let directory = makeTemporaryCacheDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = ScanSnapshotCache(directoryURL: directory, isLoggingEnabled: false)
+        let target = makeTestTarget("/cache/comparison")
+        let previous = makeFileSnapshot(target: target, files: [("a.bin", 100)])
+        let current = makeFileSnapshot(target: target, files: [("a.bin", 200)])
+        try await cache.save(previous)
+        try await cache.save(current)
+        async let first = cache.comparison(for: current, entryLimit: 500)
+        async let second = cache.comparison(for: current, entryLimit: 500)
+        let (a, b) = await (first, second)
+        let result = try #require(a)
+        #expect(result === b)
+        #expect(result.baseline.allocatedSize(forNodeID: target.id + "/a.bin") == 100)
+        #expect(result.list.addedBytes == 100)
+        #expect(await cache.comparison(for: current, entryLimit: 500) === result)
+        #expect(await cache.loadChangeList(forTargetID: target.id, entryLimit: 500)?.list.addedBytes == 100)
+        let newer = makeFileSnapshot(target: target, files: [("a.bin", 300)])
+        try await cache.save(newer)
+        #expect(await cache.comparison(for: current, entryLimit: 500) == nil)
+        let updated = try #require(await cache.comparison(for: newer, entryLimit: 500))
+        #expect(updated !== result)
+        #expect(updated.baseline.allocatedSize(forNodeID: target.id + "/a.bin") == 200)
+        await cache.removeAll()
+        #expect(await cache.comparison(for: newer, entryLimit: 500) == nil)
+    }
+
     @Test func testRoundTripPreservesTreeMetadataAndWarnings() async throws {
         let cacheDirectory = makeTemporaryCacheDirectory()
         defer { try? FileManager.default.removeItem(at: cacheDirectory) }

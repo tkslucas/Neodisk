@@ -75,6 +75,7 @@ nonisolated struct AtomicSummaryWorkItem: Sendable {
     let url: URL
     let treatPackagesAsDirectories: Bool
     let ownerNodeID: String
+    var ownedDeviceIDs: Set<UInt64> = []
 }
 
 /// The result of processing one directory level: the files folded into a

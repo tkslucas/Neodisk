@@ -162,6 +162,7 @@ nonisolated final class ScanTraversal {
                 rootPath: target.url.path,
                 rootDeviceID: rootMetadata.fileIdentity?.fileSystemDeviceID
             )
+            atomicDirectorySummarizer.ownedDeviceIDs = ownedDeviceIDs
             metrics.discoveredItems = 1
             metrics.estimatedTotalBytes = estimatedTotalBytes(for: target, metadata: rootMetadata)
             metrics.currentPath = target.url.path
@@ -226,7 +227,7 @@ nonisolated final class ScanTraversal {
                 continuation.yield(.warning(warning))
             }
         }
-        continuation.yield(.progress(metrics))
+        publishProgress()
         var leafNodes = [leafResult.node]
         var leafChildSlots: [Int32] = []
         HardLinkDeduplicator.applyDeduplication(
@@ -1007,14 +1008,14 @@ nonisolated final class ScanTraversal {
         metrics.isFinalizing = true
         metrics.finalizationFraction = 0
         metrics.recalculateProgress()
-        continuation.yield(.progress(metrics))
+        publishProgress()
 
         let callbacks = ScanTreeAssembler.Callbacks(
             cancellationCheck: { try Task.checkCancellation() },
             progress: { [self] fraction in
                 metrics.finalizationFraction = fraction
                 metrics.recalculateProgress()
-                continuation.yield(.progress(metrics))
+                publishProgress()
             },
             warning: { [self] warning in
                 warnings.append(warning)
@@ -1176,6 +1177,10 @@ nonisolated final class ScanTraversal {
         guard shouldEmit else { return }
 
         emissionState.lastProgressEmission = now
+        publishProgress()
+    }
+
+    private func publishProgress() {
         if let summaryPool {
             summaryPool.publishProgressBase(metrics)
         } else {

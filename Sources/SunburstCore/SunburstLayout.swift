@@ -77,12 +77,12 @@ public enum SunburstLayout {
         // the synthetic arcs.
         let freeBytes = max(freeSpaceBytes ?? 0, 0)
         let hiddenBytes = max(hiddenSpaceBytes ?? 0, 0)
-        let childUnitTotal = visibleChildren.reduce(Int64(0)) {
-            $0 + max($1.displayWeight(includingCloudOnly: includeCloudOnly), 1)
+        let childUnitTotal = visibleChildren.reduce(0.0) {
+            $0 + Double(max($1.displayWeight(includingCloudOnly: includeCloudOnly), 1))
         }
         let rootWeight = root.displayWeight(includingCloudOnly: includeCloudOnly)
-        let allocatedDenominator = max(max(rootWeight, Int64(visibleChildren.count)), childUnitTotal)
-        let denominator = allocatedDenominator + freeBytes + hiddenBytes
+        let allocatedDenominator = max(Double(rootWeight), childUnitTotal)
+        let denominator = allocatedDenominator + Double(freeBytes) + Double(hiddenBytes)
         // The color coordinate is anchored at the scan root even when the
         // chart is drilled in, so drilling preserves every color. The
         // synthetic free/hidden arcs are not tree nodes and never advance
@@ -149,13 +149,64 @@ public enum SunburstLayout {
         return result
     }
 
+    /// The ring the chart would draw for `folderID`'s children if it had one
+    /// more ring to spend: same grouping, same "Smaller Items" pooling, same
+    /// color tokens, at ring `depth`. The legend calls this for a folder
+    /// sitting on the outermost rendered ring, where the layout stopped
+    /// recursing and left it with no segments to derive rows from.
+    ///
+    /// The children take the full circle, which is what drilling into the
+    /// folder shows — the sliver they would get inside their parent's arc is
+    /// exactly what the chart has no room to draw. O(children).
+    public nonisolated static func ringSegments<Tree: SunburstTreeReading>(
+        forFolder folderID: String,
+        in treeStore: Tree,
+        depth: Int,
+        minimumAngle: Double = .pi / 90,
+        expandedAggregateIDs: Set<String> = [],
+        includeCloudOnly: Bool = false
+    ) -> [SunburstSegment] {
+        guard let folder = treeStore.node(id: folderID) else { return [] }
+        let children = treeStore.children(of: folderID)
+        guard !children.isEmpty else { return [] }
+
+        let coordinate = folderID == treeStore.rootID
+            ? (start: 0.0, span: 1.0, depth: 0)
+            : colorCoordinate(for: folderID, in: treeStore, includeCloudOnly: includeCloudOnly)
+                ?? (start: 0.0, span: 1.0, depth: 0)
+
+        var ring: [SunburstSegment] = []
+        // A depth budget of exactly one ring: `appendSegments` lays this one
+        // out and its `depth + 1 < depthLimit` guard stops it from descending.
+        try? appendSegments(
+            in: treeStore,
+            children: children,
+            parentID: folderID,
+            parentDenominator: Double(folder.displayWeight(includingCloudOnly: includeCloudOnly)),
+            startAngle: 0,
+            endAngle: .pi * 2,
+            depth: depth,
+            depthLimit: depth + 1,
+            metrics: SunburstRingMetrics(depthLimit: depth + 1),
+            colorStart: coordinate.start,
+            colorSpan: coordinate.span,
+            colorDepth: coordinate.depth + 1,
+            minimumAngle: minimumAngle,
+            expandedAggregateIDs: expandedAggregateIDs,
+            includeCloudOnly: includeCloudOnly,
+            cancellationCheck: {},
+            into: &ring
+        )
+        return ring
+    }
+
     // MARK: - Recursion
 
     private nonisolated static func appendSegments<Tree: SunburstTreeReading>(
         in treeStore: Tree,
         children: [Tree.Node],
         parentID: String,
-        parentDenominator: Int64,
+        parentDenominator: Double,
         startAngle: Double,
         endAngle: Double,
         depth: Int,
@@ -173,8 +224,8 @@ public enum SunburstLayout {
         guard depth < depthLimit else { return }
 
         try cancellationCheck()
-        let effectiveChildTotal = children.reduce(Int64(0)) { total, child in
-            total + max(child.displayWeight(includingCloudOnly: includeCloudOnly), 1)
+        let effectiveChildTotal = children.reduce(0.0) { total, child in
+            total + Double(max(child.displayWeight(includingCloudOnly: includeCloudOnly), 1))
         }
         let safeDenominator = max(parentDenominator, effectiveChildTotal)
         let totalAngle = endAngle - startAngle
@@ -201,9 +252,9 @@ public enum SunburstLayout {
         var colorCursor = colorStart
         for entry in grouped {
             try cancellationCheck()
-            let proportion = Double(entry.totalSize) / Double(safeDenominator)
-            let segmentEnd = cursor + (totalAngle * proportion)
-            let entryColorSpan = colorSpan * (Double(entry.totalSize) / Double(effectiveChildTotal))
+            let proportion = entry.weight / Double(safeDenominator)
+            let segmentEnd = min(endAngle, cursor + (totalAngle * proportion))
+            let entryColorSpan = colorSpan * (entry.weight / Double(effectiveChildTotal))
             let colorToken = SunburstColorToken(
                 midpoint: colorCursor + entryColorSpan / 2,
                 depth: colorDepth,
@@ -243,7 +294,7 @@ public enum SunburstLayout {
                     in: treeStore,
                     children: childNodes,
                     parentID: node.id,
-                    parentDenominator: node.displayWeight(includingCloudOnly: includeCloudOnly),
+                    parentDenominator: Double(node.displayWeight(includingCloudOnly: includeCloudOnly)),
                     startAngle: cursor,
                     endAngle: segmentEnd,
                     depth: depth + 1,
@@ -268,7 +319,7 @@ public enum SunburstLayout {
     private nonisolated static func groupedChildren<Node: SunburstNode>(
         _ children: [Node],
         parentID: String,
-        denominator: Int64,
+        denominator: Double,
         totalAngle: Double,
         minimumAngle: Double,
         disableAggregation: Bool,
@@ -282,6 +333,7 @@ public enum SunburstLayout {
         var visible: [GroupEntry<Node>] = []
         var groupedNodes: [Node] = []
         var groupedSize: Int64 = 0
+        var groupedWeight = 0.0
 
         for child in children {
             try cancellationCheck()
@@ -289,7 +341,8 @@ public enum SunburstLayout {
             let angle = totalAngle * (Double(size) / Double(max(denominator, 1)))
             if angle < minimumAngle {
                 groupedNodes.append(child)
-                groupedSize += size
+                groupedSize = clampedSum(groupedSize, size)
+                groupedWeight += Double(size)
             } else {
                 visible.append(GroupEntry(node: child, includeCloudOnly: includeCloudOnly))
             }
@@ -297,7 +350,7 @@ public enum SunburstLayout {
 
         if groupedNodes.count > 1 {
             let itemCount = groupedNodes.reduce(0) {
-                $0 + ($1.isDirectory ? max($1.descendantFileCount, 1) : 1)
+                clampedSum($0, $1.isDirectory ? max($1.descendantFileCount, 1) : 1)
             }
             // `children` is non-empty here (guarded above), so `first` always
             // resolves; the `?? ""` only satisfies the optional and avoids a
@@ -308,6 +361,7 @@ public enum SunburstLayout {
                 nodeID: nil,
                 label: "Smaller Items",
                 totalSize: groupedSize,
+                weight: groupedWeight,
                 isAggregate: true,
                 node: nil,
                 itemCount: itemCount
@@ -340,12 +394,12 @@ public enum SunburstLayout {
         var span = 1.0
         var depth = 0
         for (parent, child) in zip(chain, chain.dropFirst()) {
-            var total: Int64 = 0
-            var before: Int64 = 0
-            var childUnit: Int64 = 0
+            var total = 0.0
+            var before = 0.0
+            var childUnit = 0.0
             var found = false
             for sibling in treeStore.children(of: parent.id) {
-                let unit = max(sibling.displayWeight(includingCloudOnly: includeCloudOnly), 1)
+                let unit = Double(max(sibling.displayWeight(includingCloudOnly: includeCloudOnly), 1))
                 total += unit
                 if sibling.id == child.id {
                     childUnit = unit
@@ -362,11 +416,19 @@ public enum SunburstLayout {
         return (start, span, depth)
     }
 
+    /// Geometry uses floating-point weights so saturated byte totals retain
+    /// their proportions; display sizes and item counts still saturate safely.
+    private nonisolated static func clampedSum<T: FixedWidthInteger>(_ lhs: T, _ rhs: T) -> T {
+        let (sum, overflow) = lhs.addingReportingOverflow(rhs)
+        return overflow ? .max : sum
+    }
+
     private nonisolated struct GroupEntry<Node: SunburstNode> {
         let id: String
         let nodeID: String?
         let label: String
         let totalSize: Int64
+        let weight: Double
         let isAggregate: Bool
         let isDataless: Bool
         let node: Node?
@@ -377,6 +439,7 @@ public enum SunburstLayout {
             nodeID: String?,
             label: String,
             totalSize: Int64,
+            weight: Double? = nil,
             isAggregate: Bool,
             isDataless: Bool = false,
             node: Node?,
@@ -386,6 +449,7 @@ public enum SunburstLayout {
             self.nodeID = nodeID
             self.label = label
             self.totalSize = totalSize
+            self.weight = weight ?? Double(totalSize)
             self.isAggregate = isAggregate
             self.isDataless = isDataless
             self.node = node

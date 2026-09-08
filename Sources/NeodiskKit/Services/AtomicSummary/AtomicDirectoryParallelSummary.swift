@@ -107,7 +107,7 @@ extension AtomicDirectorySummarizer {
                 continue
             }
 
-            guard child.directoryMountStatus & MountBoundaryPolicy.mountPointFlag == 0 else {
+            guard !MountBoundaryPolicy.isNestedMount(deviceID: child.deviceID, ownedDeviceIDs: item.ownedDeviceIDs, directoryMountStatus: child.directoryMountStatus) else {
                 continue
             }
 
@@ -115,7 +115,8 @@ extension AtomicDirectorySummarizer {
                 AtomicSummaryWorkItem(
                     url: URL(filePath: childPath, directoryHint: .isDirectory),
                     treatPackagesAsDirectories: childMetadata.isPackage ? true : item.treatPackagesAsDirectories,
-                    ownerNodeID: item.ownerNodeID
+                    ownerNodeID: item.ownerNodeID,
+                    ownedDeviceIDs: item.ownedDeviceIDs
                 )
             )
         }
@@ -173,7 +174,7 @@ extension AtomicDirectorySummarizer {
             let childMetadata: NodeMetadata
             do {
                 let values = try childURL.resourceValues(forKeys: ScanMetadataLoader.atomicSummaryResourceKeySet)
-                childMetadata = metadataLoader.metadata(for: childURL, prefetchedResourceValues: values)
+                childMetadata = metadataLoader.metadata(for: childURL, prefetchedResourceValues: values, captureDirectoryIdentity: !item.ownedDeviceIDs.isEmpty)
             } catch {
                 sink.onWarning(childURL, error)
                 continue
@@ -190,6 +191,12 @@ extension AtomicDirectorySummarizer {
                 continue
             }
 
+            guard !MountBoundaryPolicy.isNestedMount(
+                deviceID: childMetadata.fileIdentity?.fileSystemDeviceID,
+                ownedDeviceIDs: item.ownedDeviceIDs,
+                directoryMountStatus: 0
+            ) else { continue }
+
             let isTraversablePackageSymlink = childMetadata.isSymbolicLink
                 && childMetadata.isPackage
                 && !item.treatPackagesAsDirectories
@@ -201,7 +208,8 @@ extension AtomicDirectorySummarizer {
                 AtomicSummaryWorkItem(
                     url: childURL,
                     treatPackagesAsDirectories: childMetadata.isPackage ? true : item.treatPackagesAsDirectories,
-                    ownerNodeID: item.ownerNodeID
+                    ownerNodeID: item.ownerNodeID,
+                    ownedDeviceIDs: item.ownedDeviceIDs
                 )
             )
         }

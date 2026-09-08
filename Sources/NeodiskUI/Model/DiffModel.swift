@@ -8,15 +8,9 @@
 //  panel's Changes tab (see NeodiskViewModel.wantsDiffVisible): selecting
 //  the tab shows the outline's Δ column, leaving it hides it.
 //
-//  The baseline usually loads before the tab is opened: whenever a
-//  complete tree lands on screen — a scan finishing (its predecessor
-//  rotating into the previous slot) or a saved snapshot opening without a
-//  rescan — the "prepare Changes" preference prefetches the baseline in
-//  the background so the tab responds instantly. That prefetch decodes
-//  the whole previous snapshot (~1s of CPU on a big volume), so it waits a
-//  few seconds at low priority to let the first paint's kind catalog and
-//  treemap win the cores; opening the tab during the wait loads the
-//  baseline immediately instead of waiting out the delay.
+//  Persistence and both changes views share one compact comparison through
+//  the snapshot cache. Prefetch waits briefly so first paint gets the cores.
+//  Opening the tab during the wait requests that same comparison immediately.
 //
 
 import Foundation
@@ -44,6 +38,7 @@ final class DiffModel {
     /// Bumped whenever an in-flight load's result would be stale (a newer
     /// load, or any snapshot change); older completions are dropped.
     @ObservationIgnored private var loadGeneration = 0
+    @ObservationIgnored private var loadTask: Task<Void, Never>?
     /// A restore/rotate prefetch waiting out its delay before it starts
     /// decoding. Cancelled by any snapshot change, a newer prefetch, or a
     /// user-initiated load, so a stale baseline never lands late.
@@ -104,6 +99,8 @@ final class DiffModel {
     /// one only against the exact snapshot it was decoded alongside — a new
     /// tree on screen invalidates both it and any load in flight.
     func snapshotDidChange(_ snapshot: ScanSnapshot?) {
+        loadTask?.cancel()
+        loadTask = nil
         loadGeneration += 1
         prefetchDelayTask?.cancel()
         prefetchedBaseline = nil
@@ -184,16 +181,19 @@ final class DiffModel {
         prefetchDelayTask?.cancel()
         isLoading = true
         showsWhenLoaded = showsOnCompletion
+        loadTask?.cancel()
+        loadTask = nil
         loadGeneration += 1
         let generation = loadGeneration
-        Task(priority: priority) { [weak self, snapshotCache] in
-            // Decode happens on the cache actor, the million-node baseline
-            // build in a detached task; neither blocks the main actor.
-            let previous = await snapshotCache.loadPreviousSnapshot(for: target)
-            let baseline = await Task.detached(priority: priority) {
-                previous.map(ScanSizeBaseline.init)
-            }.value
-            guard let self, self.loadGeneration == generation else { return }
+        guard let snapshot = coordinator.snapshot, snapshot.target.id == target.id else { return }
+        loadTask = Task(priority: priority) { [weak self, snapshotCache] in
+            let baseline = await snapshotCache.comparison(
+                for: snapshot, entryLimit: ChangesModel.entryLimit
+            )?.baseline
+            let hasPrevious = await snapshotCache.changeListCacheKey(
+                forTargetID: target.id, entryLimit: ChangesModel.entryLimit
+            ) != nil
+            guard !Task.isCancelled, let self, self.loadGeneration == generation else { return }
             self.isLoading = false
             let showsNow = self.showsWhenLoaded
             self.showsWhenLoaded = false
@@ -207,7 +207,9 @@ final class DiffModel {
                 // The previous snapshot is gone (corrupt and deleted, or
                 // cleared): reflect that so the toggle disables.
                 self.baseline = nil
-                self.model?.session.markPreviousSnapshotMissing(forTargetID: target.id)
+                if !hasPrevious {
+                    self.model?.session.markPreviousSnapshotMissing(forTargetID: target.id)
+                }
             }
         }
     }

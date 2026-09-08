@@ -329,6 +329,19 @@ import Foundation
         #expect(merged.count == 2)
     }
 
+    @Test func replacingSnapshotSubtreeDropsOnlyStaleWarnings() throws {
+        let store = makeTwoBranchStore()
+        let stale = ScanWarning(path: "/root/a/old", message: "old", category: .permissionDenied)
+        let sibling = ScanWarning(path: "/root/abc/keep", message: "keep", category: .permissionDenied)
+        let fresh = ScanWarning(path: "/root/a/new", message: "new", category: .fileSystem)
+        let snapshot = ScanSnapshot(target: makeTestTarget("/root"), treeStore: store,
+            startedAt: Date(), finishedAt: Date(), scanWarnings: [stale, sibling],
+            aggregateStats: store.aggregateStats, isComplete: true)
+        let replacement = makeReplacement(id: "/root/a", name: "a", childSize: 10)
+        let result = try #require(snapshot.replacingNode(id: "/root/a", with: replacement, additionalWarnings: [fresh]))
+        #expect(result.scanWarnings == [sibling, fresh])
+    }
+
     // MARK: - Fixtures
 
     private func makeReplacement(id: String, name: String, childSize: Int64) -> FileTreeStore {

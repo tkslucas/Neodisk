@@ -14,6 +14,30 @@ import NeodiskKit
 @testable import NeodiskUI
 
 @Suite struct SunburstGeometryTests {
+    @Test func saturatedSizesKeepArcsAndColorsProportional() throws {
+        let children = [
+            makeTestFileNode(id: "/root/a", name: "a", size: .max),
+            makeTestFileNode(id: "/root/b", name: "b", size: .max),
+        ]
+        let root = makeTestDirectoryNode(id: "/root", name: "root", children: children)
+        let store = FileTreeStore(root: root, childrenByID: [root.id: children])
+        let segments = SunburstLayout.segments(in: store, rootID: root.id, depthLimit: 1,
+            freeSpaceBytes: .max, hiddenSpaceBytes: .max)
+        #expect(segments.count == 4)
+        for (index, segment) in segments.enumerated() {
+            #expect(segment.startAngle.isFinite && segment.endAngle.isFinite)
+            #expect(abs(segment.startAngle - Double(index) * .pi / 2) < 0.000001)
+            #expect(abs(segment.endAngle - Double(index + 1) * .pi / 2) < 0.000001)
+        }
+        let coordinate = try #require(SunburstLayout.colorCoordinate(for: children[1].id, in: store))
+        #expect(abs(coordinate.start - 0.5) < 0.000001)
+        #expect(abs(coordinate.span - 0.5) < 0.000001)
+        let grouped = SunburstLayout.segments(in: store, rootID: root.id, depthLimit: 1, minimumAngle: 4)
+        #expect(grouped.count == 1)
+        #expect(grouped.first?.totalSize == .max)
+        #expect(abs((grouped.first?.endAngle ?? 0) - .pi * 2) < 0.000001)
+    }
+
     @Test func topLevelSegmentsCoverFullCircle() {
         let children = [
             makeTestFileNode(id: "/root/a", name: "a", size: 3),

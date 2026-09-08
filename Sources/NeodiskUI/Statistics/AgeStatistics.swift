@@ -88,6 +88,7 @@ struct AgeCatalog: Sendable {
         var counts = [Int](repeating: 0, count: AgeBucket.allCases.count)
 
         for node in store.allNodes {
+            if Task.isCancelled { break }
             guard FileKindClassifier.isKindCountable(node, in: store) else { continue }
             let bucket = AgeBucket.bucket(for: node.lastModified, reference: referenceDate)
             sizes[bucket.rawValue] += node.allocatedSize

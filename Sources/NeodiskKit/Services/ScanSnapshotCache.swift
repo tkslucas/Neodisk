@@ -83,6 +83,17 @@ public struct SnapshotSaveOutcome: Sendable {
 /// to `save` is readable from memory until its bytes land, so a load
 /// interleaving with an in-flight save gets the finished scan, never a miss
 /// (first save) or the older file's stale bytes.
+/// Compact comparison shared by persistence and both changes views. Holds no trees.
+public final class PreparedScanComparison: Sendable {
+    public let baseline: ScanSizeBaseline
+    public let list: ScanChangeList
+
+    init(baseline: ScanSizeBaseline, list: ScanChangeList) {
+        self.baseline = baseline
+        self.list = list
+    }
+}
+
 public actor ScanSnapshotCache {
     /// v3 adds the cloud-only bit (files) and cloudOnlyLogicalSize payload
     /// (directories); older builds reject v3 files cleanly as
@@ -104,6 +115,15 @@ public actor ScanSnapshotCache {
     /// entry also gates the save's write: a removal or a newer save of the
     /// same target while the encode ran means the stale bytes are dropped.
     private var savingByTargetID: [String: ScanSnapshot] = [:]
+    private struct ComparisonBuild {
+        let id: UUID
+        let key: ScanChangeCacheKey
+        let snapshotID: UUID
+        let task: Task<PreparedScanComparison?, Never>
+    }
+    private var comparisonBuilds: [String: ComparisonBuild] = [:]
+    // One compact result, never a cache of full predecessor trees.
+    private var preparedComparison: (targetID: String, snapshotID: UUID, key: ScanChangeCacheKey, value: PreparedScanComparison)?
 
     /// Test seam, awaited inside the detached encode: tests hold a save
     /// open with it and exercise the in-flight window deterministically.
@@ -155,6 +175,7 @@ public actor ScanSnapshotCache {
         let targetID = snapshot.target.id
         // Readable from memory while the encode runs, and the claim that
         // gates the write below.
+        invalidateComparison(forTargetID: targetID)
         savingByTargetID[targetID] = snapshot
         defer {
             if savingByTargetID[targetID]?.id == snapshot.id {
@@ -167,15 +188,18 @@ public actor ScanSnapshotCache {
         let gate = encodeGateForTesting
         let (digest, data) = try await Task.detached {
             await gate?()
+            try Task.checkCancellation()
             return try ScanTiming.measure("snapshot.encode", detail: "nodes=\(snapshot.treeStore.nodeCount)") {
-                let digest = ScanChangeList.contentDigest(of: snapshot.treeStore)
+                let digest = try ScanChangeList.contentDigest(of: snapshot.treeStore, checkCancellation: { try Task.checkCancellation() })
+                try Task.checkCancellation()
                 return (digest, try ScanSnapshotCodec.encode(
                     snapshot,
                     version: Self.currentFormatVersion,
                     changeDigest: digest
                 ))
             }
-        }.value
+        }.cancellableValue
+        try Task.checkCancellation()
         guard savingByTargetID[targetID]?.id == snapshot.id else {
             // While the encode was detached, this target's slots were
             // removed (Settings → clear) or claimed by a newer save;
@@ -257,7 +281,7 @@ public actor ScanSnapshotCache {
                 try ScanTiming.measure("snapshot.decode", detail: "bytes=\(data.count)") {
                     try ScanSnapshotCodec.decode(data)
                 }
-            }.value
+            }.cancellableValue
             guard snapshot.target.id == target.id else {
                 // Filename hash collision or a moved cache directory; not our
                 // snapshot, and not ours to delete.
@@ -268,6 +292,8 @@ public actor ScanSnapshotCache {
                 + "in \(elapsedDescription(since: start))"
             )
             return snapshot
+        } catch is CancellationError {
+            return nil
         } catch {
             log("discarding unreadable snapshot for \(target.id): \(error)")
             // The decode ran unisolated; a save may have replaced the file
@@ -389,6 +415,69 @@ public actor ScanSnapshotCache {
         )
     }
 
+    /// Decode the predecessor once for sidecar persistence, outline deltas,
+    /// and the Changes tab. Concurrent callers share work, and later callers
+    /// reuse only the compact result. Slot changes cancel obsolete builds.
+    public func comparison(for snapshot: ScanSnapshot, entryLimit: Int) async -> PreparedScanComparison? {
+        let targetID = snapshot.target.id
+        guard snapshot.isComplete, snapshot.source.isPersistable,
+              savingByTargetID[targetID] == nil,
+              let metadata = try? ScanSnapshotCodec.readMetadata(fromFileAt: fileURL(forTargetID: targetID)),
+              metadata.targetPath == targetID,
+              abs(metadata.startedAt.timeIntervalSince(snapshot.startedAt)) < 0.000_001,
+              Self.sameArchivedDate(metadata.finishedAt, snapshot.finishedAt),
+              metadata.nodeCount == snapshot.treeStore.nodeCount,
+              metadata.totalAllocatedSize == snapshot.aggregateStats.totalAllocatedSize,
+              let key = changeListCacheKey(forTargetID: targetID, entryLimit: entryLimit) else { return nil }
+        if let preparedComparison, preparedComparison.targetID == targetID,
+           preparedComparison.snapshotID == snapshot.id, preparedComparison.key == key {
+            return preparedComparison.value
+        }
+        if let build = comparisonBuilds[targetID], build.key == key, build.snapshotID == snapshot.id {
+            let result = await build.task.value
+            guard !Task.isCancelled, changeListCacheKey(forTargetID: targetID, entryLimit: entryLimit) == key else { return nil }
+            return result
+        }
+        invalidateComparison(forTargetID: targetID)
+        let id = UUID()
+        let cachedList = loadChangeList(forTargetID: targetID, entryLimit: entryLimit)?.list
+        let task = Task.detached(priority: .utility) { [self] () -> PreparedScanComparison? in
+            guard let previous = await loadPreviousSnapshot(for: snapshot.target), !Task.isCancelled else { return nil }
+            let baseline = ScanSizeBaseline(snapshot: previous)
+            guard !Task.isCancelled else { return nil }
+            let list = cachedList ?? ScanChangeList.build(
+                current: snapshot.treeStore, previous: previous.treeStore, entryLimit: entryLimit
+            )
+            guard !Task.isCancelled else { return nil }
+            return PreparedScanComparison(baseline: baseline, list: list)
+        }
+        comparisonBuilds[targetID] = ComparisonBuild(id: id, key: key, snapshotID: snapshot.id, task: task)
+        let result = await task.value
+        guard comparisonBuilds[targetID]?.id == id else { return nil }
+        comparisonBuilds.removeValue(forKey: targetID)
+        guard changeListCacheKey(forTargetID: targetID, entryLimit: entryLimit) == key,
+              let result else { return nil }
+        preparedComparison = (targetID, snapshot.id, key, result)
+        saveChangeList(result.list, comparisonDate: result.baseline.finishedAt,
+                       forTargetID: targetID, entryLimit: entryLimit)
+        return result
+    }
+
+    // JSON seconds-since-1970 conversion can lose a fraction of a microsecond
+    // relative to Date's reference epoch. Do not reject the snapshot just saved.
+    private static func sameArchivedDate(_ lhs: Date?, _ rhs: Date?) -> Bool {
+        switch (lhs, rhs) {
+        case (.none, .none): return true
+        case let (.some(lhs), .some(rhs)): return abs(lhs.timeIntervalSince(rhs)) < 0.000_001
+        default: return false
+        }
+    }
+
+    private func invalidateComparison(forTargetID targetID: String) {
+        comparisonBuilds.removeValue(forKey: targetID)?.task.cancel()
+        if preparedComparison?.targetID == targetID { preparedComparison = nil }
+    }
+
     /// Returns the persisted change list for a target only when it is still
     /// valid for the current snapshot files (same identity, entry limit, and
     /// diff format); otherwise nil so the caller recomputes.
@@ -502,6 +591,7 @@ public actor ScanSnapshotCache {
     }
 
     public func removeSnapshot(forTargetID targetID: String) {
+        invalidateComparison(forTargetID: targetID)
         // Also invalidates any in-flight save of this target (see save()).
         savingByTargetID.removeValue(forKey: targetID)
         try? FileManager.default.removeItem(at: fileURL(forTargetID: targetID))
@@ -512,6 +602,9 @@ public actor ScanSnapshotCache {
     }
 
     public func removeAll() {
+        for build in comparisonBuilds.values { build.task.cancel() }
+        comparisonBuilds.removeAll()
+        preparedComparison = nil
         // Also invalidates every in-flight save (see save()).
         savingByTargetID.removeAll()
         for url in cacheFileURLs() + auxiliaryFileURLs() + changeListFileURLs() + duplicateResultsFileURLs()

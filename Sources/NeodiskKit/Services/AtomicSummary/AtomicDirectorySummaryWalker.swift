@@ -71,7 +71,7 @@ extension AtomicDirectorySummarizer {
             }
 
             if childMetadata.isDirectory,
-               childEntry.directoryMountStatus & MountBoundaryPolicy.mountPointFlag != 0 {
+               MountBoundaryPolicy.isNestedMount(deviceID: childEntry.deviceID ?? childMetadata.fileIdentity?.fileSystemDeviceID, ownedDeviceIDs: ownedDeviceIDs, directoryMountStatus: childEntry.directoryMountStatus) {
                 continue
             }
 

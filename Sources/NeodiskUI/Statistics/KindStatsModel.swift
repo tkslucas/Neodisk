@@ -156,7 +156,7 @@ final class KindStatsModel {
                     return FileKindCatalog.build(fromAggregated: seedStats, mode: mode, palette: palette)
                 }
                 return FileKindCatalog.build(from: store, mode: mode, palette: palette)
-            }.value
+            }.cancellableValue
             let buildDuration = ContinuousClock.now - buildStart
             guard !Task.isCancelled, let self else { return }
             self.rebuildThrottle.noteBuildDuration(buildDuration)

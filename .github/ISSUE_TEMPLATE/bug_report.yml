@@ -112,6 +112,18 @@ body:
     validations:
       required: true
 
+  - type: dropdown
+    id: architecture
+    attributes:
+      label: Mac Processor
+      description: Find the chip or processor in Apple menu > About This Mac.
+      options:
+        - Apple Silicon (M series)
+        - Intel
+        - Not sure
+    validations:
+      required: true
+
   - type: textarea
     id: logs
     attributes:

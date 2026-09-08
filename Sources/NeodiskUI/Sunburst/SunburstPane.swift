@@ -277,7 +277,7 @@ struct SunburstPane: View {
         if let nodeID = segment.nodeID,
            let store = model.store,
            let node = store.node(id: nodeID) {
-            if node.isSunburstFolder(in: store), !store.children(of: nodeID).isEmpty {
+            if node.isSunburstFolder(in: store), store.containsChildren(id: nodeID) {
                 setPreviewFolder(nodeID)
             } else {
                 setPreviewFolder(store.parent(of: nodeID)?.id)

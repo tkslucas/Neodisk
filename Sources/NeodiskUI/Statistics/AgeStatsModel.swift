@@ -94,7 +94,7 @@ final class AgeStatsModel {
             let buildStart = ContinuousClock.now
             let catalog = await Task.detached(priority: .userInitiated) {
                 AgeCatalog.build(from: store, referenceDate: referenceDate)
-            }.value
+            }.cancellableValue
             let buildDuration = ContinuousClock.now - buildStart
             guard !Task.isCancelled, let self else { return }
             self.rebuildThrottle.noteBuildDuration(buildDuration)

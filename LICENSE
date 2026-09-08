@@ -675,7 +675,7 @@ Public License instead of this License.  But first, please read
 
 =======================================================================
 
-                         Third-party notice
+                         Third-party notices
 
 Neodisk's scan engine, core data model, sunburst visualization, and flat treemap
 style derive from Radix (https://github.com/colinvkim/Radix), used under the
@@ -702,3 +702,12 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+-----------------------------------------------------------------------
+
+Neodisk also bundles Sparkle (https://github.com/sparkle-project/Sparkle)
+for software updates, used under the MIT license. Sparkle carries its own
+third-party notices for code it vendors, so rather than reproduce them here
+its full license text ships verbatim with the app at
+Contents/Resources/Licenses/ThirdPartyNotices.txt, and is available in the
+Sparkle repository.

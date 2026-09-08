@@ -132,6 +132,18 @@ import NeodiskKit
         #expect(model.renderedSegments.map(\.id) == [newSegment.id])
     }
 
+    @Test func failedReplacementKeepsLastRenderedLayout() async {
+        let service = FailingReplacementLayoutService(segment: makeSegment(id: "retained"))
+        let model = SunburstChartModel(layoutService: service)
+        #expect(await model.loadLayout(makeRequest(layoutID: "first")))
+        let version = model.renderedLayoutVersion
+        #expect(!(await model.loadLayout(makeRequest(layoutID: "failed"))))
+        #expect(model.renderedSegments.map(\.id) == ["retained"])
+        #expect(model.renderedLayoutVersion == version)
+        #expect(!model.isLayoutPending)
+        #expect(await model.loadLayout(makeRequest(layoutID: "retry")))
+    }
+
     @Test func selectionOverlaySegmentsIncludeAncestorsAndSelectedLast() async {
         let ancestor = makeSegment(id: "ancestor", depth: 0)
         let selected = makeSegment(id: "selected", depth: 1)
@@ -341,4 +353,13 @@ private func makeSegment(id: String, depth: Int = 0) -> SunburstSegment {
         totalSize: 1,
         isAggregate: false
     )
+}
+
+private actor FailingReplacementLayoutService: SunburstLayouting {
+    let segment: SunburstSegment
+    init(segment: SunburstSegment) { self.segment = segment }
+    func segments(for request: SunburstLayoutRequest) async throws -> [SunburstSegment] {
+        if request.layoutID == "failed" { throw CocoaError(.fileReadUnknown) }
+        return [segment]
+    }
 }

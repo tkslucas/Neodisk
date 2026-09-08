@@ -616,8 +616,8 @@ final class ScanSessionModel {
     ) async {
         let sidecarData = await Task.detached(priority: .utility) {
             try? KindStatsSidecar.make(for: snapshot).encoded()
-        }.value
-        guard let sidecarData else { return }
+        }.cancellableValue
+        guard !Task.isCancelled, let sidecarData else { return }
         await snapshotCache.saveAuxiliaryData(sidecarData, forTargetID: snapshot.target.id)
     }
 
@@ -630,23 +630,7 @@ final class ScanSessionModel {
         for snapshot: ScanSnapshot,
         in snapshotCache: ScanSnapshotCache
     ) async {
-        let target = snapshot.target
-        guard let previous = await snapshotCache.loadPreviousSnapshot(for: target) else { return }
-        let currentStore = snapshot.treeStore
-        let entryLimit = ChangesModel.entryLimit
-        let list = await Task.detached(priority: .utility) {
-            ScanChangeList.build(
-                current: currentStore,
-                previous: previous.treeStore,
-                entryLimit: entryLimit
-            )
-        }.value
-        await snapshotCache.saveChangeList(
-            list,
-            comparisonDate: previous.finishedAt,
-            forTargetID: target.id,
-            entryLimit: entryLimit
-        )
+        _ = await snapshotCache.comparison(for: snapshot, entryLimit: ChangesModel.entryLimit)
     }
 
     /// A saved snapshot landed on screen with no refresh scan behind it, so
@@ -702,6 +686,7 @@ final class ScanSessionModel {
                 // background scan, and the stand-in it belongs to must ride
                 // along so a return can still show it. The coordinator applies
                 // it to the screen only while this session is the one on it.
+                guard session.state == .running else { return }
                 session.refreshBaseline = cached
                 self.coordinator.showRefreshBaselineIfAttached(session)
                 // The pre-index launch race can start a refresh scan before

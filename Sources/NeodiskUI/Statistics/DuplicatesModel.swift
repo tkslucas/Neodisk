@@ -165,7 +165,7 @@ final class DuplicatesModel {
                         onProgress: reportProgress,
                         onPartial: reportPartial
                     )
-                }.value
+                }.cancellableValue
                 await snapshotCache.saveDuplicateHashCache(hashCache)
                 guard let self, !Task.isCancelled,
                       self.scannedSnapshotID == snapshotID else { return }

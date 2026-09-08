@@ -130,6 +130,7 @@ struct SunburstLegendList: View {
             in: store,
             style: style,
             includeCloudOnly: model.showsCloudOnlyFiles,
+            expandedAggregateIDs: model.expandedAggregateIDs,
             headerSizeOverride: headerSizeOverride(store: store)
         )
     }

@@ -6,13 +6,9 @@
 //  renamed / grown / shrunk list of the displayed scan against its
 //  predecessor. Owned by NeodiskViewModel as `model.changes`.
 //
-//  Availability mirrors the outline diff's baseline gating (see
-//  DiffModel.canShow): a complete, persistable snapshot on screen and a
-//  rotated previous snapshot on disk. The list is computed on demand when
-//  the tab is visible — it needs the full previous snapshot (real paths for
-//  deleted entries, exact identities for renames), not the hashed baseline,
-//  so it decodes the predecessor itself and releases it once the capped
-//  entry list is built.
+//  Availability mirrors the outline diff's baseline gating. Both views and
+//  sidecar persistence share the cache's compact comparison; the full
+//  predecessor tree is released as soon as that comparison has been built.
 //
 
 import Foundation
@@ -46,6 +42,7 @@ final class ChangesModel {
     @ObservationIgnored private var loadedSnapshotID: UUID?
     /// Drops stale completions after a snapshot change or newer load.
     @ObservationIgnored private var loadGeneration = 0
+    @ObservationIgnored private var loadTask: Task<Void, Never>?
     /// Weak parent for the diff-availability gate and the previous-snapshot-
     /// missing correction, mirroring DiffModel.
     @ObservationIgnored weak var model: NeodiskViewModel?
@@ -81,18 +78,19 @@ final class ChangesModel {
         // Keep the previous list on screen while a rebase recomputes; the
         // spinner is for the nothing-yet case only.
         isLoading = list == nil
+        loadTask?.cancel()
+        loadTask = nil
         loadGeneration += 1
         let generation = loadGeneration
         let target = snapshot.target
-        let currentStore = snapshot.treeStore
-        Task { [weak self, snapshotCache] in
+        loadTask = Task { [weak self, snapshotCache] in
             // Fast path: a persisted diff keyed on exactly the current and
             // previous snapshot files (written proactively at scan finish, or
             // by a prior open). Skips decoding the predecessor and rebuilding.
             if let cached = await snapshotCache.loadChangeList(
                 forTargetID: target.id, entryLimit: Self.entryLimit
             ) {
-                guard let self, self.loadGeneration == generation,
+                guard !Task.isCancelled, let self, self.loadGeneration == generation,
                       self.coordinator.snapshot?.id == snapshot.id else { return }
                 self.isLoading = false
                 self.list = cached.list
@@ -100,37 +98,25 @@ final class ChangesModel {
                 return
             }
 
-            let previous = await snapshotCache.loadPreviousSnapshot(for: target)
-            let list = await Task.detached(priority: .userInitiated) {
-                previous.map {
-                    ScanChangeList.build(
-                        current: currentStore,
-                        previous: $0.treeStore,
-                        entryLimit: Self.entryLimit
-                    )
-                }
-            }.value
-            guard let self, self.loadGeneration == generation,
+            let comparison = await snapshotCache.comparison(for: snapshot, entryLimit: Self.entryLimit)
+            let hasPrevious = await snapshotCache.changeListCacheKey(
+                forTargetID: target.id, entryLimit: Self.entryLimit
+            ) != nil
+            guard !Task.isCancelled, let self, self.loadGeneration == generation,
                   self.coordinator.snapshot?.id == snapshot.id else { return }
             self.isLoading = false
-            if let list {
-                self.list = list
-                self.comparisonDate = previous?.finishedAt
-                // Write the freshly built diff back so the next open (this
-                // launch or after relaunch) hits the fast path.
-                await snapshotCache.saveChangeList(
-                    list,
-                    comparisonDate: previous?.finishedAt,
-                    forTargetID: target.id,
-                    entryLimit: Self.entryLimit
-                )
+            if let comparison {
+                self.list = comparison.list
+                self.comparisonDate = comparison.baseline.finishedAt
             } else {
                 // Corrupt or vanished predecessor: reflect it so the gate
                 // (and the outline's Δ column) disable together.
                 self.list = nil
                 self.comparisonDate = nil
                 self.loadedSnapshotID = nil
-                self.model?.session.markPreviousSnapshotMissing(forTargetID: target.id)
+                if !hasPrevious {
+                    self.model?.session.markPreviousSnapshotMissing(forTargetID: target.id)
+                }
             }
         }
     }
@@ -138,6 +124,8 @@ final class ChangesModel {
     /// A new tree is on screen: the list (and any load in flight) describes
     /// the replaced one.
     func snapshotDidChange() {
+        loadTask?.cancel()
+        loadTask = nil
         loadGeneration += 1
         loadedSnapshotID = nil
         isLoading = false
@@ -151,6 +139,8 @@ final class ChangesModel {
     func snapshotWasRotated(for target: ScanTarget) {
         guard coordinator.snapshot?.target.id == target.id,
               loadedSnapshotID != nil else { return }
+        loadTask?.cancel()
+        loadTask = nil
         loadGeneration += 1
         loadedSnapshotID = nil
         reloadToken += 1

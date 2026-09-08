@@ -26,6 +26,7 @@ struct SnapshotSearchIndex: Sendable {
         var entries: [FileSearchEntry] = []
         entries.reserveCapacity(store.nodeCount)
         for node in store.allNodes {
+            if Task.isCancelled { break }
             entries.append(FileSearchEntry(
                 id: node.id,
                 lowercasedName: node.name.lowercased(),
@@ -52,6 +53,7 @@ final class SearchIndexService {
 
     /// The displayed tree changed: the cached index holds dead node IDs.
     func invalidate() {
+        buildTask?.cancel()
         buildTask = nil
         builtSnapshotID = nil
     }
@@ -60,6 +62,7 @@ final class SearchIndexService {
         if builtSnapshotID == snapshot.id, let buildTask {
             return await buildTask.value
         }
+        invalidate()
         let store = snapshot.treeStore
         let snapshotID = snapshot.id
         builtSnapshotID = snapshotID

@@ -198,11 +198,63 @@ import NeodiskKit
         }
     }
 
-    @Test func fallbackFillsMatchWhatTheChartWouldRenderAtThatDepth() throws {
+    @Test func maxDepthFolderPoolsItsChildrenLikeAnyOtherRing() throws {
+        // A max-depth folder gets no ring, so the legend lays one out. It
+        // must pool exactly like a rendered ring does: the big children
+        // listed, the long tail behind one "Smaller Items" row — never a
+        // row per child, and never an empty list.
+        var children = (0..<3).map { index in
+            makeTestFileNode(
+                id: "/root/sub/big-\(index).mov", name: "big-\(index).mov",
+                size: Int64(1_000 - index * 100)
+            )
+        }
+        children += (0..<200).map { index in
+            makeTestFileNode(id: "/root/sub/tail-\(index)", name: "tail-\(index)", size: 1)
+        }
+        let sub = makeTestDirectoryNode(id: "/root/sub", name: "sub", children: children)
+        let root = makeTestDirectoryNode(id: "/root", name: "root", children: [sub])
+        let store = FileTreeStore(root: root, childrenByID: [
+            "/root": [sub],
+            "/root/sub": children,
+        ])
+
+        // depthLimit 1 renders /root's ring only — /root/sub is the
+        // max-depth preview folder.
+        let shallow = SunburstLayout.segments(in: store, rootID: "/root", depthLimit: 1)
+        #expect(!shallow.contains { $0.depth == 1 })
+
+        let rows = SunburstLegend.rows(
+            forFolder: "/root/sub", chartRootID: "/root",
+            in: store, segments: shallow, style: SunburstColorStyle()
+        )
+
+        let aggregate = try #require(rows.first { $0.target == .aggregate })
+        #expect(aggregate.itemCount == 200)
+        #expect(rows.filter { $0.target != .aggregate }.map(\.label)
+            == ["big-0.mov", "big-1.mov", "big-2.mov"])
+        // The same folder drilled into shows the same entries — the legend
+        // is previewing that drill, not inventing its own grouping.
+        let drilled = SunburstLayout.segments(in: store, rootID: "/root/sub", depthLimit: 1)
+        #expect(drilled.filter { !$0.isAggregate }.compactMap(\.label)
+            == ["big-0.mov", "big-1.mov", "big-2.mov"])
+        #expect(drilled.first { $0.isAggregate }?.itemCount == 200)
+
+        // Clicking that pooled row opens it, same as on a rendered ring.
+        let expanded = SunburstLegend.rows(
+            forFolder: "/root/sub", chartRootID: "/root",
+            in: store, segments: shallow, style: SunburstColorStyle(),
+            expandedAggregateIDs: ["/root/sub"]
+        )
+        #expect(expanded.count == children.count)
+        #expect(!expanded.contains { $0.target == .aggregate })
+    }
+
+    @Test func maxDepthRingFillsMatchWhatTheChartWouldRenderAtThatDepth() throws {
         // /root/sub's children at depth 1: a depthLimit-2 layout renders
         // them; a depthLimit-1 layout does not (max-depth preview folder).
-        // The legend's fallback colors must equal the rendered ones — for
-        // both branch mode and layout-resolved kind mode.
+        // The ring the legend lays out itself must carry the same colors the
+        // chart would — for both branch mode and layout-resolved kind mode.
         let nestedChildren = [
             makeTestFileNode(id: "/root/sub/one.mov", name: "one.mov", size: 30),
             makeTestFileNode(id: "/root/sub/two.jpg", name: "two.jpg", size: 20),
@@ -318,6 +370,7 @@ import NeodiskKit
             chartRootID: "/root",
             style: style,
             includeCloudOnly: false,
+            expandedAggregateIDs: [],
             headerSizeOverride: nil
         )
 
@@ -334,6 +387,7 @@ import NeodiskKit
             chartRootID: key.chartRootID,
             style: key.style,
             includeCloudOnly: key.includeCloudOnly,
+            expandedAggregateIDs: key.expandedAggregateIDs,
             headerSizeOverride: key.headerSizeOverride
         )
         _ = cache.value(for: nextVersion) { presentation }
@@ -345,10 +399,26 @@ import NeodiskKit
             chartRootID: nextVersion.chartRootID,
             style: nextVersion.style,
             includeCloudOnly: true,
+            expandedAggregateIDs: nextVersion.expandedAggregateIDs,
             headerSizeOverride: nextVersion.headerSizeOverride
         )
         _ = cache.value(for: cloudWeighted) { presentation }
         #expect(cache.buildCount == 3)
+
+        // Expanding a pooled row changes the rows a max-depth folder shows,
+        // so it has to miss the cache on its own rather than depend on the
+        // caller happening to clear it.
+        let expanded = SunburstLegendPresentationKey(
+            renderedLayoutVersion: cloudWeighted.renderedLayoutVersion,
+            displayedFolderID: cloudWeighted.displayedFolderID,
+            chartRootID: cloudWeighted.chartRootID,
+            style: cloudWeighted.style,
+            includeCloudOnly: cloudWeighted.includeCloudOnly,
+            expandedAggregateIDs: ["/root"],
+            headerSizeOverride: cloudWeighted.headerSizeOverride
+        )
+        _ = cache.value(for: expanded) { presentation }
+        #expect(cache.buildCount == 4)
     }
 
     @Test func legendHoverSwatchIgnoresHighlightDimming() throws {

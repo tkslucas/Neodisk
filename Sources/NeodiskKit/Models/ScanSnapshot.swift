@@ -209,7 +209,11 @@ public struct ScanSnapshot: Identifiable, Sendable {
             treeStore: updatedStore,
             startedAt: startedAt,
             finishedAt: finishedAt,
-            scanWarnings: Self.mergedWarnings(existing: scanWarnings, additional: additionalWarnings),
+            scanWarnings: Self.mergedWarningsPruningReplacedSubtrees(
+                existing: scanWarnings,
+                replacedRootPaths: [treeStore.node(id: targetID)?.path ?? targetID],
+                additional: additionalWarnings
+            ),
             aggregateStats: updatedStore.aggregateStats,
             isComplete: isComplete,
             scanOptions: scanOptions,
@@ -286,20 +290,6 @@ public struct ScanSnapshot: Identifiable, Sendable {
             }
         }
         for warning in additional where seen.insert(warning.id).inserted {
-            result.append(warning)
-        }
-
-        return result
-    }
-
-    private nonisolated static func mergedWarnings(
-        existing: [ScanWarning],
-        additional: [ScanWarning]
-    ) -> [ScanWarning] {
-        var seen = Set<String>()
-        var result: [ScanWarning] = []
-
-        for warning in existing + additional where seen.insert(warning.id).inserted {
             result.append(warning)
         }
 

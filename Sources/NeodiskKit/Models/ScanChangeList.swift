@@ -95,6 +95,11 @@ public struct ScanChangeList: Sendable, Equatable, Codable {
     public let removedBytes: Int64
     public let renamedCount: Int
 
+    private static let cancelled = ScanChangeList(
+        entries: [], totalEntryCount: 0, addedEntries: [], addedEntryCount: 0,
+        deletedEntries: [], deletedEntryCount: 0, addedBytes: 0, removedBytes: 0, renamedCount: 0
+    )
+
     public var isEmpty: Bool { totalEntryCount == 0 }
 
     public func entries(for filter: Filter) -> [ScanChangeEntry] {
@@ -129,6 +134,7 @@ public struct ScanChangeList: Sendable, Equatable, Codable {
         // ambiguous.
         var previousIndexByIdentity: [FileIdentity: Int32] = [:]
         for (index, node) in previous.storage.nodes.enumerated() {
+            if Task.isCancelled { return .cancelled }
             guard let identity = node.fileIdentity, node.linkCount == 1,
                   !node.isSynthetic else { continue }
             previousIndexByIdentity[identity] = previousIndexByIdentity[identity] == nil
@@ -145,6 +151,7 @@ public struct ScanChangeList: Sendable, Equatable, Codable {
         var currentClasses = [CurrentClass](repeating: .present, count: currentNodes.count)
         var consumedPreviousIndices = Set<Int32>()
         for index in currentNodes.indices {
+            if Task.isCancelled { return .cancelled }
             // Read fields off the storage array rather than binding the whole
             // record — classifying a node retains no Strings; only the rare
             // emitted entry copies id/name/path.
@@ -230,12 +237,14 @@ public struct ScanChangeList: Sendable, Equatable, Codable {
         // its whole subtree is added.
         var subtreeAllAdded = [Bool](repeating: true, count: currentNodes.count)
         for index in currentNodes.indices.reversed() {
+            if Task.isCancelled { return .cancelled }
             let isFullyAdded = currentClasses[index] == .added && subtreeAllAdded[index]
             if !isFullyAdded, let parent = current.storage.parentIndex(of: Int32(index)) {
                 subtreeAllAdded[Int(parent)] = false
             }
         }
         for index in currentNodes.indices {
+            if Task.isCancelled { return .cancelled }
             guard currentClasses[index] == .added, subtreeAllAdded[index] else { continue }
             if let parent = current.storage.parentIndex(of: Int32(index)),
                currentClasses[Int(parent)] == .added, subtreeAllAdded[Int(parent)] {
@@ -260,6 +269,7 @@ public struct ScanChangeList: Sendable, Equatable, Codable {
         let previousNodes = previousStorage.nodes
         var previousClasses = [PreviousClass](repeating: .present, count: previousNodes.count)
         for index in previousNodes.indices {
+            if Task.isCancelled { return .cancelled }
             let parentClass: PreviousClass? = previousStorage
                 .parentIndex(of: Int32(index))
                 .map { previousClasses[Int($0)] }
@@ -281,12 +291,14 @@ public struct ScanChangeList: Sendable, Equatable, Codable {
         }
         var subtreeAllDeleted = [Bool](repeating: true, count: previousNodes.count)
         for index in previousNodes.indices.reversed() {
+            if Task.isCancelled { return .cancelled }
             let isFullyDeleted = previousClasses[index] == .deleted && subtreeAllDeleted[index]
             if !isFullyDeleted, let parent = previous.storage.parentIndex(of: Int32(index)) {
                 subtreeAllDeleted[Int(parent)] = false
             }
         }
         for index in previousNodes.indices {
+            if Task.isCancelled { return .cancelled }
             guard previousClasses[index] == .deleted, subtreeAllDeleted[index] else { continue }
             if let parent = previous.storage.parentIndex(of: Int32(index)),
                previousClasses[Int(parent)] == .deleted, subtreeAllDeleted[Int(parent)] {
@@ -311,6 +323,7 @@ public struct ScanChangeList: Sendable, Equatable, Codable {
         var removedBytes: Int64 = 0
         var renamedCount = 0
         for entry in entries {
+            if Task.isCancelled { return .cancelled }
             if entry.delta > 0 {
                 addedBytes = addedBytes.addingClamped(entry.delta)
             } else {
@@ -340,6 +353,7 @@ public struct ScanChangeList: Sendable, Equatable, Codable {
         var deletedEntries: [ScanChangeEntry] = []
         var deletedEntryCount = 0
         for entry in entries {
+            if Task.isCancelled { return .cancelled }
             switch entry.kind {
             case .added:
                 addedEntryCount += 1
@@ -379,11 +393,16 @@ public struct ScanChangeList: Sendable, Equatable, Codable {
     /// only touched them would otherwise destroy the baseline to show an
     /// empty diff.
     public static func contentDigest(of store: FileTreeStore) -> String {
+        contentDigest(of: store, checkCancellation: {})
+    }
+
+    public static func contentDigest(of store: FileTreeStore, checkCancellation: () throws -> Void) rethrows -> String {
         var hasher = SHA256()
         func updateInteger<T: FixedWidthInteger>(_ value: T) {
             withUnsafeBytes(of: value.littleEndian) { hasher.update(bufferPointer: $0) }
         }
-        for node in store.storage.nodes {
+        for (index, node) in store.storage.nodes.enumerated() {
+            if index & 1023 == 0 { try checkCancellation() }
             var id = node.id
             // Length-prefixed: IDs can contain any byte (synthetic nodes
             // embed NUL), so a separator can't delimit them.

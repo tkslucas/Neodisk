@@ -142,8 +142,7 @@ extension FileTreeStore {
                 fileIdentity: current.fileIdentity,
                 linkCount: current.linkCount,
                 isPackage: current.isPackage,
-                isAccessible: current.isSelfAccessible,
-                childrenAreSorted: true
+                isAccessible: current.isSelfAccessible
             )
             if sortedChildRecords.isEmpty {
                 updatedChildIDs.removeValue(forKey: currentID)
@@ -268,8 +267,7 @@ extension FileTreeStore {
                 fileIdentity: current.fileIdentity,
                 linkCount: current.linkCount,
                 isPackage: current.isPackage,
-                isAccessible: current.isSelfAccessible,
-                childrenAreSorted: true
+                isAccessible: current.isSelfAccessible
             )
             updatedChildIDs[currentID] = sortedChildRecords.map(\.id)
             cursor = updatedParentIDs[currentID]
@@ -499,8 +497,7 @@ extension FileTreeStore {
                 fileIdentity: current.fileIdentity,
                 linkCount: current.linkCount,
                 isPackage: current.isPackage,
-                isAccessible: current.isSelfAccessible,
-                childrenAreSorted: true
+                isAccessible: current.isSelfAccessible
             )
             updatedChildIDs[current.id] = sortedChildRecords.map(\.id)
         }

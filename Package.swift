@@ -47,7 +47,7 @@ let package = Package(
         // Sparkle powers auto-updates for the packaged .app (GitHub releases
         // appcast). Ships as a prebuilt xcframework, so it works on the
         // Command Line Tools toolchain. See Packaging/SPARKLE.md.
-        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.7.0")
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.6")
     ],
     targets: [
         // UI-free scanning core: models + services. Foundation/Darwin/

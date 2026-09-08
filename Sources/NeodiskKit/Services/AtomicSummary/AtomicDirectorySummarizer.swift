@@ -15,6 +15,7 @@ nonisolated struct AtomicDirectorySummarizer: Sendable {
     /// present, `summarize` routes the whole recursive walk through it as one
     /// job (fanning directory levels across the shared workers) instead of
     /// spinning a fresh per-call task group. `nil` outside a traversal.
+    var ownedDeviceIDs: Set<UInt64> = []
     let summaryPool: AtomicDirectorySummaryPool?
 
     init(
@@ -341,7 +342,8 @@ nonisolated struct AtomicDirectorySummarizer: Sendable {
                 exclusionMatcher: exclusionMatcher,
                 metadataLoader: metadataLoader,
                 bulkEnumerationEnabled: bulkEnumerationEnabled,
-                cancellationCheck: cancellationCheck
+                cancellationCheck: cancellationCheck,
+                ownedDeviceIDs: ownedDeviceIDs
             )
         )
     }

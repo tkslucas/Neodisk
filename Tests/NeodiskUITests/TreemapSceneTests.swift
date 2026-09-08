@@ -274,8 +274,7 @@ import NeodiskKit
             let sorted = FileTreeStore.sortedChildren(children)
             let root = FileNodeRecord.directory(
                 id: "/chunk", url: rootURL, name: "chunk", children: sorted,
-                lastModified: nil, isPackage: false, isAccessible: true,
-                childrenAreSorted: true
+                lastModified: nil, isPackage: false, isAccessible: true
             )
             let store = FileTreeStore(root: root, childrenByID: ["/chunk": sorted])
             let scene = TreemapScene.build(
@@ -448,7 +447,7 @@ import NeodiskKit
         let children = FileTreeStore.sortedChildren([onDisk, cloudOnly])
         let root = FileNodeRecord.directory(
             id: "/cloud", url: rootURL, name: "cloud", children: children,
-            lastModified: nil, isPackage: false, isAccessible: true, childrenAreSorted: true
+            lastModified: nil, isPackage: false, isAccessible: true
         )
         return FileTreeStore(root: root, childrenByID: ["/cloud": children])
     }
@@ -548,7 +547,7 @@ import NeodiskKit
         let children = FileTreeStore.sortedChildren(makeMixedCloudChildren())
         let root = FileNodeRecord.directory(
             id: "/mix", url: rootURL, name: "mix", children: children,
-            lastModified: nil, isPackage: false, isAccessible: true, childrenAreSorted: true
+            lastModified: nil, isPackage: false, isAccessible: true
         )
         let store = FileTreeStore(root: root, childrenByID: ["/mix": children])
         let size = CGSize(width: 400, height: 300)
@@ -629,14 +628,14 @@ import NeodiskKit
         let sub = FileNodeRecord.directory(
             id: "/agg/sub", url: rootURL.appending(path: "sub", directoryHint: .isDirectory),
             name: "sub", children: subChildren, lastModified: nil,
-            isPackage: false, isAccessible: true, childrenAreSorted: true
+            isPackage: false, isAccessible: true
         )
         var rootChildren = [file("big.bin", 500_000), sub]
         for index in 0..<50 { rootChildren.append(file("tiny\(index).txt", 200)) }
         rootChildren = FileTreeStore.sortedChildren(rootChildren)
         let root = FileNodeRecord.directory(
             id: "/agg", url: rootURL, name: "agg", children: rootChildren,
-            lastModified: nil, isPackage: false, isAccessible: true, childrenAreSorted: true
+            lastModified: nil, isPackage: false, isAccessible: true
         )
         let store = FileTreeStore(root: root, childrenByID: [
             "/agg": rootChildren,
@@ -710,7 +709,7 @@ import NeodiskKit
         let children = FileTreeStore.sortedChildren([app, summarized, sub])
         let root = FileNodeRecord.directory(
             id: "/apps", url: rootURL, name: "apps", children: children,
-            lastModified: nil, isPackage: false, isAccessible: true, childrenAreSorted: true
+            lastModified: nil, isPackage: false, isAccessible: true
         )
         let store = FileTreeStore(root: root, childrenByID: [
             "/apps": children,
@@ -778,7 +777,7 @@ import NeodiskKit
         let children = FileTreeStore.sortedChildren([appNode, fileNode])
         let root = FileNodeRecord.directory(
             id: "/c", url: rootURL, name: "c", children: children,
-            lastModified: nil, isPackage: false, isAccessible: true, childrenAreSorted: true
+            lastModified: nil, isPackage: false, isAccessible: true
         )
         let store = FileTreeStore(root: root, childrenByID: ["/c": children])
         #expect(FileKindClassifier.isKindCountable(appNode, in: store))
@@ -808,7 +807,7 @@ import NeodiskKit
         let rootURL = URL(filePath: "/c", directoryHint: .isDirectory)
         let root = FileNodeRecord.directory(
             id: "/c", url: rootURL, name: "c", children: [appNode],
-            lastModified: nil, isPackage: false, isAccessible: true, childrenAreSorted: true
+            lastModified: nil, isPackage: false, isAccessible: true
         )
         let store = FileTreeStore(root: root, childrenByID: [
             "/c": [appNode],

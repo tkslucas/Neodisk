@@ -70,10 +70,13 @@ final class SunburstChartModel: ObservableObject {
     /// colors over the finished geometry instead of re-laying out.
     private var unstyledSegments: [SunburstSegment] = []
     private var currentStyle = SunburstColorStyle()
-    private var styleStore: FileTreeStore?
 
     init(layoutService: any SunburstLayouting = SunburstLayoutService()) {
         self.layoutService = layoutService
+    }
+
+    deinit {
+        layoutTask?.cancel()
     }
 
     var renderedSegments: [SunburstSegment] {
@@ -102,6 +105,7 @@ final class SunburstChartModel: ObservableObject {
         in store: FileTreeStore,
         style: SunburstColorStyle,
         includeCloudOnly: Bool,
+        expandedAggregateIDs: Set<String>,
         headerSizeOverride: Int64?
     ) -> SunburstLegendPresentation {
         let key = SunburstLegendPresentationKey(
@@ -110,6 +114,7 @@ final class SunburstChartModel: ObservableObject {
             chartRootID: chartRootID,
             style: style,
             includeCloudOnly: includeCloudOnly,
+            expandedAggregateIDs: expandedAggregateIDs,
             headerSizeOverride: headerSizeOverride
         )
         return legendPresentationCache.value(for: key) {
@@ -129,7 +134,8 @@ final class SunburstChartModel: ObservableObject {
                     in: store,
                     segments: renderedSegments,
                     style: style,
-                    includeCloudOnly: includeCloudOnly
+                    includeCloudOnly: includeCloudOnly,
+                    expandedAggregateIDs: expandedAggregateIDs
                 )
             )
         }
@@ -180,7 +186,6 @@ final class SunburstChartModel: ObservableObject {
     /// the latest style up when it completes. Hover survives (the segment
     /// ids are unchanged).
     func applyStyle(_ style: SunburstColorStyle, in treeStore: FileTreeStore) {
-        styleStore = treeStore
         guard style != currentStyle else { return }
         currentStyle = style
         guard !unstyledSegments.isEmpty else { return }
@@ -199,7 +204,6 @@ final class SunburstChartModel: ObservableObject {
         clearHover()
         setIsLayoutPending(true)
         currentStyle = request.style
-        styleStore = request.treeStore
 
         let task = Task(priority: .userInitiated) { [layoutService] in
             try await layoutService.segments(for: request)
@@ -236,10 +240,9 @@ final class SunburstChartModel: ObservableObject {
                 return false
             }
             layoutTask = nil
-            unstyledSegments = []
-            apply([])
+            // Keep the last successful geometry until a replacement succeeds.
             setIsLayoutPending(false)
-            return true
+            return false
         }
     }
 

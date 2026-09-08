@@ -322,8 +322,10 @@ final class ScanCoordinator {
         case .cancelled:
             phase = snapshot == nil ? .idle : .displaying
         case .running:
-            break
+            return
         }
+        idleProgress.metrics = session.progress.metrics
+        displayedSession = nil
     }
 
     /// Releases the displayed session WITHOUT cancelling it: the scan keeps
@@ -348,7 +350,10 @@ final class ScanCoordinator {
     }
 
     func stopScan(resetState: Bool = true) {
-        displayedSession?.cancel()
+        if let session = displayedSession {
+            idleProgress.metrics = session.progress.metrics
+            session.cancel()
+        }
         displayedSession = nil
         cancelExpansion()
 

@@ -69,6 +69,9 @@ struct SunburstLegendPresentationKey: Equatable {
     let chartRootID: String
     let style: SunburstColorStyle
     let includeCloudOnly: Bool
+    /// The rows depend on this once a max-depth folder lays out its own ring,
+    /// so it belongs in the key rather than relying on callers to invalidate.
+    let expandedAggregateIDs: Set<String>
     let headerSizeOverride: Int64?
 }
 
@@ -102,25 +105,31 @@ enum SunburstLegend {
     /// (only at the chart root — both belong to the volume ring, in the
     /// chart's angular order).
     ///
-    /// Colors come from the rendered segments where the chart drew one; a
-    /// child without a segment (its ring is beyond the depth limit) falls
-    /// back to the same color-resolution path the layout uses, so it matches
-    /// what the chart would render at that depth.
+    /// Colors come from the rendered segments. A folder on the outermost
+    /// ring has none — the layout stopped recursing — so the legend asks the
+    /// layout for the ring it would have drawn and derives rows from that,
+    /// pooling included. Either way the rows are the chart's own entries.
     nonisolated static func rows(
         forFolder displayedFolderID: String,
         chartRootID: String,
         in store: FileTreeStore,
         segments: [SunburstSegment],
         style: SunburstColorStyle,
-        includeCloudOnly: Bool = false
+        includeCloudOnly: Bool = false,
+        expandedAggregateIDs: Set<String> = []
     ) -> [SunburstLegendRow] {
-        var segmentByNodeID: [String: SunburstSegment] = [:]
+        var childSegments: [SunburstSegment] = []
+        var displayedFolderSegment: SunburstSegment?
         var aggregateSegment: SunburstSegment?
         var freeSpaceSegment: SunburstSegment?
         var hiddenSpaceSegment: SunburstSegment?
         for segment in segments {
             if let nodeID = segment.nodeID {
-                segmentByNodeID[nodeID] = segment
+                if nodeID == displayedFolderID {
+                    displayedFolderSegment = segment
+                } else if store.parent(of: nodeID)?.id == displayedFolderID {
+                    childSegments.append(segment)
+                }
             } else if segment.isAggregate, segment.parentFolderID == displayedFolderID {
                 aggregateSegment = segment
             } else if segment.isFreeSpace {
@@ -130,56 +139,45 @@ enum SunburstLegend {
             }
         }
 
-        // Sort by the same weight the chart lays arcs out with, so the
-        // legend order matches the ring.
-        let children = store.children(of: displayedFolderID).sorted { lhs, rhs in
-            let lhsWeight = lhs.displayWeight(includingCloudOnly: includeCloudOnly)
-            let rhsWeight = rhs.displayWeight(includingCloudOnly: includeCloudOnly)
-            return lhsWeight != rhsWeight ? lhsWeight > rhsWeight : lhs.name < rhs.name
+        // Nothing rendered below this folder: it sits on the last ring the
+        // chart had depth for. Lay that ring out now — one grouping pass,
+        // O(children) — so the legend still lists what is in there, pooled
+        // exactly the way drilling in would show it.
+        if childSegments.isEmpty, aggregateSegment == nil {
+            let depth = displayedFolderSegment.map { $0.depth + 1 }
+                ?? max(store.path(to: displayedFolderID).count - store.path(to: chartRootID).count, 0)
+            let ring = SunburstLayout.styled(
+                SunburstLayout.ringSegments(
+                    forFolder: displayedFolderID,
+                    in: store,
+                    depth: depth,
+                    expandedAggregateIDs: expandedAggregateIDs,
+                    includeCloudOnly: includeCloudOnly
+                ),
+                style: style,
+                in: store
+            )
+            childSegments = ring.filter { !$0.isAggregate }
+            aggregateSegment = ring.first { $0.isAggregate }
         }
 
         var rows: [SunburstLegendRow] = []
-        rows.reserveCapacity(children.count + 2)
-        for child in children {
-            let size = child.displayWeight(includingCloudOnly: includeCloudOnly)
-            let showsCloudGlyph = includeCloudOnly && child.cloudOnlyLogicalSize > 0
-            if let segment = segmentByNodeID[child.id] {
-                rows.append(SunburstLegendRow(
-                    id: child.id,
-                    target: .node(id: child.id, isDirectory: child.isSunburstFolder(in: store)),
-                    label: child.name,
-                    size: size,
-                    dotColor: SunburstChartStyler.baseStyle(for: segment).fillColor,
-                    swatchRGB: SunburstLayout.semanticFillRGB(
-                        for: child, token: segment.colorToken, style: style
-                    ),
-                    isDimmed: false,
-                    itemCount: 0,
-                    showsCloudGlyph: showsCloudGlyph
-                ))
-            } else if aggregateSegment != nil {
-                // The chart pooled this child into the aggregate segment —
-                // it appears in the combined "Smaller Items" row instead.
-                continue
-            } else {
-                // No ring rendered for this folder's children (beyond the
-                // depth limit): color the row the way the chart would.
-                let colors = fallbackColors(
-                    for: child, chartRootID: chartRootID, in: store,
-                    style: style, includeCloudOnly: includeCloudOnly
-                )
-                rows.append(SunburstLegendRow(
-                    id: child.id,
-                    target: .node(id: child.id, isDirectory: child.isSunburstFolder(in: store)),
-                    label: child.name,
-                    size: size,
-                    dotColor: colors.dot,
-                    swatchRGB: colors.swatch,
-                    isDimmed: false,
-                    itemCount: 0,
-                    showsCloudGlyph: showsCloudGlyph
-                ))
-            }
+        rows.reserveCapacity(childSegments.count + 3)
+        for segment in childSegments {
+            guard let nodeID = segment.nodeID, let child = store.node(id: nodeID) else { continue }
+            rows.append(SunburstLegendRow(
+                id: child.id,
+                target: .node(id: child.id, isDirectory: child.isSunburstFolder(in: store)),
+                label: child.name,
+                size: child.displayWeight(includingCloudOnly: includeCloudOnly),
+                dotColor: SunburstChartStyler.baseStyle(for: segment).fillColor,
+                swatchRGB: SunburstLayout.semanticFillRGB(
+                    for: child, token: segment.colorToken, style: style
+                ),
+                isDimmed: false,
+                itemCount: 0,
+                showsCloudGlyph: includeCloudOnly && child.cloudOnlyLogicalSize > 0
+            ))
         }
 
         if let aggregateSegment {

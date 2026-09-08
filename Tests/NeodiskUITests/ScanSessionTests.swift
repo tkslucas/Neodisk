@@ -6,6 +6,27 @@ import NeodiskKit
 
 extension ScanTimingSuites {
 @Suite(.serialized) struct ScanSessionTests {
+    private final class ProviderLifetime: @unchecked Sendable {}
+
+    @MainActor
+    @Test func testCancelReleasesUnstartedBaselineProvider() {
+        weak var lifetime: ProviderLifetime?
+        let session: ScanSession
+        do {
+            let token = ProviderLifetime()
+            lifetime = token
+            session = ScanSession(
+                target: makeTestTarget("/session/provider"), options: ScanOptions(), kind: .refresh,
+                service: ControlledScanService(), baselineProvider: { [token] in
+                    withExtendedLifetime(token) { nil }
+                }, progress: ScanProgressState(), progressThrottleDuration: .zero
+            )
+        }
+        #expect(lifetime != nil)
+        session.cancel()
+        #expect(lifetime == nil)
+    }
+
     /// A partial tree is recorded on the session even while the coordinator
     /// suppresses it from the screen (the refresh-behind-cached path): the
     /// session always keeps the latest tree, the coordinator decides display.

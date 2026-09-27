@@ -15,7 +15,10 @@ APP_ID="com.lucastakayasu.Neodisk"
 cd "$ROOT"
 # The native build system links Foundation's static dependencies (ICU,
 # CoreFoundation, Synchronization) that the default SwiftBuild backend
-# currently leaves out of --static-swift-stdlib links.
+# leaves out of --static-swift-stdlib links. Still true in Swift 6.4, where
+# native is deprecated and prints a warning; passing the libraries by hand
+# only moves the undefined references into other Foundation archives. Drop
+# the flag once a SwiftBuild static link succeeds.
 BUILD="swift build --build-system native -c release"
 $BUILD --product neodisk --static-swift-stdlib
 BIN_DIR="$($BUILD --show-bin-path)"
@@ -29,7 +32,13 @@ rm -rf "$PREFIX/share/neodisk/Localization" "$PREFIX/share/neodisk/icons"
 cp -R Localization "$PREFIX/share/neodisk/Localization"
 cp -R Packaging/linux/icons "$PREFIX/share/neodisk/icons"
 
+# The app icon at every size menus and panels ask for, so none of them
+# has to downscale the 512 px original.
 install -Dm644 Packaging/icon.png "$PREFIX/share/icons/hicolor/512x512/apps/$APP_ID.png"
+for size in 16 24 32 48 64 128 256; do
+    install -Dm644 "Packaging/linux/app-icon/$size.png" \
+        "$PREFIX/share/icons/hicolor/${size}x${size}/apps/$APP_ID.png"
+done
 install -Dm644 "Packaging/linux/$APP_ID.metainfo.xml" "$PREFIX/share/metainfo/$APP_ID.metainfo.xml"
 install -d "$PREFIX/share/applications"
 sed "s|^Exec=neodisk|Exec=$PREFIX/bin/neodisk|" "Packaging/linux/$APP_ID.desktop" \

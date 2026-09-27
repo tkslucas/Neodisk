@@ -8,12 +8,15 @@
 //  wasm-consumable path to the shipping renderer.
 //
 
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
 import Foundation
 import Testing
 import TreemapKit
 
 @Suite struct CushionRasterizeRGBATests {
+    #if canImport(CoreGraphics)
     @Test func rasterizeRGBAMatchesRenderPixels() throws {
         let bounds = CGRect(x: 0, y: 0, width: 200, height: 150)
         let cells = Self.fixedCells(in: bounds)
@@ -36,6 +39,7 @@ import TreemapKit
         #expect(cgPixels.count == portable.pixels.count)
         #expect(Array(cgPixels) == portable.pixels)
     }
+    #endif
 
     @Test func rasterizeRGBAReturnsAlphaOpaqueRGBA() throws {
         let bounds = CGRect(x: 0, y: 0, width: 64, height: 48)

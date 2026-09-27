@@ -16,6 +16,8 @@
 
 #if canImport(CoreGraphics)
 import CoreGraphics
+#endif
+#if canImport(Foundation)
 import Foundation
 #endif
 

@@ -10,9 +10,9 @@
 
 #if canImport(CoreGraphics)
 import CoreGraphics
-import Foundation
-#elseif canImport(Dispatch)
-import Foundation  // ProcessInfo for the concurrent chunk count
+#endif
+#if canImport(Foundation)
+import Foundation  // ProcessInfo for the concurrent chunk count; CG geometry off Darwin
 #endif
 #if canImport(Dispatch)
 import Dispatch

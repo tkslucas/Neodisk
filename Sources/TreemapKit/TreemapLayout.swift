@@ -7,6 +7,8 @@
 
 #if canImport(CoreGraphics)
 import CoreGraphics
+#elseif canImport(Foundation)
+import Foundation  // CG geometry types off Darwin
 #endif
 
 public enum TreemapLayout {

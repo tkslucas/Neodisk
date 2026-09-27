@@ -3,7 +3,9 @@
 //  TreemapKit
 //
 
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
 import Foundation
 import Testing
 import TreemapKit
@@ -59,6 +61,7 @@ import TreemapKit
         #expect(zoomed.origin == .zero)
     }
 
+    #if canImport(CoreGraphics)
     @Test func displayTransformIsIdentityWhenRenderMatches() {
         let viewport = TreemapViewport(scale: 3, origin: CGPoint(x: 120, y: 80))
         #expect(viewport.displayTransform(fromRendered: viewport) == .identity)
@@ -85,4 +88,5 @@ import TreemapKit
             #expect(abs(mapped.y - livePoint.y) < 1e-6)
         }
     }
+    #endif
 }

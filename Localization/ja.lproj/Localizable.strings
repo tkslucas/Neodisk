@@ -403,7 +403,6 @@
 "Color Palette" = "カラーパレット";
 "Computer" = "コンピュータ";
 "Count folders with very many small files as one item, for faster scans" = "小さなファイルが非常に多いフォルダを1項目として数え、スキャンを高速化します";
-"Cushion shading or flat nested boxes" = "クッションの陰影、またはフラットな入れ子のボックス";
 "Dot files and folders, like ~/.cache and ~/.local" = "~/.cache や ~/.local などのドットファイルとフォルダ";
 "Draw a volume's free space as a block of its own" = "ボリュームの空き容量を独立したブロックとして表示";
 "Finished scans are kept so locations reopen instantly and changes can be compared." = "完了したスキャンは保存され、場所をすぐに開き直したり変更を比較したりできます。";

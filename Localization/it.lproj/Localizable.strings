@@ -403,7 +403,6 @@
 "Color Palette" = "Tavolozza colori";
 "Computer" = "Computer";
 "Count folders with very many small files as one item, for faster scans" = "Conta come un unico elemento le cartelle con moltissimi file piccoli, per scansioni più rapide";
-"Cushion shading or flat nested boxes" = "Ombreggiatura a cuscino o riquadri annidati piatti";
 "Dot files and folders, like ~/.cache and ~/.local" = "File e cartelle che iniziano con un punto, come ~/.cache e ~/.local";
 "Draw a volume's free space as a block of its own" = "Mostra lo spazio libero di un volume come blocco a sé";
 "Finished scans are kept so locations reopen instantly and changes can be compared." = "Le scansioni completate vengono conservate, così le posizioni si riaprono all'istante e le modifiche si possono confrontare.";

@@ -28,8 +28,9 @@ enum ShortcutsWindow {
             Shortcut(title: L("Quit"), accelerator: "<Control>q"),
         ]),
         (L("Visualization"), [
-            Shortcut(title: L("Treemap"), accelerator: "<Control>1"),
-            Shortcut(title: L("Sunburst"), accelerator: "<Control>2"),
+            Shortcut(title: L("Cushion Treemap"), accelerator: "<Control>1"),
+            Shortcut(title: L("Flat Treemap"), accelerator: "<Control>2"),
+            Shortcut(title: L("Sunburst"), accelerator: "<Control>3"),
             Shortcut(title: L("Zoom In"), accelerator: "<Control>Down Return"),
             Shortcut(title: L("Zoom Out"), accelerator: "<Control>Up BackSpace"),
             Shortcut(title: L("Move Selection"), accelerator: "Left Right Up Down"),

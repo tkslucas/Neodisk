@@ -165,6 +165,7 @@ enum Styles {
     .neodisk-stats-row { padding: 4px 8px; }
     .neodisk-swatch { border-radius: 3px; min-width: 10px; min-height: 10px; }
     .neodisk-breadcrumb button { padding: 2px 6px; min-height: 0; }
+    .neodisk-search-bar { padding: 6px 8px; }
     levelbar.neodisk-capacity block.neodisk-used { background-color: @accent_bg_color; }
     levelbar.neodisk-capacity block.neodisk-nearly-full { background-color: @warning_bg_color; }
     """

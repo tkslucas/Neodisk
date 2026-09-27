@@ -5,8 +5,9 @@
 //  The window, in libadwaita's idiom: an overlay split view with the
 //  locations sidebar on the left and the workspace on the right. The
 //  workspace mirrors the Mac layout — visualization over the file outline,
-//  statistics on the right, status bar along the bottom — with the scan
-//  title, view switcher, and scan controls in the header bar.
+//  statistics on the right, status bar along the bottom — and so does its
+//  header bar: the scan title on the left, the three-way view switcher in
+//  the middle, scan controls and the statistics toggle on the right.
 //
 
 import CGtk
@@ -20,15 +21,16 @@ final class MainWindow {
     let model: AppModel
 
     private let splitView: GPtr
-    private let windowTitle: GPtr
+    private let titleLabel: GPtr
+    private let subtitleLabel: GPtr
     private let contentStack: GPtr
     private let vizStack: GPtr
     private let workspacePaned: GPtr
     private let vizPaned: GPtr
     private let scanButton: GPtr
     private let stopButton: GPtr
-    private let searchButton: GPtr
-    private let treemapToggle: GPtr
+    private let cushionToggle: GPtr
+    private let flatToggle: GPtr
     private let sunburstToggle: GPtr
 
     private let sidebar: SidebarView
@@ -39,7 +41,7 @@ final class MainWindow {
     private let progress: ScanProgressView
     private let statusBar: StatusBar
     private let breadcrumbs: BreadcrumbBar
-    private var searchPopover: SearchPopover?
+    private let search: OutlineSearch
 
     private var actions: [String: GPtr] = [:]
     private var tokens: [ObservationToken] = []
@@ -62,6 +64,7 @@ final class MainWindow {
         progress = ScanProgressView(model: model)
         statusBar = StatusBar(model: model)
         breadcrumbs = BreadcrumbBar(model: model)
+        search = OutlineSearch(model: model, outline: outline.widget)
 
         // Sidebar pane: its own header bar, like GNOME Files.
         let sidebarToolbar = raw(adw_toolbar_view_new())!
@@ -82,39 +85,39 @@ final class MainWindow {
         adw_toolbar_view_add_top_bar(ptr(sidebarToolbar), ptr(sidebarHeader))
         adw_toolbar_view_set_content(ptr(sidebarToolbar), ptr(sidebar.widget))
 
-        // Workspace header: sidebar toggle and drill-out on the left, title
-        // in the middle, view switcher and scan controls on the right.
+        // Workspace header, laid out like the Mac toolbar: the scan title
+        // on the left, the view switcher in the middle, actions on the right.
         let header = raw(adw_header_bar_new())!
-        windowTitle = raw(adw_window_title_new("Neodisk", nil))!
-        adw_header_bar_set_title_widget(ptr(header), ptr(windowTitle))
 
         let sidebarToggle = raw(gtk_toggle_button_new())!
         gtk_button_set_icon_name(ptr(sidebarToggle), "sidebar-show-symbolic")
         gtk_widget_set_tooltip_text(ptr(sidebarToggle), L("Toggle Sidebar"))
         adw_header_bar_pack_start(ptr(header), ptr(sidebarToggle))
-        let backButton = Widgets.iconButton("go-up-symbolic", tooltip: L("Enclosing Folder"), action: "win.focus-out")
-        adw_header_bar_pack_start(ptr(header), ptr(backButton))
+        titleLabel = Widgets.label("Neodisk", classes: ["heading"])
+        gtk_label_set_ellipsize(ptr(titleLabel), PANGO_ELLIPSIZE_END)
+        subtitleLabel = Widgets.label("", classes: ["dim-label", "neodisk-caption", "neodisk-numeric"])
+        gtk_label_set_ellipsize(ptr(subtitleLabel), PANGO_ELLIPSIZE_END)
+        let titleBox = Widgets.box(GTK_ORIENTATION_VERTICAL, [titleLabel, subtitleLabel])
+        gtk_widget_set_valign(ptr(titleBox), GTK_ALIGN_CENTER)
+        Widgets.setMargins(titleBox, start: 6)
+        adw_header_bar_pack_start(ptr(header), ptr(titleBox))
 
-        treemapToggle = raw(gtk_toggle_button_new())!
-        gtk_button_set_icon_name(ptr(treemapToggle), "neodisk-treemap-symbolic")
-        gtk_widget_set_tooltip_text(ptr(treemapToggle), L("Treemap"))
-        sunburstToggle = raw(gtk_toggle_button_new())!
-        gtk_button_set_icon_name(ptr(sunburstToggle), "neodisk-sunburst-symbolic")
-        gtk_widget_set_tooltip_text(ptr(sunburstToggle), L("Sunburst"))
-        gtk_toggle_button_set_group(ptr(sunburstToggle), ptr(treemapToggle))
-        let vizSwitcher = Widgets.box(GTK_ORIENTATION_HORIZONTAL, classes: ["linked"], [treemapToggle, sunburstToggle])
+        cushionToggle = Self.viewToggle("neodisk-treemap-symbolic", tooltip: L("Cushion Treemap"))
+        flatToggle = Self.viewToggle("neodisk-treemap-flat-symbolic", tooltip: L("Flat Treemap"))
+        sunburstToggle = Self.viewToggle("neodisk-sunburst-symbolic", tooltip: L("Sunburst"))
+        gtk_toggle_button_set_group(ptr(flatToggle), ptr(cushionToggle))
+        gtk_toggle_button_set_group(ptr(sunburstToggle), ptr(cushionToggle))
+        let vizSwitcher = Widgets.box(GTK_ORIENTATION_HORIZONTAL, classes: ["linked"], [cushionToggle, flatToggle, sunburstToggle])
+        adw_header_bar_set_title_widget(ptr(header), ptr(vizSwitcher))
 
         scanButton = Widgets.iconButton("view-refresh-symbolic", tooltip: L("Rescan"), action: "win.rescan")
         stopButton = Widgets.iconButton("process-stop-symbolic", tooltip: L("Stop Scan"), action: "win.stop")
-        searchButton = Widgets.iconButton("edit-find-symbolic", tooltip: L("Search"), action: "win.search")
         let statisticsToggle = raw(gtk_toggle_button_new())!
-        gtk_button_set_icon_name(ptr(statisticsToggle), "view-dual-symbolic")
+        gtk_button_set_icon_name(ptr(statisticsToggle), "sidebar-show-right-symbolic")
         gtk_widget_set_tooltip_text(ptr(statisticsToggle), L("Statistics"))
         adw_header_bar_pack_end(ptr(header), ptr(statisticsToggle))
-        adw_header_bar_pack_end(ptr(header), ptr(searchButton))
         adw_header_bar_pack_end(ptr(header), ptr(stopButton))
         adw_header_bar_pack_end(ptr(header), ptr(scanButton))
-        adw_header_bar_pack_end(ptr(header), ptr(vizSwitcher))
 
         // Workspace content.
         vizStack = raw(gtk_stack_new())!
@@ -125,7 +128,7 @@ final class MainWindow {
 
         vizPaned = raw(gtk_paned_new(GTK_ORIENTATION_VERTICAL))!
         gtk_paned_set_start_child(ptr(vizPaned), ptr(vizColumn))
-        gtk_paned_set_end_child(ptr(vizPaned), ptr(outline.widget))
+        gtk_paned_set_end_child(ptr(vizPaned), ptr(search.widget))
         gtk_paned_set_resize_end_child(ptr(vizPaned), gbool(false))
         gtk_paned_set_shrink_end_child(ptr(vizPaned), gbool(false))
         gtk_paned_set_position(ptr(vizPaned), Int32(max(320, preferences.windowHeight - 380)))
@@ -200,21 +203,48 @@ final class MainWindow {
         installActions()
         bindModel(statisticsToggle: statisticsToggle)
 
-        connect(treemapToggle, "toggled") { [unowned self] in
-            if gtk_toggle_button_get_active(ptr(self.treemapToggle)) != 0 {
-                self.model.preferences.vizMode = .treemap
-            }
+        connect(cushionToggle, "toggled") { [unowned self] in
+            if gtk_toggle_button_get_active(ptr(self.cushionToggle)) != 0 { self.showView(.cushion) }
+        }
+        connect(flatToggle, "toggled") { [unowned self] in
+            if gtk_toggle_button_get_active(ptr(self.flatToggle)) != 0 { self.showView(.flat) }
         }
         connect(sunburstToggle, "toggled") { [unowned self] in
-            if gtk_toggle_button_get_active(ptr(self.sunburstToggle)) != 0 {
-                self.model.preferences.vizMode = .sunburst
-            }
+            if gtk_toggle_button_get_active(ptr(self.sunburstToggle)) != 0 { self.showView(.sunburst) }
         }
         connect(statisticsToggle, "toggled") { [unowned self] in
             self.model.preferences.showsStatistics = gtk_toggle_button_get_active(ptr(statisticsToggle)) != 0
         }
         connectNotify(window, "default-width") { [unowned self] in self.rememberSize() }
         connectNotify(window, "default-height") { [unowned self] in self.rememberSize() }
+    }
+
+    private static func viewToggle(_ iconName: String, tooltip: String) -> GPtr {
+        let toggle = raw(gtk_toggle_button_new())!
+        gtk_button_set_icon_name(ptr(toggle), iconName)
+        gtk_widget_set_tooltip_text(ptr(toggle), tooltip)
+        return toggle
+    }
+
+    /// The three center views, flattened for the switcher as on the Mac.
+    /// Picking a treemap writes both preferences; Sunburst leaves the
+    /// treemap style alone, so switching back restores it.
+    private enum ViewChoice {
+        case cushion, flat, sunburst
+    }
+
+    private func showView(_ choice: ViewChoice) {
+        let preferences = model.preferences
+        switch choice {
+        case .cushion:
+            preferences.vizMode = .treemap
+            preferences.treemapStyle = .cushion
+        case .flat:
+            preferences.vizMode = .treemap
+            preferences.treemapStyle = .flat
+        case .sunburst:
+            preferences.vizMode = .sunburst
+        }
     }
 
     func present() {
@@ -238,8 +268,10 @@ final class MainWindow {
             gtk_stack_set_visible_child_name(ptr(self.contentStack), hasContent ? "workspace" : "empty")
 
             let title = self.model.target.map(self.displayName) ?? "Neodisk"
-            adw_window_title_set_title(ptr(self.windowTitle), title)
-            adw_window_title_set_subtitle(ptr(self.windowTitle), self.subtitle())
+            gtk_label_set_text(ptr(self.titleLabel), title)
+            let subtitle = self.subtitle()
+            gtk_label_set_text(ptr(self.subtitleLabel), subtitle ?? "")
+            Widgets.setVisible(self.subtitleLabel, subtitle != nil)
             gtk_window_set_title(ptr(self.window), self.model.target == nil ? "Neodisk" : "\(title) — Neodisk")
 
             let scanning = self.model.isScanning || self.model.phase == .restoring
@@ -258,8 +290,10 @@ final class MainWindow {
         })
         tokens.append(track { [unowned self] in
             let mode = self.model.preferences.vizMode
+            let style = self.model.preferences.treemapStyle
             gtk_stack_set_visible_child_name(ptr(self.vizStack), mode == .sunburst ? "sunburst" : "treemap")
-            gtk_toggle_button_set_active(ptr(mode == .sunburst ? self.sunburstToggle : self.treemapToggle), gbool(true))
+            let toggle = mode == .sunburst ? self.sunburstToggle : style == .flat ? self.flatToggle : self.cushionToggle
+            gtk_toggle_button_set_active(ptr(toggle), gbool(true))
         })
         tokens.append(track { [unowned self] in
             let shows = self.model.preferences.showsStatistics
@@ -313,7 +347,7 @@ final class MainWindow {
             self.model.cancelScan()
         }
         actions["search"] = addAction(to: window, "search") { [unowned self] _ in
-            self.showSearch()
+            self.search.focus()
         }
         actions["focus-in"] = addAction(to: window, "focus-in") { [unowned self] _ in
             if !self.model.drillIntoSelection() {
@@ -327,11 +361,14 @@ final class MainWindow {
             let shown = adw_overlay_split_view_get_show_sidebar(ptr(self.splitView)) != 0
             adw_overlay_split_view_set_show_sidebar(ptr(self.splitView), gbool(!shown))
         }
-        actions["show-treemap"] = addAction(to: window, "show-treemap") { [unowned self] _ in
-            self.model.preferences.vizMode = .treemap
+        actions["show-cushion"] = addAction(to: window, "show-cushion") { [unowned self] _ in
+            self.showView(.cushion)
+        }
+        actions["show-flat"] = addAction(to: window, "show-flat") { [unowned self] _ in
+            self.showView(.flat)
         }
         actions["show-sunburst"] = addAction(to: window, "show-sunburst") { [unowned self] _ in
-            self.model.preferences.vizMode = .sunburst
+            self.showView(.sunburst)
         }
         actions["open-item"] = addAction(to: window, "open-item") { [unowned self] _ in
             guard let path = self.model.selectedNode?.path else { return }
@@ -369,13 +406,5 @@ final class MainWindow {
             }
         }, context)
         g_object_unref(raw(dialog))
-    }
-
-    private func showSearch() {
-        guard model.store != nil else { return }
-        if searchPopover == nil {
-            searchPopover = SearchPopover(model: model, parent: searchButton)
-        }
-        searchPopover?.present()
     }
 }

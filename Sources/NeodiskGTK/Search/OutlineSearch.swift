@@ -1,11 +1,13 @@
 //
-//  SearchPopover.swift
+//  OutlineSearch.swift
 //  NeodiskGTK
 //
-//  Ctrl+F: fuzzy search over every name in the scan, off the main actor,
-//  through the shared search index and matcher the Mac uses. Picking a
-//  result selects it; the treemap widens its focus to show it and the
-//  outline expands down to it.
+//  The file list's search field, as on the Mac: fuzzy search over every
+//  name in the scan, off the main actor, through the shared search index
+//  and matcher. While there's a query, the matches take the outline's place
+//  (Ctrl+F focuses the field, Escape clears it). Filtering never navigates:
+//  the map stays where it is until a result is picked, which selects it —
+//  the treemap widens its focus to show it and the outline expands to it.
 //
 
 import CGtk
@@ -14,50 +16,57 @@ import NeodiskAppModel
 import NeodiskKit
 
 @MainActor
-final class SearchPopover {
+final class OutlineSearch {
+    /// The field over the list, then the outline or the matches under it.
+    let widget: GPtr
     private let model: AppModel
-    private let popover: GPtr
     private let entry: GPtr
+    private let stack: GPtr
     private let results: GPtr
     private let caption: GPtr
     private let debouncer = SearchDebouncer()
     private var resultIDs: [String] = []
+    private var isSyncingSelection = false
+    private var tokens: [ObservationToken] = []
 
-    static let resultLimit = 60
+    static let resultLimit = 200
 
-    init(model: AppModel, parent: GPtr) {
+    init(model: AppModel, outline: GPtr) {
         self.model = model
         entry = raw(gtk_search_entry_new())!
         gtk_search_entry_set_placeholder_text(ptr(entry), L("Search entire scan"))
+        gtk_widget_set_hexpand(ptr(entry), gbool(true))
+        let entryBar = Widgets.box(GTK_ORIENTATION_HORIZONTAL, classes: ["neodisk-search-bar"], [entry])
+
         results = raw(gtk_list_box_new())!
         Widgets.addClasses(results, ["navigation-sidebar"])
         caption = Widgets.label("", classes: ["dim-label", "neodisk-caption"])
-        let scrolled = Widgets.scrolled(results)
-        gtk_scrolled_window_set_min_content_height(ptr(scrolled), 360)
-        gtk_scrolled_window_set_min_content_width(ptr(scrolled), 460)
-        let content = Widgets.box(GTK_ORIENTATION_VERTICAL, spacing: 6, [entry, caption, scrolled])
-        Widgets.setMargins(content, all: 6)
-        gtk_widget_set_size_request(ptr(content), 460, -1)
+        Widgets.setMargins(caption, top: 4, bottom: 2, start: 12, end: 12)
+        let resultsPage = Widgets.box(GTK_ORIENTATION_VERTICAL, [caption, Widgets.scrolled(results)])
 
-        popover = raw(gtk_popover_new())!
-        gtk_popover_set_child(ptr(popover), ptr(content))
-        gtk_widget_set_parent(ptr(popover), ptr(parent))
-        gtk_popover_set_position(ptr(popover), GTK_POS_BOTTOM)
+        stack = raw(gtk_stack_new())!
+        gtk_stack_add_named(ptr(stack), ptr(outline), "outline")
+        gtk_stack_add_named(ptr(stack), ptr(resultsPage), "results")
+        gtk_widget_set_vexpand(ptr(stack), gbool(true))
+
+        let separator = raw(gtk_separator_new(GTK_ORIENTATION_HORIZONTAL))!
+        widget = Widgets.box(GTK_ORIENTATION_VERTICAL, [entryBar, separator, stack])
+        gtk_widget_set_size_request(ptr(widget), -1, 180)
+        attach(self, to: widget, key: "neodisk-outline-search")
 
         connect(entry, "search-changed") { [unowned self] in self.schedule() }
         connect(entry, "activate") { [unowned self] in
             guard let first = self.resultIDs.first else { return }
-            self.choose(first)
+            self.model.select(first)
         }
-        connect(entry, "stop-search") { [unowned self] in
-            gtk_popover_popdown(ptr(self.popover))
-        }
-        connectPointer(results, "row-activated") { [unowned self] row in
+        connect(entry, "stop-search") { [unowned self] in self.clear() }
+        connectPointer(results, "row-selected") { [unowned self] row in
+            guard !self.isSyncingSelection, let row else { return }
             let index = Int(gtk_list_box_row_get_index(ptr(row)))
             guard self.resultIDs.indices.contains(index) else { return }
-            self.choose(self.resultIDs[index])
+            self.model.select(self.resultIDs[index])
         }
-        // Down from the entry walks into the results.
+        // Down from the field walks into the matches.
         let keys = raw(gtk_event_controller_key_new())!
         connectKey(keys) { [unowned self] keyval, _ in
             guard Int32(keyval) == GDK_KEY_Down, let first = gtk_list_box_get_row_at_index(ptr(self.results), 0) else {
@@ -67,26 +76,47 @@ final class SearchPopover {
             return true
         }
         gtk_widget_add_controller(ptr(entry), ptr(keys))
+
+        tokens.append(track { [unowned self] in
+            // A new location starts with an empty field.
+            _ = self.model.target
+            self.clear()
+        })
+        tokens.append(track { [unowned self] in
+            // A refresh of the same location reruns the query on the new tree.
+            _ = self.model.snapshot?.id
+            self.schedule()
+        })
+        tokens.append(track { [unowned self] in
+            self.syncSelection(self.model.selectedNodeID)
+        })
     }
 
-    func present() {
-        gtk_popover_popup(ptr(popover))
+    /// Ctrl+F.
+    func focus() {
         gtk_widget_grab_focus(ptr(entry))
-        schedule()
     }
 
-    private func choose(_ id: String) {
-        model.select(id)
-        gtk_popover_popdown(ptr(popover))
+    private var query: String {
+        (string(from: gtk_editable_get_text(ptr(entry))) ?? "").trimmingCharacters(in: .whitespaces)
+    }
+
+    private func clear() {
+        if !query.isEmpty {
+            gtk_editable_set_text(ptr(entry), "")
+        }
+        debouncer.cancel()
+        show(ids: [], total: 0, query: "")
     }
 
     private func schedule() {
-        let query = (string(from: gtk_editable_get_text(ptr(entry))) ?? "").trimmingCharacters(in: .whitespaces)
+        let query = self.query
         guard !query.isEmpty, let snapshot = model.snapshot else {
             debouncer.cancel()
-            show(ids: [], total: 0, query: query)
+            show(ids: [], total: 0, query: "")
             return
         }
+        gtk_stack_set_visible_child_name(ptr(stack), "results")
         let snapshotID = snapshot.id
         // A large scan's index can still be building; say so rather than
         // show an empty list.
@@ -103,13 +133,16 @@ final class SearchPopover {
             let matches = await Task.detached(priority: .userInitiated) {
                 FuzzyMatcher.topMatches(query: query, entries: entries, limit: limit) { $0.id != rootID }
             }.value
-            guard !Task.isCancelled, self.model.snapshot?.id == snapshotID else { return }
+            guard !Task.isCancelled, self.model.snapshot?.id == snapshotID, self.query == query else { return }
             self.show(ids: matches.ids, total: matches.totalMatches, query: query)
         }
     }
 
     private func show(ids: [String], total: Int, query: String) {
+        gtk_stack_set_visible_child_name(ptr(stack), query.isEmpty ? "outline" : "results")
+        isSyncingSelection = true
         gtk_list_box_remove_all(ptr(results))
+        isSyncingSelection = false
         resultIDs = ids
         if query.isEmpty {
             gtk_label_set_text(ptr(caption), "")
@@ -134,7 +167,24 @@ final class SearchPopover {
             let content = Widgets.box(GTK_ORIENTATION_VERTICAL, spacing: 2, classes: ["neodisk-stats-row"], [top, path])
             let row = raw(gtk_list_box_row_new())!
             gtk_list_box_row_set_child(ptr(row), ptr(content))
+            gtk_widget_set_tooltip_text(ptr(row), node.path)
             gtk_list_box_append(ptr(results), ptr(row))
         }
+        syncSelection(model.selectedNodeID)
+    }
+
+    /// Keeps the picked match highlighted, and drops the highlight when the
+    /// selection moves elsewhere.
+    private func syncSelection(_ nodeID: String?) {
+        let currentIndex = gtk_list_box_get_selected_row(ptr(results)).map { Int(gtk_list_box_row_get_index($0)) }
+        let wanted = nodeID.flatMap { id in resultIDs.firstIndex(of: id) }
+        guard currentIndex != wanted else { return }
+        isSyncingSelection = true
+        if let wanted {
+            gtk_list_box_select_row(ptr(results), gtk_list_box_get_row_at_index(ptr(results), Int32(wanted)))
+        } else {
+            gtk_list_box_unselect_all(ptr(results))
+        }
+        isSyncingSelection = false
     }
 }

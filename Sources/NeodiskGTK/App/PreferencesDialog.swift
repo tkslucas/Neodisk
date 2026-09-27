@@ -36,12 +36,6 @@ enum PreferencesDialog {
         adw_preferences_page_add(ptr(viewPage), ptr(appearance))
 
         let treemap = group(L("Treemap"))
-        let styles = TreemapStyle.allCases
-        addCombo(to: treemap, title: L("Style"), subtitle: L("Cushion shading or flat nested boxes"),
-                 items: [L("Cushion"), L("Flat")],
-                 selected: styles.firstIndex(of: preferences.treemapStyle) ?? 0) { index in
-            preferences.treemapStyle = styles[index]
-        }
         addSwitch(to: treemap, title: L("Show Free Space"),
                   subtitle: L("Draw a volume's free space as a block of its own"),
                   isOn: preferences.showFreeSpace) { preferences.showFreeSpace = $0 }

@@ -403,7 +403,6 @@
 "Color Palette" = "调色板";
 "Computer" = "计算机";
 "Count folders with very many small files as one item, for faster scans" = "将包含大量小文件的文件夹计为一个项目，以加快扫描";
-"Cushion shading or flat nested boxes" = "枕状阴影或扁平嵌套方块";
 "Dot files and folders, like ~/.cache and ~/.local" = "以点开头的文件和文件夹，例如 ~/.cache 和 ~/.local";
 "Draw a volume's free space as a block of its own" = "将宗卷的可用空间绘制为单独的区块";
 "Finished scans are kept so locations reopen instantly and changes can be compared." = "已完成的扫描会被保留，以便位置可以即时重新打开并比较更改。";

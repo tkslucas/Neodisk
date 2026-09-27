@@ -50,6 +50,8 @@ final class MainWindow {
 
         window = raw(adw_application_window_new(ptr(application)))!
         gtk_window_set_default_size(ptr(window), Int32(preferences.windowWidth), Int32(preferences.windowHeight))
+        // Breakpoints need a floor to collapse the layout against.
+        gtk_widget_set_size_request(ptr(window), 640, 480)
         gtk_window_set_title(ptr(window), "Neodisk")
 
         sidebar = SidebarView(model: model)
@@ -133,7 +135,7 @@ final class MainWindow {
         gtk_paned_set_end_child(ptr(workspacePaned), ptr(statistics.widget))
         gtk_paned_set_resize_end_child(ptr(workspacePaned), gbool(false))
         gtk_paned_set_shrink_end_child(ptr(workspacePaned), gbool(false))
-        gtk_paned_set_position(ptr(workspacePaned), Int32(max(480, preferences.windowWidth - 280 - 340)))
+        gtk_paned_set_position(ptr(workspacePaned), Int32(max(480, preferences.windowWidth - 280 - 360)))
 
         let emptyState = raw(adw_status_page_new())!
         adw_status_page_set_icon_name(ptr(emptyState), "drive-harddisk-symbolic")

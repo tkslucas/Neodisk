@@ -64,7 +64,7 @@ final class StatisticsView {
         Self.addPage(stack, Widgets.scrolled(ageList), name: AnalysisTab.age.rawValue, title: AnalysisTab.age.title, icon: "document-open-recent-symbolic")
 
         widget = Widgets.box(GTK_ORIENTATION_VERTICAL, [switcher, summaryLabel, stack])
-        gtk_widget_set_size_request(ptr(widget), 280, -1)
+        gtk_widget_set_size_request(ptr(widget), 310, -1)
         attach(self, to: widget, key: "neodisk-statistics")
 
         connectNotify(stack, "visible-child-name") { [unowned self] in

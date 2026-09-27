@@ -62,7 +62,9 @@ nonisolated final class TreeStorage: Sendable {
         self.parentIndices = parentIndices
         self.childStarts = childStarts
         self.childSlots = childSlots
-        self.indexByID = indexByID
+        // The index reads its keys from these nodes instead of holding
+        // its own copies (value v is always nodes[v]).
+        self.indexByID = indexByID.attached(to: nodes)
         self.nodeHashes = nodeHashes
     }
 
@@ -190,8 +192,7 @@ nonisolated final class TreeStorage: Sendable {
         var stack: [(record: FileNodeRecord, parent: Int32)] = [(root, -1)]
         while let (record, parent) = stack.popLast() {
             let index = Int32(nodes.count)
-            if let existing = indexByID.updateValue(index, forKey: record.id) {
-                indexByID[record.id] = existing
+            if indexByID.insertIfAbsent(index, forKey: record.id) != nil {
                 continue
             }
             nodes.append(record)

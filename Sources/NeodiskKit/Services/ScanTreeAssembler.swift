@@ -499,10 +499,9 @@ nonisolated enum ScanTreeAssembler {
                 childReferences = []
             }
             let index = Int32(nodes.count)
-            if let existing = indexByID.updateValue(index, forKey: record.id) {
+            if indexByID.insertIfAbsent(index, forKey: record.id) != nil {
                 // Should be impossible (phase 1 dedupes by path); drop the
                 // duplicate subtree and keep the first occurrence.
-                indexByID[record.id] = existing
                 callbacks.warning(ScanWarningFactory.makeDuplicateNodeWarning(for: record.url))
                 continue
             }

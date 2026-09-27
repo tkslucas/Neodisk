@@ -47,4 +47,49 @@ import Testing
             #expect(built.index.lookup(hash: built.hashes[offset], id: node.id) == Int32(offset))
         }
     }
+
+    @Test func testGrowingPastInitialCapacityKeepsEveryKey() {
+        var index = NodeIDIndex()
+        let ids = (0..<5_000).map { "/grow/\($0)" }
+        for (value, id) in ids.enumerated() {
+            #expect(index.updateValue(Int32(value), forKey: id) == nil)
+        }
+        for (value, id) in ids.enumerated() {
+            #expect(index[id] == Int32(value))
+        }
+        #expect(index["/grow/missing"] == nil)
+    }
+
+    @Test func testInsertIfAbsentKeepsTheFirstOccurrence() {
+        var index = NodeIDIndex()
+        #expect(index.insertIfAbsent(0, forKey: "/dup") == nil)
+        #expect(index.insertIfAbsent(1, forKey: "/dup") == 0)
+        #expect(index["/dup"] == 0)
+    }
+
+    @Test func testAttachedIndexReadsKeysFromTheNodes() throws {
+        let nodes = [
+            makeTestDirectoryNode(id: "/root", name: "root", children: []),
+            makeTestFileNode(id: "/root/a.txt", name: "a.txt", size: 1),
+        ]
+        var index = NodeIDIndex()
+        index["/root"] = 0
+        index["/root/a.txt"] = 1
+        let attached = index.attached(to: nodes)
+        #expect(attached["/root/a.txt"] == 1)
+        #expect(attached["/root"] == 0)
+        // Editing an attached index detaches it without losing keys.
+        var edited = attached
+        edited["/root/b.txt"] = 2
+        #expect(edited["/root/a.txt"] == 1)
+        #expect(edited["/root/b.txt"] == 2)
+    }
+
+    @Test func testBuildingRejectsDuplicateIDs() {
+        let nodes = [
+            makeTestFileNode(id: "/same", name: "same", size: 1),
+            makeTestFileNode(id: "/same", name: "same", size: 2),
+        ]
+        #expect(NodeIDIndex.building(from: nodes) == nil)
+    }
 }

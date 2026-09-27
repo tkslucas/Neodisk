@@ -54,6 +54,8 @@ final class SunburstView: CanvasDelegate {
     private var hoverPoint: CGPoint?
     private var centerLayouts: (title: GObjectRef, detail: GObjectRef, key: String)?
     private var contextMenu: GPtr?
+    private var pinchDrill = PinchDrillRecognizer()
+    private let scrollDrill = ScrollDrillLatch()
     private var tokens: [ObservationToken] = []
 
     init(model: AppModel) {
@@ -280,6 +282,39 @@ final class SunburstView: CanvasDelegate {
         }
         gtk_widget_add_controller(ptr(widget), ptr(click))
 
+        // As on the Mac, a pinch drills one level (spread over an arc opens
+        // it, squeeze goes up) and latches until the fingers lift. Ctrl+scroll
+        // does the same for a mouse, or for X11, which delivers no pinch.
+        let zoom = raw(gtk_gesture_zoom_new())!
+        connectPointer(zoom, "begin") { [unowned self] _ in
+            self.pinchDrill.begin()
+        }
+        connectDouble(zoom, "scale-changed") { [unowned self] scale in
+            var x = 0.0
+            var y = 0.0
+            gtk_gesture_get_bounding_box_center(ptr(zoom), &x, &y)
+            if let direction = self.pinchDrill.update(ratio: scale) {
+                self.drill(direction, at: CGPoint(x: x, y: y))
+            }
+        }
+        connectPointer(zoom, "end") { [unowned self] _ in
+            self.pinchDrill.end()
+        }
+        gtk_widget_add_controller(ptr(widget), ptr(zoom))
+
+        let scroll = raw(gtk_event_controller_scroll_new(
+            GtkEventControllerScrollFlags(rawValue: GTK_EVENT_CONTROLLER_SCROLL_VERTICAL.rawValue)
+        ))!
+        connectScroll(scroll) { [unowned self] _, dy in
+            let state = gtk_event_controller_get_current_event_state(ptr(scroll))
+            guard state.rawValue & GDK_CONTROL_MASK.rawValue != 0 else { return false }
+            if let direction = self.scrollDrill.feed(dy: dy, unit: gtk_event_controller_scroll_get_unit(ptr(scroll))) {
+                self.drill(direction, at: self.hoverPoint)
+            }
+            return true
+        }
+        gtk_widget_add_controller(ptr(widget), ptr(scroll))
+
         let keys = raw(gtk_event_controller_key_new())!
         connectKey(keys) { [unowned self] keyval, _ in
             self.handleKey(keyval)
@@ -319,6 +354,20 @@ final class SunburstView: CanvasDelegate {
             model.select(nodeID)
         default:
             break
+        }
+    }
+
+    /// A pinch or Ctrl+scroll drill: into the arc under the point (a file's
+    /// folder, or a "smaller items" arc's), or up one level.
+    private func drill(_ direction: SunburstPinchDirection, at point: CGPoint?) {
+        switch direction {
+        case .drillIn:
+            guard let point, !isInCenter(point), let segment = segment(at: point),
+                  !segment.isFreeSpace, !segment.isHiddenSpace,
+                  let nodeID = segment.isAggregate ? segment.parentFolderID : segment.nodeID else { return }
+            model.drillIn(to: nodeID)
+        case .drillOut:
+            model.focusOut()
         }
     }
 

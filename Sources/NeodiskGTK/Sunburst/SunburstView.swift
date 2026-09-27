@@ -9,6 +9,12 @@
 //  pointer movement never repaints thousands of arcs. The center shows the
 //  folder the chart is drilled into; clicking it drills back out.
 //
+//  Drilling plays the Mac's zoom (NeodiskAppModel's SunburstZoomTransition
+//  over SunburstCore's geometry): the drilled arc sweeps open into the
+//  center while its descendants move in a ring, and zooming out plays it
+//  in reverse. Those frames draw the remapped arcs as GskPaths each frame,
+//  then hand off to the new layout's raster, which they match exactly.
+//
 
 import CGtk
 import Foundation
@@ -56,6 +62,9 @@ final class SunburstView: CanvasDelegate {
     private var contextMenu: GPtr?
     private var pinchDrill = PinchDrillRecognizer()
     private let scrollDrill = ScrollDrillLatch()
+    /// The drill animation in progress, if any.
+    private var zoom: SunburstZoomTransitionState?
+    private var zoomTickID: UInt32 = 0
     private var tokens: [ObservationToken] = []
 
     init(model: AppModel) {
@@ -80,6 +89,9 @@ final class SunburstView: CanvasDelegate {
         tokens.append(track { [unowned self] in
             _ = self.model.selectedNodeID
             self.canvas.queueDraw()
+        })
+        tokens.append(track { [unowned self] in
+            self.focusDidChange(to: self.model.focusedRootID)
         })
         connectNotify(adw_style_manager_get_default().map { GPtr($0) }, "dark") { [unowned self] in
             self.requestRender()
@@ -162,6 +174,7 @@ final class SunburstView: CanvasDelegate {
                     texture: texture,
                     renderedIDs: Set(rendered.0.compactMap(\.nodeID))
                 )
+                self.zoomLayoutDidLand()
                 self.canvas.queueDraw()
             }
             self.resolveHover()
@@ -179,6 +192,15 @@ final class SunburstView: CanvasDelegate {
 
     func canvas(_ canvas: Canvas, snapshot: GPtr, width: Double, height: Double) {
         guard let frame else { return }
+        if let zoom {
+            let presentation = SunburstZoomPresentation(state: zoom, now: Date())
+            if presentation.isFinished {
+                endZoom()
+            } else {
+                drawZoom(zoom, presentation, into: snapshot, size: CGSize(width: width, height: height), inputs: frame.inputs)
+                return
+            }
+        }
         let size = frame.inputs.size
         // A resize in progress stretches the last frame until the new one lands.
         Snapshot.texture(snapshot, frame.texture.pointer, in: CGRect(x: 0, y: 0, width: width, height: height))
@@ -329,6 +351,8 @@ final class SunburstView: CanvasDelegate {
     }
 
     private func handlePress(button: UInt32, presses: Int, at point: CGPoint) {
+        // The chart is moving: nothing under the pointer is where it looks.
+        guard zoom == nil else { return }
         if isInCenter(point) {
             if button == 1 { model.focusOut() }
             return
@@ -354,6 +378,130 @@ final class SunburstView: CanvasDelegate {
             model.select(nodeID)
         default:
             break
+        }
+    }
+
+    // MARK: - Drill animation
+
+    /// Starts the drill zoom when the chart moves to a different root in
+    /// the same tree, as on the Mac: drilling in animates the outgoing
+    /// layout at once; zooming out waits for the parent layout to land and
+    /// plays the reverse. Anything else (a new tree, an unrendered target,
+    /// animations turned off) just swaps.
+    private func focusDidChange(to rootID: String?) {
+        guard let frame, let rootID, let store = model.store,
+              frame.inputs.storeGeneration == model.storeGeneration,
+              frame.inputs.rootID != rootID,
+              gtk_widget_get_mapped(ptr(canvas.widget)) != 0,
+              Self.animationsEnabled else {
+            endZoom()
+            return
+        }
+        let previousRootID = frame.inputs.rootID
+        if let focus = frame.segments.first(where: { $0.nodeID == rootID && !$0.isAggregate }) {
+            zoom = .zoomIn(segments: frame.segments, focus: focus)
+        } else if store.isAncestor(rootID, of: previousRootID) {
+            zoom = .zoomOut(previousSegments: frame.segments, previousRootID: previousRootID)
+        } else {
+            endZoom()
+            return
+        }
+        hoveredSegment = nil
+        if zoomTickID == 0 {
+            zoomTickID = addTickCallback(canvas.widget) { [weak self] _ in
+                guard let self, self.zoom != nil else {
+                    self?.zoomTickID = 0
+                    return false
+                }
+                self.canvas.queueDraw()
+                return true
+            }
+        }
+    }
+
+    /// The drilled layout is on screen: zoom-in can reveal it; zoom-out
+    /// finds the old root in it and starts the reverse motion (or skips the
+    /// animation when that root has no arc there).
+    private func zoomLayoutDidLand() {
+        guard var transition = zoom, transition.layoutReadyDate == nil, let frame,
+              frame.inputs.rootID == model.focusedRootID else { return }
+        switch transition.direction {
+        case .zoomIn:
+            guard let focus = transition.focus else {
+                endZoom()
+                return
+            }
+            transition.incomingSegments = frame.segments
+            transition.handoffFadeDepthThreshold = SunburstZoomTransitionState.handoffFadeDepthThreshold(
+                animatedSegments: transition.animatedSegments,
+                focus: focus
+            )
+        case .zoomOut:
+            guard let previousRootID = transition.previousRootID,
+                  let focus = frame.segments.first(where: { $0.nodeID == previousRootID && !$0.isAggregate }) else {
+                endZoom()
+                return
+            }
+            transition.animatedSegments = frame.segments
+            transition.focus = focus
+            transition.handoffFadeDepthThreshold = SunburstZoomTransitionState.handoffFadeDepthThreshold(
+                animatedSegments: frame.segments,
+                focus: focus
+            )
+        }
+        transition.layoutReadyDate = Date()
+        zoom = transition
+    }
+
+    private func endZoom() {
+        guard zoom != nil || zoomTickID != 0 else { return }
+        zoom = nil
+        if zoomTickID != 0 {
+            gtk_widget_remove_tick_callback(ptr(canvas.widget), zoomTickID)
+            zoomTickID = 0
+        }
+        canvas.queueDraw()
+        resolveHover()
+    }
+
+    /// GTK's "enable animations" setting (off under reduced motion).
+    private static var animationsEnabled: Bool {
+        guard let settings = gtk_settings_get_default() else { return true }
+        var value = GValue()
+        g_value_init(&value, neodisk_boolean_type())
+        defer { g_value_unset(&value) }
+        g_object_get_property(ptr(raw(settings)), "gtk-enable-animations", &value)
+        return g_value_get_boolean(&value) != 0
+    }
+
+    /// One frame of the drill: one scene per phase, exactly as the Mac's
+    /// transition canvas draws it.
+    private func drawZoom(
+        _ zoom: SunburstZoomTransitionState,
+        _ presentation: SunburstZoomPresentation,
+        into snapshot: GPtr,
+        size: CGSize,
+        inputs: Inputs
+    ) {
+        let painter = ArcPainter(geometry: SunburstGeometry(size: size), palette: inputs.style.palette, isDark: inputs.isDark)
+        let metrics = SunburstRingMetrics(depthLimit: Self.depthLimit)
+        switch presentation.phase {
+        case .zooming(let progress):
+            guard let focus = zoom.focus else { return }
+            painter.drawRemapped(snapshot, zoom.animatedSegments, focus: focus, progress: progress, metrics: metrics)
+        case .revealingIncoming(let alpha):
+            painter.drawIdentity(snapshot, zoom.incomingSegments, deepRingAlpha: alpha, deeperThan: zoom.handoffFadeDepthThreshold)
+        case .holdingPrevious:
+            painter.drawIdentity(snapshot, zoom.previousSegments, deepRingAlpha: 1, deeperThan: .max)
+        case .fadingOrphans(let alpha):
+            if let focus = zoom.focus {
+                painter.drawRemapped(snapshot, zoom.animatedSegments, focus: focus, progress: 1, metrics: metrics)
+            }
+            // The orphaned rings sit in a band the remap leaves empty.
+            painter.drawIdentity(
+                snapshot, zoom.previousSegments, deepRingAlpha: alpha,
+                deeperThan: zoom.handoffFadeDepthThreshold, onlyDeepRings: true
+            )
         }
     }
 
@@ -439,28 +587,32 @@ struct SunburstGeometry {
         maxRadius = min(size.width, size.height) / 2
     }
 
-    func seamAngles(_ segment: SunburstSegment) -> (start: Double, end: Double) {
-        let (start, end) = SunburstArcGeometry.seamInsetAngles(
-            startRadians: segment.startAngle,
-            endRadians: segment.endAngle,
-            innerRadius: segment.innerRadius,
-            outerRadius: segment.outerRadius
-        )
-        return (start - .pi / 2, end - .pi / 2)
-    }
-
     func point(radius: Double, angle: Double) -> (Float, Float) {
         (Float(center.x + radius * cos(angle)), Float(center.y + radius * sin(angle)))
     }
 
-    /// The arc as a GskPath; spans over half a turn are split so every SVG
-    /// arc command stays well-defined.
+    /// The segment's arc as a GskPath.
     @MainActor
     func path(for segment: SunburstSegment) -> OpaquePointer? {
-        let (start, end) = seamAngles(segment)
+        path(for: SunburstZoomGeometry.identityArc(for: segment))
+    }
+
+    /// An arc (angles from the layout, radii as fractions of the chart) as
+    /// a GskPath, with the layout's seams; spans over half a turn are split
+    /// so every SVG arc command stays well-defined.
+    @MainActor
+    func path(for arc: SunburstZoomArc) -> OpaquePointer? {
+        let (seamStart, seamEnd) = SunburstArcGeometry.seamInsetAngles(
+            startRadians: arc.startRadians,
+            endRadians: arc.endRadians,
+            innerRadius: arc.innerRadius,
+            outerRadius: arc.outerRadius
+        )
+        let start = seamStart - .pi / 2
+        let end = seamEnd - .pi / 2
         guard end > start else { return nil }
-        let outer = maxRadius * segment.outerRadius
-        let inner = maxRadius * segment.innerRadius
+        let outer = maxRadius * arc.outerRadius
+        let inner = maxRadius * arc.innerRadius
         let builder = gsk_path_builder_new()
         let steps = end - start > .pi ? 2 : 1
         let step = (end - start) / Double(steps)
@@ -527,7 +679,7 @@ struct SunburstRaster: Sendable {
             cairo_scale(cairo, scale, scale)
             let center = (x: size.width / 2, y: size.height / 2)
             let maxRadius = min(size.width, size.height) / 2
-            let separator: (Double, Double, Double, Double) = isDark ? (1, 1, 1, 0.08) : (0, 0, 0, 0.1)
+            let separator = separatorRGBA(isDark: isDark)
             for segment in segments {
                 let (seamStart, seamEnd) = SunburstArcGeometry.seamInsetAngles(
                     startRadians: segment.startAngle,
@@ -542,10 +694,10 @@ struct SunburstRaster: Sendable {
                 cairo_arc(cairo, center.x, center.y, maxRadius * segment.outerRadius, start, end)
                 cairo_arc_negative(cairo, center.x, center.y, maxRadius * segment.innerRadius, end, start)
                 cairo_close_path(cairo)
-                let (rgb, opacity) = fill(for: segment, palette: palette, isDark: isDark)
+                let (rgb, opacity) = fill(for: segment, depth: Double(segment.depth), palette: palette, isDark: isDark)
                 cairo_set_source_rgba(cairo, Double(rgb.x), Double(rgb.y), Double(rgb.z), opacity)
                 cairo_fill_preserve(cairo)
-                cairo_set_source_rgba(cairo, separator.0, separator.1, separator.2, separator.3)
+                cairo_set_source_rgba(cairo, Double(separator.red), Double(separator.green), Double(separator.blue), Double(separator.alpha))
                 cairo_set_line_width(cairo, 1)
                 cairo_stroke(cairo)
             }
@@ -553,7 +705,9 @@ struct SunburstRaster: Sendable {
         return SunburstRaster(pixels: pixels, width: width, height: height, stride: stride)
     }
 
-    private nonisolated static func fill(for segment: SunburstSegment, palette: VizPalette, isDark: Bool) -> (SIMD3<Float>, Double) {
+    /// Fill color and opacity; `depth` is fractional while a drill moves
+    /// a ring, so its shade blends instead of popping at the handoff.
+    nonisolated static func fill(for segment: SunburstSegment, depth: Double, palette: VizPalette, isDark: Bool) -> (SIMD3<Float>, Double) {
         switch segment.colorToken.role {
         case .freeSpace:
             return (SIMD3(0.56, 0.56, 0.58), 0.34)
@@ -563,9 +717,78 @@ struct SunburstRaster: Sendable {
             return (isDark ? SIMD3(0.6, 0.6, 0.62) : SIMD3(0.45, 0.45, 0.47), 0.22)
         default:
             let rgb = segment.fillRGB ?? SunburstColorResolver.rgb(for: segment.colorToken, palette: palette.sunburst)
-            let opacity = max(0.24, 0.78 - Double(segment.depth) * 0.09 - (segment.isAggregate ? 0.16 : 0))
+            let opacity = max(0.24, 0.78 - depth * 0.09 - (segment.isAggregate ? 0.16 : 0))
             return (rgb, opacity)
         }
+    }
+}
+
+extension SunburstRaster {
+    /// The hairline between arcs.
+    nonisolated static func separatorRGBA(isDark: Bool) -> RGBA {
+        isDark ? RGBA(red: 1, green: 1, blue: 1, alpha: 0.08) : RGBA(red: 0, green: 0, blue: 0, alpha: 0.1)
+    }
+}
+
+/// Paints arcs as GskPaths with the raster's styling, for the frames of a
+/// drill animation (the raster is painted once per layout; these move).
+@MainActor
+private struct ArcPainter {
+    let geometry: SunburstGeometry
+    let palette: VizPalette
+    let isDark: Bool
+
+    func drawRemapped(
+        _ snapshot: GPtr,
+        _ segments: [SunburstSegment],
+        focus: SunburstSegment,
+        progress: Double,
+        metrics: SunburstRingMetrics
+    ) {
+        for segment in segments {
+            let opacity = SunburstZoomGeometry.opacity(for: segment, focus: focus, rawProgress: progress)
+            guard opacity > 0.001 else { continue }
+            draw(
+                snapshot, segment,
+                arc: SunburstZoomGeometry.arc(for: segment, focus: focus, progress: progress, metrics: metrics),
+                depth: SunburstZoomGeometry.effectiveDepth(for: segment, focus: focus, progress: progress),
+                opacity: opacity
+            )
+        }
+    }
+
+    func drawIdentity(
+        _ snapshot: GPtr,
+        _ segments: [SunburstSegment],
+        deepRingAlpha: Double,
+        deeperThan threshold: Int,
+        onlyDeepRings: Bool = false
+    ) {
+        for segment in segments {
+            let isDeep = segment.depth > threshold
+            if onlyDeepRings, !isDeep { continue }
+            let opacity = isDeep ? deepRingAlpha : 1
+            guard opacity > 0.001 else { continue }
+            draw(
+                snapshot, segment,
+                arc: SunburstZoomGeometry.identityArc(for: segment),
+                depth: Double(segment.depth),
+                opacity: opacity
+            )
+        }
+    }
+
+    private func draw(_ snapshot: GPtr, _ segment: SunburstSegment, arc: SunburstZoomArc, depth: Double, opacity: Double) {
+        guard arc.isDrawable, let path = geometry.path(for: arc) else { return }
+        defer { gsk_path_unref(path) }
+        let (rgb, fillOpacity) = SunburstRaster.fill(for: segment, depth: depth, palette: palette, isDark: isDark)
+        var fill = RGBA(rgb).withAlpha(Float(fillOpacity * opacity)).gdk
+        gtk_snapshot_append_fill(ptr(snapshot), path, GSK_FILL_RULE_WINDING, &fill)
+        let separator = SunburstRaster.separatorRGBA(isDark: isDark)
+        var stroke = separator.withAlpha(separator.alpha * Float(opacity)).gdk
+        let strokeStyle = gsk_stroke_new(1)
+        defer { gsk_stroke_free(strokeStyle) }
+        gtk_snapshot_append_stroke(ptr(snapshot), path, strokeStyle, &stroke)
     }
 }
 

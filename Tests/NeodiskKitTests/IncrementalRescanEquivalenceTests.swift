@@ -485,6 +485,7 @@ struct IncrementalRescanEquivalenceTests {
 
     // MARK: - Synthesizer fidelity vs the real kernel stream
 
+    #if canImport(CoreServices)
     /// The oracle only proves anything if its synthesized events are not MORE
     /// generous than the events the real fseventsd journal actually delivers:
     /// if the synthesizer named directories the kernel wouldn't, the oracle
@@ -583,6 +584,7 @@ struct IncrementalRescanEquivalenceTests {
         ))
         #expect(missing.isEmpty, "synthesizer relists directories the real journal does not: \(missing.sorted())")
     }
+    #endif
 
     // MARK: - Tests
 

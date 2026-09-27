@@ -19,6 +19,7 @@ import Testing
         return data
     }
 
+    #if canImport(Compression)
     @Test func streamedPayloadMatchesNSDataLZFSE() throws {
         let payload = makePayload(recordCount: 120_000)
         #expect(payload.count > 4 << 20)
@@ -30,6 +31,7 @@ import Testing
         #expect(streamed == reference)
         #expect(try ScanSnapshotCodec.decompressPayload(streamed) == payload)
     }
+    #endif
 
     @Test func appendsAfterExistingBytes() throws {
         let payload = makePayload(recordCount: 500)

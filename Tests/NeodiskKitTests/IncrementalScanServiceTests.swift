@@ -897,6 +897,7 @@ struct IncrementalScanServiceTests {
         #expect(rescanned.scanWarnings.contains(keptWarning))
     }
 
+    #if canImport(CoreServices)
     /// Whole chain against the real fseventsd journal: capture → mutate →
     /// replay → plan → splice. Self-skips when the volume has no usable
     /// journal (the checkpoint capture fails). The journal write is
@@ -936,6 +937,7 @@ struct IncrementalScanServiceTests {
         }
         Issue.record("the journal never surfaced the mutation within the deadline")
     }
+    #endif
 
     @Test func cancellationEndsStreamWithoutFinished() async throws {
         let root = try makeTemporaryTree()

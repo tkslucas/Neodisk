@@ -122,6 +122,9 @@ struct FileSystemEventHistory: Sendable {
 /// Why the incremental path refused a checkpoint or replay. Every case is a
 /// silent fall-back-to-full-scan, never a user-facing error.
 enum FileSystemEventHistoryError: Error, Equatable {
+    /// The platform keeps no persistent change journal to replay (Linux:
+    /// inotify/fanotify only see changes while a watcher runs).
+    case unsupportedPlatform
     /// The target's volume is not MNT_LOCAL (network mounts have no
     /// trustworthy journal).
     case nonLocalVolume

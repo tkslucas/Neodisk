@@ -208,6 +208,7 @@ import Foundation
         #expect(originalIdentity == hardlink.fileIdentity)
     }
 
+    #if canImport(Darwin)
     @Test func testHiddenClassificationMatchesFileManager() throws {
         let rootURL = try makeBulkTestDirectory()
         defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -239,7 +240,9 @@ import Foundation
         )
         #expect(visibleByBulk == visibleByFileManager)
     }
+    #endif
 
+    #if canImport(Darwin)
     @Test func testPackageClassificationMatchesResourceValues() throws {
         let rootURL = try makeBulkTestDirectory()
         defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -259,6 +262,7 @@ import Foundation
             #expect(bulkVerdict == expected, "package mismatch for \(name)")
         }
     }
+    #endif
 
     @Test func testUnicodeAndManyEntriesSurviveBatching() throws {
         let rootURL = try makeBulkTestDirectory()
@@ -276,6 +280,7 @@ import Foundation
         #expect(children.values.allSatisfy { $0.metadata?.logicalSize == 1 })
     }
 
+    #if canImport(Darwin)
     @Test func testSizesAndCountsMatchResourceValuesAcrossRealDirectory() throws {
         // A real system directory exercises attribute combinations a synthetic
         // fixture can't (packages, odd flags, varying sizes).
@@ -309,6 +314,7 @@ import Foundation
         }
         #expect(comparedCount > 10)
     }
+    #endif
 
     /// End-to-end pin: a full scan through the bulk path must produce the
     /// same tree (IDs, sizes, counts, package handling, dedup) as the

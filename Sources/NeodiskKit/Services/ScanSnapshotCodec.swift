@@ -8,12 +8,12 @@
 //
 
 import Foundation
-import Compression
 
 /// Encodes a complete `ScanSnapshot` to a self-contained binary blob:
 ///
 ///     magic (4) · version (4) · metadata length (4) · metadata JSON
-///     payload — LZFSE-compressed in version 2, raw in version 1:
+///     payload — compressed in version 2+ (LZFSE on Apple platforms, zstd
+///     on Linux; see SnapshotPayloadCompression.swift), raw in version 1:
 ///         warning count (4) · warnings
 ///         node records in depth-first preorder, each carrying its child count
 ///
@@ -352,78 +352,6 @@ nonisolated enum ScanSnapshotCodec {
             scanOptions: metadata.scanOptions,
             incrementalCheckpoint: metadata.incrementalCheckpoint
         )
-    }
-
-    /// LZFSE-compresses `payload` onto the end of `output` through
-    /// `compression_stream`, in 1 MB output chunks. The bytes are identical
-    /// to `NSData.compressed(using: .lzfse)` (the same raw LZFSE stream the
-    /// decoder reads), but that API is several times slower on large
-    /// payloads — ~8 s against ~1.6 s for a 109 MB, 1.67M-node payload —
-    /// and it offers no cancellation point; this checks between chunks.
-    static func appendCompressedPayload(_ payload: Data, to output: inout Data) throws {
-        let chunkSize = 1 << 20
-        let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: chunkSize)
-        defer { buffer.deallocate() }
-        var stream = compression_stream(dst_ptr: buffer, dst_size: 0, src_ptr: UnsafePointer(buffer), src_size: 0, state: nil)
-        guard compression_stream_init(&stream, COMPRESSION_STREAM_ENCODE, COMPRESSION_LZFSE) != COMPRESSION_STATUS_ERROR else {
-            throw ScanSnapshotCacheError.corruptData("payload compression failed")
-        }
-        defer { compression_stream_destroy(&stream) }
-        try payload.withUnsafeBytes { source in
-            stream.src_ptr = source.bindMemory(to: UInt8.self).baseAddress ?? UnsafePointer(buffer)
-            stream.src_size = source.count
-            while true {
-                try Task.checkCancellation()
-                stream.dst_ptr = buffer
-                stream.dst_size = chunkSize
-                let status = compression_stream_process(&stream, Int32(COMPRESSION_STREAM_FINALIZE.rawValue))
-                guard status != COMPRESSION_STATUS_ERROR else {
-                    throw ScanSnapshotCacheError.corruptData("payload compression failed")
-                }
-                output.append(buffer, count: chunkSize - stream.dst_size)
-                if status == COMPRESSION_STATUS_END { return }
-            }
-        }
-    }
-
-    /// Bound untrusted output before allocating it. A streaming decoder also
-    /// checks cancellation between chunks instead of retaining obsolete work.
-    static func decompressPayload(_ compressed: Data, maximumBytes: Int = 2 * 1024 * 1024 * 1024) throws -> Data {
-        let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: 64 * 1024)
-        defer { buffer.deallocate() }
-        var stream = compression_stream(dst_ptr: buffer, dst_size: 0, src_ptr: UnsafePointer(buffer), src_size: 0, state: nil)
-        guard compression_stream_init(&stream, COMPRESSION_STREAM_DECODE, COMPRESSION_LZFSE) != COMPRESSION_STATUS_ERROR else {
-            throw ScanSnapshotCacheError.corruptData("payload decompression failed")
-        }
-        defer { compression_stream_destroy(&stream) }
-        return try compressed.withUnsafeBytes { source in
-            guard let base = source.bindMemory(to: UInt8.self).baseAddress else {
-                throw ScanSnapshotCacheError.corruptData("empty compressed payload")
-            }
-            stream.src_ptr = base
-            stream.src_size = source.count
-            var output = Data()
-            while true {
-                try Task.checkCancellation()
-                stream.dst_ptr = buffer
-                stream.dst_size = 64 * 1024
-                let status = compression_stream_process(&stream, Int32(COMPRESSION_STREAM_FINALIZE.rawValue))
-                let produced = 64 * 1024 - stream.dst_size
-                guard status != COMPRESSION_STATUS_ERROR, produced <= maximumBytes - output.count else {
-                    throw ScanSnapshotCacheError.corruptData("invalid or oversized compressed payload")
-                }
-                output.append(buffer, count: produced)
-                if status == COMPRESSION_STATUS_END {
-                    guard stream.src_size == 0 else {
-                        throw ScanSnapshotCacheError.corruptData("trailing compressed payload bytes")
-                    }
-                    return output
-                }
-                guard produced > 0 else {
-                    throw ScanSnapshotCacheError.corruptData("truncated compressed payload")
-                }
-            }
-        }
     }
 
     /// Reads just the header of a cache file — enough for pruning and

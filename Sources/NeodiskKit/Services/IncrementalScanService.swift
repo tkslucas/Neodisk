@@ -24,9 +24,19 @@ public final class IncrementalScanService: Sendable {
     public convenience init() {
         self.init(
             engine: ScanEngine(),
-            historyProvider: DarwinFileSystemEventHistoryProvider(),
+            historyProvider: Self.platformHistoryProvider(),
             isEnabled: ProcessInfo.processInfo.environment["NEODISK_INCREMENTAL"] != "0"
         )
+    }
+
+    /// FSEvents on macOS; elsewhere there is no journal, so every rescan is
+    /// a full scan (`missingCheckpoint`).
+    private static func platformHistoryProvider() -> any FileSystemEventHistoryProviding {
+        #if canImport(CoreServices)
+        DarwinFileSystemEventHistoryProvider()
+        #else
+        UnsupportedFileSystemEventHistoryProvider()
+        #endif
     }
 
     init(

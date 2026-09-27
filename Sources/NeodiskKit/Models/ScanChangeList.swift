@@ -29,7 +29,11 @@
 //    added+deleted; hard-linked files (shared identity) are never matched.
 //
 
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+import Crypto
+#endif
 import Foundation
 
 /// One row of the changes list.

@@ -1,3 +1,4 @@
+#if canImport(CoreServices)
 import CoreServices
 import Foundation
 import Testing
@@ -148,3 +149,5 @@ import Testing
         }
     }
 }
+
+#endif

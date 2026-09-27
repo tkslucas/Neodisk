@@ -11,7 +11,11 @@
 //
 
 import Foundation
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 
 public nonisolated enum ScanSourceProfile: Sendable {
     /// Internal APFS is the one source class where broad directory parallelism
@@ -32,6 +36,7 @@ public nonisolated enum ScanSourceProfile: Sendable {
     /// device identity, so callers that need both (concurrency ruling) don't
     /// pay two syscalls. `deviceID` is nil only when the path can't be
     /// stat'd; the profile then falls back to `.unsupported`.
+    #if canImport(Darwin)
     static func probe(for url: URL) -> (profile: ScanSourceProfile, deviceID: UInt64?) {
         var fileSystemStats = statfs()
         let statResult = url.withUnsafeFileSystemRepresentation { path in
@@ -63,6 +68,59 @@ public nonisolated enum ScanSourceProfile: Sendable {
         let low = UInt64(UInt32(bitPattern: fsid.val.1))
         return high | low
     }
+    #elseif os(Linux)
+    /// Linux statfs reports no type name and no MNT_LOCAL flag, so the
+    /// profile comes from the mount table's type string: network
+    /// filesystems (FUSE included — usually sshfs/rclone) fan out poorly;
+    /// the mainstream local ones get the parallel profile unless the backing
+    /// block device is rotational or removable (sysfs); FAT/exFAT/NTFS —
+    /// typically USB sticks and dual-boot partitions — stay moderate.
+    static func probe(for url: URL) -> (profile: ScanSourceProfile, deviceID: UInt64?) {
+        var status = stat()
+        let statResult = url.withUnsafeFileSystemRepresentation { path -> Int32 in
+            guard let path else { return -1 }
+            return stat(path, &status)
+        }
+        guard statResult == 0 else { return (.unsupported, nil) }
+        let deviceID = UInt64(status.st_dev)
+        guard let fileSystemType = LinuxMountTable.fileSystemType(forPath: url.path) else {
+            return (.unsupported, deviceID)
+        }
+        switch LinuxFileSystemClass(fileSystemType: fileSystemType) {
+        case .network:
+            return (.network, deviceID)
+        case .foreign:
+            return (.localConservative, deviceID)
+        case .local, .memory:
+            return (isRotationalOrRemovable(device: status.st_dev) ? .localConservative : .localParallel, deviceID)
+        case .virtual:
+            return (.unsupported, deviceID)
+        }
+    }
+
+    /// Reads the backing block device's queue flags. Partitions keep them on
+    /// their parent disk; virtual devices (btrfs subvolumes, tmpfs, overlay
+    /// report major 0) have none and count as neither.
+    private static func isRotationalOrRemovable(device: dev_t) -> Bool {
+        let major = (device >> 8) & 0xfff | (device >> 32) & ~0xfff
+        let minor = device & 0xff | (device >> 12) & ~0xff
+        guard major != 0 else { return false }
+        let base = "/sys/dev/block/\(major):\(minor)"
+        func flag(_ relativePath: String) -> Bool? {
+            for candidate in ["\(base)/\(relativePath)", "\(base)/../\(relativePath)"] {
+                if let text = try? String(contentsOfFile: candidate, encoding: .utf8) {
+                    return text.trimmingCharacters(in: .whitespacesAndNewlines) == "1"
+                }
+            }
+            return nil
+        }
+        return flag("queue/rotational") == true || flag("removable") == true
+    }
+    #else
+    static func probe(for url: URL) -> (profile: ScanSourceProfile, deviceID: UInt64?) {
+        (.unsupported, nil)
+    }
+    #endif
 }
 
 /// A scan target's traversal profile paired with the physical device it lives
@@ -129,18 +187,41 @@ extension ScanSourceIdentity {
     }
 }
 
+/// Thermal pressure on the platform-neutral scale the policy derates by.
+/// Cases and raw values mirror `ProcessInfo.ThermalState`, which only Apple
+/// platforms report; elsewhere every sample reads `.nominal`.
+nonisolated enum ScanThermalState: Int, Sendable {
+    case nominal, fair, serious, critical
+
+    #if canImport(Darwin)
+    init(_ state: ProcessInfo.ThermalState) {
+        switch state {
+        case .nominal: self = .nominal
+        case .fair: self = .fair
+        case .serious: self = .serious
+        case .critical: self = .critical
+        @unknown default: self = .serious
+        }
+    }
+    #endif
+}
+
 /// A point-in-time sample of the power/thermal inputs that derate worker
 /// ceilings.
 nonisolated struct ScanThermalConditions: Sendable {
-    let thermalState: ProcessInfo.ThermalState
+    let thermalState: ScanThermalState
     let isLowPowerModeEnabled: Bool
 
     nonisolated static func current() -> ScanThermalConditions {
+        #if canImport(Darwin)
         let processInfo = ProcessInfo.processInfo
         return ScanThermalConditions(
-            thermalState: processInfo.thermalState,
+            thermalState: ScanThermalState(processInfo.thermalState),
             isLowPowerModeEnabled: processInfo.isLowPowerModeEnabled
         )
+        #else
+        return .nominal
+        #endif
     }
 
     nonisolated static let nominal = ScanThermalConditions(
@@ -212,8 +293,6 @@ nonisolated enum ScanConcurrencyPolicy {
             return 1
         case .fair, .nominal:
             return 2
-        @unknown default:
-            return 1
         }
     }
 
@@ -328,8 +407,6 @@ nonisolated enum ScanConcurrencyPolicy {
             limit = max(1, limit - 2)
         case .nominal:
             break
-        @unknown default:
-            break
         }
 
         return limit
@@ -355,8 +432,6 @@ nonisolated enum ScanConcurrencyPolicy {
             limit = max(1, limit - 1)
         case .nominal:
             break
-        @unknown default:
-            break
         }
 
         return limit
@@ -381,8 +456,6 @@ nonisolated enum ScanConcurrencyPolicy {
         case .fair:
             limit = max(1, limit - 1)
         case .nominal:
-            break
-        @unknown default:
             break
         }
 

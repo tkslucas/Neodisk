@@ -19,7 +19,11 @@
 //  miss a scan that already finished.
 //
 
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+import Crypto
+#endif
 import Foundation
 
 nonisolated enum ScanSnapshotCacheError: Error {

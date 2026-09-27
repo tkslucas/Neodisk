@@ -9,6 +9,9 @@
 //
 
 import Foundation
+#if canImport(Glibc)
+import Glibc
+#endif
 
 /// A volume's capacity figures, read in one call.
 ///
@@ -58,6 +61,9 @@ public struct VolumeSpaceInfo: Equatable, Sendable {
     /// Reads the volume containing `url`. Nil when the volume reports no
     /// total capacity (e.g. some network mounts).
     public static func load(for url: URL) -> VolumeSpaceInfo? {
+        #if os(Linux)
+        return loadStatvfs(for: url)
+        #else
         let values: URLResourceValues
         do {
             values = try url.resourceValues(forKeys: [
@@ -73,7 +79,32 @@ public struct VolumeSpaceInfo: Equatable, Sendable {
             availableCapacity: values.volumeAvailableCapacity,
             availableCapacityForImportantUsage: values.volumeAvailableCapacityForImportantUsage
         )
+        #endif
     }
+
+    #if os(Linux)
+    /// Linux has no purgeable space, but ext4 and friends reserve blocks for
+    /// root that are neither used nor available to the user. Following df,
+    /// "used" is allocated blocks and the capacity is used + available, so
+    /// the reserve never reads as used or hidden space and the percentage
+    /// matches df's Use% column.
+    private static func loadStatvfs(for url: URL) -> VolumeSpaceInfo? {
+        var stats = statvfs()
+        let result = url.withUnsafeFileSystemRepresentation { path -> Int32 in
+            guard let path else { return -1 }
+            return statvfs(path, &stats)
+        }
+        guard result == 0, stats.f_blocks > 0 else { return nil }
+        let fragmentSize = Int64(stats.f_frsize)
+        let used = Int64(stats.f_blocks - min(stats.f_bfree, stats.f_blocks)) * fragmentSize
+        let available = Int64(stats.f_bavail) * fragmentSize
+        return VolumeSpaceInfo(
+            totalCapacity: used + available,
+            availableCapacity: available,
+            strictlyFreeCapacity: available
+        )
+    }
+    #endif
 
     /// Assembles the info from raw resource values (separated from `load`
     /// for testability).

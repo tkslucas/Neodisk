@@ -16,7 +16,6 @@
 //
 
 import Foundation
-import os
 
 nonisolated enum ScanSyscallCategory: Sendable {
     /// The main iterative traversal (`bulkDirectoryEntries`).
@@ -49,7 +48,20 @@ nonisolated enum ScanSyscallTally {
 
     static let isEnabled = ProcessInfo.processInfo.environment["NEODISK_SCAN_SYSCALLS"] == "1"
 
-    private static let state = OSAllocatedUnfairLock(initialState: Counters())
+    private static let state = LockedCounters()
+
+    /// NSLock rather than OSAllocatedUnfairLock so the tally builds on every
+    /// platform; these runs measure syscall volume, not wall time.
+    private final class LockedCounters: @unchecked Sendable {
+        private let lock = NSLock()
+        private var counters = Counters()
+
+        func withLock<Result>(_ body: (inout Counters) -> Result) -> Result {
+            lock.lock()
+            defer { lock.unlock() }
+            return body(&counters)
+        }
+    }
 
     static func reset() {
         guard isEnabled else { return }

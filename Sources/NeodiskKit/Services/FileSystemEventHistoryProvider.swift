@@ -10,6 +10,7 @@
 //  leaving, so the planner and scan service stay CoreServices-free.
 //
 
+#if canImport(CoreServices)
 import CoreServices
 import Darwin
 import Dispatch
@@ -458,3 +459,5 @@ private final class FSEventStreamLifetime: @unchecked Sendable {
         FSEventStreamRelease(stream)
     }
 }
+
+#endif

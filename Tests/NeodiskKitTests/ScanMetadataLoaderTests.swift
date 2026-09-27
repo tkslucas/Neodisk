@@ -42,6 +42,9 @@ import Foundation
         #expect(metadata.fileIdentity == nil)
     }
 
+    // The injected probes exercise the URLResourceValues path; Linux
+    // reads every item with lstat instead (LinuxStat.metadata).
+    #if !os(Linux)
     @Test func testMissingLinkCountOnVolumeWithoutHardLinksSkipsLstatAfterProbe() throws {
         let rootURL = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -85,7 +88,11 @@ import Foundation
         #expect(counters.probeCount == 1)
         #expect(counters.lstatCount == 0)
     }
+    #endif
 
+    // The injected probes exercise the URLResourceValues path; Linux
+    // reads every item with lstat instead (LinuxStat.metadata).
+    #if !os(Linux)
     @Test func testMissingLinkCountOnHardLinkCapableVolumeStillUsesLstatWithCachedProbe() throws {
         let rootURL = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -132,7 +139,11 @@ import Foundation
         #expect(counters.probeCount == 1)
         #expect(counters.lstatCount == 2)
     }
+    #endif
 
+    // The injected probes exercise the URLResourceValues path; Linux
+    // reads every item with lstat instead (LinuxStat.metadata).
+    #if !os(Linux)
     @Test func testNoHardLinkProbeWithoutVolumeRootDoesNotCacheWholeRoot() throws {
         let rootWithoutVolumeURL = try makeTemporaryDirectory()
         let rootWithVolumeURL = try makeTemporaryDirectory()
@@ -186,6 +197,7 @@ import Foundation
         #expect(counters.probeCount == 2)
         #expect(counters.lstatCount == 1)
     }
+    #endif
 
     private func resourceValuesWithoutIdentity(for url: URL) throws -> URLResourceValues {
         try url.resourceValues(forKeys: [

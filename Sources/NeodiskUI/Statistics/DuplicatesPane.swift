@@ -12,6 +12,7 @@
 
 import SwiftUI
 import NeodiskKit
+import NeodiskAppModel
 
 struct DuplicatesPane: View {
     let model: NeodiskViewModel

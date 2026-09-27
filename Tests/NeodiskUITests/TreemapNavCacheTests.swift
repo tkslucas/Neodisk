@@ -14,6 +14,7 @@ import Testing
 import TreemapKit
 import NeodiskKit
 @testable import NeodiskUI
+@testable import NeodiskAppModel
 
 /// A random tree: nested folders with a heavy-tailed size mix, so scenes
 /// carry aggregates, flat containers, and undivided folders.

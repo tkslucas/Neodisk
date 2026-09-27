@@ -6,6 +6,7 @@
 import Foundation
 import Observation
 import NeodiskKit
+import NeodiskAppModel
 
 /// Modification-age statistics state: the bucket catalog (rebuilt lazily
 /// when the Age pane is on screen, with the same adaptive throttle as the

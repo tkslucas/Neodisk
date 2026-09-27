@@ -11,8 +11,9 @@
 import Foundation
 import SunburstCore
 import Testing
-import NeodiskKit
 @testable import NeodiskUI
+@testable import NeodiskAppModel
+import NeodiskKit
 
 @Suite struct SunburstMidpointColorTests {
     private func makeFolder(_ id: String, size: Int64) -> FileNodeRecord {

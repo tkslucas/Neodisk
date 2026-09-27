@@ -12,6 +12,7 @@ import Foundation
 import SwiftUI
 import Testing
 @testable import NeodiskUI
+@testable import NeodiskAppModel
 
 // Serialized: two tests drive the process-wide OutlineRowMetrics.scale.
 @Suite(.serialized) struct TextScaleTests {

@@ -10,6 +10,7 @@ import AppKit
 import SwiftUI
 import TreemapKit
 import NeodiskKit
+import NeodiskAppModel
 
 public struct ContentView: View {
     @Bindable var model: NeodiskViewModel

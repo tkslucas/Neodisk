@@ -12,6 +12,7 @@ import AppKit
 import CoreGraphics
 import Testing
 @testable import NeodiskUI
+@testable import NeodiskAppModel
 
 @Suite @MainActor struct TreemapLabelLayerTests {
     private static let font = NSFont.systemFont(ofSize: 11, weight: .semibold)

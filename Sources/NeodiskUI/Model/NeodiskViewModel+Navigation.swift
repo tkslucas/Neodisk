@@ -10,6 +10,7 @@
 
 import Foundation
 import NeodiskKit
+import NeodiskAppModel
 
 extension NeodiskViewModel {
     // MARK: - Selection & zoom

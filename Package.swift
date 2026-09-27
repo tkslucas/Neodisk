@@ -6,7 +6,8 @@ import PackageDescription
 //
 // The core — scan engine and tree model (NeodiskKit), treemap geometry and
 // rasterizer (TreemapKit), sunburst geometry (SunburstCore), cloud-drive
-// scanning (CloudScanKit), and the `diskscan` CLI — builds on every
+// scanning (CloudScanKit), the platform-neutral app vocabulary every shell
+// shares (NeodiskAppModel), and the `diskscan` CLI — builds on every
 // platform. Each platform's app is a thin native shell over it, written
 // against that platform's own toolkit:
 //
@@ -112,6 +113,17 @@ var targets: [Target] = [
         ],
         path: "Sources/CloudScanKit"
     ),
+    // The app layer every platform's shell shares: file-kind classification
+    // and catalogs, visualization palettes (as sRGB triples, not toolkit
+    // colors), age buckets, the treemap scene (layout, cells, labels,
+    // hit-testing), keyboard navigation, whole-scan search, and display
+    // formatting. No AppKit, SwiftUI, or GTK; declarations are `package`
+    // access, visible to the shells without becoming public API.
+    .target(
+        name: "NeodiskAppModel",
+        dependencies: ["NeodiskKit", "TreemapKit", "SunburstCore"],
+        path: "Sources/NeodiskAppModel"
+    ),
     // Linux's snapshot payload codec (Apple platforms use LZFSE from the
     // Compression framework instead).
     .systemLibrary(
@@ -140,6 +152,12 @@ var targets: [Target] = [
         linkerSettings: testingInteropLinkerSettings
     ),
     .testTarget(
+        name: "NeodiskAppModelTests",
+        dependencies: ["NeodiskAppModel", "NeodiskKit", "TreemapKit", "SunburstCore", testingDependency],
+        path: "Tests/NeodiskAppModelTests",
+        linkerSettings: testingInteropLinkerSettings
+    ),
+    .testTarget(
         name: "CloudScanKitTests",
         dependencies: ["CloudScanKit", "NeodiskKit", testingDependency],
         path: "Tests/CloudScanKitTests",
@@ -155,6 +173,7 @@ targets += [
         name: "NeodiskUI",
         dependencies: [
             "NeodiskKit",
+            "NeodiskAppModel",
             "TreemapKit",
             "SunburstCore",
             "CloudScanKit",
@@ -171,6 +190,7 @@ targets += [
         name: "NeodiskUITests",
         dependencies: [
             "NeodiskUI",
+            "NeodiskAppModel",
             "NeodiskKit",
             "TreemapKit",
             testingDependency

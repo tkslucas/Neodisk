@@ -10,6 +10,7 @@
 
 import SwiftUI
 import NeodiskKit
+import NeodiskAppModel
 
 struct StatusBar: View {
     let model: NeodiskViewModel

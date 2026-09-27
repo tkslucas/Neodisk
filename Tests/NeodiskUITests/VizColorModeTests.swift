@@ -3,6 +3,7 @@ import Testing
 import NeodiskKit
 import TreemapKit
 @testable import NeodiskUI
+@testable import NeodiskAppModel
 
 /// The shared visualization color mode: branch hues whenever no kind/age
 /// legend is on screen (Largest tab or hidden statistics panel), for every

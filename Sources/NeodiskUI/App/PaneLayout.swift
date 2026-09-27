@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import NeodiskAppModel
 
 /// Per-pane sizing bounds and defaults. The static maxima describe how far a
 /// pane may grow on a spacious window; `WorkspacePaneMetrics` additionally

@@ -12,6 +12,7 @@ import SunburstCore
 import AppKit
 import SwiftUI
 import NeodiskKit
+import NeodiskAppModel
 
 struct SunburstChartView: View {
     private static let chartPadding: CGFloat = 22

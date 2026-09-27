@@ -5,6 +5,7 @@
 
 import AppKit
 import SwiftUI
+import NeodiskAppModel
 
 /// Project links used by the Help menu and the About window.
 enum AppLinks {

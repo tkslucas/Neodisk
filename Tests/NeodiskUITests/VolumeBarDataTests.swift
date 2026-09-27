@@ -12,6 +12,7 @@ import Foundation
 import Testing
 import NeodiskKit
 @testable import NeodiskUI
+@testable import NeodiskAppModel
 
 @Suite struct VolumeBarDataTests {
     private let space = VolumeSpaceInfo(

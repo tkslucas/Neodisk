@@ -13,6 +13,7 @@ import ImageIO
 import UniformTypeIdentifiers
 import TreemapKit
 import NeodiskKit
+import NeodiskAppModel
 
 public enum HeadlessRender {
     /// Handles `--render-png` if present. Returns true when the invocation

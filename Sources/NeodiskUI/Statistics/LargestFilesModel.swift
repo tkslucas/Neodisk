@@ -15,6 +15,7 @@
 import Foundation
 import Observation
 import NeodiskKit
+import NeodiskAppModel
 
 @MainActor
 @Observable

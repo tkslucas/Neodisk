@@ -14,6 +14,7 @@ import AppKit
 import Foundation
 import TreemapKit
 import NeodiskKit
+import NeodiskAppModel
 
 @MainActor
 final class TreemapController {

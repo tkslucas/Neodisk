@@ -12,6 +12,7 @@ import Foundation
 import SwiftUI
 import Testing
 @testable import NeodiskUI
+@testable import NeodiskAppModel
 
 @Suite struct PaneLayoutTests {
     private func metrics(

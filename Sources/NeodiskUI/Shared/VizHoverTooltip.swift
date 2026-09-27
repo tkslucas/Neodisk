@@ -14,6 +14,7 @@
 import SwiftUI
 import NeodiskKit
 import SunburstCore
+import NeodiskAppModel
 
 /// Content of one hover tooltip, independent of any view or the view model so
 /// the primary/secondary lines can be unit-tested directly.

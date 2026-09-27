@@ -15,6 +15,7 @@ import CoreGraphics
 import Foundation
 import SwiftUI
 import SunburstCore
+import NeodiskAppModel
 
 /// View-local state for one drill transition, owned by SunburstChartView.
 /// All rendering derives deterministically from this plus the current frame

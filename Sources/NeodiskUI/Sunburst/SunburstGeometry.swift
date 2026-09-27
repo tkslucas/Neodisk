@@ -12,6 +12,7 @@
 import SwiftUI
 import NeodiskKit
 import SunburstCore
+import NeodiskAppModel
 
 extension FileNodeRecord {
     /// Whether the sunburst treats this node as a drillable folder. Packages

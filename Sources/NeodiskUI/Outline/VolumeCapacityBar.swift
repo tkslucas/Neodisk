@@ -10,6 +10,7 @@
 import AppKit
 import SwiftUI
 import NeodiskKit
+import NeodiskAppModel
 
 // MARK: - Volume capacity bar
 

@@ -9,6 +9,7 @@
 
 import Foundation
 import NeodiskKit
+import NeodiskAppModel
 
 extension NeodiskViewModel {
     struct OutlineRowsSnapshot {

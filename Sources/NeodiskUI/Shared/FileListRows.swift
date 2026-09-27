@@ -8,6 +8,7 @@
 
 import SwiftUI
 import NeodiskKit
+import NeodiskAppModel
 
 /// Search-result row shared by the outline's entire-scan results and the
 /// statistics file lists: category icon tinted with the category's fixed

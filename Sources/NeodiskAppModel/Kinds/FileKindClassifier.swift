@@ -53,6 +53,7 @@ package enum FileKindClassifier {
             if node.isSynthetic { return "system-data" }
             if node.isAutoSummarized { return "summarized" }
             if node.isSymbolicLink { return "symlink" }
+            if isVersionedSharedLibrary(node.name) { return "so" }
             let ext = node.pathExtension.lowercased()
             return ext.isEmpty ? "no-extension" : ext
         case .categories:
@@ -64,6 +65,9 @@ package enum FileKindClassifier {
             }
             if let categoryID = Self.categoryIDByExtension[ext] {
                 return categoryID
+            }
+            if isVersionedSharedLibrary(node.name) {
+                return codeCategory.id
             }
             // Git object stores are extensionless but often huge for
             // developers; they belong with development, not "Other".
@@ -106,6 +110,15 @@ package enum FileKindClassifier {
     package nonisolated static let appCategory = FileKind(id: "cat-apps", displayName: "Applications")
 
     private nonisolated static let gitDirPattern = Array("/.git/".utf8)
+
+    /// "libc.so.6", "libfoo.so.1.2.3": ELF shared libraries carry their
+    /// version after ".so", so the extension is a number — they belong
+    /// with the .so/.dylib files, not in Other.
+    nonisolated static func isVersionedSharedLibrary(_ name: String) -> Bool {
+        guard let range = name.range(of: ".so.", options: .backwards) else { return false }
+        let version = name[range.upperBound...]
+        return !version.isEmpty && version.allSatisfy { $0.isASCII && ($0.isNumber || $0 == ".") }
+    }
 
     /// memmem-based search for "/.git/": this runs for every file whose
     /// extension isn't in the category table (hundreds of thousands on a

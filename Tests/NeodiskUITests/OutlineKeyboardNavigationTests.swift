@@ -224,6 +224,56 @@ struct OutlineKeyboardNavigationTests {
         #expect(folderRect.maxY <= clip.bounds.maxY)
     }
 
+    /// Publishing the user's selection can re-enter updateNSView. Reloading
+    /// the table from inside its own selection callback is a reentrant
+    /// NSTableView operation, so rows that arrive mid-publish wait for the
+    /// callback to return — while the model updates synchronously, never
+    /// lagging the table (PR #7).
+    @Test func rowsArrivingWhileSelectionPublishesApplyAfterTheCallback() async throws {
+        let environment = try Environment()
+        defer { environment.tearDown() }
+        let target = makeTestTarget("/outline/selection-reentrancy")
+        let model = environment.makeModel()
+        model.coordinator.replaceCurrentSnapshot(makeSnapshot(target: target))
+        let folderID = target.id + "/folder"
+
+        let tableView = OutlineNSTableView()
+        let coordinator = OutlineTreeTable.Coordinator(model: model)
+        tableView.addTableColumn(NSTableColumn(identifier: .init("outline")))
+        tableView.dataSource = coordinator
+        tableView.delegate = coordinator
+        coordinator.tableView = tableView
+        let collapsed = model.outlineRowsSnapshot()
+        coordinator.apply(snapshot: collapsed)
+        let appliedBefore = coordinator.structuralApplyCount
+
+        model.toggleExpansion(folderID)
+        let expanded = model.outlineRowsSnapshot()
+        let probe = ReentrancyProbe()
+        withObservationTracking {
+            _ = model.selectedNodeID
+        } onChange: {
+            // Fires synchronously as the delegate publishes: stands in for
+            // a SwiftUI update pass that re-enters the representable.
+            MainActor.assumeIsolated {
+                coordinator.apply(snapshot: expanded)
+                probe.appliedDuringPublish = coordinator.structuralApplyCount
+            }
+        }
+
+        let folderRow = try row(of: folderID, in: collapsed.rows)
+        tableView.selectRowIndexes([folderRow], byExtendingSelection: false)
+
+        #expect(model.selectedNodeID == folderID)
+        #expect(probe.appliedDuringPublish == appliedBefore)
+        for _ in 0..<100 where coordinator.structuralApplyCount == appliedBefore {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(coordinator.structuralApplyCount == appliedBefore + 1)
+        #expect(tableView.numberOfRows == expanded.rows.count)
+        #expect(tableView.selectedRow == expanded.rowIndexByID[folderID])
+    }
+
     @Test func tableRoutesOnlyUnmodifiedHorizontalArrows() throws {
         let tableView = OutlineNSTableView()
         var received: [OutlineHierarchyDirection] = []
@@ -281,4 +331,9 @@ struct OutlineKeyboardNavigationTests {
             keyCode: keyCode
         ))
     }
+}
+
+@MainActor
+private final class ReentrancyProbe {
+    var appliedDuringPublish: Int?
 }

@@ -6,40 +6,94 @@
 import Foundation
 
 public struct FileNodeRecord: Identifiable, Sendable {
+    // Storage is compact: a large scan holds millions of these, so the
+    // common fields sit inline in their smallest faithful form, and the
+    // rarely set ones (a path that differs from the ID, a resource
+    // identifier, clone info, cloud-only sizes) share one optional side
+    // object. The public API below is unchanged.
+
     public let id: String
+    public let name: String
+    public let allocatedSize: Int64
+    /// Inline, not in the side object: hard links make it differ from
+    /// `allocatedSize` for most nodes on some disks (package-manager stores).
+    public let unduplicatedAllocatedSize: Int64
+    public let logicalSize: Int64
+    /// `lastModified` as seconds since the reference date; NaN for nil.
+    private let modifiedSeconds: Double
+    /// A filesystem identity's device and inode (`Flags.hasDeviceInode`).
+    private let device: UInt64
+    private let inode: UInt64
+    private let fileCount: UInt32
+    private let links: UInt32
+    private let flags: Flags
+    private let extras: Extras?
+
+    private struct Flags: OptionSet, Sendable {
+        let rawValue: UInt16
+        static let directory = Flags(rawValue: 1 << 0)
+        static let symbolicLink = Flags(rawValue: 1 << 1)
+        static let package = Flags(rawValue: 1 << 2)
+        static let accessible = Flags(rawValue: 1 << 3)
+        static let selfAccessible = Flags(rawValue: 1 << 4)
+        static let synthetic = Flags(rawValue: 1 << 5)
+        static let autoSummarized = Flags(rawValue: 1 << 6)
+        static let dataless = Flags(rawValue: 1 << 7)
+        static let hasDeviceInode = Flags(rawValue: 1 << 8)
+    }
+
+    /// The fields most records never set, boxed so they cost one pointer.
+    private final class Extras: Sendable {
+        let path: String?
+        let resourceIdentifier: Data?
+        let cloneInfo: CloneInfo?
+        let cloudOnlyLogicalSize: Int64
+
+        init(path: String?, resourceIdentifier: Data?, cloneInfo: CloneInfo?, cloudOnlyLogicalSize: Int64) {
+            self.path = path
+            self.resourceIdentifier = resourceIdentifier
+            self.cloneInfo = cloneInfo
+            self.cloudOnlyLogicalSize = cloudOnlyLogicalSize
+        }
+    }
+
     /// Absolute filesystem path. The record stores the path string rather
     /// than a URL: URL construction measurably dominates decoding
     /// million-node snapshots, and most consumers only need the string.
-    public let path: String
-    public let name: String
-    public let isDirectory: Bool
-    public let isSymbolicLink: Bool
-    public let allocatedSize: Int64
-    public let unduplicatedAllocatedSize: Int64
-    public let logicalSize: Int64
-    public let descendantFileCount: Int
-    public let lastModified: Date?
-    public let fileIdentity: FileIdentity?
-    public let linkCount: UInt64
-    public let isPackage: Bool
-    public let isAccessible: Bool
-    public let isSelfAccessible: Bool
-    public let isSynthetic: Bool
-    public let isAutoSummarized: Bool
+    /// Almost always the ID itself, which is then all that's stored.
+    public var path: String { extras?.path ?? id }
+    public var isDirectory: Bool { flags.contains(.directory) }
+    public var isSymbolicLink: Bool { flags.contains(.symbolicLink) }
+    public var descendantFileCount: Int { Int(fileCount) }
+    public var lastModified: Date? {
+        modifiedSeconds.isNaN ? nil : Date(timeIntervalSinceReferenceDate: modifiedSeconds)
+    }
+    public var fileIdentity: FileIdentity? {
+        if flags.contains(.hasDeviceInode) {
+            return .fileSystem(device: device, inode: inode)
+        }
+        return extras?.resourceIdentifier.map { .resourceIdentifier($0) }
+    }
+    public var linkCount: UInt64 { UInt64(links) }
+    public var isPackage: Bool { flags.contains(.package) }
+    public var isAccessible: Bool { flags.contains(.accessible) }
+    public var isSelfAccessible: Bool { flags.contains(.selfAccessible) }
+    public var isSynthetic: Bool { flags.contains(.synthetic) }
+    public var isAutoSummarized: Bool { flags.contains(.autoSummarized) }
     /// File exists in a cloud drive (iCloud/File Provider) but its content
     /// is not downloaded: full logical size, ~0 bytes on disk (SF_DATALESS).
     /// Always false for directories — a directory's cloud share is carried
     /// by `cloudOnlyLogicalSize` instead.
-    public let isDataless: Bool
+    public var isDataless: Bool { flags.contains(.dataless) }
     /// Bytes that live only in the cloud below this node: for files,
     /// `logicalSize` when dataless, else 0; for directories, the descendant
     /// sum. Display weight = `allocatedSize + cloudOnlyLogicalSize` when the
     /// cloud-only toggle is on.
-    public let cloudOnlyLogicalSize: Int64
+    public var cloudOnlyLogicalSize: Int64 { extras?.cloudOnlyLogicalSize ?? 0 }
     /// APFS clone-family membership, captured only when the kernel reports
     /// the file shares blocks with others (refCount > 1). Drives clone
     /// deduplication so scanned totals track real disk usage.
-    public let cloneInfo: CloneInfo?
+    public var cloneInfo: CloneInfo? { extras?.cloneInfo }
 
     /// URL form of `path`. Computed on demand — see `path`.
     public nonisolated var url: URL {
@@ -120,27 +174,55 @@ public struct FileNodeRecord: Identifiable, Sendable {
         cloudOnlyLogicalSize: Int64? = nil,
         cloneInfo: CloneInfo? = nil
     ) {
+        let isDataless = isDataless && !isDirectory
+        let cloudOnlyLogicalSize = cloudOnlyLogicalSize ?? (isDataless ? logicalSize : 0)
+        let cloneInfo = isDirectory ? nil : cloneInfo
+
         self.id = id
-        self.path = path
         self.name = name
-        self.isDirectory = isDirectory
-        self.isSymbolicLink = isSymbolicLink
         self.allocatedSize = allocatedSize
         self.unduplicatedAllocatedSize = unduplicatedAllocatedSize ?? allocatedSize
         self.logicalSize = logicalSize
-        self.descendantFileCount = descendantFileCount
-        self.lastModified = lastModified
-        self.fileIdentity = fileIdentity
-        self.linkCount = linkCount
-        self.isPackage = isPackage
-        self.isAccessible = isAccessible
-        self.isSelfAccessible = isSelfAccessible
-        self.isSynthetic = isSynthetic
-        self.isAutoSummarized = isAutoSummarized
-        self.isDataless = isDataless && !isDirectory
-        self.cloudOnlyLogicalSize = cloudOnlyLogicalSize
-            ?? (isDataless && !isDirectory ? logicalSize : 0)
-        self.cloneInfo = isDirectory ? nil : cloneInfo
+        modifiedSeconds = lastModified?.timeIntervalSinceReferenceDate ?? .nan
+        fileCount = UInt32(clamping: descendantFileCount)
+        links = UInt32(clamping: linkCount)
+
+        var flags: Flags = []
+        if isDirectory { flags.insert(.directory) }
+        if isSymbolicLink { flags.insert(.symbolicLink) }
+        if isPackage { flags.insert(.package) }
+        if isAccessible { flags.insert(.accessible) }
+        if isSelfAccessible { flags.insert(.selfAccessible) }
+        if isSynthetic { flags.insert(.synthetic) }
+        if isAutoSummarized { flags.insert(.autoSummarized) }
+        if isDataless { flags.insert(.dataless) }
+        var resourceIdentifier: Data?
+        switch fileIdentity {
+        case .fileSystem(let device, let inode):
+            flags.insert(.hasDeviceInode)
+            self.device = device
+            self.inode = inode
+        case .resourceIdentifier(let data):
+            resourceIdentifier = data
+            device = 0
+            inode = 0
+        case nil:
+            device = 0
+            inode = 0
+        }
+        self.flags = flags
+
+        let pathOverride = path == id ? nil : path
+        if pathOverride != nil || resourceIdentifier != nil || cloneInfo != nil || cloudOnlyLogicalSize != 0 {
+            extras = Extras(
+                path: pathOverride,
+                resourceIdentifier: resourceIdentifier,
+                cloneInfo: cloneInfo,
+                cloudOnlyLogicalSize: cloudOnlyLogicalSize
+            )
+        } else {
+            extras = nil
+        }
     }
 
     /// Weight used by the visualizations: on-disk bytes, plus the bytes that

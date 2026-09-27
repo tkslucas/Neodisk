@@ -12,6 +12,7 @@ import Combine
 import CoreGraphics
 import Foundation
 import NeodiskKit
+import NeodiskAppModel
 
 /// Everything one sunburst layout needs, bundled Sendable so the layout can
 /// run detached from the main actor. `style` colors the finished layout —

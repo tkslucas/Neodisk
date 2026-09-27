@@ -12,6 +12,7 @@
 
 import SwiftUI
 import NeodiskKit
+import NeodiskAppModel
 
 struct SunburstLegendList: View {
     let model: NeodiskViewModel

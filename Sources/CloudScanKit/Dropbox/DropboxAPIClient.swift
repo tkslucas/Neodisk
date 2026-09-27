@@ -27,6 +27,9 @@
 //
 
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 struct DropboxAPIClient: Sendable {
     let transport: any CloudTransport

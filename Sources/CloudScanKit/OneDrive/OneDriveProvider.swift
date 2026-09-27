@@ -15,6 +15,9 @@
 //
 
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 import NeodiskKit
 
 public struct OneDriveProvider: CloudProvider {

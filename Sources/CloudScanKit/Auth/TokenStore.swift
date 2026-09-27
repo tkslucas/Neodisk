@@ -10,7 +10,9 @@
 //
 
 import Foundation
+#if canImport(Security)
 import Security
+#endif
 
 /// What is persisted per connected account. The refresh token is the durable
 /// secret; the access token is a short-lived cache refreshed on demand.
@@ -41,10 +43,13 @@ public protocol TokenStoring: Sendable {
 }
 
 public enum TokenStoreError: Error, Equatable, Sendable {
+    #if canImport(Security)
     case keychain(OSStatus)
+    #endif
     case decodingFailed
 }
 
+#if canImport(Security)
 /// Generic-password Keychain storage. One item per account: service
 /// "app.neodisk.cloudscan.<providerID>", account = accountID, value = the
 /// JSON-encoded credentials. Never exercised in unit tests.
@@ -129,6 +134,7 @@ public struct KeychainTokenStore: TokenStoring {
         return entries.compactMap { $0[kSecAttrAccount as String] as? String }
     }
 }
+#endif
 
 /// A lock-guarded in-memory store for tests. (A synchronous `TokenStoring` —
 /// required because `restoreAccounts()` is synchronous — cannot be satisfied

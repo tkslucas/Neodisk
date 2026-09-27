@@ -9,6 +9,9 @@
 //
 
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 public protocol CloudTransport: Sendable {
     func execute(_ request: URLRequest) async throws -> (Data, HTTPURLResponse)

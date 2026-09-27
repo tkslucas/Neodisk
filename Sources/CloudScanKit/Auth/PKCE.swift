@@ -8,8 +8,14 @@
 //
 
 import Foundation
+#if canImport(Security)
 import Security
+#endif
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+import Crypto
+#endif
 
 enum PKCE {
     /// A verifier / challenge pair for one authorization request.
@@ -27,7 +33,15 @@ enum PKCE {
     static func generate(verifierLength: Int = 64) -> Pair {
         let length = min(max(verifierLength, 43), 128)
         var bytes = [UInt8](repeating: 0, count: length)
+        #if canImport(Security)
         _ = SecRandomCopyBytes(kSecRandomDefault, length, &bytes)
+        #else
+        // The system generator is the platform CSPRNG (getrandom on Linux).
+        var generator = SystemRandomNumberGenerator()
+        for index in bytes.indices {
+            bytes[index] = UInt8.random(in: .min ... .max, using: &generator)
+        }
+        #endif
         let verifier = String(bytes.map { unreservedCharacters[Int($0) % unreservedCharacters.count] })
         return Pair(verifier: verifier, challenge: challenge(for: verifier))
     }

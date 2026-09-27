@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 @testable import CloudScanKit
 
 /// A CloudTransport that replies with scripted responses and records the

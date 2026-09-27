@@ -177,7 +177,7 @@ nonisolated enum ScanSnapshotCodec {
         writer.append(UInt32(metadataData.count))
         writer.data.append(metadataData)
         if version >= 2 {
-            writer.data.append(try (payload.data as NSData).compressed(using: .lzfse) as Data)
+            try appendCompressedPayload(payload.data, to: &writer.data)
         } else {
             writer.data.append(payload.data)
         }
@@ -352,6 +352,38 @@ nonisolated enum ScanSnapshotCodec {
             scanOptions: metadata.scanOptions,
             incrementalCheckpoint: metadata.incrementalCheckpoint
         )
+    }
+
+    /// LZFSE-compresses `payload` onto the end of `output` through
+    /// `compression_stream`, in 1 MB output chunks. The bytes are identical
+    /// to `NSData.compressed(using: .lzfse)` (the same raw LZFSE stream the
+    /// decoder reads), but that API is several times slower on large
+    /// payloads — ~8 s against ~1.6 s for a 109 MB, 1.67M-node payload —
+    /// and it offers no cancellation point; this checks between chunks.
+    static func appendCompressedPayload(_ payload: Data, to output: inout Data) throws {
+        let chunkSize = 1 << 20
+        let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: chunkSize)
+        defer { buffer.deallocate() }
+        var stream = compression_stream(dst_ptr: buffer, dst_size: 0, src_ptr: UnsafePointer(buffer), src_size: 0, state: nil)
+        guard compression_stream_init(&stream, COMPRESSION_STREAM_ENCODE, COMPRESSION_LZFSE) != COMPRESSION_STATUS_ERROR else {
+            throw ScanSnapshotCacheError.corruptData("payload compression failed")
+        }
+        defer { compression_stream_destroy(&stream) }
+        try payload.withUnsafeBytes { source in
+            stream.src_ptr = source.bindMemory(to: UInt8.self).baseAddress ?? UnsafePointer(buffer)
+            stream.src_size = source.count
+            while true {
+                try Task.checkCancellation()
+                stream.dst_ptr = buffer
+                stream.dst_size = chunkSize
+                let status = compression_stream_process(&stream, Int32(COMPRESSION_STREAM_FINALIZE.rawValue))
+                guard status != COMPRESSION_STATUS_ERROR else {
+                    throw ScanSnapshotCacheError.corruptData("payload compression failed")
+                }
+                output.append(buffer, count: chunkSize - stream.dst_size)
+                if status == COMPRESSION_STATUS_END { return }
+            }
+        }
     }
 
     /// Bound untrusted output before allocating it. A streaming decoder also

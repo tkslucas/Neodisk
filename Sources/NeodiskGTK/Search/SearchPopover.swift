@@ -20,7 +20,6 @@ final class SearchPopover {
     private let entry: GPtr
     private let results: GPtr
     private let caption: GPtr
-    private let indexService = SearchIndexService()
     private let debouncer = SearchDebouncer()
     private var resultIDs: [String] = []
 
@@ -89,9 +88,14 @@ final class SearchPopover {
             return
         }
         let snapshotID = snapshot.id
+        // A large scan's index can still be building; say so rather than
+        // show an empty list.
+        if resultIDs.isEmpty {
+            gtk_label_set_text(ptr(caption), L("Loading…"))
+        }
         debouncer.schedule { [weak self] in
             guard let self else { return }
-            let index = await self.indexService.index(for: snapshot)
+            let index = await self.model.searchIndex.index(for: snapshot)
             guard !Task.isCancelled, self.model.snapshot?.id == snapshotID else { return }
             let entries = index.entries
             let rootID = index.rootID

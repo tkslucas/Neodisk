@@ -24,9 +24,9 @@ final class ObservationToken {
 }
 
 /// Runs `update` now and again whenever any observable property it read
-/// changes. Keep the token for as long as the binding should live.
+/// changes. Keep the token for as long as the binding should live: it's
+/// weakly held, so a dropped token ends the binding after its first change.
 @MainActor
-@discardableResult
 func track(_ update: @escaping @MainActor () -> Void) -> ObservationToken {
     let token = ObservationToken()
     observe(update, token: token)

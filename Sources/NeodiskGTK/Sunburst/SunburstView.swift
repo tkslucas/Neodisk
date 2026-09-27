@@ -247,6 +247,8 @@ final class SunburstView: CanvasDelegate {
         let hovered = segment.flatMap { $0.isFreeSpace || $0.isHiddenSpace ? nil : ($0.nodeID ?? $0.parentFolderID) }
         if model.hoveredNodeID != hovered {
             model.hoveredNodeID = hovered
+            // A showing tooltip would keep describing the old segment.
+            gtk_widget_trigger_tooltip_query(ptr(canvas.widget))
         }
     }
 
@@ -363,19 +365,10 @@ final class SunburstView: CanvasDelegate {
     }
 
     private func showContextMenu(at point: CGPoint) {
-        if contextMenu == nil {
-            let menu = Widgets.menu([
-                [(L("Open"), "win.open-item"), (L("Show in Files"), "win.show-in-files"), (L("Copy Path"), "win.copy-path")],
-                [(L("Zoom In"), "win.focus-in"), (L("Zoom Out"), "win.focus-out")],
-            ])
-            let popover = raw(gtk_popover_menu_new_from_model(ptr(menu.pointer)))!
-            gtk_widget_set_parent(ptr(popover), ptr(canvas.widget))
-            gtk_popover_set_has_arrow(ptr(popover), gbool(false))
-            contextMenu = popover
-        }
-        var rect = GdkRectangle(x: Int32(point.x), y: Int32(point.y), width: 1, height: 1)
-        gtk_popover_set_pointing_to(ptr(contextMenu), &rect)
-        gtk_popover_popup(ptr(contextMenu))
+        Widgets.popupMenu(&contextMenu, sections: [
+            [(L("Open"), "win.open-item"), (L("Show in Files"), "win.show-in-files"), (L("Copy Path"), "win.copy-path")],
+            [(L("Zoom In"), "win.focus-in"), (L("Zoom Out"), "win.focus-out")],
+        ], on: canvas.widget, at: point)
     }
 }
 

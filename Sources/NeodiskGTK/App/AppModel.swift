@@ -54,6 +54,14 @@ final class AppModel {
     private(set) var ageCatalog: AgeCatalog = .empty
     /// What the snapshot cache holds per target path (sidebar subtitles).
     private(set) var cachedScans: [String: CachedScanInfo] = [:]
+    /// Ticks once a minute, so "Scanned 5 minutes ago" labels that read it
+    /// stay current.
+    private(set) var minuteTick = 0
+    /// The whole-scan name index behind search: one per displayed snapshot,
+    /// built in the background as soon as the snapshot lands, as the Mac's
+    /// Largest panel does, so the first search doesn't wait on it.
+    @ObservationIgnored let searchIndex = SearchIndexService()
+    @ObservationIgnored private var minuteTimer: Task<Void, Never>?
 
     /// The statistics tab on screen; it decides what map color means.
     var analysisTab: AnalysisTab = .largest
@@ -77,6 +85,17 @@ final class AppModel {
     init(preferences: Preferences, snapshotCache: ScanSnapshotCache = ScanSnapshotCache()) {
         self.preferences = preferences
         self.snapshotCache = snapshotCache
+        minuteTimer = Task { [weak self] in
+            while (try? await Task.sleep(for: .seconds(60))) != nil {
+                self?.minuteTick &+= 1
+            }
+        }
+    }
+
+    /// True after Stop cut a scan short with no complete snapshot to fall
+    /// back on: the map shows what was read so far.
+    var isShowingPartialScan: Bool {
+        phase == .displaying && snapshot == nil && store != nil
     }
 
     // MARK: - Derived
@@ -175,6 +194,8 @@ final class AppModel {
         expandedAggregateIDs = []
         catalog = .empty
         ageCatalog = .empty
+        // Frees the previous location's index instead of holding two trees.
+        searchIndex.invalidate()
         catalogThrottle.reset()
         isRefreshing = false
         volumeSpace = target.flatMap { $0.kind == .volume ? VolumeSpaceInfo.load(for: $0.url) : nil }
@@ -231,6 +252,7 @@ final class AppModel {
         let previousSelection = selectedNodeID
         let previousFocus = focusID
         self.snapshot = snapshot
+        Task { [searchIndex] in _ = await searchIndex.index(for: snapshot) }
         store = snapshot.treeStore
         warnings = snapshot.scanWarnings
         isRefreshing = false

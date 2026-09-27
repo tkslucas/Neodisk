@@ -27,6 +27,8 @@ final class OutlineView {
     private var rebuildTask: Task<Void, Never>?
     private var isSyncingSelection = false
     private var contextMenu: GPtr?
+    /// Columns a narrow window drops first, so Name keeps its room.
+    private(set) var secondaryColumns: [GPtr] = []
     private var tokens: [ObservationToken] = []
 
     private static let cellKey = "neodisk-outline-cell"
@@ -51,13 +53,15 @@ final class OutlineView {
         addColumn(L("Share"), fixedWidth: 120, setup: Self.setupShare, bind: { [unowned self] cell, node, _ in
             self.bindShare(cell, node: node)
         })
-        addColumn(L("Files"), fixedWidth: 84, setup: Self.setupRightAligned, bind: { cell, node, _ in
+        let files = addColumn(L("Files"), fixedWidth: 84, setup: Self.setupRightAligned, bind: { cell, node, _ in
             gtk_label_set_text(ptr(cell.label), node.isDirectory ? node.descendantFileCount.formatted() : "")
         })
-        addColumn(L("Modified"), fixedWidth: 130, setup: Self.setupRightAligned, bind: { cell, node, _ in
-            let text = node.lastModified.map { $0.formatted(date: .abbreviated, time: .omitted) } ?? ""
+        let modified = addColumn(L("Modified"), fixedWidth: 130, setup: Self.setupRightAligned, bind: { cell, node, _ in
+            // An mtime of 0 (the epoch) means the filesystem doesn't track it.
+            let text = node.lastModified.flatMap { $0.timeIntervalSince1970 > 0 ? $0.formatted(date: .abbreviated, time: .omitted) : nil } ?? ""
             gtk_label_set_text(ptr(cell.label), text)
         })
+        secondaryColumns = [files, modified]
 
         connectPosition(columnView, "activate") { [unowned self] position in
             guard let node = self.node(atPosition: position), node.isDirectory else { return }
@@ -92,7 +96,8 @@ final class OutlineView {
     private typealias Setup = @MainActor () -> Cell
     private typealias Bind = @MainActor (Cell, FileNodeRecord, GPtr) -> Void
 
-    private func addColumn(_ title: String, expand: Bool = false, fixedWidth: Int? = nil, setup: @escaping Setup, bind: @escaping Bind) {
+    @discardableResult
+    private func addColumn(_ title: String, expand: Bool = false, fixedWidth: Int? = nil, setup: @escaping Setup, bind: @escaping Bind) -> GPtr {
         let factory = raw(gtk_signal_list_item_factory_new())!
         connectPointer(factory, "setup") { [unowned self] listItem in
             let cell = setup()
@@ -120,6 +125,7 @@ final class OutlineView {
         }
         gtk_column_view_append_column(ptr(columnView), column)
         g_object_unref(raw(column))
+        return raw(column)!
     }
 
     private static func setupName() -> Cell {
@@ -178,7 +184,7 @@ final class OutlineView {
     /// Adwaita symbolic icon per kind category, the Linux counterpart of the
     /// Mac's SF Symbols in `FileKindClassifier.categorySymbol`.
     static func iconName(for node: FileNodeRecord) -> String {
-        if node.isSymbolicLink { return "emblem-symbolic-link-symbolic" }
+        if node.isSymbolicLink { return "insert-link-symbolic" }
         if node.isDirectory && !FileKindClassifier.isLeafLike(node) { return "folder-symbolic" }
         switch FileKindClassifier.kindID(for: node, mode: .categories) {
         case "cat-video": return "video-x-generic-symbolic"
@@ -186,7 +192,7 @@ final class OutlineView {
         case "cat-audio": return "audio-x-generic-symbolic"
         case "cat-docs": return "x-office-document-symbolic"
         case "cat-archive": return "package-x-generic-symbolic"
-        case "cat-code": return "text-x-script-symbolic"
+        case "cat-code": return "utilities-terminal-symbolic"
         case "cat-data": return "drive-multidisk-symbolic"
         case "cat-apps": return "application-x-executable-symbolic"
         case "cat-summarized": return "folder-symbolic"
@@ -362,19 +368,10 @@ final class OutlineView {
     }
 
     private func showContextMenu(at point: CGPoint) {
-        if contextMenu == nil {
-            let menu = Widgets.menu([
-                [(L("Open"), "win.open-item"), (L("Show in Files"), "win.show-in-files"), (L("Copy Path"), "win.copy-path")],
-                [(L("Zoom In"), "win.focus-in")],
-            ])
-            let popover = raw(gtk_popover_menu_new_from_model(ptr(menu.pointer)))!
-            gtk_widget_set_parent(ptr(popover), ptr(columnView))
-            gtk_popover_set_has_arrow(ptr(popover), gbool(false))
-            contextMenu = popover
-        }
-        var rect = GdkRectangle(x: Int32(point.x), y: Int32(point.y), width: 1, height: 1)
-        gtk_popover_set_pointing_to(ptr(contextMenu), &rect)
-        gtk_popover_popup(ptr(contextMenu))
+        Widgets.popupMenu(&contextMenu, sections: [
+            [(L("Open"), "win.open-item"), (L("Show in Files"), "win.show-in-files"), (L("Copy Path"), "win.copy-path")],
+            [(L("Zoom In"), "win.focus-in")],
+        ], on: columnView, at: point)
     }
 }
 

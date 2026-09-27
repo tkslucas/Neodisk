@@ -22,6 +22,7 @@ final class NeodiskApplication {
     let preferences = Preferences()
     let model: AppModel
     private var window: MainWindow?
+    private var colorSchemeToken: ObservationToken?
 
     init() {
         model = AppModel(preferences: preferences)
@@ -45,8 +46,16 @@ final class NeodiskApplication {
             return takeString(g_content_type_get_description(type))
         }
         Styles.install()
+        // Symbolic icons come from Adwaita, the set libadwaita's widgets are
+        // drawn for. Third-party themes are often incomplete for GTK 4
+        // (elementary-xfce's render blank), which left rows and tabs bare.
+        var themeName = GValue()
+        g_value_init(&themeName, neodisk_string_type())
+        g_value_set_string(&themeName, "Adwaita")
+        g_object_set_property(ptr(raw(gtk_settings_get_default())), "gtk-icon-theme-name", &themeName)
+        g_value_unset(&themeName)
         applyColorScheme()
-        track { [unowned self] in
+        colorSchemeToken = track { [unowned self] in
             _ = self.preferences.colorScheme
             self.applyColorScheme()
         }

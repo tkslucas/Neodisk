@@ -26,6 +26,11 @@ final class BreadcrumbBar {
         gtk_scrolled_window_set_child(ptr(scroller), ptr(crumbs))
         Widgets.setMargins(scroller, top: 4, bottom: 4, start: 8, end: 8)
         widget = scroller
+        // Deep paths overflow: keep the end, the folder on screen, visible.
+        let adjustment = gtk_scrolled_window_get_hadjustment(ptr(scroller))
+        connect(raw(adjustment)!, "changed") {
+            gtk_adjustment_set_value(adjustment, gtk_adjustment_get_upper(adjustment) - gtk_adjustment_get_page_size(adjustment))
+        }
         tokens.append(track { [unowned self] in self.rebuild() })
     }
 

@@ -7,6 +7,7 @@
 //
 
 import CGtk
+import Foundation
 
 @MainActor
 enum Widgets {
@@ -109,6 +110,32 @@ enum Widgets {
     }
 
     /// A menu model from sections of (label, detailed action) items.
+    /// Pops up a right-click menu at `point` in `parent`, creating it into
+    /// `cache` on first use. The parent's tooltip is off while the menu is
+    /// open; GTK otherwise leaves a showing tooltip drawn over the menu.
+    static func popupMenu(_ cache: inout GPtr?, sections: [[(String, String)]], on parent: GPtr, at point: CGPoint) {
+        let hadTooltip = gtk_widget_get_has_tooltip(ptr(parent)) != 0
+        if cache == nil {
+            let model = menu(sections)
+            let popover = raw(gtk_popover_menu_new_from_model(ptr(model.pointer)))!
+            gtk_widget_set_parent(ptr(popover), ptr(parent))
+            gtk_popover_set_has_arrow(ptr(popover), gbool(false))
+            if hadTooltip {
+                connect(popover, "closed") {
+                    gtk_widget_set_has_tooltip(ptr(parent), gbool(true))
+                }
+            }
+            cache = popover
+        }
+        if hadTooltip {
+            gtk_widget_set_has_tooltip(ptr(parent), gbool(false))
+            gtk_widget_trigger_tooltip_query(ptr(parent))
+        }
+        var rect = GdkRectangle(x: Int32(point.x), y: Int32(point.y), width: 1, height: 1)
+        gtk_popover_set_pointing_to(ptr(cache), &rect)
+        gtk_popover_popup(ptr(cache))
+    }
+
     static func menu(_ sections: [[(String, String)]]) -> GObjectRef {
         let menu = raw(g_menu_new())!
         for items in sections {

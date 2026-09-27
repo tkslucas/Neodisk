@@ -181,6 +181,20 @@ final class MainWindow {
             g_value_unset(&value)
             adw_application_window_add_breakpoint(ptr(window), breakpoint)
         }
+        // Narrower still, the statistics pane and the secondary outline
+        // columns give way to the map and file names. The Statistics toggle
+        // still shows the pane on demand.
+        if let condition = adw_breakpoint_condition_parse("max-width: 900sp") {
+            let breakpoint = adw_breakpoint_new(condition)
+            var value = GValue()
+            g_value_init(&value, neodisk_boolean_type())
+            g_value_set_boolean(&value, gbool(false))
+            for target in [statistics.widget] + outline.secondaryColumns {
+                adw_breakpoint_add_setter(breakpoint, ptr(target), "visible", &value)
+            }
+            g_value_unset(&value)
+            adw_application_window_add_breakpoint(ptr(window), breakpoint)
+        }
 
         attach(self, to: window, key: "neodisk-main-window")
         installActions()
@@ -219,6 +233,7 @@ final class MainWindow {
 
     private func bindModel(statisticsToggle: GPtr) {
         tokens.append(track { [unowned self] in
+            _ = self.model.minuteTick
             let hasContent = self.model.target != nil
             gtk_stack_set_visible_child_name(ptr(self.contentStack), hasContent ? "workspace" : "empty")
 
@@ -275,6 +290,8 @@ final class MainWindow {
             }
             if model.isRefreshing {
                 parts.append(L("Refreshing…"))
+            } else if model.isShowingPartialScan {
+                parts.append(L("Stopped — showing partial results"))
             } else if let snapshot = model.snapshot, let finished = snapshot.finishedAt {
                 parts.append(L("Scanned %@", DisplayFormatters.relativeDate(finished)))
             }

@@ -79,6 +79,7 @@ final class SidebarView {
         tokens.append(track { [unowned self] in
             _ = self.model.cachedScans
             _ = self.model.phase
+            _ = self.model.minuteTick
             self.reloadLocations()
         })
         tokens.append(track { [unowned self] in

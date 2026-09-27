@@ -167,7 +167,7 @@ enum Styles {
     .neodisk-breadcrumb button { padding: 2px 6px; min-height: 0; }
     .neodisk-search-bar { padding: 6px 8px; }
     levelbar.neodisk-capacity block.neodisk-used { background-color: @accent_bg_color; }
-    levelbar.neodisk-capacity block.neodisk-nearly-full { background-color: @warning_bg_color; }
+    popover.neodisk-bubble > contents { padding: 4px 9px; }
     """
 
     static func install() {

@@ -87,50 +87,20 @@ nonisolated struct VolumeBarData: Equatable, Sendable {
         guard let space, space.totalCapacity > 0 else {
             return .empty
         }
-        let total = space.totalCapacity
-
-        var sizeByKindID: [String: Int64] = [:]
-        for stat in sidecar.stats(for: .categories) where stat.size > 0 {
-            sizeByKindID[stat.kindID, default: 0] += stat.size
+        let segments = VolumeCapacitySegments.make(
+            space: space,
+            sidecar: sidecar,
+            scannedBytes: scannedBytes,
+            palette: palette
+        ).map { segment in
+            Segment(
+                id: segment.id,
+                label: segment.label,
+                size: segment.size,
+                rgb: segment.rgb,
+                fraction: segment.fraction
+            )
         }
-        // Scanned bytes the kind stats don't cover (directory overhead,
-        // synthetic nodes) fold into the catch-all category, so the colored
-        // segments tile the scanned tree exactly and the hidden tail below
-        // states the same figure as the sunburst legend.
-        let categorizedBytes = sizeByKindID.values.reduce(0, +)
-        let uncategorized = scannedBytes - categorizedBytes
-        if uncategorized > 0 {
-            sizeByKindID["cat-other", default: 0] += uncategorized
-        }
-
-        var segments: [Segment] = sizeByKindID
-            .sorted { lhs, rhs in
-                if lhs.value != rhs.value { return lhs.value > rhs.value }
-                return lhs.key < rhs.key
-            }
-            .map { kindID, size in
-                Segment(
-                    id: kindID,
-                    label: FileKindClassifier.kind(forID: kindID, mode: .categories).displayName,
-                    size: size,
-                    rgb: palette.categoryRGB[kindID] ?? FileKindCatalog.otherRGB,
-                    fraction: Double(size) / Double(total)
-                )
-            }
-
-        // Used capacity the scan didn't account for (unreadable paths,
-        // other users' homes, snapshot-held blocks): a neutral tail
-        // segment, like macOS "System Data" — same formula everywhere.
-        if let hidden = space.hiddenSpaceBytes(scannedBytes: max(scannedBytes, categorizedBytes)) {
-            segments.append(Segment(
-                id: "unscanned",
-                label: "Hidden Space",
-                size: hidden,
-                rgb: FileKindCatalog.otherRGB,
-                fraction: Double(hidden) / Double(total)
-            ))
-        }
-
         return VolumeBarData(segments: segments, availableSize: space.availableCapacity)
     }
 }

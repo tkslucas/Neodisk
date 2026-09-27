@@ -54,6 +54,11 @@ final class AppModel {
     private(set) var ageCatalog: AgeCatalog = .empty
     /// What the snapshot cache holds per target path (sidebar subtitles).
     private(set) var cachedScans: [String: CachedScanInfo] = [:]
+    /// Bumps whenever a kind-stats sidecar lands on disk. The sidecar is
+    /// written after the snapshot save updates `cachedScans` (it's an
+    /// O(nodes) classification pass), so the sidebar's capacity bars key
+    /// on this, not on the scan date, or they'd reload before it exists.
+    private(set) var kindStatsSidecarGeneration = 0
     /// Ticks once a minute, so "Scanned 5 minutes ago" labels that read it
     /// stay current.
     private(set) var minuteTick = 0
@@ -155,6 +160,7 @@ final class AppModel {
             guard let self else { return }
             if let cached = await snapshotCache.loadSnapshot(for: target), !Task.isCancelled {
                 display(cached)
+                await backfillKindStatsSidecarIfStale(for: cached)
                 return
             }
             guard !Task.isCancelled else { return }
@@ -277,6 +283,34 @@ final class AppModel {
             FileHandle.standardError.write(Data("neodisk: could not cache the scan: \(error)\n".utf8))
         }
         await refreshCachedScans()
+        await saveKindStatsSidecar(for: snapshot)
+    }
+
+    /// Persisted kind aggregates for a target's cached scan: the sidebar's
+    /// capacity bars color themselves from these without decoding the
+    /// snapshot. nil when the target was never scanned.
+    func loadKindStatsSidecar(forTargetID targetID: String) async -> KindStatsSidecar? {
+        await snapshotCache.loadAuxiliaryData(forTargetID: targetID)
+            .flatMap(KindStatsSidecar.decoding)
+    }
+
+    /// Computes and persists the kind-stats sidecar for a complete snapshot,
+    /// at utility priority (the same O(nodes) pass as a catalog build).
+    private func saveKindStatsSidecar(for snapshot: ScanSnapshot) async {
+        let data = await Task.detached(priority: .utility) {
+            try? KindStatsSidecar.make(for: snapshot).encoded()
+        }.value
+        guard let data else { return }
+        await snapshotCache.saveAuxiliaryData(data, forTargetID: snapshot.target.id)
+        kindStatsSidecarGeneration &+= 1
+    }
+
+    /// Snapshots cached before sidecars existed (or whose sidecar went
+    /// stale) get one after they're shown.
+    private func backfillKindStatsSidecarIfStale(for snapshot: ScanSnapshot) async {
+        let existing = await loadKindStatsSidecar(forTargetID: snapshot.target.id)
+        guard existing?.matches(snapshot) != true else { return }
+        await saveKindStatsSidecar(for: snapshot)
     }
 
     /// Re-indexes the snapshot cache, keeping only snapshots of locations

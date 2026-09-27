@@ -3,7 +3,8 @@
 //  NeodiskGTK
 //
 //  The locations sidebar: Home, the root filesystem, mounted volumes with a
-//  usage bar, and recently scanned folders. Rows say how much is free and
+//  capacity bar (split by file kind once scanned), and recently scanned
+//  folders. Rows say how much is free and
 //  when the location was last scanned; activating one opens it (instantly
 //  from the snapshot cache when a scan is on file). The list follows mounts
 //  and unmounts live through GIO's volume monitor.
@@ -24,6 +25,11 @@ final class SidebarView {
     private var locations: [Location] = []
     private var recents: [Location] = []
     private var volumeMonitor: GObjectRef?
+    /// The bars on screen, by location, and the segments last loaded for
+    /// each scanned volume (rows are rebuilt often; segments outlive them).
+    private var capacityBars: [String: CapacityBar] = [:]
+    private var segments: [String: [VolumeCapacitySegment]] = [:]
+    private var segmentsTask: Task<Void, Never>?
     private var tokens: [ObservationToken] = []
 
     init(model: AppModel) {
@@ -88,6 +94,12 @@ final class SidebarView {
         tokens.append(track { [unowned self] in
             self.syncSelection(with: self.model.target?.id)
         })
+        tokens.append(track { [unowned self] in
+            _ = self.model.cachedScans
+            _ = self.model.kindStatsSidecarGeneration
+            _ = self.model.preferences.paletteID
+            self.reloadSegments()
+        })
 
         Task { [weak self] in
             guard let self else { return }
@@ -99,6 +111,7 @@ final class SidebarView {
 
     private func reloadLocations() {
         locations = Locations.current()
+        capacityBars = [:]
         gtk_list_box_remove_all(ptr(locationsList))
         for location in locations {
             gtk_list_box_append(ptr(locationsList), ptr(makeRow(for: location)))
@@ -128,25 +141,49 @@ final class SidebarView {
         gtk_widget_set_hexpand(ptr(text), gbool(true))
 
         if let space = location.space, space.totalCapacity > 0 {
-            let bar = raw(gtk_level_bar_new())!
-            // Disk usage reads the other way round from a battery: only the
-            // last stretch warns.
-            gtk_level_bar_remove_offset_value(ptr(bar), GTK_LEVEL_BAR_OFFSET_LOW)
-            gtk_level_bar_remove_offset_value(ptr(bar), GTK_LEVEL_BAR_OFFSET_HIGH)
-            gtk_level_bar_remove_offset_value(ptr(bar), GTK_LEVEL_BAR_OFFSET_FULL)
-            gtk_level_bar_add_offset_value(ptr(bar), "neodisk-used", 0.9)
-            gtk_level_bar_add_offset_value(ptr(bar), "neodisk-nearly-full", 1.0)
-            gtk_level_bar_set_value(ptr(bar), Double(space.usedBytes) / Double(space.totalCapacity))
-            Widgets.addClasses(bar, ["neodisk-capacity"])
-            Widgets.setMargins(bar, top: 3)
-            Widgets.append(text, bar)
+            let bar = CapacityBar(space: space)
+            bar.segments = segments[location.id] ?? []
+            capacityBars[location.id] = bar
+            Widgets.setMargins(bar.widget, top: 4, bottom: 1, end: 2)
+            Widgets.append(text, bar.widget)
         }
 
         let content = Widgets.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10, classes: ["neodisk-sidebar-row"], [icon, text])
         let row = raw(gtk_list_box_row_new())!
         gtk_list_box_row_set_child(ptr(row), ptr(content))
-        gtk_widget_set_tooltip_text(ptr(row), location.path)
+        // On the name and details only: over the capacity bar, its own
+        // bubble answers instead.
+        for label in [icon, title, subtitle] {
+            gtk_widget_set_tooltip_text(ptr(label), location.path)
+        }
         return row
+    }
+
+    /// Colors each scanned volume's bar from its kind-stats sidecar. A
+    /// volume never scanned keeps the plain used/total bar.
+    private func reloadSegments() {
+        let volumes = locations.filter { $0.space != nil && model.cachedScans[$0.id] != nil }
+        let scannedBytes = volumes.map { model.cachedScans[$0.id]?.totalAllocatedSize ?? 0 }
+        let palette = model.palette
+        segmentsTask?.cancel()
+        segmentsTask = Task { [weak self] in
+            guard let self else { return }
+            var loaded: [String: [VolumeCapacitySegment]] = [:]
+            for (volume, scanned) in zip(volumes, scannedBytes) {
+                guard let sidecar = await self.model.loadKindStatsSidecar(forTargetID: volume.id) else { continue }
+                loaded[volume.id] = VolumeCapacitySegments.make(
+                    space: volume.space,
+                    sidecar: sidecar,
+                    scannedBytes: scanned,
+                    palette: palette
+                )
+            }
+            guard !Task.isCancelled else { return }
+            self.segments = loaded
+            for (id, bar) in self.capacityBars {
+                bar.segments = loaded[id] ?? []
+            }
+        }
     }
 
     private func subtitleText(for location: Location) -> String {

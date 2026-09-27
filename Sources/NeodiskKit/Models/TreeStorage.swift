@@ -4,18 +4,26 @@
 //
 //  Contiguous Int32-indexed storage behind FileTreeStore. Nodes live in one
 //  array in depth-first preorder (the root is index 0, a parent always
-//  precedes its descendants, and siblings keep their child-list order);
+//  precedes its descendants, and every subtree is one contiguous run);
 //  topology is parent indices plus per-node child ranges into a shared
 //  child-slot array. The only string-keyed structure left is the id → index
 //  map that serves the public String-ID API — its keys share storage with
 //  each node's `id`, so paths are stored once.
+//
+//  The child slots, not the node array, own sibling (display) order: the
+//  in-place ancestor rebuild re-sorts a directory's slots when child sizes
+//  change (shared-size dedup, splices) without moving any records. Anything
+//  that serializes or fingerprints the tree in display order must therefore
+//  walk the slots (`forEachIndexInDisplayPreorder`), never `nodes` directly.
 //
 
 import Foundation
 
 /// Immutable storage; a class so FileTreeStore value copies are O(1).
 nonisolated final class TreeStorage: Sendable {
-    /// All nodes in depth-first preorder; `nodes[0]` is the root.
+    /// All nodes in depth-first preorder; `nodes[0]` is the root. Sibling
+    /// order here may lag the display order in `childSlots` (see the file
+    /// header).
     let nodes: [FileNodeRecord]
     /// Parent of `nodes[i]`, or -1 for the root. A parent index is always
     /// smaller than its child's (preorder), so descending index order is
@@ -90,6 +98,76 @@ nonisolated final class TreeStorage: Sendable {
     func parentIndex(of index: Int32) -> Int32? {
         let parent = parentIndices[Int(index)]
         return parent < 0 ? nil : parent
+    }
+
+    /// Visits every node index in display preorder: a parent before its
+    /// descendants, siblings in child-slot (display) order. This — not the
+    /// `nodes` array order — is the canonical sequence for serializing or
+    /// fingerprinting a tree, since an in-place rebuild may have re-sorted
+    /// a directory's slots without moving its records.
+    func forEachIndexInDisplayPreorder(_ body: (Int32) throws -> Void) rethrows {
+        guard !nodes.isEmpty else { return }
+        var stack: [Int32] = [0]
+        stack.reserveCapacity(256)
+        while let index = stack.popLast() {
+            try body(index)
+            let range = Int(childStarts[Int(index)])..<Int(childStarts[Int(index) + 1])
+            var slot = range.upperBound
+            while slot > range.lowerBound {
+                slot -= 1
+                stack.append(childSlots[slot])
+            }
+        }
+    }
+
+    /// Re-sorts every child range whose sizes are out of display order
+    /// (largest first) into full display order (ties by localized name) and
+    /// returns how many ranges were repaired. Snapshot files written before
+    /// the codec serialized in display preorder recorded siblings in stale
+    /// pre-dedup order; decode runs this so those caches display correctly.
+    ///
+    /// Detection compares sizes only: one Int64 pass per range, with no
+    /// string work on the (very common) equal-size runs, so every decode can
+    /// afford it. A stale order that differs only among equal-size siblings
+    /// is left as is — cosmetic, and gone once the directory is rebuilt or
+    /// the location rescanned. A correct tree is returned unchanged.
+    @discardableResult
+    static func restoreChildDisplayOrder(
+        nodes: [FileNodeRecord],
+        childStarts: [Int32],
+        childSlots: inout [Int32]
+    ) -> Int {
+        // Same comparator as FileTreeStore.childDisplayOrder, reading fields
+        // in place so the check never copies whole records.
+        func precedes(_ lhs: Int32, _ rhs: Int32) -> Bool {
+            let lhsAllocated = nodes[Int(lhs)].allocatedSize
+            let rhsAllocated = nodes[Int(rhs)].allocatedSize
+            if lhsAllocated == rhsAllocated {
+                return nodes[Int(lhs)].name.localizedStandardCompare(nodes[Int(rhs)].name) == .orderedAscending
+            }
+            return lhsAllocated > rhsAllocated
+        }
+
+        var repairedCount = 0
+        for directory in 0..<max(childStarts.count - 1, 0) {
+            let lower = Int(childStarts[directory])
+            let upper = Int(childStarts[directory + 1])
+            guard upper - lower > 1 else { continue }
+            var isOrdered = true
+            var previousAllocated = nodes[Int(childSlots[lower])].allocatedSize
+            for slot in (lower + 1)..<upper {
+                let allocated = nodes[Int(childSlots[slot])].allocatedSize
+                if allocated > previousAllocated {
+                    isOrdered = false
+                    break
+                }
+                previousAllocated = allocated
+            }
+            guard !isOrdered else { continue }
+            childSlots[lower..<upper].sort(by: precedes)
+            repairedCount += 1
+        }
+        return repairedCount
     }
 
     /// Builds storage from dictionary-shaped adjacency by walking from the

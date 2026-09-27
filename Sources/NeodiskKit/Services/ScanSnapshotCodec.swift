@@ -147,15 +147,21 @@ nonisolated enum ScanSnapshotCodec {
             payload.appendString(warning.category.rawValue)
         }
 
+        // Display preorder, not array order: the decoder rebuilds each
+        // directory's children in stream order, and an in-place rebuild
+        // (dedup, splice) may have re-sorted a directory's child slots
+        // without moving its records.
         let storage = store.storage
-        for (index, node) in storage.nodes.enumerated() {
-            if index & 1023 == 0 { try Task.checkCancellation() }
-            let parentIndex = storage.parentIndices[index]
+        var visited = 0
+        try storage.forEachIndexInDisplayPreorder { index in
+            if visited & 1023 == 0 { try Task.checkCancellation() }
+            visited += 1
+            let parentIndex = storage.parentIndices[Int(index)]
             let parentID = parentIndex >= 0 ? storage.nodes[Int(parentIndex)].id : nil
             appendNode(
-                node,
+                storage.nodes[Int(index)],
                 parentID: parentID,
-                childCount: storage.childCount(of: Int32(index)),
+                childCount: storage.childCount(of: index),
                 version: version,
                 to: &payload
             )
@@ -525,6 +531,14 @@ nonisolated enum ScanSnapshotCodec {
         guard let built = NodeIDIndex.building(from: nodes) else {
             throw ScanSnapshotCacheError.corruptData("duplicate node IDs")
         }
+        // Files written before the encoder walked display preorder stored
+        // some siblings in stale pre-dedup order; restore display order so
+        // those caches render sorted. A no-op on files written since.
+        TreeStorage.restoreChildDisplayOrder(
+            nodes: nodes,
+            childStarts: childStarts,
+            childSlots: &childSlots
+        )
 
         return FileTreeStore(
             trustedStorage: TreeStorage(

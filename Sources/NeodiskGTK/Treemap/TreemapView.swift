@@ -65,6 +65,10 @@ final class TreemapView: CanvasDelegate {
     private var selectionRect: (key: String, rect: CGRect)?
     /// The cell under the pointer, in scene coordinates.
     private var hoveredRect: CGRect?
+    /// Last pointer position in view coordinates, nil once it leaves the
+    /// map. Kept so the hover can re-resolve when a drill or zoom moves the
+    /// cells under a pointer that hasn't moved.
+    private var hoverPoint: CGPoint?
     private var zoomGestureStart: TreemapViewport?
     private var contextMenu: GPtr?
     private var tokens: [ObservationToken] = []
@@ -140,6 +144,7 @@ final class TreemapView: CanvasDelegate {
         guard let inputs = currentInputs() else {
             if model.store == nil {
                 frame = nil
+                resolveHover()
                 canvas.queueDraw()
             }
             return
@@ -191,6 +196,8 @@ final class TreemapView: CanvasDelegate {
                 self.frame = nil
                 self.canvas.queueDraw()
             }
+            // The cells under a stationary pointer may have changed.
+            self.resolveHover()
             // Inputs moved on while this render ran (resize, zoom, scan
             // progress): render again for the latest.
             if self.currentInputs() != inputs {
@@ -321,19 +328,12 @@ final class TreemapView: CanvasDelegate {
 
         let motion = raw(gtk_event_controller_motion_new())!
         connectPoint(motion, "motion") { [unowned self] x, y in
-            let cell = self.cell(at: CGPoint(x: x, y: y))
-            let hovered = cell.flatMap { $0.isFreeSpace || $0.isHiddenSpace ? nil : $0.nodeID }
-            if self.hoveredRect != cell?.rect {
-                self.hoveredRect = cell?.rect
-                self.canvas.queueDraw()
-            }
-            if self.model.hoveredNodeID != hovered {
-                self.model.hoveredNodeID = hovered
-            }
+            self.hoverPoint = CGPoint(x: x, y: y)
+            self.resolveHover()
         }
         connect(motion, "leave") { [unowned self] in
-            self.hoveredRect = nil
-            self.model.hoveredNodeID = nil
+            self.hoverPoint = nil
+            self.resolveHover()
         }
         gtk_widget_add_controller(ptr(widget), ptr(motion))
 
@@ -427,6 +427,19 @@ final class TreemapView: CanvasDelegate {
             model.select(cell.nodeID)
         default:
             break
+        }
+    }
+
+    /// Hit-tests the last pointer position against the frame on screen.
+    private func resolveHover() {
+        let cell = hoverPoint.flatMap { cell(at: $0) }
+        let hovered = cell.flatMap { $0.isFreeSpace || $0.isHiddenSpace ? nil : $0.nodeID }
+        if hoveredRect != cell?.rect {
+            hoveredRect = cell?.rect
+            canvas.queueDraw()
+        }
+        if model.hoveredNodeID != hovered {
+            model.hoveredNodeID = hovered
         }
     }
 

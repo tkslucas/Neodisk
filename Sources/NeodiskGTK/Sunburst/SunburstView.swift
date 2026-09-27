@@ -49,6 +49,9 @@ final class SunburstView: CanvasDelegate {
     private var inFlight: Inputs?
     private var renderTask: Task<Void, Never>?
     private var hoveredSegment: SunburstSegment?
+    /// Last pointer position, nil once it leaves; re-resolved when a new
+    /// layout lands under a pointer that hasn't moved.
+    private var hoverPoint: CGPoint?
     private var centerLayouts: (title: GObjectRef, detail: GObjectRef, key: String)?
     private var contextMenu: GPtr?
     private var tokens: [ObservationToken] = []
@@ -152,9 +155,9 @@ final class SunburstView: CanvasDelegate {
                     texture: texture,
                     renderedIDs: Set(rendered.0.compactMap(\.nodeID))
                 )
-                self.hoveredSegment = nil
                 self.canvas.queueDraw()
             }
+            self.resolveHover()
             if self.currentInputs() != inputs {
                 self.requestRender()
             }
@@ -233,25 +236,31 @@ final class SunburstView: CanvasDelegate {
         return SunburstCenterHitTester.contains(point: point, in: frame.inputs.size)
     }
 
+    /// Hit-tests the last pointer position against the layout on screen.
+    private func resolveHover() {
+        let segment = hoverPoint.flatMap { segment(at: $0) }
+        // Whole-value compare: a drill keeps a node's id but moves its arc.
+        if segment != hoveredSegment {
+            hoveredSegment = segment
+            canvas.queueDraw()
+        }
+        let hovered = segment.flatMap { $0.isFreeSpace || $0.isHiddenSpace ? nil : ($0.nodeID ?? $0.parentFolderID) }
+        if model.hoveredNodeID != hovered {
+            model.hoveredNodeID = hovered
+        }
+    }
+
     private func installControllers() {
         let widget = canvas.widget
 
         let motion = raw(gtk_event_controller_motion_new())!
         connectPoint(motion, "motion") { [unowned self] x, y in
-            let segment = self.segment(at: CGPoint(x: x, y: y))
-            if segment?.id != self.hoveredSegment?.id {
-                self.hoveredSegment = segment
-                self.canvas.queueDraw()
-            }
-            let hovered = segment.flatMap { $0.isFreeSpace || $0.isHiddenSpace ? nil : ($0.nodeID ?? $0.parentFolderID) }
-            if self.model.hoveredNodeID != hovered {
-                self.model.hoveredNodeID = hovered
-            }
+            self.hoverPoint = CGPoint(x: x, y: y)
+            self.resolveHover()
         }
         connect(motion, "leave") { [unowned self] in
-            self.hoveredSegment = nil
-            self.model.hoveredNodeID = nil
-            self.canvas.queueDraw()
+            self.hoverPoint = nil
+            self.resolveHover()
         }
         gtk_widget_add_controller(ptr(widget), ptr(motion))
 

@@ -3,9 +3,10 @@
 //  Neodisk
 //
 //  WorkspacePaneMetrics keeps the map pane usable: side-pane widths and drag
-//  ranges are capped against the actual window, the analysis pane concedes
-//  before the outline, ranges stay valid at pathological sizes, and stored
-//  sizes pass through untouched when there is room.
+//  ranges are capped against the actual window, the analysis pane floats
+//  over the map when there's no room to dock it, ranges stay valid at
+//  pathological sizes, and stored sizes pass through untouched when there
+//  is room.
 //
 
 import Foundation
@@ -98,34 +99,56 @@ import Testing
             outline: PaneLayout.outlineMaxWidth(),
             analysis: PaneLayout.analysisMaxWidth()
         )
-        let map = 900 - m.outlineWidth - m.analysisWidth - 2 * PaneLayout.splitterThickness
+        let docked = m.analysisFloats ? 0 : m.analysisWidth + PaneLayout.splitterThickness
+        let map = 900 - m.outlineWidth - PaneLayout.splitterThickness - docked
         #expect(map >= PaneLayout.mapMinWidth)
     }
 
-    @Test func analysisPaneConcedesBeforeOutline() {
+    @Test func narrowWindowFloatsAnalysisOverTheMap() {
+        // 900 − (600 + 8) − (200 + 8) = 84 < 560: no room to dock, so the
+        // pane floats at its stored width and the outline keeps its room.
         let m = metrics(
             width: 900,
             outline: PaneLayout.outlineMaxWidth(),
             analysis: PaneLayout.analysisMaxWidth()
         )
-        #expect(m.analysisWidth == PaneLayout.analysisMinWidth())
+        #expect(m.analysisFloats)
+        #expect(m.analysisWidth == PaneLayout.analysisMaxWidth())
         #expect(m.outlineWidth > PaneLayout.outlineMinWidth())
     }
 
-    @Test func hiddenAnalysisPaneFreesItsFootprintForTheOutline() {
-        let shown = metrics(width: 900, outline: PaneLayout.outlineMaxWidth())
+    @Test func roomyWindowDocksAnalysis() {
+        // 1_076 − 308 − 208 = 560: just enough map beside a docked pane.
+        #expect(!metrics(width: 1_076).analysisFloats)
+        #expect(metrics(width: 1_075).analysisFloats)
+    }
+
+    @Test func floatingAnalysisLeavesTheLayoutAsIfHidden() {
+        let floating = metrics(width: 900, outline: PaneLayout.outlineMaxWidth())
         let hidden = metrics(
             width: 900, showsAnalysis: false, outline: PaneLayout.outlineMaxWidth()
         )
+        #expect(floating.analysisFloats)
+        #expect(floating.outlineRange == hidden.outlineRange)
+        #expect(floating.outlineWidth == hidden.outlineWidth)
+    }
+
+    @Test func hiddenAnalysisPaneFreesItsFootprintForTheOutline() {
+        // Docked at 1_100, the analysis pane caps the outline's drag range.
+        let shown = metrics(width: 1_100)
+        let hidden = metrics(width: 1_100, showsAnalysis: false)
+        #expect(!shown.analysisFloats)
         #expect(hidden.outlineRange.upperBound > shown.outlineRange.upperBound)
     }
 
-    @Test func hiddenOutlineFreesItsFootprintForAnalysis() {
-        let shown = metrics(width: 760, outline: PaneLayout.outlineMaxWidth())
+    @Test func hiddenOutlineLetsAnalysisDock() {
+        // 800 − 208 = 592 ≥ 560 without the outline; with it, far less.
+        let shown = metrics(width: 800, outline: PaneLayout.outlineMaxWidth())
         let hidden = metrics(
-            width: 760, showsLeadingOutline: false, outline: PaneLayout.outlineMaxWidth()
+            width: 800, showsLeadingOutline: false, outline: PaneLayout.outlineMaxWidth()
         )
-        #expect(hidden.analysisRange.upperBound > shown.analysisRange.upperBound)
+        #expect(shown.analysisFloats)
+        #expect(!hidden.analysisFloats)
     }
 
     @Test func shortWindowCapsBottomOutline() {

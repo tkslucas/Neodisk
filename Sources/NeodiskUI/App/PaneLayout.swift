@@ -45,6 +45,11 @@ enum PaneLayout {
     /// ranges shrink before its width goes below this.
     static let mapMinWidth = 300.0
 
+    /// Narrowest map the analysis pane may dock beside. When docking it
+    /// (even at its minimum width) would leave less, the pane floats over
+    /// the map's trailing edge instead of squeezing it.
+    static let mapMinWidthBesideAnalysis = 560.0
+
     /// Minimum height for the map column above a bottom-docked outline:
     /// the breadcrumb bar plus a usable map.
     static let mapColumnMinHeight = 240.0
@@ -99,11 +104,18 @@ struct WorkspaceFileListVisibility: Equatable {
 /// is a primary navigation surface, the analysis pane is secondary. The
 /// resolution is sequential, so the invariant "map ≥ `mapMinWidth`" holds at
 /// every step: each pane's cap subtracts the other's already-resolved width.
+///
+/// On a window too narrow for the map to stay comfortable beside even a
+/// minimum-width analysis pane (`mapMinWidthBesideAnalysis`), the analysis
+/// pane floats over the map instead of docking: the map and outline lay out
+/// as if it were hidden.
 struct WorkspacePaneMetrics: Equatable {
     var outlineWidth: Double
     var outlineRange: ClosedRange<Double>
     var analysisWidth: Double
     var analysisRange: ClosedRange<Double>
+    /// The analysis pane overlays the map rather than taking room from it.
+    var analysisFloats: Bool
     var bottomOutlineHeight: Double
     var bottomOutlineRange: ClosedRange<Double>
 
@@ -127,15 +139,23 @@ struct WorkspacePaneMetrics: Equatable {
             ) + splitter
             : 0
 
-        let analysisCap = available.width - PaneLayout.mapMinWidth - outlineFootprint - splitter
+        let analysisMin = PaneLayout.analysisMinWidth(scale: textScale)
+        analysisFloats = available.width - outlineFootprint - analysisMin - splitter
+            < PaneLayout.mapMinWidthBesideAnalysis
+
+        // Docked, the pane gives way to the map; floating, only to the
+        // window's own edge.
+        let analysisCap = analysisFloats
+            ? available.width - splitter
+            : available.width - PaneLayout.mapMinWidth - outlineFootprint - splitter
         analysisRange = Self.range(
-            min: PaneLayout.analysisMinWidth(scale: textScale),
+            min: analysisMin,
             max: PaneLayout.analysisMaxWidth(scale: textScale),
             cap: analysisCap
         )
         analysisWidth = storedAnalysisWidth.clamped(to: analysisRange)
 
-        let analysisFootprint = showsAnalysis ? analysisWidth + splitter : 0
+        let analysisFootprint = showsAnalysis && !analysisFloats ? analysisWidth + splitter : 0
         let outlineCap = available.width - PaneLayout.mapMinWidth - analysisFootprint - splitter
         outlineRange = Self.range(
             min: PaneLayout.outlineMinWidth(scale: textScale),

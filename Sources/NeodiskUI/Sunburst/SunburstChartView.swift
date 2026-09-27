@@ -394,7 +394,7 @@ struct SunburstChartView: View {
                 return
             }
             transition.incomingSegments = chartModel.renderedSegments
-            transition.handoffFadeDepthThreshold = Self.handoffFadeDepthThreshold(
+            transition.handoffFadeDepthThreshold = SunburstZoomTransitionState.handoffFadeDepthThreshold(
                 animatedSegments: transition.animatedSegments,
                 focus: focus
             )
@@ -408,7 +408,7 @@ struct SunburstChartView: View {
             }
             transition.animatedSegments = chartModel.renderedSegments
             transition.focus = focus
-            transition.handoffFadeDepthThreshold = Self.handoffFadeDepthThreshold(
+            transition.handoffFadeDepthThreshold = SunburstZoomTransitionState.handoffFadeDepthThreshold(
                 animatedSegments: transition.animatedSegments,
                 focus: focus
             )
@@ -416,19 +416,6 @@ struct SunburstChartView: View {
         }
 
         zoomTransition = transition
-    }
-
-    /// The deepest ring the remap can carry: animated ring `d` lands
-    /// `focus.depth + 1` rings shallower, so anything in the other layout
-    /// past this depth has no remapped counterpart and alpha-fades at the
-    /// handoff (incoming deep rings on zoom-in, the outgoing chart's
-    /// orphaned outermost rings on zoom-out).
-    private static func handoffFadeDepthThreshold(
-        animatedSegments: [SunburstSegment],
-        focus: SunburstSegment
-    ) -> Int {
-        let maxAnimatedDepth = animatedSegments.map(\.depth).max() ?? 0
-        return maxAnimatedDepth - focus.depth - 1
     }
 
     /// Clears the transition state once its presentation reports finished

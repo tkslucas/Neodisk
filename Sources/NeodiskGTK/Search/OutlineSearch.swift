@@ -21,6 +21,8 @@ final class OutlineSearch {
     let widget: GPtr
     private let model: AppModel
     private let entry: GPtr
+    private let entryBar: GPtr
+    private let separator: GPtr
     private let stack: GPtr
     private let results: GPtr
     private let caption: GPtr
@@ -36,7 +38,7 @@ final class OutlineSearch {
         entry = raw(gtk_search_entry_new())!
         gtk_search_entry_set_placeholder_text(ptr(entry), L("Search entire scan"))
         gtk_widget_set_hexpand(ptr(entry), gbool(true))
-        let entryBar = Widgets.box(GTK_ORIENTATION_HORIZONTAL, classes: ["neodisk-search-bar"], [entry])
+        entryBar = Widgets.box(GTK_ORIENTATION_HORIZONTAL, classes: ["neodisk-search-bar"], [entry])
 
         results = raw(gtk_list_box_new())!
         Widgets.addClasses(results, ["navigation-sidebar"])
@@ -49,7 +51,7 @@ final class OutlineSearch {
         gtk_stack_add_named(ptr(stack), ptr(resultsPage), "results")
         gtk_widget_set_vexpand(ptr(stack), gbool(true))
 
-        let separator = raw(gtk_separator_new(GTK_ORIENTATION_HORIZONTAL))!
+        separator = raw(gtk_separator_new(GTK_ORIENTATION_HORIZONTAL))!
         widget = Widgets.box(GTK_ORIENTATION_VERTICAL, [entryBar, separator, stack])
         gtk_widget_set_size_request(ptr(widget), -1, 180)
         attach(self, to: widget, key: "neodisk-outline-search")
@@ -83,8 +85,12 @@ final class OutlineSearch {
             self.clear()
         })
         tokens.append(track { [unowned self] in
-            // A refresh of the same location reruns the query on the new tree.
-            _ = self.model.snapshot?.id
+            // Searching needs a finished scan: the field waits for one (a
+            // live scan streams partial trees), and a refresh of the same
+            // location reruns the query on the new tree.
+            let hasSnapshot = self.model.snapshot != nil
+            Widgets.setVisible(self.entryBar, hasSnapshot)
+            Widgets.setVisible(self.separator, hasSnapshot)
             self.schedule()
         })
         tokens.append(track { [unowned self] in
@@ -92,7 +98,7 @@ final class OutlineSearch {
         })
     }
 
-    /// Ctrl+F.
+    /// Ctrl+F (the action is disabled until there's a scan to search).
     func focus() {
         gtk_widget_grab_focus(ptr(entry))
     }

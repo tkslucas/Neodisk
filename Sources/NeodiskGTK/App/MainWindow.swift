@@ -21,6 +21,7 @@ final class MainWindow {
     let model: AppModel
 
     private let splitView: GPtr
+    private let restoreLabel: GPtr
     private let titleLabel: GPtr
     private let subtitleLabel: GPtr
     private let contentStack: GPtr
@@ -159,8 +160,23 @@ final class MainWindow {
         gtk_actionable_set_action_name(ptr(openButton), "win.open-folder")
         adw_status_page_set_child(ptr(emptyState), ptr(openButton))
 
+        // A saved scan decoding for display (about a second per million
+        // files): say so in the window, as the Mac does, rather than show
+        // an empty workspace.
+        let spinner = raw(gtk_spinner_new())!
+        gtk_spinner_start(ptr(spinner))
+        gtk_widget_set_size_request(ptr(spinner), 32, 32)
+        restoreLabel = Widgets.label("", xalign: 0.5, classes: ["title-4", "dim-label"], wrap: true)
+        gtk_label_set_justify(ptr(restoreLabel), GTK_JUSTIFY_CENTER)
+        let restoreState = Widgets.box(GTK_ORIENTATION_VERTICAL, spacing: 14, [spinner, restoreLabel])
+        gtk_widget_set_valign(ptr(restoreState), GTK_ALIGN_CENTER)
+        gtk_widget_set_halign(ptr(restoreState), GTK_ALIGN_CENTER)
+        Widgets.setMargins(restoreState, all: 24)
+
         contentStack = raw(gtk_stack_new())!
+        gtk_stack_set_transition_type(ptr(contentStack), GTK_STACK_TRANSITION_TYPE_CROSSFADE)
         gtk_stack_add_named(ptr(contentStack), ptr(emptyState), "empty")
+        gtk_stack_add_named(ptr(contentStack), ptr(restoreState), "restoring")
         gtk_stack_add_named(ptr(contentStack), ptr(statisticsSplit), "workspace")
 
         let workspaceToolbar = raw(adw_toolbar_view_new())!
@@ -279,8 +295,15 @@ final class MainWindow {
     private func bindModel() {
         tokens.append(track { [unowned self] in
             _ = self.model.minuteTick
-            let hasContent = self.model.target != nil
-            gtk_stack_set_visible_child_name(ptr(self.contentStack), hasContent ? "workspace" : "empty")
+            let page = switch (self.model.target, self.model.phase) {
+            case (nil, _): "empty"
+            case (.some, .restoring): "restoring"
+            default: "workspace"
+            }
+            gtk_stack_set_visible_child_name(ptr(self.contentStack), page)
+            if let target = self.model.target {
+                gtk_label_set_text(ptr(self.restoreLabel), L("Opening last scan of %@…", self.displayName(target)))
+            }
 
             let title = self.model.target.map(self.displayName) ?? "Neodisk"
             gtk_label_set_text(ptr(self.titleLabel), title)
@@ -297,7 +320,7 @@ final class MainWindow {
             Widgets.setVisible(self.stopButton, scanning)
             Widgets.setVisible(self.scanButton, !scanning)
             setActionEnabled(self.actions["focus-out"], self.model.canFocusOut)
-            setActionEnabled(self.actions["search"], self.model.store != nil)
+            setActionEnabled(self.actions["search"], self.model.snapshot != nil)
             let hasSelection = self.model.selectedNode != nil
             for name in ["open-item", "show-in-files", "copy-path"] {
                 setActionEnabled(self.actions[name], hasSelection)

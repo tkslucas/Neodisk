@@ -29,12 +29,10 @@ enum DevLaunchHooks {
 
     static func run(model: AppModel, window: MainWindow, application: GPtr) {
         let environment = ProcessInfo.processInfo.environment
-        if let mode = environment["NEODISK_VIZ_MODE"].flatMap(VizViewMode.init(rawValue:)) {
-            model.preferences.vizMode = mode
-        }
-        if let style = environment["NEODISK_TREEMAP_STYLE"].flatMap(TreemapStyle.init(rawValue:)) {
-            model.preferences.treemapStyle = style
-        }
+        model.preferences.overrideForSession(
+            vizMode: environment["NEODISK_VIZ_MODE"].flatMap(VizViewMode.init(rawValue:)),
+            treemapStyle: environment["NEODISK_TREEMAP_STYLE"].flatMap(TreemapStyle.init(rawValue:))
+        )
         if let tab = environment["NEODISK_ANALYSIS_TAB"].flatMap(AnalysisTab.init(rawValue:)) {
             model.analysisTab = tab
         }

@@ -27,8 +27,14 @@ final class Preferences {
     var autoSummarizeDirectories = true { didSet { scheduleSave() } }
     var showFreeSpace = false { didSet { scheduleSave() } }
     var paletteID = VizPalette.standard.id { didSet { scheduleSave() } }
-    var vizMode: VizViewMode = .treemap { didSet { scheduleSave() } }
-    var treemapStyle: TreemapStyle = .cushion { didSet { scheduleSave() } }
+    // A same-value write (a toggle echoing the model back) isn't a choice,
+    // so only a real change ends a session override.
+    var vizMode: VizViewMode = .treemap {
+        didSet { if !isOverriding, vizMode != oldValue { savedVizMode = nil }; scheduleSave() }
+    }
+    var treemapStyle: TreemapStyle = .cushion {
+        didSet { if !isOverriding, treemapStyle != oldValue { savedTreemapStyle = nil }; scheduleSave() }
+    }
     var kindMode: FileKindDisplayMode = .categories { didSet { scheduleSave() } }
     var showsStatistics = true { didSet { scheduleSave() } }
     var showsOutline = true { didSet { scheduleSave() } }
@@ -56,10 +62,29 @@ final class Preferences {
         recentFolders = Array(folders.prefix(Self.maximumRecentFolders))
     }
 
+    /// Shows a view for this session without saving it (the dev hooks, like
+    /// the Mac's). Saves keep writing the stored choice until the user picks
+    /// one themselves.
+    func overrideForSession(vizMode: VizViewMode? = nil, treemapStyle: TreemapStyle? = nil) {
+        isOverriding = true
+        defer { isOverriding = false }
+        if let vizMode {
+            savedVizMode = savedVizMode ?? self.vizMode
+            self.vizMode = vizMode
+        }
+        if let treemapStyle {
+            savedTreemapStyle = savedTreemapStyle ?? self.treemapStyle
+            self.treemapStyle = treemapStyle
+        }
+    }
+
     // MARK: - Persistence
 
     @ObservationIgnored private let fileURL: URL
     @ObservationIgnored private var isLoading = false
+    @ObservationIgnored private var isOverriding = false
+    @ObservationIgnored private var savedVizMode: VizViewMode?
+    @ObservationIgnored private var savedTreemapStyle: TreemapStyle?
     @ObservationIgnored private var saveTask: Task<Void, Never>?
 
     init(fileURL: URL = Preferences.defaultFileURL) {
@@ -112,7 +137,7 @@ final class Preferences {
 
     /// Coalesces a burst of changes (a window resize) into one write.
     private func scheduleSave() {
-        guard !isLoading else { return }
+        guard !isLoading, !isOverriding else { return }
         saveTask?.cancel()
         saveTask = Task { [weak self] in
             guard (try? await Task.sleep(for: .milliseconds(400))) != nil else { return }
@@ -127,8 +152,8 @@ final class Preferences {
             autoSummarizeDirectories: autoSummarizeDirectories,
             showFreeSpace: showFreeSpace,
             paletteID: paletteID,
-            vizMode: vizMode.rawValue,
-            treemapStyle: treemapStyle.rawValue,
+            vizMode: (savedVizMode ?? vizMode).rawValue,
+            treemapStyle: (savedTreemapStyle ?? treemapStyle).rawValue,
             kindMode: kindMode.rawValue,
             showsStatistics: showsStatistics,
             showsOutline: showsOutline,

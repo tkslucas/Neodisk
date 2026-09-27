@@ -25,7 +25,7 @@ final class MainWindow {
     private let subtitleLabel: GPtr
     private let contentStack: GPtr
     private let vizStack: GPtr
-    private let workspacePaned: GPtr
+    private let statisticsSplit: GPtr
     private let vizPaned: GPtr
     private let scanButton: GPtr
     private let stopButton: GPtr
@@ -133,12 +133,18 @@ final class MainWindow {
         gtk_paned_set_shrink_end_child(ptr(vizPaned), gbool(false))
         gtk_paned_set_position(ptr(vizPaned), Int32(max(320, preferences.windowHeight - 380)))
 
-        workspacePaned = raw(gtk_paned_new(GTK_ORIENTATION_HORIZONTAL))!
-        gtk_paned_set_start_child(ptr(workspacePaned), ptr(vizPaned))
-        gtk_paned_set_end_child(ptr(workspacePaned), ptr(statistics.widget))
-        gtk_paned_set_resize_end_child(ptr(workspacePaned), gbool(false))
-        gtk_paned_set_shrink_end_child(ptr(workspacePaned), gbool(false))
-        gtk_paned_set_position(ptr(workspacePaned), Int32(max(480, preferences.windowWidth - 280 - 360)))
+        // The statistics pane is a split-view sidebar on the trailing edge,
+        // so it slides in and out like the locations sidebar. Pinned: only
+        // the Statistics toggle shows or hides it, never a window resize.
+        statisticsSplit = raw(adw_overlay_split_view_new())!
+        adw_overlay_split_view_set_sidebar_position(ptr(statisticsSplit), GTK_PACK_END)
+        adw_overlay_split_view_set_content(ptr(statisticsSplit), ptr(vizPaned))
+        adw_overlay_split_view_set_sidebar(ptr(statisticsSplit), ptr(statistics.widget))
+        adw_overlay_split_view_set_pin_sidebar(ptr(statisticsSplit), gbool(true))
+        adw_overlay_split_view_set_min_sidebar_width(ptr(statisticsSplit), 330)
+        adw_overlay_split_view_set_max_sidebar_width(ptr(statisticsSplit), 380)
+        adw_overlay_split_view_set_sidebar_width_fraction(ptr(statisticsSplit), 0.28)
+        adw_overlay_split_view_set_show_sidebar(ptr(statisticsSplit), gbool(preferences.showsStatistics))
 
         let emptyState = raw(adw_status_page_new())!
         adw_status_page_set_icon_name(ptr(emptyState), "drive-harddisk-symbolic")
@@ -155,7 +161,7 @@ final class MainWindow {
 
         contentStack = raw(gtk_stack_new())!
         gtk_stack_add_named(ptr(contentStack), ptr(emptyState), "empty")
-        gtk_stack_add_named(ptr(contentStack), ptr(workspacePaned), "workspace")
+        gtk_stack_add_named(ptr(contentStack), ptr(statisticsSplit), "workspace")
 
         let workspaceToolbar = raw(adw_toolbar_view_new())!
         adw_toolbar_view_add_top_bar(ptr(workspaceToolbar), ptr(header))
@@ -184,24 +190,29 @@ final class MainWindow {
             g_value_unset(&value)
             adw_application_window_add_breakpoint(ptr(window), breakpoint)
         }
-        // Narrower still, the statistics pane and the secondary outline
-        // columns give way to the map and file names. The Statistics toggle
-        // still shows the pane on demand.
+        // Narrower still, the statistics pane floats over the map instead
+        // of taking room from it, and the secondary outline columns give
+        // way to the file names.
         if let condition = adw_breakpoint_condition_parse("max-width: 900sp") {
             let breakpoint = adw_breakpoint_new(condition)
-            var value = GValue()
-            g_value_init(&value, neodisk_boolean_type())
-            g_value_set_boolean(&value, gbool(false))
-            for target in [statistics.widget] + outline.secondaryColumns {
-                adw_breakpoint_add_setter(breakpoint, ptr(target), "visible", &value)
+            var collapsed = GValue()
+            g_value_init(&collapsed, neodisk_boolean_type())
+            g_value_set_boolean(&collapsed, gbool(true))
+            adw_breakpoint_add_setter(breakpoint, ptr(statisticsSplit), "collapsed", &collapsed)
+            g_value_unset(&collapsed)
+            var hidden = GValue()
+            g_value_init(&hidden, neodisk_boolean_type())
+            g_value_set_boolean(&hidden, gbool(false))
+            for column in outline.secondaryColumns {
+                adw_breakpoint_add_setter(breakpoint, ptr(column), "visible", &hidden)
             }
-            g_value_unset(&value)
+            g_value_unset(&hidden)
             adw_application_window_add_breakpoint(ptr(window), breakpoint)
         }
 
         attach(self, to: window, key: "neodisk-main-window")
         installActions()
-        bindModel(statisticsToggle: statisticsToggle)
+        bindModel()
 
         connect(cushionToggle, "toggled") { [unowned self] in
             if gtk_toggle_button_get_active(ptr(self.cushionToggle)) != 0 { self.showView(.cushion) }
@@ -212,8 +223,12 @@ final class MainWindow {
         connect(sunburstToggle, "toggled") { [unowned self] in
             if gtk_toggle_button_get_active(ptr(self.sunburstToggle)) != 0 { self.showView(.sunburst) }
         }
-        connect(statisticsToggle, "toggled") { [unowned self] in
-            self.model.preferences.showsStatistics = gtk_toggle_button_get_active(ptr(statisticsToggle)) != 0
+        g_object_bind_property(
+            statisticsSplit, "show-sidebar", statisticsToggle, "active",
+            GBindingFlags(rawValue: 1 | 2)  // G_BINDING_BIDIRECTIONAL | G_BINDING_SYNC_CREATE
+        )
+        connectNotify(statisticsSplit, "show-sidebar") { [unowned self] in
+            self.model.preferences.showsStatistics = adw_overlay_split_view_get_show_sidebar(ptr(self.statisticsSplit)) != 0
         }
         connectNotify(window, "default-width") { [unowned self] in self.rememberSize() }
         connectNotify(window, "default-height") { [unowned self] in self.rememberSize() }
@@ -261,7 +276,7 @@ final class MainWindow {
 
     // MARK: - Model binding
 
-    private func bindModel(statisticsToggle: GPtr) {
+    private func bindModel() {
         tokens.append(track { [unowned self] in
             _ = self.model.minuteTick
             let hasContent = self.model.target != nil
@@ -296,9 +311,10 @@ final class MainWindow {
             gtk_toggle_button_set_active(ptr(toggle), gbool(true))
         })
         tokens.append(track { [unowned self] in
-            let shows = self.model.preferences.showsStatistics
-            Widgets.setVisible(self.statistics.widget, shows)
-            gtk_toggle_button_set_active(ptr(statisticsToggle), gbool(shows))
+            let shows = gbool(self.model.preferences.showsStatistics)
+            if adw_overlay_split_view_get_show_sidebar(ptr(self.statisticsSplit)) != shows {
+                adw_overlay_split_view_set_show_sidebar(ptr(self.statisticsSplit), shows)
+            }
         })
     }
 

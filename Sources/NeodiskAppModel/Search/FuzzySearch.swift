@@ -12,25 +12,42 @@ import NeodiskKit
 
 /// One searchable node — the entry shape of the shared per-snapshot search
 /// index (see SnapshotSearchIndex) that serves both the outline's
-/// entire-scan search and the kind drill-in filter. Names are
-/// pre-lowercased once at index build so per-keystroke scoring never
-/// allocates; kind IDs are pre-classified once so the drill-in list can
-/// filter the index without re-touching nodes.
+/// entire-scan search and the kind drill-in filter.
+///
+/// An index holds one entry per node of a scan (millions), so entries are
+/// small: a node index into one shared table plus pre-classified kind
+/// codes. Names are matched in place with ASCII case folding; only names
+/// whose lowercase needs more than that keep a lowercased copy (in the
+/// table), so per-keystroke scoring never allocates. Kinds are classified
+/// once so the drill-in list can filter the index without re-touching nodes.
 package struct FileSearchEntry: Sendable {
-    package let id: String
-    package let lowercasedName: String
-    package let allocatedSize: Int64
-    /// The node's kind ID under `.categories` grouping.
-    package let categoryKindID: String
-    /// The node's kind ID under `.types` grouping.
-    package let typeKindID: String
+    private let table: SearchEntryTable
+    private let nodeIndex: Int32
+    private let categoryCode: UInt32
+    private let typeCode: UInt32
     /// Whether the node participates in kind statistics (files, packages,
     /// auto-summarized folders).
     package let isKindCountable: Bool
-    /// Modification date, so the age drill-in can bucket the index without
-    /// re-touching nodes.
-    package let lastModified: Date?
+    package let allocatedSize: Int64
 
+    init(
+        table: SearchEntryTable,
+        nodeIndex: Int32,
+        categoryCode: UInt32,
+        typeCode: UInt32,
+        isKindCountable: Bool,
+        allocatedSize: Int64
+    ) {
+        self.table = table
+        self.nodeIndex = nodeIndex
+        self.categoryCode = categoryCode
+        self.typeCode = typeCode
+        self.isKindCountable = isKindCountable
+        self.allocatedSize = allocatedSize
+    }
+
+    /// A standalone entry (its own one-node table), for tests and small
+    /// hand-built lists.
     package init(
         id: String,
         lowercasedName: String,
@@ -40,20 +57,121 @@ package struct FileSearchEntry: Sendable {
         isKindCountable: Bool = false,
         lastModified: Date? = nil
     ) {
-        self.id = id
-        self.lowercasedName = lowercasedName
-        self.allocatedSize = allocatedSize
-        self.categoryKindID = categoryKindID
-        self.typeKindID = typeKindID
-        self.isKindCountable = isKindCountable
-        self.lastModified = lastModified
+        self.init(
+            table: SearchEntryTable(
+                standaloneID: id,
+                lowercasedName: lowercasedName,
+                lastModified: lastModified,
+                kindIDs: [categoryKindID, typeKindID]
+            ),
+            nodeIndex: 0,
+            categoryCode: 0,
+            typeCode: 1,
+            isKindCountable: isKindCountable,
+            allocatedSize: allocatedSize
+        )
     }
+
+    package var id: String { table.id(at: nodeIndex) }
+    /// Modification date, so the age drill-in can bucket the index.
+    package var lastModified: Date? { table.lastModified(at: nodeIndex) }
+    /// The node's kind ID under `.categories` grouping.
+    package var categoryKindID: String { table.kindIDs[Int(categoryCode)] }
+    /// The node's kind ID under `.types` grouping.
+    package var typeKindID: String { table.kindIDs[Int(typeCode)] }
 
     package func kindID(for mode: FileKindDisplayMode) -> String {
         switch mode {
         case .categories: return categoryKindID
         case .types: return typeKindID
         }
+    }
+
+    /// The lowercased name. Allocates; matching uses `withLowercasedName`.
+    package var lowercasedName: String {
+        withLowercasedName { String(decoding: Array($0), as: UTF8.self) }
+    }
+
+    /// Calls `body` with the lowercased name's UTF-8, without allocating
+    /// for names that ASCII folding lowercases fully (nearly all of them).
+    package func withLowercasedName<R>(_ body: (LowercasedNameBytes) -> R) -> R {
+        if let lowercased = table.lowercasedOverride(at: nodeIndex) {
+            return body(LowercasedNameBytes(utf8: lowercased.utf8, foldsASCII: false))
+        }
+        return body(LowercasedNameBytes(utf8: table.name(at: nodeIndex).utf8, foldsASCII: true))
+    }
+}
+
+/// A name's UTF-8 as lowercased bytes: either already lowercase, or folded
+/// from ASCII uppercase as it's read.
+package struct LowercasedNameBytes: Sequence {
+    let utf8: String.UTF8View
+    let foldsASCII: Bool
+
+    package var count: Int { utf8.count }
+
+    package func makeIterator() -> Iterator {
+        Iterator(base: utf8.makeIterator(), foldsASCII: foldsASCII)
+    }
+
+    package struct Iterator: IteratorProtocol {
+        var base: String.UTF8View.Iterator
+        let foldsASCII: Bool
+
+        package mutating func next() -> UInt8? {
+            guard let byte = base.next() else { return nil }
+            return foldsASCII && byte >= 0x41 && byte <= 0x5A ? byte | 0x20 : byte
+        }
+    }
+}
+
+/// What an index's entries share: the scan's node array (IDs, names, and
+/// dates are read from it, never copied), the kind-ID strings the entries'
+/// codes point at, and lowercased copies of the few names that ASCII case
+/// folding doesn't fully lowercase.
+package final class SearchEntryTable: Sendable {
+    private let nodes: [FileNodeRecord]
+    let kindIDs: [String]
+    private let lowercasedOverrides: [Int32: String]
+    /// Standalone entries (tests) have no node array.
+    private let standalone: (id: String, name: String, lastModified: Date?)?
+
+    init(nodes: [FileNodeRecord], kindIDs: [String], lowercasedOverrides: [Int32: String]) {
+        self.nodes = nodes
+        self.kindIDs = kindIDs
+        self.lowercasedOverrides = lowercasedOverrides
+        standalone = nil
+    }
+
+    init(standaloneID id: String, lowercasedName: String, lastModified: Date?, kindIDs: [String]) {
+        nodes = []
+        self.kindIDs = kindIDs
+        lowercasedOverrides = [:]
+        standalone = (id, lowercasedName, lastModified)
+    }
+
+    func id(at index: Int32) -> String {
+        standalone?.id ?? nodes[Int(index)].id
+    }
+
+    func name(at index: Int32) -> String {
+        standalone?.name ?? nodes[Int(index)].name
+    }
+
+    func lastModified(at index: Int32) -> Date? {
+        standalone.map { $0.lastModified } ?? nodes[Int(index)].lastModified
+    }
+
+    func lowercasedOverride(at index: Int32) -> String? {
+        lowercasedOverrides.isEmpty ? nil : lowercasedOverrides[index]
+    }
+
+    /// Whether folding ASCII uppercase gives the same bytes as
+    /// `String.lowercased()` for this name.
+    static func asciiFoldingLowercases(_ name: String) -> Bool {
+        var name = name
+        return name.withUTF8 { bytes in !bytes.contains { $0 >= 0x80 } }
+            || name.lowercased() == String(decoding: name.utf8.map { $0 >= 0x41 && $0 <= 0x5A ? $0 | 0x20 : $0 }, as: UTF8.self)
     }
 }
 
@@ -84,6 +202,14 @@ package enum FuzzyMatcher {
     /// re-optimizes match positions; greedy is a deliberate simplification —
     /// wrong rankings need pathological names, and never drop matches.)
     package static func score(queryBytes: [UInt8], lowercasedName: String) -> Int? {
+        score(queryBytes: queryBytes, lowercasedNameBytes: lowercasedName.utf8)
+    }
+
+    package static func score(queryBytes: [UInt8], entry: FileSearchEntry) -> Int? {
+        entry.withLowercasedName { score(queryBytes: queryBytes, lowercasedNameBytes: $0) }
+    }
+
+    private static func score(queryBytes: [UInt8], lowercasedNameBytes: some Sequence<UInt8>) -> Int? {
         guard !queryBytes.isEmpty else { return 0 }
 
         var score = 0
@@ -92,7 +218,7 @@ package enum FuzzyMatcher {
         // Start-of-name counts as a word start.
         var previousByte: UInt8 = UInt8(ascii: " ")
 
-        for byte in lowercasedName.utf8 {
+        for byte in lowercasedNameBytes {
             if queryIndex < queryBytes.count, byte == queryBytes[queryIndex] {
                 score += Self.matchBonus
                 if previousMatched {
@@ -163,11 +289,11 @@ package enum FuzzyMatcher {
         for (index, entry) in entries.enumerated() {
             if index % cancellationCheckInterval == 0, Task.isCancelled { break }
             guard isIncluded(entry) else { continue }
-            if let score = Self.score(queryBytes: queryBytes, lowercasedName: entry.lowercasedName) {
+            if let score = Self.score(queryBytes: queryBytes, entry: entry) {
                 total += 1
                 best.offer(RankedMatch(
                     score: score,
-                    nameLength: entry.lowercasedName.utf8.count,
+                    nameLength: entry.withLowercasedName(\.count),
                     allocatedSize: entry.allocatedSize,
                     index: index
                 ), entries: entries)
@@ -269,7 +395,7 @@ package enum FuzzyMatcher {
         var total = 0
         for (index, entry) in entries.enumerated() {
             if index % cancellationCheckInterval == 0, Task.isCancelled { break }
-            guard Self.score(queryBytes: queryBytes, lowercasedName: entry.lowercasedName) != nil else {
+            guard Self.score(queryBytes: queryBytes, entry: entry) != nil else {
                 continue
             }
             total += 1

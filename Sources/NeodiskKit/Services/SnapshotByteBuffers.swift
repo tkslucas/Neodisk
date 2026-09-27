@@ -177,6 +177,15 @@ nonisolated struct ByteReader: LittleEndianByteReading {
         return data.subdata(in: start..<(start + count))
     }
 
+    /// The next `count` bytes without copying them (a slice sharing the
+    /// reader's storage). Callers pass a count within `remainingByteCount`.
+    mutating func readSlice(count: Int) -> Data {
+        let start = data.startIndex + offset
+        let end = start + min(max(count, 0), remainingByteCount)
+        offset = end - data.startIndex
+        return data[start..<end]
+    }
+
     mutating func load<T>(_ type: T.Type) throws -> T {
         let size = MemoryLayout<T>.size
         guard remainingByteCount >= size else {

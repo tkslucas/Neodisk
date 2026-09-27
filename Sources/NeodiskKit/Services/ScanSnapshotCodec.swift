@@ -267,14 +267,6 @@ nonisolated enum ScanSnapshotCodec {
         let (version, metadataLength) = try validatedHeader(from: &headerReader)
         let metadata = try decodeMetadata(try headerReader.readBytes(count: metadataLength))
 
-        let payload: Data
-        if version >= 2 {
-            let compressed = try headerReader.readBytes(count: headerReader.remainingByteCount)
-            payload = try decompressPayload(compressed)
-        } else {
-            payload = try headerReader.readBytes(count: headerReader.remainingByteCount)
-        }
-
         let stats = ScanAggregateStats(
             totalAllocatedSize: metadata.totalAllocatedSize,
             totalLogicalSize: metadata.totalLogicalSize,
@@ -284,38 +276,23 @@ nonisolated enum ScanSnapshotCodec {
             inaccessibleItemCount: metadata.inaccessibleItemCount
         )
 
-        // The payload is decoded through raw-pointer reads: per-node Data
-        // subscripting and subdata copies were a measurable share of loading
-        // a millions-of-nodes snapshot.
-        let (warnings, store) = try payload.withUnsafeBytes { bytes in
-            var reader = PayloadReader(buffer: bytes)
-
-            let warningCount = Int(try reader.readUInt32())
-            guard warningCount <= reader.remainingByteCount / 12 else {
-                throw ScanSnapshotCacheError.corruptData("implausible warning count \(warningCount)")
+        let warnings: [ScanWarning]
+        let store: FileTreeStore
+        if version >= 2 {
+            // Parsed as it decompresses: the whole payload (hundreds of MB
+            // for millions of nodes) never sits in memory beside the tree.
+            let compressed = headerReader.readSlice(count: headerReader.remainingByteCount)
+            var reader = StreamingPayloadReader(source: try PayloadDecompressor(compressed: compressed))
+            (warnings, store) = try decodePayload(from: &reader, metadata: metadata, stats: stats, version: version)
+        } else {
+            // The payload is decoded through raw-pointer reads: per-node Data
+            // subscripting and subdata copies were a measurable share of
+            // loading a millions-of-nodes snapshot.
+            let payload = headerReader.readSlice(count: headerReader.remainingByteCount)
+            (warnings, store) = try payload.withUnsafeBytes { bytes in
+                var reader = PayloadReader(buffer: bytes)
+                return try decodePayload(from: &reader, metadata: metadata, stats: stats, version: version)
             }
-            var warnings: [ScanWarning] = []
-            warnings.reserveCapacity(warningCount)
-            for _ in 0..<warningCount {
-                let path = try reader.readString()
-                let message = try reader.readString()
-                let categoryRaw = try reader.readString()
-                guard let category = ScanWarningCategory(rawValue: categoryRaw) else {
-                    throw ScanSnapshotCacheError.corruptData("unknown warning category \(categoryRaw)")
-                }
-                warnings.append(ScanWarning(path: path, message: message, category: category))
-            }
-
-            let store = try readTreeStore(
-                nodeCount: metadata.nodeCount,
-                aggregateStats: stats,
-                version: version,
-                from: &reader
-            )
-            guard reader.isAtEnd else {
-                throw ScanSnapshotCacheError.corruptData("trailing bytes after node records")
-            }
-            return (warnings, store)
         }
         guard store.nodeCount == metadata.nodeCount else {
             throw ScanSnapshotCacheError.corruptData(
@@ -352,6 +329,40 @@ nonisolated enum ScanSnapshotCodec {
             scanOptions: metadata.scanOptions,
             incrementalCheckpoint: metadata.incrementalCheckpoint
         )
+    }
+
+    private static func decodePayload<Reader: PayloadReading>(
+        from reader: inout Reader,
+        metadata: Metadata,
+        stats: ScanAggregateStats,
+        version: UInt32
+    ) throws -> (warnings: [ScanWarning], store: FileTreeStore) {
+        let warningCount = Int(try reader.readUInt32())
+        guard warningCount <= reader.remainingByteCount / 12 else {
+            throw ScanSnapshotCacheError.corruptData("implausible warning count \(warningCount)")
+        }
+        var warnings: [ScanWarning] = []
+        warnings.reserveCapacity(min(warningCount, 1 << 16))
+        for _ in 0..<warningCount {
+            let path = try reader.readString()
+            let message = try reader.readString()
+            let categoryRaw = try reader.readString()
+            guard let category = ScanWarningCategory(rawValue: categoryRaw) else {
+                throw ScanSnapshotCacheError.corruptData("unknown warning category \(categoryRaw)")
+            }
+            warnings.append(ScanWarning(path: path, message: message, category: category))
+        }
+
+        let store = try readTreeStore(
+            nodeCount: metadata.nodeCount,
+            aggregateStats: stats,
+            version: version,
+            from: &reader
+        )
+        guard reader.isAtEnd else {
+            throw ScanSnapshotCacheError.corruptData("trailing bytes after node records")
+        }
+        return (warnings, store)
     }
 
     /// Reads just the header of a cache file — enough for pruning and
@@ -410,11 +421,11 @@ nonisolated enum ScanSnapshotCodec {
         }
     }
 
-    private static func readTreeStore(
+    private static func readTreeStore<Reader: PayloadReading>(
         nodeCount: Int,
         aggregateStats: ScanAggregateStats,
         version: UInt32,
-        from reader: inout PayloadReader
+        from reader: inout Reader
     ) throws -> FileTreeStore {
         // Even an empty-name record needs flags, a string length, size,
         // child count, and (v4+) extended flags. Reject before reserving arrays.
@@ -514,10 +525,10 @@ nonisolated enum ScanSnapshotCodec {
         )
     }
 
-    private static func readNode(
+    private static func readNode<Reader: PayloadReading>(
         parentID: String?,
         version: UInt32,
-        from reader: inout PayloadReader
+        from reader: inout Reader
     ) throws -> (node: FileNodeRecord, childCount: Int) {
         let flags = NodeFlags(rawValue: try reader.readUInt16())
         let name = try reader.readString()

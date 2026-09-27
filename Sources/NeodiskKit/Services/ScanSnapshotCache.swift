@@ -275,7 +275,9 @@ public actor ScanSnapshotCache {
 
     private func loadSnapshot(for target: ScanTarget, at url: URL) async -> ScanSnapshot? {
         let signatureAtRead = fileSignature(at: url)
-        guard let data = try? Data(contentsOf: url) else { return nil }
+        // Mapped rather than read into the heap when the volume allows it:
+        // the file is only parsed once, front to back.
+        guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return nil }
 
         let start = ContinuousClock.now
         do {

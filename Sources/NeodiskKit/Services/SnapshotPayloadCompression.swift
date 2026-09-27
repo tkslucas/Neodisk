@@ -51,45 +51,6 @@ extension ScanSnapshotCodec {
         }
     }
 
-    /// Bound untrusted output before allocating it. A streaming decoder also
-    /// checks cancellation between chunks instead of retaining obsolete work.
-    static func decompressPayload(_ compressed: Data, maximumBytes: Int = 2 * 1024 * 1024 * 1024) throws -> Data {
-        let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: 64 * 1024)
-        defer { buffer.deallocate() }
-        var stream = compression_stream(dst_ptr: buffer, dst_size: 0, src_ptr: UnsafePointer(buffer), src_size: 0, state: nil)
-        guard compression_stream_init(&stream, COMPRESSION_STREAM_DECODE, COMPRESSION_LZFSE) != COMPRESSION_STATUS_ERROR else {
-            throw ScanSnapshotCacheError.corruptData("payload decompression failed")
-        }
-        defer { compression_stream_destroy(&stream) }
-        return try compressed.withUnsafeBytes { source in
-            guard let base = source.bindMemory(to: UInt8.self).baseAddress else {
-                throw ScanSnapshotCacheError.corruptData("empty compressed payload")
-            }
-            stream.src_ptr = base
-            stream.src_size = source.count
-            var output = Data()
-            while true {
-                try Task.checkCancellation()
-                stream.dst_ptr = buffer
-                stream.dst_size = 64 * 1024
-                let status = compression_stream_process(&stream, Int32(COMPRESSION_STREAM_FINALIZE.rawValue))
-                let produced = 64 * 1024 - stream.dst_size
-                guard status != COMPRESSION_STATUS_ERROR, produced <= maximumBytes - output.count else {
-                    throw ScanSnapshotCacheError.corruptData("invalid or oversized compressed payload")
-                }
-                output.append(buffer, count: produced)
-                if status == COMPRESSION_STATUS_END {
-                    guard stream.src_size == 0 else {
-                        throw ScanSnapshotCacheError.corruptData("trailing compressed payload bytes")
-                    }
-                    return output
-                }
-                guard produced > 0 else {
-                    throw ScanSnapshotCacheError.corruptData("truncated compressed payload")
-                }
-            }
-        }
-    }
 
     #elseif canImport(CZstd)
     /// zstd level the Linux cache writes at: libzstd's own default, which
@@ -127,48 +88,13 @@ extension ScanSnapshotCodec {
         }
     }
 
-    /// Bound untrusted output before allocating it. A streaming decoder also
-    /// checks cancellation between chunks instead of retaining obsolete work.
-    static func decompressPayload(_ compressed: Data, maximumBytes: Int = 2 * 1024 * 1024 * 1024) throws -> Data {
-        guard let context = ZSTD_createDCtx() else {
-            throw ScanSnapshotCacheError.corruptData("payload decompression failed")
-        }
-        defer { ZSTD_freeDCtx(context) }
-        let chunkSize = 64 * 1024
-        let buffer = UnsafeMutableRawPointer.allocate(byteCount: chunkSize, alignment: 16)
-        defer { buffer.deallocate() }
-        return try compressed.withUnsafeBytes { source in
-            guard let base = source.baseAddress, source.count > 0 else {
-                throw ScanSnapshotCacheError.corruptData("empty compressed payload")
-            }
-            var output = Data()
-            // The declared size is untrusted: only a hint, and only within
-            // the bound (the unknown/error sentinels are the top two values).
-            let declaredSize = ZSTD_getFrameContentSize(base, source.count)
-            if declaredSize < UInt64.max - 1, declaredSize <= UInt64(maximumBytes) {
-                output.reserveCapacity(Int(declaredSize))
-            }
-            var input = ZSTD_inBuffer(src: base, size: source.count, pos: 0)
-            while true {
-                try Task.checkCancellation()
-                var chunk = ZSTD_outBuffer(dst: buffer, size: chunkSize, pos: 0)
-                let hint = ZSTD_decompressStream(context, &chunk, &input)
-                guard ZSTD_isError(hint) == 0, chunk.pos <= maximumBytes - output.count else {
-                    throw ScanSnapshotCacheError.corruptData("invalid or oversized compressed payload")
-                }
-                output.append(buffer.assumingMemoryBound(to: UInt8.self), count: chunk.pos)
-                if hint == 0 {
-                    // Frame complete.
-                    guard input.pos == input.size else {
-                        throw ScanSnapshotCacheError.corruptData("trailing compressed payload bytes")
-                    }
-                    return output
-                }
-                guard chunk.pos > 0 || input.pos < input.size else {
-                    throw ScanSnapshotCacheError.corruptData("truncated compressed payload")
-                }
-            }
-        }
-    }
     #endif
+}
+
+extension ScanSnapshotCodec {
+    /// The whole payload in one buffer (the decoder streams it instead; see
+    /// SnapshotPayloadStream.swift). Output is bounded before it's allocated.
+    static func decompressPayload(_ compressed: Data, maximumBytes: Int = 2 * 1024 * 1024 * 1024) throws -> Data {
+        try PayloadDecompressor(compressed: compressed, maximumBytes: maximumBytes).readAll()
+    }
 }

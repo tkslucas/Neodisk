@@ -9,6 +9,7 @@
 #include <adwaita.h>
 #include <glib-unix.h>
 #include <gtk/gtk.h>
+#include <malloc.h>
 
 /*
  * libdispatch SPI — the hooks CoreFoundation's run loop uses to drain the
@@ -25,5 +26,12 @@ static inline GType neodisk_boolean_type(void) { return G_TYPE_BOOLEAN; }
 static inline GType neodisk_string_type(void) { return G_TYPE_STRING; }
 static inline guint neodisk_invalid_list_position(void) { return GTK_INVALID_LIST_POSITION; }
 static inline int neodisk_pango_scale(void) { return PANGO_SCALE; }
+
+/*
+ * Hands freed heap pages back to the system. glibc keeps them otherwise:
+ * each large snapshot decodes on its own thread's malloc arena, and after
+ * the tree it built is released those pages stay resident for good.
+ */
+static inline void neodisk_release_free_memory(void) { malloc_trim(0); }
 
 #endif

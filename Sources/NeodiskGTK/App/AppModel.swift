@@ -9,6 +9,7 @@
 //  catalogs, scene building — is the shared core's.
 //
 
+import CGtk
 import Foundation
 import NeodiskAppModel
 import NeodiskKit
@@ -67,6 +68,8 @@ final class AppModel {
     /// Largest panel does, so the first search doesn't wait on it.
     @ObservationIgnored let searchIndex = SearchIndexService()
     @ObservationIgnored private var minuteTimer: Task<Void, Never>?
+    @ObservationIgnored private var memoryReleaseTask: Task<Void, Never>?
+    @ObservationIgnored private var searchIndexIdleTask: Task<Void, Never>?
 
     /// The statistics tab on screen; it decides what map color means.
     var analysisTab: AnalysisTab = .largest
@@ -218,6 +221,7 @@ final class AppModel {
         activeSeed = nil
         // Frees the previous location's index instead of holding two trees.
         searchIndex.invalidate()
+        scheduleMemoryRelease()
         catalogThrottle.reset()
         isRefreshing = false
         volumeSpace = target.flatMap { $0.kind == .volume ? VolumeSpaceInfo.load(for: $0.url) : nil }
@@ -274,7 +278,8 @@ final class AppModel {
         let previousSelection = selectedNodeID
         let previousFocus = focusID
         self.snapshot = snapshot
-        Task { [searchIndex] in _ = await searchIndex.index(for: snapshot) }
+        // The search index builds on the first search, not here: on a large
+        // scan it's another gigabyte and a minute of a core.
         store = snapshot.treeStore
         warnings = snapshot.scanWarnings
         isRefreshing = false
@@ -298,6 +303,41 @@ final class AppModel {
             referenceDate: snapshot.finishedAt ?? snapshot.startedAt,
             isPartial: false
         )
+        // The decode's buffers, and any tree this one replaced, are freed.
+        scheduleMemoryRelease()
+    }
+
+    // MARK: - Memory
+
+    /// Returns freed heap to the system shortly after a tree is replaced or
+    /// dropped (once the views have let go of the old one). Without this,
+    /// glibc keeps it: each reopen of a large location grew the process by
+    /// the size of the tree.
+    func scheduleMemoryRelease() {
+        memoryReleaseTask?.cancel()
+        memoryReleaseTask = Task {
+            guard (try? await Task.sleep(for: .seconds(2))) != nil else { return }
+            await Task.detached(priority: .utility) {
+                neodisk_release_free_memory()
+            }.value
+        }
+    }
+
+    /// The search field went empty: drop the index if it stays that way for
+    /// a while (a large scan's index is about as big as a fifth of its tree).
+    func searchDidEnd() {
+        searchIndexIdleTask?.cancel()
+        searchIndexIdleTask = Task { [weak self] in
+            guard (try? await Task.sleep(for: .seconds(120))) != nil, let self else { return }
+            self.searchIndex.invalidate()
+            self.scheduleMemoryRelease()
+        }
+    }
+
+    /// Typing again keeps the index.
+    func searchDidBegin() {
+        searchIndexIdleTask?.cancel()
+        searchIndexIdleTask = nil
     }
 
     private func persist(_ snapshot: ScanSnapshot) async {

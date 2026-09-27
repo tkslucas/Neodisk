@@ -6,7 +6,8 @@ are all welcome.
 ## Reporting issues
 
 Open a [GitHub issue](https://github.com/tkslucas/Neodisk/issues) with your
-Neodisk and macOS versions, steps to reproduce, and what you expected. For
+Neodisk version, your system (macOS version, or Linux distribution and
+desktop), steps to reproduce, and what you expected. For
 security problems, follow [SECURITY.md](SECURITY.md) instead of opening a
 public issue.
 
@@ -15,12 +16,16 @@ public issue.
 Small fixes are fine to send directly. For anything larger, open an issue
 first so we can agree on the approach before you spend time on it.
 
-Before sending a PR:
+Before sending a PR, on your platform:
 
 ```
 swift build
 swift test
 ```
+
+The shared core builds on macOS and Linux, and CI builds and tests the
+Linux side; if you change shared code and can only test one platform, say
+so in the PR. Build prerequisites for each platform are in the README.
 
 Two hard rules:
 
@@ -28,7 +33,8 @@ Two hard rules:
   files, and it makes no network requests. Any change that could break that
   will not be merged. See the read-only note in the README.
 - **Keep the layering.** `NeodiskKit` stays UI-free, `TreemapKit` stays pure
-  geometry. Do not reach across the target boundaries described in the README.
+  geometry, logic both apps need lives in `NeodiskAppModel`, and platform
+  differences stay inside the core. See [ARCHITECTURE.md](ARCHITECTURE.md).
 
 If your change is user-facing, update the string catalogs under
 `Localization/` (English at minimum).

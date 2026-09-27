@@ -4,7 +4,7 @@
 </h1>
 
 <p align="center">
-  Read-only MacOS disk space visualizer.
+  Read-only disk space visualizer for macOS and Linux.
   Treemap and sunburst views on the <code>NeodiskKit</code> scan engine.
   <br>
   <a href="https://github.com/tkslucas/Neodisk/releases/latest/download/Neodisk.dmg">Download</a>
@@ -12,6 +12,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-macOS%2014%2B-blue" alt="Platform: macOS 14+">
+  <img src="https://img.shields.io/badge/platform-Linux%20(GTK%204)-blue" alt="Platform: Linux (GTK 4)">
   <img src="https://img.shields.io/github/v/release/tkslucas/Neodisk?label=version" alt="Latest version">
   <img src="https://img.shields.io/badge/license-GPLv3-lightgrey" alt="License: GPLv3">
 </p>
@@ -35,11 +36,23 @@ brew install --cask neodisk
 
 Requires macOS 14 (Sonoma) or later.
 
+### Linux
+
+There are no Linux packages yet; build and install from source (below). The
+Linux app is a native GTK 4 / libadwaita application and needs GTK 4.14 and
+libadwaita 1.5 or newer (Ubuntu 24.04, Fedora 40, Debian 13, and later).
+
 ## About
 
-**Read-only by design.** Neodisk never modifies or deletes your files. 
-Instead, Reveal in Finder, Open, and Copy Path are the only file actions.
-Delete and clean up safely in Finder instead.
+**Read-only by design.** Neodisk never modifies or deletes your files.
+Instead, Reveal in Finder (Show in Files on Linux), Open, and Copy Path are
+the only file actions. Delete and clean up safely in your file manager
+instead.
+
+**Native on each platform.** The scan engine, tree model, treemap and
+sunburst geometry, statistics, and search are one shared Swift core; the
+macOS app is SwiftUI and AppKit, the Linux app is GTK 4 and libadwaita. See
+[ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Features
 
@@ -52,18 +65,26 @@ Delete and clean up safely in Finder instead.
 - Duplicate finder with content-hash verified duplicates
 - Fast scanning with live progress
 - Search: `⌘F` fuzzy search over the entire scan
-- Quick Look on spacebar
+- Quick Look on spacebar (macOS)
 - Arrow keys move the selection in both the treemap and the sunburst
 - Drill into a folder with `⌘↓`, drill back out with `⌘↑`, or click folders in the breadcrumb bar
 - Snapshots, completed scans persist and reopen instantly
-- Changes tab lists what got added, deleted, renamed, grew or shrank since the previous scan
-- Show Package Contents: apps and bundles stay solid like in Finder until you expand them
+- Changes tab lists what got added, deleted, renamed, grew or shrank since the previous scan (macOS)
+- Show Package Contents: apps and bundles stay solid like in Finder until you expand them (macOS)
 - Free and hidden space for volume scans
 - Sidebar volumes show a kind-colored usage bar
-- Auto-updates via Sparkle
-- Multilingual: UI follows macOS system language: English, Spanish, French, German, Italian, Brazilian Portuguese, Japanese, and Simplified Chinese
+- Auto-updates via Sparkle (macOS)
+- Multilingual: UI follows the system language: English, Spanish, French, German, Italian, Brazilian Portuguese, Japanese, and Simplified Chinese
+
+The Linux app covers the core views (treemap, sunburst, outline, largest
+files, kind and age statistics, search, saved scans, keyboard navigation).
+The duplicates and changes tabs, cloud-drive scanning, and incremental
+rescans are macOS-only for now; Linux has no persistent file-change
+journal, so every rescan there is a full scan.
 
 ## Build & Run
+
+### macOS
 
 Requires macOS 14+ and a Swift 6 toolchain. No Xcode needed, the Xcode
 Command Line Tools are enough.
@@ -72,10 +93,29 @@ Command Line Tools are enough.
 swift run -c release Neodisk    # build and launch directly
 swift test                      # full test suite (engine + treemap + UI)
 ```
+
+### Linux
+
+Requires a Swift 6.4 toolchain ([swift.org/install](https://www.swift.org/install/linux/))
+and the GTK development packages:
+
+```bash
+sudo apt install libgtk-4-dev libadwaita-1-dev libzstd-dev pkg-config   # Debian/Ubuntu
+sudo dnf install gtk4-devel libadwaita-devel libzstd-devel               # Fedora
+
+swift run -c release neodisk        # build and launch directly
+swift test                          # core, shared model, treemap, cloud suites
+Packaging/linux/install.sh          # install to ~/.local (menu entry, icon)
+```
+
+`install.sh` links the Swift runtime statically, so the installed app needs
+only GTK 4 and libadwaita, not a Swift toolchain.
+
 ## Planned
 
-- Multiplatform: native Windows and Linux versions (a lot of work, will
-  take a while)
+- Windows: a native WinUI app over the same core (see
+  [ARCHITECTURE.md](ARCHITECTURE.md#adding-windows))
+- Linux: Flatpak packaging, the duplicates and changes tabs
 
 ## Credits
 

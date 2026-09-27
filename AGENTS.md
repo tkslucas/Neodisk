@@ -4,10 +4,13 @@ This file tells coding agents how to work effectively in this repository.
 
 ## Purpose
 
-Neodisk is a native macOS disk space analyzer built in Swift. It pairs a
-classic analyzer UI (outline list + cushion treemap + file kinds) with
-a fast, actor-based scan engine. When developing Neodisk, prioritize modern
-Swift/SwiftUI practices and keep the scanning core UI-free.
+Neodisk is a native disk space analyzer for macOS and Linux, built in Swift.
+It pairs a classic analyzer UI (outline list + cushion treemap + file kinds)
+with a fast, actor-based scan engine. One shared Swift core, one native app
+per platform (SwiftUI/AppKit on macOS, GTK 4/libadwaita on Linux) — see
+ARCHITECTURE.md. When developing Neodisk, prioritize modern Swift practices,
+keep the scanning core UI-free, and put logic more than one app needs in the
+shared core rather than in an app.
 
 ## Commit Guidelines
 
@@ -18,10 +21,13 @@ Swift/SwiftUI practices and keep the scanning core UI-free.
   - `feat: remember last opened scan location`
   - `perf: parallelize cushion rasterization over cells`
   - `refactor: narrow NeodiskKit public API`
-- Bump `AppVersion.string` (`Sources/NeodiskUI/App/AppVersion.swift`) on every
-  user-visible change; it shows in the sidebar and identifies the build.
+- Bump `AppVersion.string` (`Sources/NeodiskAppModel/AppVersion.swift`) on
+  every user-visible change; it shows in the sidebar (macOS) and About
+  dialog (both apps) and identifies the build.
 
 ## Environment Facts
+
+### macOS
 
 - Swift 6, macOS 14.0+.
 - **Command Line Tools only — no Xcode.** Use `swift build`, `swift test`,
@@ -126,12 +132,43 @@ Swift/SwiftUI practices and keep the scanning core UI-free.
     (dataless) files like the app's toolbar toggle by default; set 0 for
     the strict on-disk map.
 
+### Linux
+
+- Swift 6.4 toolchain; GTK 4.14+ and libadwaita 1.5+ (Ubuntu 24.04 LTS is
+  the floor — don't use newer GTK/libadwaita API without a runtime check;
+  `Accent.swift` shows the dlsym pattern). Dev packages: `libgtk-4-dev
+  libadwaita-1-dev libzstd-dev pkg-config`.
+- `swift build` builds the core and the GTK app (`neodisk` product);
+  `swift test` runs NeodiskKit, NeodiskAppModel, TreemapKit, and CloudScanKit
+  suites (NeodiskUITests is macOS-only).
+- `swift run neodisk` launches the app from a checkout; it finds the
+  translations and icons in the repository. `Packaging/linux/install.sh
+  [prefix]` installs a static-stdlib release build (default `~/.local`).
+- SwiftPM prints `prohibited flag(s): -pthread …` for GTK's pkg-config
+  flags and `dependency 'sparkle' is not used` on Linux. Both come from the
+  package manager, not our code; "zero warnings" means compiler warnings.
+- Static Swift runtime links need `--build-system native` for now (the
+  default SwiftBuild backend leaves Foundation's static dependencies out).
+- Dev hooks (same names as macOS where they overlap):
+  - `NEODISK_AUTOSCAN=<path>` — open that location on launch.
+  - `NEODISK_UI_SNAPSHOT=<out.png>` — once the scan is on screen, render the
+    window through GSK to a PNG and quit. Works under `xvfb-run` or any
+    headless display; nothing reaches a real screen. Settle time:
+    `NEODISK_SNAPSHOT_DELAY=<seconds>` (default 1.5).
+  - `NEODISK_VIZ_MODE=<treemap|sunburst>`, `NEODISK_TREEMAP_STYLE=<cushion|flat>`,
+    `NEODISK_ANALYSIS_TAB=<largest|kinds|age>`, `NEODISK_SELECT=<path>`.
+  - `NEODISK_SNAPSHOT_DIR` isolates the snapshot cache and `XDG_CONFIG_HOME`
+    the settings file, as for any headless run.
+  - Example: `NEODISK_AUTOSCAN=/usr NEODISK_UI_SNAPSHOT=/tmp/shot.png
+    xvfb-run -a -s "-screen 0 1600x1000x24" .build/debug/neodisk`
+- `NEODISK_SCAN_TIMING=1` works on Linux too (`diskscan` and the app).
+
 ## Project Structure
 
 ```
 Sources/
-├── Neodisk/         # Thin executable shim → NeodiskApp.main()
-├── NeodiskUI/       # The SwiftUI app, one folder per concern:
+├── Neodisk/         # Thin executable shim → NeodiskApp.main() (macOS)
+├── NeodiskUI/       # The macOS SwiftUI app, one folder per concern:
 │   ├── App/         #   app entry, root ContentView, settings, preferences
 │   ├── Model/       #   NeodiskViewModel + its sub-models (scan session,
 │   │                #   warnings, free space, cloud accounts, diff), ScanCoordinator
@@ -143,20 +180,36 @@ Sources/
 │   ├── System/      #   Finder/Quick Look glue, pinned folders
 │   ├── Shared/      #   palettes, formatters
 │   └── Dev/         #   headless render + snapshot dev hooks
+├── NeodiskGTK/      # The Linux app (GTK 4 + libadwaita):
+│   ├── Support/     #   Swift layer over GTK's C API: pointers, signals,
+│   │                #   main-loop bridge, observation, canvas widget
+│   ├── App/         #   application, window, model, preferences, strings
+│   ├── Sidebar/ Outline/ Treemap/ Sunburst/ Statistics/ Search/
+│   ├── System/      #   locations (mount table), file actions
+│   └── Dev/         #   NEODISK_* launch hooks, headless PNG capture
+├── CGtk/            # System-library module: GTK/libadwaita headers + shim
+├── NeodiskAppModel/ # Shared UI-free app layer (both apps): kinds, palettes,
+│                    #   treemap scene, sunburst fills, search, formatting
 ├── NeodiskKit/      # UI-free scan engine and core data model
 │   ├── Models/      #   scan targets, node records, tree store, snapshots
-│   └── Services/    #   ScanEngine, snapshot cache, formatters, dedup
+│   └── Services/    #   ScanEngine, snapshot cache, formatters, dedup,
+│                    #   per-platform readers (…+Linux.swift, LinuxMountTable)
 ├── TreemapKit/      # Pure treemap geometry and cushion rasterizer
 ├── SunburstCore/    # Pure sunburst layout, ring metrics, hit-testing
 ├── CloudScanKit/    # Cloud-drive scanning: OAuth stack + providers
+├── CZstd/           # System-library module for libzstd (Linux snapshots)
 └── NeodiskCLI/      # diskscan — reference CLI consumer of the core
-Localization/        # <lang>.lproj string catalogs (bundled into the .app)
-Packaging/           # Info.plist and app resources
+Localization/        # <lang>.lproj string catalogs (both apps)
+Packaging/           # Info.plist and app resources; linux/ desktop entry,
+                     #   metainfo, symbolic icons, install.sh
 Tests/               # Package-level unit and golden-image tests
+                     #   (NeodiskAppModelTests run on both platforms)
 ```
 
-`NeodiskKit` never imports AppKit or SwiftUI — the target dependency graph
-enforces it. Its public API is deliberately narrow.
+`NeodiskKit` never imports AppKit, SwiftUI, or GTK — the target dependency
+graph enforces it. Its public API is deliberately narrow.
+`NeodiskAppModel` uses `package` access: visible to both apps, not public
+API; new declarations there need `package` to be seen from an app.
 
 ## Product Constraints
 
@@ -194,10 +247,24 @@ copies them into `Contents/Resources/` and `Info.plist` lists the languages.
   specifier counts matching (`plutil -lint`). `en.lproj` is the reference.
 - `swift run` shows English (no `.lproj` in `Bundle.main`); verify translations
   from the packaged `.app`.
+- The Linux app reads the same catalogs (`L("…")` in NeodiskGTK). Every
+  `L` key must exist in all catalogs like any other key; reuse a Mac string
+  when the wording fits. Strings the shared model itself produces go
+  through `AppStrings.localized` (NSLocalizedString on Apple platforms).
+- Test Linux translations with `LANGUAGE=de` (for example); dates and
+  numbers follow glibc's locale, which must be installed (`locale -a`).
 
 ## Working Agreement For Changes
 
 - Keep edits consistent with the existing architecture unless it is the problem.
+- A platform difference below the UI goes in the core behind
+  `#if canImport(...)`/`#if os(...)` with one internal interface; apps never
+  branch on platform for data behavior.
+- Logic both apps need (classification, color rules, scene building,
+  search) goes in NeodiskAppModel, not in one app with a copy in the other.
+- Done means both platforms: `swift build` and `swift test` on macOS, and
+  on Linux (the core suites and the `neodisk` product). Guard Apple-only
+  tests with `#if canImport(Darwin)` and give Linux behavior its own tests.
 - Fix data-related bugs in the `NeodiskKit` model/service layer; fix
   coordination, selection, and navigation issues in `NeodiskUI`.
 - Add or update tests when changing scanner behavior, path handling, geometry,
@@ -247,6 +314,26 @@ copies them into `Contents/Resources/` and `Info.plist` lists the languages.
   Treemap labels pre-ellipsize via `TreemapNSView.endTruncated` instead;
   `TreemapLabelLayerTests.overflowingHeaderLabelRendersPixels` guards this.
 
+## Linux App Notes
+
+- GTK objects are held as `GPtr` (raw pointers); convert at the call with
+  `ptr(x)` (type inference picks typed or opaque) and back with `raw(x)`.
+  Mind transfer semantics: `_new` results are owned; `gtk_*_new(model)`
+  functions that take a model take ownership of one reference.
+- Signals connect through closure trampolines in `Support/Signals.swift`;
+  pick the helper whose shape matches the C signature. `notify::` always
+  uses `connectNotify` — the extra `GParamSpec` argument would otherwise be
+  read as the closure box and crash.
+- UI state lives in `AppModel` (`@Observable`, `@MainActor`); widgets bind
+  with `track { … }`. The main actor runs on GLib's loop via
+  `MainLoopBridge`, so `Task { @MainActor in … }` and
+  `DispatchQueue.main` are safe from any GTK callback.
+- Visualizations draw on `Canvas` (a GtkWidget subclass) through
+  GtkSnapshot. Rasterize off the main actor, upload once as a texture,
+  draw hover/selection on top per frame; never re-rasterize on hover.
+- Verify visual changes headlessly with `NEODISK_UI_SNAPSHOT` under
+  `xvfb-run` and look at the PNG.
+
 ## If You Need A Starting Point
 
 - Scanner or data bug: `Sources/NeodiskKit/Services/ScanEngine.swift` and the
@@ -259,4 +346,10 @@ copies them into `Contents/Resources/` and `Info.plist` lists the languages.
   `Sources/NeodiskUI/Model/ScanSessionModel.swift`.
 - Size or display formatting bug: `Sources/NeodiskKit/Services/FileSizeFormatter.swift`.
 - Treemap layout or rendering bug: `Sources/TreemapKit/CushionTreemapRenderer.swift`
-  and `Sources/NeodiskUI/Treemap/TreemapScene.swift`.
+  and `Sources/NeodiskAppModel/Treemap/TreemapScene.swift` (shared by both
+  apps).
+- Linux scanning bug: `Sources/NeodiskKit/Services/BulkDirectoryReader+Linux.swift`
+  (enumeration and `LinuxStat`), `LinuxMountTable.swift` (filesystem types,
+  volumes), `ScanConcurrencyPolicy.swift` (Linux profile).
+- Linux app state or scan lifecycle: `Sources/NeodiskGTK/App/AppModel.swift`;
+  views in `Sources/NeodiskGTK/<area>/`.

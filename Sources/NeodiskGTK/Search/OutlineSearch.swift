@@ -120,12 +120,14 @@ final class OutlineSearch {
         guard !query.isEmpty, let snapshot = model.snapshot else {
             debouncer.cancel()
             show(ids: [], total: 0, query: "")
+            model.searchDidEnd()
             return
         }
+        model.searchDidBegin()
         gtk_stack_set_visible_child_name(ptr(stack), "results")
         let snapshotID = snapshot.id
-        // A large scan's index can still be building; say so rather than
-        // show an empty list.
+        // The index builds on the first search (and a large scan's takes a
+        // while); say so rather than show an empty list.
         if resultIDs.isEmpty {
             gtk_label_set_text(ptr(caption), L("Loading…"))
         }

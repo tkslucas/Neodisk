@@ -22,6 +22,12 @@ struct OutlineNameSection: View {
     /// The bottom table's name column truncates in place (middle ellipsis)
     /// instead of panning; the left pane keeps the full-width pan behavior.
     var truncatesName = false
+    /// The text scale this row was built for. Never read directly — the body
+    /// reads the static OutlineRowMetrics — but as a stored property it makes
+    /// a text-size change a change to the view's value. Without it a reused
+    /// cell handed an otherwise identical row skips re-rendering, keeping the
+    /// old font and slot widths inside the new row geometry (issue #10).
+    var scale = OutlineRowMetrics.scale
 
     var body: some View {
         // Slot widths and glyph sizes come from OutlineRowMetrics, which the
@@ -94,6 +100,8 @@ struct OutlineTrailingSection: View {
     /// The left pane pins this cluster at its 16pt edge inset; the bottom
     /// table's size column brings its own, much tighter padding.
     var trailingPadding: CGFloat = OutlineRowMetrics.contentInset
+    /// See OutlineNameSection.scale.
+    var scale = OutlineRowMetrics.scale
 
     var body: some View {
         HStack(spacing: 4) {

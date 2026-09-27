@@ -314,7 +314,8 @@ final class AppModel {
         }
     }
 
-    /// Drills the visualizations into `nodeID` (a folder).
+    /// Re-roots the visualizations at `nodeID` (a folder on the path above
+    /// the current focus, or the root) — the breadcrumb's action.
     func focus(on nodeID: String?) {
         guard let store else { return }
         guard let nodeID, nodeID != store.rootID else {
@@ -323,6 +324,32 @@ final class AppModel {
         }
         guard let node = store.node(id: nodeID), node.isDirectory, store.containsChildren(id: nodeID) else { return }
         focusID = nodeID
+    }
+
+    /// Drills into a folder: `nodeID` itself, or the folder containing it
+    /// when it's a file — the Mac's ⌘↓, so "zoom into where I am" always
+    /// makes progress. An explicitly drilled folder lands the selection on
+    /// its largest child, keeping the arrow keys and the outline oriented.
+    /// Returns false (caller beeps) when there is nowhere deeper to go.
+    @discardableResult
+    func drillIn(to nodeID: String?) -> Bool {
+        guard let store, let nodeID, let node = store.node(id: nodeID) else { return false }
+        guard let folder = node.isDirectory ? node : store.parent(of: node.id),
+              folder.isDirectory, folder.id != focusedRootID else { return false }
+        // Summarized folders, empty ones, and opaque packages have nothing
+        // to draw once rooted there.
+        let children = store.children(of: folder.id).filter { $0.allocatedSize > 0 }
+        guard !children.isEmpty else { return false }
+        focusID = folder.id == store.rootID ? nil : folder.id
+        if node.isDirectory, let largest = children.max(by: { $0.allocatedSize < $1.allocatedSize }) {
+            selectedNodeID = largest.id
+        }
+        return true
+    }
+
+    @discardableResult
+    func drillIntoSelection() -> Bool {
+        drillIn(to: selectedNodeID)
     }
 
     /// Drills out one level.

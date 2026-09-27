@@ -299,8 +299,9 @@ final class MainWindow {
             self.showSearch()
         }
         actions["focus-in"] = addAction(to: window, "focus-in") { [unowned self] _ in
-            guard let selected = self.model.selectedNodeID else { return }
-            self.model.focus(on: selected)
+            if !self.model.drillIntoSelection() {
+                gtk_widget_error_bell(ptr(self.window))
+            }
         }
         actions["focus-out"] = addAction(to: window, "focus-out") { [unowned self] _ in
             self.model.focusOut()

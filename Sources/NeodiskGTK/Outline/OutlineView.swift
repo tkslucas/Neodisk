@@ -61,7 +61,7 @@ final class OutlineView {
 
         connectPosition(columnView, "activate") { [unowned self] position in
             guard let node = self.node(atPosition: position), node.isDirectory else { return }
-            self.model.focus(on: node.id)
+            self.model.drillIn(to: node.id)
         }
 
         tokens.append(track { [unowned self] in

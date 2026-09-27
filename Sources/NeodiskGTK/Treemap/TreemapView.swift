@@ -410,18 +410,21 @@ final class TreemapView: CanvasDelegate {
             model.select(cell.nodeID)
             showContextMenu(at: point)
         case 1 where presses >= 2:
-            if cell.aggregate != nil {
-                model.expandedAggregateIDs.insert(cell.nodeID)
-            } else if cell.isDirectory {
-                model.focus(on: cell.nodeID)
+            // As on the Mac: flat folders are first-class targets and drill
+            // in; cushion cells (and files) keep the reveal-in-file-manager
+            // contract — the mouse never drills a cushion map.
+            if model.preferences.treemapStyle == .flat, cell.isDirectory {
+                model.drillIn(to: cell.nodeID)
+            } else if let node = model.store?.node(id: cell.nodeID) {
+                model.select(cell.nodeID)
+                FileActions.showInFileManager(node.path, from: raw(gtk_widget_get_root(ptr(canvas.widget))))
             }
         case 1:
+            // Clicking a "smaller items" cell opens its folder's tail up.
             if cell.aggregate != nil {
-                // A "smaller items" cell stands for its folder's tail.
-                model.select(cell.nodeID)
-            } else {
-                model.select(cell.nodeID)
+                model.expandedAggregateIDs.insert(cell.nodeID)
             }
+            model.select(cell.nodeID)
         default:
             break
         }
@@ -464,8 +467,8 @@ final class TreemapView: CanvasDelegate {
         case GDK_KEY_Up: direction = .up
         case GDK_KEY_Down: direction = .down
         case GDK_KEY_Return, GDK_KEY_KP_Enter:
-            if let selected = model.selectedNodeID {
-                model.focus(on: selected)
+            if !model.drillIntoSelection() {
+                gtk_widget_error_bell(ptr(canvas.widget))
             }
             return true
         case GDK_KEY_BackSpace:

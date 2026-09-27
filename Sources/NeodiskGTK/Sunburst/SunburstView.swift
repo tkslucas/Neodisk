@@ -298,7 +298,7 @@ final class SunburstView: CanvasDelegate {
             model.select(nodeID)
             showContextMenu(at: point)
         case 1 where presses >= 2:
-            model.focus(on: nodeID)
+            model.drillIn(to: nodeID)
         case 1:
             model.select(nodeID)
         default:
@@ -315,7 +315,9 @@ final class SunburstView: CanvasDelegate {
         case GDK_KEY_Up: direction = .parent
         case GDK_KEY_Down: direction = .largestChild
         case GDK_KEY_Return, GDK_KEY_KP_Enter:
-            if let selected = model.selectedNodeID { model.focus(on: selected) }
+            if !model.drillIntoSelection() {
+                gtk_widget_error_bell(ptr(canvas.widget))
+            }
             return true
         case GDK_KEY_BackSpace:
             model.focusOut()

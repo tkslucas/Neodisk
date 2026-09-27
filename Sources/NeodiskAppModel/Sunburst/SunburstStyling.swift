@@ -90,8 +90,8 @@ extension SunburstLayout {
             hiddenSpaceBytes: hiddenSpaceBytes,
             expandedAggregateIDs: expandedAggregateIDs,
             includeCloudOnly: includeCloudOnly,
-            freeSpaceLabel: NSLocalizedString("Free Space", comment: "Sunburst free-space segment label"),
-            hiddenSpaceLabel: NSLocalizedString("Hidden Space", comment: "Sunburst hidden-space segment label"),
+            freeSpaceLabel: AppStrings.localized("Free Space", comment: "Sunburst free-space segment label"),
+            hiddenSpaceLabel: AppStrings.localized("Hidden Space", comment: "Sunburst hidden-space segment label"),
             cancellationCheck: {}
         )) ?? []
         return styled(unstyled, style: style, in: treeStore)

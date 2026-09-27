@@ -29,7 +29,7 @@ final class SearchPopover {
     init(model: AppModel, parent: GPtr) {
         self.model = model
         entry = raw(gtk_search_entry_new())!
-        gtk_search_entry_set_placeholder_text(ptr(entry), L("Search the whole scan"))
+        gtk_search_entry_set_placeholder_text(ptr(entry), L("Search entire scan"))
         results = raw(gtk_list_box_new())!
         Widgets.addClasses(results, ["navigation-sidebar"])
         caption = Widgets.label("", classes: ["dim-label", "neodisk-caption"])

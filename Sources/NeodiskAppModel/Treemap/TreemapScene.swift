@@ -741,7 +741,7 @@ package struct TreemapScene: Sendable {
             bytes: bytes,
             idSuffix: freeSpaceNodeSuffix,
             pathComponent: "__free-space__",
-            name: NSLocalizedString("Free Space", comment: "Synthetic treemap node for a volume's free space")
+            name: AppStrings.localized("Free Space", comment: "Synthetic treemap node for a volume's free space")
         )
     }
 
@@ -756,7 +756,7 @@ package struct TreemapScene: Sendable {
             bytes: bytes,
             idSuffix: hiddenSpaceNodeSuffix,
             pathComponent: "__hidden-space__",
-            name: NSLocalizedString("Hidden Space", comment: "Synthetic treemap node for a volume's hidden space")
+            name: AppStrings.localized("Hidden Space", comment: "Synthetic treemap node for a volume's hidden space")
         )
     }
 

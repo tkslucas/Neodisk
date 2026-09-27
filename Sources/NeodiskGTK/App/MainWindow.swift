@@ -70,7 +70,7 @@ final class MainWindow {
         gtk_menu_button_set_icon_name(ptr(menuButton), "open-menu-symbolic")
         gtk_widget_set_tooltip_text(ptr(menuButton), L("Main Menu"))
         let primaryMenu = Widgets.menu([
-            [(L("Open Folder…"), "win.open-folder")],
+            [(L("Choose Folder…"), "win.open-folder")],
             [(L("Preferences"), "app.preferences"), (L("Keyboard Shortcuts"), "win.show-help-overlay"), (L("About Neodisk"), "app.about")],
             [(L("Quit"), "app.quit")],
         ])
@@ -142,7 +142,7 @@ final class MainWindow {
             ptr(emptyState),
             L("Pick a disk or folder in the sidebar to see what takes up space. Neodisk only reads your files; it never changes or deletes them.")
         )
-        let openButton = raw(gtk_button_new_with_label(L("Open Folder…")))!
+        let openButton = raw(gtk_button_new_with_label(L("Choose Folder…")))!
         Widgets.addClasses(openButton, ["pill", "suggested-action"])
         gtk_widget_set_halign(ptr(openButton), GTK_ALIGN_CENTER)
         gtk_actionable_set_action_name(ptr(openButton), "win.open-folder")
@@ -336,7 +336,7 @@ final class MainWindow {
 
     private func chooseFolder() {
         let dialog = gtk_file_dialog_new()
-        gtk_file_dialog_set_title(dialog, L("Choose a Folder to Scan"))
+        gtk_file_dialog_set_title(dialog, L("Choose a Folder or Disk"))
         gtk_file_dialog_set_modal(dialog, gbool(true))
         let context = Unmanaged.passRetained(self).toOpaque()
         gtk_file_dialog_select_folder(dialog, ptr(window), nil, { source, result, data in

@@ -64,7 +64,7 @@ final class StatusBar {
             swatch.rgb = nil
         }
         let warnings = model.warnings.count
-        gtk_label_set_text(ptr(warningLabel), warnings == 0 ? "" : L("%lld unreadable", Int64(warnings)))
+        gtk_label_set_text(ptr(warningLabel), warnings == 0 ? "" : L("%@ files couldn't be read", warnings.formatted()))
         Widgets.setVisible(warningLabel, warnings > 0)
         if warnings > 0 {
             let paths = model.warnings.prefix(12).map { DisplayFormatters.displayPath($0.path) }

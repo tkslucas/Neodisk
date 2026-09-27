@@ -37,6 +37,7 @@ final class NeodiskApplication {
     }
 
     private func startup() {
+        AppStrings.install { L($0) }
         FileTypeDescriptions.install { fileExtension in
             guard let type = g_content_type_guess("file.\(fileExtension)", nil, 0, nil) else { return nil }
             defer { g_free(type) }

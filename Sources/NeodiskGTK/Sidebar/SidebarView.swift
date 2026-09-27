@@ -42,7 +42,7 @@ final class SidebarView {
         let openButton = raw(gtk_button_new())!
         let openContent = raw(adw_button_content_new())!
         adw_button_content_set_icon_name(ptr(openContent), "folder-open-symbolic")
-        adw_button_content_set_label(ptr(openContent), L("Open Folder…"))
+        adw_button_content_set_label(ptr(openContent), L("Choose Folder…"))
         gtk_button_set_child(ptr(openButton), ptr(openContent))
         Widgets.addClasses(openButton, ["flat"])
         gtk_actionable_set_action_name(ptr(openButton), "win.open-folder")

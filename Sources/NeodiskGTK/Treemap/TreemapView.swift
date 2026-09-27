@@ -501,10 +501,10 @@ final class TreemapView: CanvasDelegate {
 
     private func tooltipText(for cell: TreemapCell) -> String {
         if cell.isFreeSpace {
-            return L("Free space")
+            return L("Free space · %@", NeodiskFormatters.size(model.volumeSpace?.availableCapacity ?? 0))
         }
         if cell.isHiddenSpace {
-            return L("Hidden space: used, but not visible to this scan")
+            return L("Hidden space · %@", NeodiskFormatters.size(model.hiddenSpaceBytes ?? 0))
         }
         if let aggregate = cell.aggregate {
             return L("%lld smaller items · %@", Int64(aggregate.itemCount), NeodiskFormatters.size(aggregate.totalSize))

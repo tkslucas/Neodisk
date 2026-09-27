@@ -38,6 +38,7 @@ final class SearchPopover {
         gtk_scrolled_window_set_min_content_width(ptr(scrolled), 460)
         let content = Widgets.box(GTK_ORIENTATION_VERTICAL, spacing: 6, [entry, caption, scrolled])
         Widgets.setMargins(content, all: 6)
+        gtk_widget_set_size_request(ptr(content), 460, -1)
 
         popover = raw(gtk_popover_new())!
         gtk_popover_set_child(ptr(popover), ptr(content))

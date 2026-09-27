@@ -31,7 +31,7 @@ enum PreferencesDialog {
         addCombo(to: appearance, title: L("Color Palette"), items: palettes.map { L($0.title) },
                  selected: palettes.firstIndex { $0.id == preferences.paletteID } ?? 0) { index in
             preferences.paletteID = palettes[index].id
-            model.refreshCatalogs()
+            model.paletteDidChange()
         }
         adw_preferences_page_add(ptr(viewPage), ptr(appearance))
 

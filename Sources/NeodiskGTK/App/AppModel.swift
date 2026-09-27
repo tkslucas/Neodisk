@@ -83,8 +83,18 @@ final class AppModel {
     var expandedAggregateIDs: Set<String> = []
 
     @ObservationIgnored private var scanTask: Task<Void, Never>?
-    @ObservationIgnored private var catalogTask: Task<Void, Never>?
+    @ObservationIgnored private var kindCatalogTask: Task<Void, Never>?
+    @ObservationIgnored private var ageCatalogTask: Task<Void, Never>?
     @ObservationIgnored private var catalogThrottle = CatalogRebuildThrottle()
+    /// Kind catalogs built for the tree on screen, by grouping mode, so
+    /// switching back to Categories or Types is instant.
+    @ObservationIgnored private var kindCatalogCache: [FileKindDisplayMode: FileKindCatalog] = [:]
+    /// Persisted kind stats loaded ahead of a snapshot restore, waiting for
+    /// the decoded snapshot to prove they describe it.
+    @ObservationIgnored private var pendingSeed: KindStatsSidecar?
+    /// Persisted kind stats proven to match the tree on screen: kind catalog
+    /// builds (restore, grouping mode, palette) skip the O(nodes) pass.
+    @ObservationIgnored private var activeSeed: KindStatsSidecar?
     @ObservationIgnored private var scanStartedAt: Date?
 
     init(preferences: Preferences, snapshotCache: ScanSnapshotCache = ScanSnapshotCache()) {
@@ -158,6 +168,9 @@ final class AppModel {
         phase = .restoring
         scanTask = Task { [weak self] in
             guard let self else { return }
+            // The sidecar is tiny next to the snapshot: read it first, so the
+            // restored map is colored as soon as it's on screen.
+            pendingSeed = await loadKindStatsSidecar(forTargetID: target.id)
             if let cached = await snapshotCache.loadSnapshot(for: target), !Task.isCancelled {
                 display(cached)
                 await backfillKindStatsSidecarIfStale(for: cached)
@@ -200,6 +213,9 @@ final class AppModel {
         expandedAggregateIDs = []
         catalog = .empty
         ageCatalog = .empty
+        kindCatalogCache = [:]
+        pendingSeed = nil
+        activeSeed = nil
         // Frees the previous location's index instead of holding two trees.
         searchIndex.invalidate()
         catalogThrottle.reset()
@@ -269,6 +285,14 @@ final class AppModel {
         if snapshot.target.kind == .volume {
             volumeSpace = VolumeSpaceInfo.load(for: snapshot.target.url)
         }
+        // Pending stats either prove they describe this snapshot or die
+        // here; stats matched to a previous tree stop being used.
+        if let pendingSeed, pendingSeed.matches(snapshot) {
+            activeSeed = pendingSeed
+        } else if let activeSeed, !activeSeed.matches(snapshot) {
+            self.activeSeed = nil
+        }
+        pendingSeed = nil
         rebuildCatalogs(
             for: snapshot.treeStore,
             referenceDate: snapshot.finishedAt ?? snapshot.startedAt,
@@ -297,10 +321,14 @@ final class AppModel {
     /// Computes and persists the kind-stats sidecar for a complete snapshot,
     /// at utility priority (the same O(nodes) pass as a catalog build).
     private func saveKindStatsSidecar(for snapshot: ScanSnapshot) async {
-        let data = await Task.detached(priority: .utility) {
-            try? KindStatsSidecar.make(for: snapshot).encoded()
+        let sidecar = await Task.detached(priority: .utility) {
+            KindStatsSidecar.make(for: snapshot)
         }.value
-        guard let data else { return }
+        // From now on, grouping and palette switches on this tree are instant.
+        if self.snapshot?.id == snapshot.id {
+            activeSeed = sidecar
+        }
+        guard let data = try? sidecar.encoded() else { return }
         await snapshotCache.saveAuxiliaryData(data, forTargetID: snapshot.target.id)
         kindStatsSidecarGeneration &+= 1
     }
@@ -329,33 +357,64 @@ final class AppModel {
     func rebuildCatalogs(for store: FileTreeStore, referenceDate: Date, isPartial: Bool) {
         if isPartial, catalogThrottle.shouldSkip() { return }
         catalogThrottle.noteBuildStarted()
-        catalogTask?.cancel()
-        let mode = preferences.kindMode
-        let palette = preferences.palette
+        kindCatalogCache = [:]
+        if isPartial {
+            activeSeed = nil
+        }
+        rebuildKindCatalog(for: store)
         let generation = storeGeneration
-        catalogTask = Task { [weak self] in
-            let started = ContinuousClock.now
+        ageCatalogTask?.cancel()
+        ageCatalogTask = Task { [weak self] in
             let built = await Task.detached(priority: .userInitiated) {
-                (
-                    FileKindCatalog.build(from: store, mode: mode, palette: palette),
-                    AgeCatalog.build(from: store, referenceDate: referenceDate)
-                )
-            }.value
+                AgeCatalog.build(from: store, referenceDate: referenceDate)
+            }.cancellableValue
             guard let self, !Task.isCancelled, self.storeGeneration == generation else { return }
-            self.catalogThrottle.noteBuildDuration(ContinuousClock.now - started)
-            self.catalog = built.0
-            self.ageCatalog = built.1
+            self.ageCatalog = built
         }
     }
 
-    /// Palette or grouping changed: recolor from the current tree.
-    func refreshCatalogs() {
+    /// The kind catalog for the current grouping mode: from the cache, from
+    /// matching persisted stats (milliseconds), or from a full pass.
+    private func rebuildKindCatalog(for store: FileTreeStore) {
+        let mode = preferences.kindMode
+        if let cached = kindCatalogCache[mode] {
+            kindCatalogTask?.cancel()
+            catalog = cached
+            return
+        }
+        let palette = preferences.palette
+        let seedStats = activeSeed?.stats(for: mode)
+        let generation = storeGeneration
+        kindCatalogTask?.cancel()
+        kindCatalogTask = Task { [weak self] in
+            let started = ContinuousClock.now
+            let built = await Task.detached(priority: .userInitiated) {
+                if let seedStats {
+                    return FileKindCatalog.build(fromAggregated: seedStats, mode: mode, palette: palette)
+                }
+                return FileKindCatalog.build(from: store, mode: mode, palette: palette)
+            }.cancellableValue
+            guard let self, !Task.isCancelled, self.storeGeneration == generation else { return }
+            self.catalogThrottle.noteBuildDuration(ContinuousClock.now - started)
+            self.kindCatalogCache[mode] = built
+            // A mode switched again while this built: show only the current one.
+            if self.preferences.kindMode == mode {
+                self.catalog = built
+            }
+        }
+    }
+
+    /// Categories or Types picked: recolor from the current tree.
+    func kindModeDidChange() {
         guard let store else { return }
-        rebuildCatalogs(
-            for: store,
-            referenceDate: snapshot.map { $0.finishedAt ?? $0.startedAt } ?? Date(),
-            isPartial: false
-        )
+        rebuildKindCatalog(for: store)
+    }
+
+    /// Palette changed: colors are baked into kind catalogs at build time.
+    func paletteDidChange() {
+        guard let store else { return }
+        kindCatalogCache = [:]
+        rebuildKindCatalog(for: store)
     }
 
     // MARK: - Selection and focus

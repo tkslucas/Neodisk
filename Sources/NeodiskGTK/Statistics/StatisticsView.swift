@@ -142,7 +142,7 @@ final class StatisticsView {
         guard model.preferences.kindMode != mode else { return }
         model.preferences.kindMode = mode
         model.highlightedKindID = nil
-        model.refreshCatalogs()
+        model.kindModeDidChange()
     }
 
     // MARK: - Kinds
@@ -152,6 +152,16 @@ final class StatisticsView {
         let highlighted = model.highlightedKindID
         let total = max(1, catalog.stats.reduce(Int64(0)) { $0 + $1.totalAllocatedSize })
         gtk_list_box_remove_all(ptr(kindsList))
+        // The grouping just switched and its catalog is still building.
+        guard catalog.mode == model.preferences.kindMode || catalog.stats.isEmpty else {
+            kindIDs = []
+            let spinner = raw(gtk_spinner_new())!
+            gtk_spinner_start(ptr(spinner))
+            gtk_widget_set_size_request(ptr(spinner), 24, 24)
+            Widgets.setMargins(spinner, top: 24)
+            gtk_list_box_append(ptr(kindsList), ptr(spinner))
+            return
+        }
         kindIDs = catalog.stats.map(\.kind.id)
         for stat in catalog.stats {
             let row = legendRow(

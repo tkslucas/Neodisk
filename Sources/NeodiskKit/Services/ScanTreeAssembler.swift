@@ -178,10 +178,10 @@ nonisolated enum ScanTreeAssembler {
         //
         // Deliberately sequential: fanning the per-directory sorts across a
         // DispatchQueue.concurrentPerform was measured slower on the tie-heavy
-        // benchmark (sort 877ms → 1068ms on 300k). The comparator's
-        // `localizedStandardCompare` and the Swift String/record retain-release
-        // it drives contend across cores, so more threads lose to atomic and
-        // ICU-lock traffic. Sorting the small 8-byte `ChildRef`s (vs the
+        // benchmark (sort 877ms → 1068ms on 300k). The comparator's name
+        // tie-break (`DisplayNameOrder`: `localizedStandardCompare` on Darwin)
+        // and the Swift String/record retain-release it drives contend
+        // across cores, so more threads lose to atomic and ICU-lock traffic. Sorting the small 8-byte `ChildRef`s (vs the
         // legacy ~330-byte record tuples) is the win that stands.
         let sortStart = ContinuousClock.now
         var childRefsByKey = [[ChildRef]](repeating: [], count: nextKey)
@@ -213,7 +213,7 @@ nonisolated enum ScanTreeAssembler {
                     let rhsName = rhs.leafIndex >= 0
                         ? directLeaves[Int(rhs.leafIndex)].name
                         : sortName[Int(rhs.key)]
-                    return lhsName.localizedStandardCompare(rhsName) == .orderedAscending
+                    return DisplayNameOrder.precedes(lhsName, rhsName)
                 }
                 return lhsAllocated > rhsAllocated
             }

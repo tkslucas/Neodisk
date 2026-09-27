@@ -804,7 +804,7 @@ package struct TreemapScene: Sendable {
                 let lw = lhs.displayWeight(includingCloudOnly: true)
                 let rw = rhs.displayWeight(includingCloudOnly: true)
                 if lw == rw {
-                    return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+                    return DisplayNameOrder.precedes(lhs.name, rhs.name)
                 }
                 return lw > rw
             }

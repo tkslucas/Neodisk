@@ -333,10 +333,8 @@ func runRescanBench(target: ScanTarget, options: ScanOptions, touchPath: String?
         label: "baseline scan"
     ) else { return 1 }
     let stats = baseline.snapshot.aggregateStats
-    benchNote(String(
-        format: "baseline scan %.2fs files=%d dirs=%d",
-        baseline.seconds, stats.fileCount, stats.directoryCount
-    ))
+    benchNote(String(format: "baseline scan %.2fs", baseline.seconds)
+        + " files=\(stats.fileCount) dirs=\(stats.directoryCount)")
     guard baseline.snapshot.incrementalCheckpoint != nil else {
         benchNote("no FSEvents checkpoint captured (incremental disabled or unsupported target); cannot rescan")
         return 1
@@ -388,11 +386,11 @@ func runRescanBench(target: ScanTarget, options: ScanOptions, touchPath: String?
         label: "rescan"
     ) else { return 1 }
     let rescanStats = rescan.snapshot.aggregateStats
-    benchNote(String(
-        format: "rescan %.2fs files=%d dirs=%d bytes=%d",
-        rescan.seconds, rescanStats.fileCount, rescanStats.directoryCount,
-        rescanStats.totalAllocatedSize
-    ))
+    // Counts are 64-bit: interpolate them rather than pass them through
+    // `%d`, which reads 32 bits and printed large byte totals as negative.
+    benchNote(String(format: "rescan %.2fs", rescan.seconds)
+        + " files=\(rescanStats.fileCount) dirs=\(rescanStats.directoryCount)"
+        + " bytes=\(rescanStats.totalAllocatedSize)")
     return 0
 }
 

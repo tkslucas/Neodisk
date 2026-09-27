@@ -92,6 +92,13 @@ nonisolated enum IncrementalRescanPlanner {
             ) {
                 continue
             }
+            // A new `ln`, say, names only the new link: relisting its folder
+            // adds a record whose sibling link elsewhere still reads link
+            // count 1 with no identity, so dedup can't pair them and the
+            // bytes count twice. Only a full scan re-derives ownership.
+            if event.flags.touchesHardLink {
+                return .fullScan(.hardLinkTopologyChanged)
+            }
 
             let candidate = rescanCandidate(
                 for: path,

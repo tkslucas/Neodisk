@@ -71,6 +71,25 @@ import Testing
         #expect(history.events.map(\.eventID) == [13, 14])
     }
 
+    @Test func mapsHardLinkFlags() async throws {
+        let collector = makeCollector()
+        deliver([
+            ("new-link.bin", created | UInt32(kFSEventStreamEventFlagItemIsHardlink), 11),
+            ("last-link.bin", removed | UInt32(kFSEventStreamEventFlagItemIsLastHardlink), 12),
+            ("plain.bin", created, 13),
+            ("", historyDone, 0),
+        ], to: collector)
+
+        let history = try await collector.value()
+        let newLink = try #require(history.events.first { $0.path == "\(mountPoint)/new-link.bin" })
+        let lastLink = try #require(history.events.first { $0.path == "\(mountPoint)/last-link.bin" })
+        let plain = try #require(history.events.first { $0.path == "\(mountPoint)/plain.bin" })
+        #expect(newLink.flags.contains(.itemIsHardLink))
+        #expect(lastLink.flags.contains(.itemIsLastHardLink))
+        #expect(newLink.flags.touchesHardLink && lastLink.flags.touchesHardLink)
+        #expect(!plain.flags.touchesHardLink)
+    }
+
     @Test func budgetCountsDistinctPathsNotRawEvents() async throws {
         let collector = makeCollector(eventBudget: 2)
         // 6 raw events but only 2 distinct paths: must fit the budget.

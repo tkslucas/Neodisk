@@ -426,6 +426,8 @@ final class FSEventHistoryCollector: @unchecked Sendable {
         map(kFSEventStreamEventFlagItemCreated, .itemCreated)
         map(kFSEventStreamEventFlagItemRemoved, .itemRemoved)
         map(kFSEventStreamEventFlagItemRenamed, .itemRenamed)
+        map(kFSEventStreamEventFlagItemIsHardlink, .itemIsHardLink)
+        map(kFSEventStreamEventFlagItemIsLastHardlink, .itemIsLastHardLink)
         return flags
     }
 }

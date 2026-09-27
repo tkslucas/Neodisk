@@ -232,6 +232,70 @@ import NeodiskKit
         )
         #expect(lastContainer.isContainer)
         #expect(!scene.cells.contains { $0.nodeID == ids[TreemapScene.flatMaxContainerDepth] })
+
+        // The selection ring follows the build: anything below the capped
+        // folder resolves to the capped folder's plain cell, not to a
+        // nested rect the map never drew.
+        for id in ids[(TreemapScene.flatMaxContainerDepth - 1)...] + [leaf.id] {
+            #expect(scene.rect(forNodeID: id, in: store) == capped.rect)
+        }
+    }
+
+    /// Children sized between the cushion and flat aggregation thresholds:
+    /// the flat build merges them into "smaller items", so `rect(forNodeID:)`
+    /// (the selection ring and the drill morph) must resolve them to that
+    /// aggregate — laying them out at the cushion threshold instead put the
+    /// ring on a phantom tile and shifted every kept sibling's rect.
+    @Test func flatRectForNodeMatchesAggregationBetweenThresholds() throws {
+        func file(_ id: String, _ size: Int64) -> FileNodeRecord {
+            makeTestFileNode(id: id, name: String(id.split(separator: "/").last!), size: size)
+        }
+        // ~90pt² per small root file in a 400×300 map, ~90pt² per small
+        // /scan/sub file in its container: inside (64, 120).
+        let rootSmall = (0..<10).map { file("/scan/r\($0).bin", 1_131) }
+        let subSmall = (0..<10).map { file("/scan/sub/s\($0).bin", 1_200) }
+        let subBig = file("/scan/sub/sbig.bin", 488_000)
+        let big = file("/scan/big.bin", 1_000_000)
+        let subChildren = FileTreeStore.sortedChildren([subBig] + subSmall)
+        let sub = makeTestDirectoryNode(id: "/scan/sub", name: "sub", children: subChildren)
+        let rootChildren = FileTreeStore.sortedChildren([big, sub] + rootSmall)
+        let root = makeTestDirectoryNode(id: "/scan", name: "scan", children: rootChildren)
+        let store = FileTreeStore(
+            root: root,
+            childrenByID: ["/scan": rootChildren, "/scan/sub": subChildren]
+        )
+        let size = CGSize(width: 400, height: 300)
+
+        // The fixture sits in the band: cushion keeps the small files,
+        // flat merges them.
+        let cushion = TreemapScene.build(
+            store: store, rootID: "/scan", style: .cushion, size: size, catalog: .empty
+        )
+        #expect(!cushion.cells.contains { $0.aggregate != nil })
+        let scene = TreemapScene.build(
+            store: store, rootID: "/scan", style: .flat, size: size, catalog: .empty
+        )
+        let rootAggregate = try #require(
+            scene.cells.first { $0.nodeID == "/scan" && $0.aggregate != nil }
+        )
+        #expect(rootAggregate.aggregate?.itemCount == rootSmall.count)
+        let subAggregate = try #require(
+            scene.cells.first { $0.nodeID == "/scan/sub" && $0.aggregate != nil }
+        )
+        #expect(subAggregate.aggregate?.itemCount == subSmall.count)
+
+        // Every node resolves to exactly the rect the build drew for it: its
+        // own cell, or its parent's aggregate when merged.
+        for node in rootChildren + subChildren {
+            let rect = try #require(scene.rect(forNodeID: node.id, in: store))
+            if let cell = scene.cells.first(where: { $0.nodeID == node.id && $0.aggregate == nil }) {
+                #expect(rect == cell.rect, "\(node.id)")
+            } else {
+                let parentID = node.id.hasPrefix("/scan/sub/") ? "/scan/sub" : "/scan"
+                let aggregate = parentID == "/scan" ? rootAggregate : subAggregate
+                #expect(rect == aggregate.rect, "\(node.id)")
+            }
+        }
     }
 
     @Test func branchColorsMatchSunburstResolver() throws {

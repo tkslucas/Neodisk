@@ -124,6 +124,13 @@ struct TreemapScene: Sendable {
     /// read as border-only confetti in flat.
     nonisolated static let minChildCellArea: CGFloat = 64
     nonisolated static let flatMinChildCellArea: CGFloat = 120
+
+    /// The aggregation threshold `build` lays children out with. Every
+    /// re-layout (`rect(forNodeID:)`) must use the same value, or a node
+    /// the flat map merged into "smaller items" resolves to a phantom rect.
+    nonisolated static func minChildArea(for style: TreemapStyle) -> CGFloat {
+        style == .flat ? flatMinChildCellArea : minChildCellArea
+    }
     /// Undivided cells — files, and cushion directories drawn as one solid
     /// tile (packages, summarized/inaccessible folders) — get their name
     /// drawn once their on-screen cell is big enough to carry it legibly;
@@ -409,7 +416,7 @@ struct TreemapScene: Sendable {
                         in: childLayoutRect,
                         includingCloudOnly: includingCloudOnly,
                         disableAggregation: expandedAggregateIDs.contains(node.id),
-                        minChildArea: style == .flat ? flatMinChildCellArea : minChildCellArea
+                        minChildArea: minChildArea(for: style)
                     )
 
                     for (index, (child, childRect)) in zip(children[..<layout.keptCount], layout.rects).enumerated() {
@@ -920,7 +927,9 @@ struct TreemapScene: Sendable {
             width: size.width * viewport.scale,
             height: size.height * viewport.scale
         )
-        for (parent, child) in zip(chain, chain.dropFirst()) {
+        // `depth` counts levels below the scene root, exactly as `build`'s
+        // traversal does for the parent being subdivided.
+        for (depth, (parent, child)) in zip(chain, chain.dropFirst()).enumerated() {
             let filtered = store.children(of: parent.id)
                 .filter { $0.displayWeight(includingCloudOnly: includingCloudOnly) > 0 }
             // Mirror the render path exactly: the synthetic free/hidden-space
@@ -939,8 +948,10 @@ struct TreemapScene: Sendable {
                 // Mirror the flat build: children nest in the container's
                 // content region. A container too small to nest rendered no
                 // children, so the container itself is the best rect on offer
-                // (same contract as the aggregate fallback below).
-                guard let content = Self.flatContentBounds(of: rect, scale: labelScale) else {
+                // (same contract as the aggregate fallback below). Past the
+                // depth cap the build draws the folder plain as well.
+                guard depth < Self.flatMaxContainerDepth,
+                      let content = Self.flatContentBounds(of: rect, scale: labelScale) else {
                     return rect
                 }
                 layoutRect = content
@@ -949,7 +960,8 @@ struct TreemapScene: Sendable {
                 children,
                 in: layoutRect,
                 includingCloudOnly: includingCloudOnly,
-                disableAggregation: expandedAggregateIDs.contains(parent.id)
+                disableAggregation: expandedAggregateIDs.contains(parent.id),
+                minChildArea: Self.minChildArea(for: style)
             )
             if childIndex < layout.keptCount {
                 rect = layout.rects[childIndex]

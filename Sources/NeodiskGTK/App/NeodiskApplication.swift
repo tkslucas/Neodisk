@@ -96,6 +96,7 @@ final class NeodiskApplication {
         setAccelerators("win.show-sunburst", ["<Control>2"])
         setAccelerators("win.open-item", ["<Control>Return"])
         setAccelerators("win.copy-path", ["<Control><Shift>c"])
+        setAccelerators("win.show-help-overlay", ["<Control>question"])
     }
 
     private func setAccelerators(_ action: String, _ accelerators: [String]) {

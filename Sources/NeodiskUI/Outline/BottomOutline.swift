@@ -195,20 +195,9 @@ struct BottomOutlineTable: NSViewRepresentable {
         /// The selection the table last scrolled to: reveal again only when
         /// the model's selection actually changes, not on reloads.
         private var lastRevealedID: String?
-        /// Structural rows that arrived while a click was being tracked or
-        /// a selection was being published; applied when that finishes.
+        /// Structural rows that arrived while a click was being tracked;
+        /// applied when the click finishes.
         private var pendingApply: NeodiskViewModel.OutlineRowsSnapshot?
-        /// True while the table's own selection change is being published to
-        /// the model. Publishing can re-enter updateNSView, and reloading or
-        /// reselecting the table from inside its selection callback is a
-        /// reentrant NSTableView operation (logged by AppKit, slated to
-        /// assert), so such updates are held and replayed right after.
-        private var isPublishingSelection = false
-
-        /// Mid-click or mid-publish, table mutations wait (see above).
-        private var holdsTableUpdates: Bool {
-            isPublishingSelection || (tableView as? OutlineNSTableView)?.isTrackingClick == true
-        }
 
         weak var tableView: NSTableView?
         /// The workspace text scale the row height and columns were last
@@ -248,7 +237,8 @@ struct BottomOutlineTable: NSViewRepresentable {
             guard snapshot.structuralVersion != appliedStructuralVersion else { return }
             // Mid-click, reloading would clear the row the user is holding
             // the mouse on; keep the table frozen until tracking ends.
-            if holdsTableUpdates {
+            if let outlineTable = tableView as? OutlineNSTableView,
+               outlineTable.isTrackingClick {
                 pendingApply = snapshot
                 return
             }
@@ -274,7 +264,8 @@ struct BottomOutlineTable: NSViewRepresentable {
 
         func syncSelection(to selectedID: String?) {
             guard let tableView else { return }
-            if holdsTableUpdates {
+            if let outlineTable = tableView as? OutlineNSTableView,
+               outlineTable.isTrackingClick {
                 return
             }
             let targetRow = selectedID.flatMap { rowIndexByID[$0] }
@@ -399,17 +390,7 @@ struct BottomOutlineTable: NSViewRepresentable {
             let newID = (row >= 0 && row < rows.count) ? rows[row].id : nil
             if model.selectedNodeID != newID {
                 lastRevealedID = newID
-                isPublishingSelection = true
                 model.selectedNodeID = newID
-                isPublishingSelection = false
-                // The model now matches the table, so a held sync has nothing
-                // to correct; only held rows need replaying, once the table
-                // has finished processing this event.
-                if pendingApply != nil {
-                    DispatchQueue.main.async { [weak self] in
-                        self?.resyncSelectionAfterClick()
-                    }
-                }
             }
         }
 

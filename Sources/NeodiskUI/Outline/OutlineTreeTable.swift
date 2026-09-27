@@ -160,20 +160,9 @@ struct OutlineTreeTable: NSViewRepresentable {
             NotificationCenter.default.removeObserver(self)
         }
 
-        /// Structural rows that arrived while a click was being tracked or
-        /// a selection was being published; applied when that finishes.
+        /// Structural rows that arrived while a click was being tracked;
+        /// applied when the click finishes.
         private var pendingApply: NeodiskViewModel.OutlineRowsSnapshot?
-        /// True while the table's own selection change is being published to
-        /// the model. Publishing can re-enter updateNSView, and reloading or
-        /// reselecting the table from inside its selection callback is a
-        /// reentrant NSTableView operation (logged by AppKit, slated to
-        /// assert), so such updates are held and replayed right after.
-        private var isPublishingSelection = false
-
-        /// Mid-click or mid-publish, table mutations wait (see above).
-        private var holdsTableUpdates: Bool {
-            isPublishingSelection || (tableView as? OutlineNSTableView)?.isTrackingClick == true
-        }
 
         func apply(snapshot: NeodiskViewModel.OutlineRowsSnapshot) {
             guard snapshot.structuralVersion != appliedStructuralVersion else { return }
@@ -181,7 +170,8 @@ struct OutlineTreeTable: NSViewRepresentable {
             // the mouse on (and the deferred delegate would then report an
             // empty selection). Keep the table frozen until tracking ends;
             // `rows` also stays consistent with what the click landed on.
-            if holdsTableUpdates {
+            if let outlineTable = tableView as? OutlineNSTableView,
+               outlineTable.isTrackingClick {
                 pendingApply = snapshot
                 return
             }
@@ -251,7 +241,8 @@ struct OutlineTreeTable: NSViewRepresentable {
             // hasn't told us yet (the delegate fires when tracking ends).
             // Syncing now would revert the user's click to the stale model
             // value; clickTrackingEnded re-syncs once the delegate has run.
-            if holdsTableUpdates {
+            if let outlineTable = tableView as? OutlineNSTableView,
+               outlineTable.isTrackingClick {
                 return
             }
             let targetRow = selectedID.flatMap { rowIndexByID[$0] }
@@ -326,17 +317,7 @@ struct OutlineTreeTable: NSViewRepresentable {
             let newID = (row >= 0 && row < rows.count) ? rows[row].id : nil
             if model.selectedNodeID != newID {
                 lastRevealedID = newID
-                isPublishingSelection = true
                 model.selectedNodeID = newID
-                isPublishingSelection = false
-                // The model now matches the table, so a held sync has nothing
-                // to correct; only held rows need replaying, once the table
-                // has finished processing this event.
-                if pendingApply != nil {
-                    DispatchQueue.main.async { [weak self] in
-                        self?.resyncSelectionAfterClick()
-                    }
-                }
             }
         }
 

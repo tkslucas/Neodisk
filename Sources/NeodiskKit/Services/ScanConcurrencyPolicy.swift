@@ -180,7 +180,18 @@ nonisolated enum ScanConcurrencyPolicy {
             return max(1, environmentLimit)
         }
 
-        return hardwareAwareWorkerLimit(minimum: 4, processorDivisor: 1, maximum: 8)
+        // Summary workers block in directory reads on the shared cooperative
+        // pool, which is one thread per core. Filling every thread starves
+        // the traversal loop that dispatches packages and publishes progress
+        // until the pool runs dry: packages complete in bursts and the bar
+        // sits near empty for most of a package-heavy scan (/Applications),
+        // then jumps to full. Leaving one thread free costs no measurable
+        // wall time (interleaved /System/Library and /Applications runs).
+        let cooperativeWidth = max(1, ProcessInfo.processInfo.activeProcessorCount)
+        return min(
+            hardwareAwareWorkerLimit(minimum: 4, processorDivisor: 1, maximum: 8),
+            max(1, cooperativeWidth - 1)
+        )
     }
 
     static func incrementalSubtreeWorkerLimit(

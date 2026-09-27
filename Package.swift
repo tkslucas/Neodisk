@@ -12,6 +12,7 @@ import PackageDescription
 // against that platform's own toolkit:
 //
 //   macOS   NeodiskUI + Neodisk   SwiftUI / AppKit (+ Sparkle)
+//   Linux   NeodiskGTK            GTK 4 + libadwaita through Swift's C interop
 //
 // Platform differences below the UI (directory enumeration, change history,
 // compression, hashing, credential storage) live behind `#if os(...)` in the
@@ -197,6 +198,31 @@ targets += [
         ],
         path: "Tests/NeodiskUITests",
         linkerSettings: testingInteropLinkerSettings
+    ),
+]
+#endif
+
+#if os(Linux)
+products.append(.executable(name: "neodisk", targets: ["NeodiskGTK"]))
+targets += [
+    // GTK 4 and libadwaita, imported straight from their C headers. GTK 4.14
+    // and libadwaita 1.5 (Ubuntu 24.04 LTS) are the floor.
+    .systemLibrary(
+        name: "CGtk",
+        path: "Sources/CGtk",
+        pkgConfig: "gtk4 libadwaita-1",
+        providers: [
+            .apt(["libgtk-4-dev", "libadwaita-1-dev"]),
+            .yum(["gtk4-devel", "libadwaita-devel"]),
+        ]
+    ),
+    // The Linux app: a GTK/libadwaita shell over the shared core, written
+    // in Swift against GTK's C API the way the macOS app is written against
+    // AppKit — native widgets, no cross-platform UI layer in between.
+    .executableTarget(
+        name: "NeodiskGTK",
+        dependencies: ["NeodiskKit", "NeodiskAppModel", "TreemapKit", "SunburstCore", "CGtk"],
+        path: "Sources/NeodiskGTK"
     ),
 ]
 #endif

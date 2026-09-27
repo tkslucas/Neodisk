@@ -64,7 +64,7 @@ final class StatsDrillInList<Context: Sendable> {
             let index = await indexService.index(for: snapshot)
             let entries = await Task.detached(priority: .userInitiated) {
                 index.entries.filter(matches)
-            }.value
+            }.cancellableValue
             guard let self, !Task.isCancelled else { return }
             self.isLoading = false
             self.context = context
@@ -102,7 +102,7 @@ final class StatsDrillInList<Context: Sendable> {
                 // Order-preserving on purpose: this list ranks by size, and
                 // the filter narrows that ranking.
                 FuzzyMatcher.matchesInEntryOrder(query: query, entries: entries, limit: limit)
-            }.value
+            }.cancellableValue
             guard let self, !Task.isCancelled,
                   self.filterText.trimmingCharacters(in: .whitespaces) == query else {
                 return

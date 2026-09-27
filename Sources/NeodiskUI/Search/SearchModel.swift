@@ -87,13 +87,16 @@ final class SearchModel {
             let limit = Self.resultLimit
             let rootID = index.rootID
             let entries = index.entries
+            // A newer keystroke cancels this operation; forward that into
+            // the detached match so it stops scanning instead of finishing
+            // a whole-index pass nobody will read.
             let results = await Task.detached(priority: .userInitiated) {
                 // The root row is the whole scan; it never belongs in
                 // search results.
                 FuzzyMatcher.topMatches(query: query, entries: entries, limit: limit) {
                     $0.id != rootID
                 }
-            }.value
+            }.cancellableValue
             guard !Task.isCancelled,
                   self.coordinator.snapshot?.id == snapshotID,
                   self.text.trimmingCharacters(in: .whitespaces) == query else {

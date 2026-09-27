@@ -108,6 +108,9 @@ final class TreemapView: CanvasDelegate {
         connectNotify(adw_style_manager_get_default().map { GPtr($0) }, "dark") { [unowned self] in
             self.requestRender()
         }
+        connect(canvas.widget, "map") { [unowned self] in
+            self.requestRender()
+        }
     }
 
     // MARK: - Rendering
@@ -149,6 +152,8 @@ final class TreemapView: CanvasDelegate {
             }
             return
         }
+        // The sunburst on screen instead: render when this is shown again.
+        guard gtk_widget_get_mapped(ptr(canvas.widget)) != 0 else { return }
         guard inputs != frame?.inputs, inputs != inFlight else { return }
         guard inFlight == nil else { return }
         inFlight = inputs

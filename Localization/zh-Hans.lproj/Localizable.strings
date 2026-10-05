@@ -388,3 +388,26 @@
 "Zoom Out" = "缩小";
 "Actual Size" = "实际大小";
 "Scales the text in the locations sidebar, the file lists, the treemap and sunburst labels, and the statistics panel. Applies immediately. View ▸ Zoom In and Zoom Out (⌘+ and ⌘−) change it without opening Settings." = "缩放位置边栏、文件列表、树状图与旭日图标签以及统计面板中的文字。立即生效。“显示”▸“放大”和“缩小”（⌘+ 和 ⌘−）无需打开设置即可更改。";
+
+/* Token mode */
+"%@ tokens" = "%@ 个 token";
+"Bytes" = "字节";
+"Tokens" = "Token";
+"Measure" = "度量";
+"Size the treemap by bytes on disk, or by estimated LLM tokens in text files" = "按磁盘字节数或文本文件中估算的 LLM token 数来显示树状图";
+"Tokens are counted when the scan finishes" = "扫描完成后开始统计 token";
+"Counting tokens… %@ of %@ files" = "正在统计 token… 第 %@ 个，共 %@ 个文件";
+"Not counted · %@" = "未统计 · %@";
+"Estimated tokens. Exact counts vary by model." = "token 数为估算值，确切数量因模型而异。";
+"Whole scan" = "整个扫描";
+"%@ text files · %@ not text" = "%@ 个文本文件 · %@ 个非文本";
+"Not counted" = "未统计";
+"%@ of the scan" = "占扫描的 %@";
+"Above the agent file limit" = "超出代理文件上限";
+"Estimated from the first 4 MB" = "根据前 4 MB 估算";
+"Most tokens in %@" = "%@ 中 token 最多的文件";
+"Most tokens" = "token 最多的文件";
+"Agent files" = "代理文件";
+"Flag above %@" = "超过 %@ 时标记";
+"Flag agent instruction files above this many tokens" = "标记 token 数超过此值的代理指令文件";
+"Highlight agent files on the map" = "在图中突出显示代理文件";

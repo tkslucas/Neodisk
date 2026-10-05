@@ -136,6 +136,38 @@ final class NeodiskViewModel {
     /// scan, for the statistics panel's Changes tab; see ChangesModel.
     let changes: ChangesModel
 
+    // MARK: Tokens
+
+    /// Token counts and the token-weighted tree; see TokenModel.
+    let tokens: TokenModel
+    /// What the treemap's areas measure. Tokens take over the statistics
+    /// panel and need the treemap, so they leave the sunburst.
+    var sizeMetric: SizeMetric = .bytes {
+        didSet {
+            guard sizeMetric != oldValue else { return }
+            tokens.isActive = sizeMetric == .tokens
+            syncDiffVisibility()
+            if sizeMetric == .tokens {
+                showKindStats = true
+                if vizViewMode == .sunburst {
+                    vizViewMode = .treemap
+                    preferences?.vizViewMode = .treemap
+                }
+            }
+        }
+    }
+    /// Mirror of the persisted agent-file flag threshold, in tokens.
+    var agentFileTokenLimit = AppPreferences.defaultAgentFileTokenLimit
+
+    var showsTokens: Bool { sizeMetric == .tokens }
+
+    /// The snapshot the treemap draws: token-weighted once counted.
+    var vizSnapshot: ScanSnapshot? {
+        showsTokens ? tokens.tokenSnapshot ?? coordinator.snapshot : coordinator.snapshot
+    }
+
+    var showsTokenWeights: Bool { showsTokens && tokens.tokenSnapshot != nil }
+
     // MARK: Entire-scan search
 
     /// Outline "search entire scan" feature state; see SearchModel.
@@ -202,7 +234,7 @@ final class NeodiskViewModel {
     /// tab its list). Hiding the panel or switching tabs turns both off —
     /// the same contract the sunburst uses for tab-driven coloring.
     var wantsDiffVisible: Bool {
-        showKindStats && analysisTab == .changes
+        showKindStats && analysisTab == .changes && !showsTokens
     }
 
     private func syncDiffVisibility() {
@@ -262,6 +294,7 @@ final class NeodiskViewModel {
             integration: cloudScan
         )
         self.search = SearchModel(coordinator: coordinator, indexService: searchIndexService)
+        self.tokens = TokenModel(coordinator: coordinator)
         self.kinds = KindStatsModel(coordinator: coordinator, indexService: searchIndexService)
         self.largest = LargestFilesModel(coordinator: coordinator, indexService: searchIndexService)
         self.ages = AgeStatsModel(coordinator: coordinator, indexService: searchIndexService)
@@ -336,7 +369,7 @@ final class NeodiskViewModel {
     /// treemap styles draw the same structural colors: active on the Largest
     /// tab, or whenever the statistics panel (the kind/age legend) is hidden.
     var showsBranchColors: Bool {
-        analysisTab == .largest || !showKindStats
+        !showsTokens && (analysisTab == .largest || !showKindStats)
     }
 
     /// What visualization color means, driven by the statistics-panel tab:
@@ -346,6 +379,7 @@ final class NeodiskViewModel {
     /// the panel hidden) every view reverts to the structural branch hues.
     var vizColorMode: TreemapColorMode {
         if showsBranchColors { return .branch }
+        if showsTokens { return .kind }
         guard analysisTab == .age else { return .kind }
         let referenceDate = ages.catalog.stats.isEmpty
             ? coordinator.snapshot.map { $0.finishedAt ?? $0.startedAt }
@@ -360,6 +394,9 @@ final class NeodiskViewModel {
     /// hidden panel) have no kind/age legend to dim against.
     var vizHighlight: TreemapHighlight? {
         guard !showsBranchColors else { return nil }
+        if showsTokens {
+            return tokens.highlightsAgentFiles ? .nodes(Set(tokens.agentFileIDs)) : nil
+        }
         switch analysisTab {
         case .kinds:
             return kinds.highlightedKindID.map { .kind($0) }
@@ -440,6 +477,7 @@ final class NeodiskViewModel {
                 self?.syncCloudOnlyPreference()
                 self?.syncOutlinePreferences()
                 self?.syncTextScale()
+                self?.syncTokenPreferences()
             }
         freeSpace.update()
         syncVizPalette()
@@ -448,6 +486,14 @@ final class NeodiskViewModel {
         syncCloudOnlyPreference()
         syncOutlinePreferences()
         syncTextScale()
+        syncTokenPreferences()
+    }
+
+    private func syncTokenPreferences() {
+        guard let preferences else { return }
+        if agentFileTokenLimit != preferences.agentFileTokenLimit {
+            agentFileTokenLimit = preferences.agentFileTokenLimit
+        }
     }
 
     /// Mirror the persisted text scale onto the model, and push it into the
@@ -502,6 +548,7 @@ final class NeodiskViewModel {
         guard let preferences else { return }
         if vizViewMode != preferences.vizViewMode {
             vizViewMode = preferences.vizViewMode
+            if vizViewMode == .sunburst { sizeMetric = .bytes }
         }
     }
 
@@ -650,6 +697,7 @@ final class NeodiskViewModel {
         duplicates.snapshotDidChange()
         changes.snapshotDidChange()
         search.snapshotDidChange()
+        tokens.refresh()
 
         guard let snapshot else { return }
 

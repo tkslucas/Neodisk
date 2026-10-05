@@ -96,6 +96,8 @@ Swift/SwiftUI practices and keep the scanning core UI-free.
     statistics tab on launch, so captures can show any tab.
   - `NEODISK_VIZ_MODE=<treemap|sunburst>` — show that center visualization
     on launch without persisting the preference.
+  - `NEODISK_SIZE_METRIC=<bytes|tokens>` — size the treemap by bytes or
+    estimated tokens on launch.
   - `NEODISK_TREEMAP_STYLE=<cushion|flat>` — show that treemap style on
     launch without persisting the preference (`NEODISK_RENDER_STYLE=flat`
     is the `--render-png` equivalent).

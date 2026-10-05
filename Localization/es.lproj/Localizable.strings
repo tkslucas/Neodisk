@@ -389,3 +389,26 @@
 "Zoom Out" = "Reducir";
 "Actual Size" = "Tamaño real";
 "Scales the text in the locations sidebar, the file lists, the treemap and sunburst labels, and the statistics panel. Applies immediately. View ▸ Zoom In and Zoom Out (⌘+ and ⌘−) change it without opening Settings." = "Escala el texto de la barra lateral de ubicaciones, las listas de archivos, las etiquetas del treemap y del sunburst, y el panel de estadísticas. Se aplica de inmediato. Visualización ▸ Aumentar y Reducir (⌘+ y ⌘−) lo cambian sin abrir los ajustes.";
+
+/* Token mode */
+"%@ tokens" = "%@ tokens";
+"Bytes" = "Bytes";
+"Tokens" = "Tokens";
+"Measure" = "Medir";
+"Size the treemap by bytes on disk, or by estimated LLM tokens in text files" = "Dimensionar el mapa por bytes en disco o por tokens de LLM estimados en archivos de texto";
+"Tokens are counted when the scan finishes" = "Los tokens se cuentan cuando termina el escaneo";
+"Counting tokens… %@ of %@ files" = "Contando tokens… %@ de %@ archivos";
+"Not counted · %@" = "Sin contar · %@";
+"Estimated tokens. Exact counts vary by model." = "Tokens estimados. El recuento exacto varía según el modelo.";
+"Whole scan" = "Todo el escaneo";
+"%@ text files · %@ not text" = "%@ archivos de texto · %@ sin texto";
+"Not counted" = "Sin contar";
+"%@ of the scan" = "%@ del escaneo";
+"Above the agent file limit" = "Supera el límite para archivos de agente";
+"Estimated from the first 4 MB" = "Estimado a partir de los primeros 4 MB";
+"Most tokens in %@" = "Más tokens en %@";
+"Most tokens" = "Más tokens";
+"Agent files" = "Archivos de agente";
+"Flag above %@" = "Marcar a partir de %@";
+"Flag agent instruction files above this many tokens" = "Marcar archivos de instrucciones de agentes con más tokens que esto";
+"Highlight agent files on the map" = "Resaltar archivos de agente en el mapa";

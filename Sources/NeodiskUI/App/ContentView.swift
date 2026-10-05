@@ -156,6 +156,9 @@ public struct ContentView: View {
         ToolbarItem(placement: .principal) {
             vizModePicker
         }
+        ToolbarItem(placement: .principal) {
+            metricPicker
+        }
         // Cloud-only toggle sits beside the view switcher: it re-weights the
         // whole visualization, so it shares the picker's altitude. Persistent
         // but disabled when there is nothing for it to do (per the toolbar
@@ -237,13 +240,24 @@ public struct ContentView: View {
         .help("Switch between cushion treemap, flat treemap, and sunburst views")
     }
 
+    private var metricPicker: some View {
+        Picker("Measure", selection: $model.sizeMetric) {
+            Text("Bytes").tag(SizeMetric.bytes)
+            Text("Tokens").tag(SizeMetric.tokens)
+        }
+        .pickerStyle(.segmented)
+        .fixedSize()
+        .disabled(model.coordinator.snapshot == nil)
+        .help("Size the treemap by bytes on disk, or by estimated LLM tokens in text files")
+    }
+
     private var cloudOnlyToggle: some View {
         Toggle(isOn: $preferences.showCloudOnlyFiles) {
             Label("Cloud-Only Files", systemImage: "cloud")
         }
         .toggleStyle(.button)
         .tint(model.snapshotHasCloudItems ? .accentColor : .secondary)
-        .disabled(!model.snapshotHasCloudItems)
+        .disabled(!model.snapshotHasCloudItems || model.showsTokens)
         .help(
             !model.snapshotHasCloudItems
                 ? "No cloud-only files in this scan"
@@ -355,6 +369,10 @@ private struct WorkspaceView: View {
 
             Divider()
             StatusBar(model: model)
+        }
+        // A finished or stopped scan is when token counting can start.
+        .onChange(of: model.coordinator.isScanning) {
+            model.tokens.refresh()
         }
     }
 

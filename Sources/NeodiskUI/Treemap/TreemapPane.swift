@@ -43,6 +43,11 @@ struct TreemapPane: View {
                     )
                 }
             }
+            .overlay(alignment: .top) {
+                if model.showsTokens {
+                    TokenCountingBadge(phase: model.tokens.phase)
+                }
+            }
         }
     }
 }
@@ -70,8 +75,10 @@ private struct TreemapRepresentable: NSViewRepresentable {
         controller.model = model
         controller.onHoverPoint = onHoverPoint
         controller.onGestureActiveChange = onGestureActiveChange
+        // Token mode has no free or hidden space to show.
+        let showsVolumeSpace = model.zoomRootID == nil && !model.showsTokenWeights
         controller.setInputs(
-            snapshot: model.coordinator.snapshot,
+            snapshot: model.vizSnapshot,
             rootID: model.effectiveRootID,
             catalog: model.kinds.catalog,
             style: model.treemapStyle,
@@ -82,12 +89,45 @@ private struct TreemapRepresentable: NSViewRepresentable {
             // them once the user zooms into a subfolder. The treemap gates
             // them behind the Settings toggle (the sunburst always shows
             // them) — hence the treemap-specific accessors.
-            freeSpaceBytes: model.zoomRootID == nil ? model.freeSpace.treemapFreeSpaceBytes : nil,
-            hiddenSpaceBytes: model.zoomRootID == nil ? model.freeSpace.treemapHiddenSpaceBytes : nil,
+            freeSpaceBytes: showsVolumeSpace ? model.freeSpace.treemapFreeSpaceBytes : nil,
+            hiddenSpaceBytes: showsVolumeSpace ? model.freeSpace.treemapHiddenSpaceBytes : nil,
             includingCloudOnly: model.showsCloudOnlyFiles,
             palette: model.vizPalette,
             labelScale: CGFloat(model.textScale)
         )
         controller.setSelectedNode(model.selectedNodeID)
+    }
+}
+
+/// Floats over the map while token mode still shows byte sizes.
+private struct TokenCountingBadge: View {
+    let phase: TokenModel.Phase
+
+    var body: some View {
+        if let text {
+            Text(text)
+                .neoFont(11)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(.regularMaterial, in: Capsule())
+                .padding(.top, 8)
+                .allowsHitTesting(false)
+        }
+    }
+
+    private var text: String? {
+        switch phase {
+        case .idle, .ready:
+            return nil
+        case .waitingForScan:
+            return NSLocalizedString("Tokens are counted when the scan finishes", comment: "Token mode, waiting for the scan")
+        case .counting(let done, let total):
+            return String(
+                format: NSLocalizedString("Counting tokens… %@ of %@ files", comment: "Token mode progress"),
+                done.formatted(), total.formatted()
+            )
+        }
     }
 }

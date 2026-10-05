@@ -107,6 +107,9 @@ final class AppPreferences: ObservableObject {
     /// reads file contents, which costs real I/O and energy.
     @AppStorage("autoScanDuplicates") var autoScanDuplicates = false
     @AppStorage("hasSeenWelcome") var hasSeenWelcome = false
+    /// Token mode flags agent instruction files above this many tokens.
+    @AppStorage("agentFileTokenLimit") var agentFileTokenLimit = AppPreferences.defaultAgentFileTokenLimit
+    static let defaultAgentFileTokenLimit = 5_000
     /// Workspace text size, as a multiplier of the standard sizes. Written
     /// by the Settings picker and by View ▸ Zoom In/Out; read through
     /// `textScale`, which snaps it to the ladder. See TextScale.
@@ -170,6 +173,9 @@ final class AppPreferences: ObservableObject {
         )
         _autoScanDuplicates = AppStorage(wrappedValue: false, "autoScanDuplicates", store: defaults)
         _hasSeenWelcome = AppStorage(wrappedValue: false, "hasSeenWelcome", store: defaults)
+        _agentFileTokenLimit = AppStorage(
+            wrappedValue: Self.defaultAgentFileTokenLimit, "agentFileTokenLimit", store: defaults
+        )
         _textScaleRaw = AppStorage(
             wrappedValue: TextScale.standard, "textScale", store: defaults
         )
@@ -298,5 +304,6 @@ final class AppPreferences: ObservableObject {
         prepareChangesAfterScan = true
         autoScanDuplicates = false
         textScaleRaw = TextScale.standard
+        agentFileTokenLimit = Self.defaultAgentFileTokenLimit
     }
 }

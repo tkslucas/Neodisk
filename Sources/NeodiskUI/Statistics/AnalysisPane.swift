@@ -36,6 +36,14 @@ struct AnalysisPane: View {
     @Namespace private var underlineNamespace
 
     var body: some View {
+        if model.showsTokens {
+            TokensPane(model: model)
+        } else {
+            tabbedPanes
+        }
+    }
+
+    private var tabbedPanes: some View {
         VStack(spacing: 0) {
             // Flat text tabs instead of a segmented picker: four localized
             // segment titles don't fit the pane's width range (the bezel

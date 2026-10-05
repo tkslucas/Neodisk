@@ -41,6 +41,8 @@ struct VizHoverTooltipData: Equatable {
     /// A filled cloud immediately before the size marks a genuinely dataless
     /// file. Directories with some cloud-only descendants do not wear it.
     var showsCloudGlyph = false
+    /// Sizes are token counts (token mode), not bytes.
+    var isTokens = false
 
     /// First line: the item/aggregate name, or "Free space · <size>".
     var primaryText: String {
@@ -70,7 +72,7 @@ struct VizHoverTooltipData: Equatable {
     var secondaryText: String {
         switch kind {
         case .item, .aggregate:
-            let size = NeodiskFormatters.size(sizeBytes)
+            let size = isTokens ? DisplayFormatters.tokens(Int(sizeBytes)) : NeodiskFormatters.size(sizeBytes)
             guard let percent = NeodiskFormatters.percentage(part: sizeBytes, total: basisBytes) else {
                 return size
             }
@@ -108,7 +110,15 @@ extension VizHoverTooltipData {
     /// mutates it, so NeodiskViewModel's hover semantics stay untouched.
     @MainActor
     static func current(in model: NeodiskViewModel) -> VizHoverTooltipData? {
-        let basis = model.store?.node(id: model.effectiveRootID)
+        var data = currentContent(in: model)
+        data?.isTokens = model.showsTokenWeights
+        return data
+    }
+
+    @MainActor
+    private static func currentContent(in model: NeodiskViewModel) -> VizHoverTooltipData? {
+        let store = model.vizSnapshot?.treeStore
+        let basis = store?.node(id: model.effectiveRootID)
         let basisBytes = basis?.displayWeight(includingCloudOnly: model.showsCloudOnlyFiles) ?? 0
         let basisName = basis?.name ?? ""
 
@@ -121,7 +131,7 @@ extension VizHoverTooltipData {
         if let aggregate = model.hoveredAggregate {
             return VizHoverTooltipData(kind: .aggregate(itemCount: aggregate.itemCount), sizeBytes: aggregate.totalSize, basisBytes: basisBytes, basisName: basisName)
         }
-        if let node = model.hoveredNode {
+        if let node = store?.node(id: model.hoveredNodeID) {
             return VizHoverTooltipData(
                 item: node,
                 sizeBytes: node.displayWeight(includingCloudOnly: model.showsCloudOnlyFiles),

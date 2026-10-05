@@ -388,3 +388,26 @@
 "Zoom Out" = "縮小";
 "Actual Size" = "実際のサイズ";
 "Scales the text in the locations sidebar, the file lists, the treemap and sunburst labels, and the statistics panel. Applies immediately. View ▸ Zoom In and Zoom Out (⌘+ and ⌘−) change it without opening Settings." = "場所サイドバー、ファイルリスト、ツリーマップとサンバーストのラベル、統計パネルの文字を拡大縮小します。すぐに反映されます。表示 ▸ 拡大／縮小（⌘+ と ⌘−）でも設定を開かずに変更できます。";
+
+/* Token mode */
+"%@ tokens" = "%@ トークン";
+"Bytes" = "バイト";
+"Tokens" = "トークン";
+"Measure" = "計測";
+"Size the treemap by bytes on disk, or by estimated LLM tokens in text files" = "ディスク上のバイト数、またはテキストファイルの推定 LLM トークン数でツリーマップを表示します";
+"Tokens are counted when the scan finishes" = "スキャンが終わるとトークンを数えます";
+"Counting tokens… %@ of %@ files" = "トークンを数えています… %@ / %@ ファイル";
+"Not counted · %@" = "未計測 · %@";
+"Estimated tokens. Exact counts vary by model." = "推定トークン数です。正確な数はモデルによって異なります。";
+"Whole scan" = "スキャン全体";
+"%@ text files · %@ not text" = "テキストファイル %@ · テキスト以外 %@";
+"Not counted" = "未計測";
+"%@ of the scan" = "スキャンの %@";
+"Above the agent file limit" = "エージェントファイルの上限を超えています";
+"Estimated from the first 4 MB" = "先頭 4 MB から推定";
+"Most tokens in %@" = "%@ でトークンが多い順";
+"Most tokens" = "トークンが多い順";
+"Agent files" = "エージェントファイル";
+"Flag above %@" = "%@ 超を警告";
+"Flag agent instruction files above this many tokens" = "このトークン数を超えるエージェント指示ファイルに警告を表示します";
+"Highlight agent files on the map" = "マップ上でエージェントファイルを強調表示";

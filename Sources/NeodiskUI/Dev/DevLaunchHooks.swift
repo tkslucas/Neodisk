@@ -45,6 +45,11 @@ enum DevLaunchHooks {
             model.vizViewMode = mode
         }
 
+        // NEODISK_SIZE_METRIC=<bytes|tokens> sizes the treemap by bytes or tokens.
+        if let rawMetric = environment["NEODISK_SIZE_METRIC"], let metric = SizeMetric(rawValue: rawMetric) {
+            model.sizeMetric = metric
+        }
+
         // NEODISK_TREEMAP_STYLE=<cushion|flat> picks the treemap style without
         // persisting the preference.
         if let rawStyle = environment["NEODISK_TREEMAP_STYLE"], let style = TreemapStyle(rawValue: rawStyle) {

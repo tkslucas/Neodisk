@@ -24,6 +24,17 @@ enum DisplayFormatters {
         formatterCache.roughDuration(interval)
     }
 
+    /// "850 tokens", "12.4K tokens".
+    static func tokens(_ count: Int) -> String {
+        String(format: NSLocalizedString("%@ tokens", comment: "Estimated token count"), tokenCount(count))
+    }
+
+    static func tokenCount(_ count: Int) -> String {
+        count < 10_000
+            ? count.formatted()
+            : count.formatted(.number.notation(.compactName).precision(.significantDigits(3)))
+    }
+
     /// User-facing form of a node path. Filesystem paths pass through; cloud
     /// node paths ("cloudscan://<provider>/<account>/My Drive/…") drop the
     /// machine-oriented prefix and read from the drive root ("/My Drive/…"),

@@ -388,3 +388,26 @@
 "Zoom Out" = "Zoom Out";
 "Actual Size" = "Actual Size";
 "Scales the text in the locations sidebar, the file lists, the treemap and sunburst labels, and the statistics panel. Applies immediately. View ▸ Zoom In and Zoom Out (⌘+ and ⌘−) change it without opening Settings." = "Scales the text in the locations sidebar, the file lists, the treemap and sunburst labels, and the statistics panel. Applies immediately. View ▸ Zoom In and Zoom Out (⌘+ and ⌘−) change it without opening Settings.";
+
+/* Token mode */
+"%@ tokens" = "%@ tokens";
+"Bytes" = "Bytes";
+"Tokens" = "Tokens";
+"Measure" = "Measure";
+"Size the treemap by bytes on disk, or by estimated LLM tokens in text files" = "Size the treemap by bytes on disk, or by estimated LLM tokens in text files";
+"Tokens are counted when the scan finishes" = "Tokens are counted when the scan finishes";
+"Counting tokens… %@ of %@ files" = "Counting tokens… %@ of %@ files";
+"Not counted · %@" = "Not counted · %@";
+"Estimated tokens. Exact counts vary by model." = "Estimated tokens. Exact counts vary by model.";
+"Whole scan" = "Whole scan";
+"%@ text files · %@ not text" = "%@ text files · %@ not text";
+"Not counted" = "Not counted";
+"%@ of the scan" = "%@ of the scan";
+"Above the agent file limit" = "Above the agent file limit";
+"Estimated from the first 4 MB" = "Estimated from the first 4 MB";
+"Most tokens in %@" = "Most tokens in %@";
+"Most tokens" = "Most tokens";
+"Agent files" = "Agent files";
+"Flag above %@" = "Flag above %@";
+"Flag agent instruction files above this many tokens" = "Flag agent instruction files above this many tokens";
+"Highlight agent files on the map" = "Highlight agent files on the map";

@@ -51,7 +51,9 @@ struct StatusBar: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer(minLength: 12)
-                Text(NeodiskFormatters.size(aggregate.totalSize))
+                Text(model.showsTokenWeights
+                    ? DisplayFormatters.tokens(Int(aggregate.totalSize))
+                    : NeodiskFormatters.size(aggregate.totalSize))
                     .monospacedDigit()
             } else if let node = model.hoveredNode ?? model.selectedNode {
                 RoundedRectangle(cornerRadius: 2)
@@ -64,7 +66,7 @@ struct StatusBar: View {
                 Text(LocalizedStringKey(FileKindClassifier.kind(for: node, mode: model.kinds.displayMode).displayName))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                Text(Self.sizeText(for: node))
+                Text(sizeText(for: node))
                     .monospacedDigit()
                     .lineLimit(1)
                     .fixedSize()
@@ -97,6 +99,19 @@ struct StatusBar: View {
             NeodiskFormatters.size(freeSpaceBytes),
             NeodiskFormatters.size(purgeableBytes)
         )
+    }
+
+    /// In token mode the token count leads, bytes follow.
+    private func sizeText(for node: FileNodeRecord) -> String {
+        let bytes = Self.sizeText(for: node)
+        guard model.showsTokenWeights else { return bytes }
+        guard let tokens = model.tokens.tokens(for: node.id) else {
+            return String(
+                format: NSLocalizedString("Not counted · %@", comment: "Status bar, token mode, a file without a token count (binary, cloud-only or unreadable)"),
+                bytes
+            )
+        }
+        return "\(DisplayFormatters.tokens(tokens)) · \(bytes)"
     }
 
     /// Size for the inspected item, annotated when it carries cloud-only

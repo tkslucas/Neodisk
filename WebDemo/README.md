@@ -1,8 +1,8 @@
 # WebDemo
 
 The app's own treemap and sunburst cores, compiled to WebAssembly for the
-interactive Neodisk demo on lucastakayasu.com (source:
-`tkslucas/personal-website`, `src/neodisk/`).
+interactive Neodisk demo at neodisk.app/demo (source:
+`tkslucas/neodisk-site`, `src/neodisk/`).
 
 - `Sources/TreemapKit`, `Sources/SunburstCore` — symlinks to the real app
   targets; the demo runs the same squarified layout and cushion/flat

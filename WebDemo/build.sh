@@ -1,13 +1,13 @@
 #!/bin/zsh
 # Builds the Neodisk web engine (TreemapKit + SunburstCore + NeodiskWebEngine
 # glue) as an Embedded Swift wasm32 module, optimizes it, and copies it into
-# the personal website's public/neodisk/ folder.
+# neodisk-site's public/neodisk/ folder.
 #
 # Needs the swift.org 6.4 toolchain via swiftly (~/.swiftly/bin/swift) with
 # the swift-6.4.0-RELEASE_wasm-embedded Swift SDK, and (optionally) binaryen's
 # wasm-opt (brew install binaryen).
 #
-#   ./build.sh                 build + copy to the default website checkout
+#   ./build.sh                 build + copy to the neodisk-site checkout
 #   NEODISK_WEB_OUT=... ./build.sh   copy somewhere else
 
 set -euo pipefail
@@ -15,7 +15,7 @@ cd "$(dirname "$0")"
 
 SWIFT="${SWIFT:-$HOME/.swiftly/bin/swift}"
 SDK="${NEODISK_WASM_SDK:-swift-6.4.0-RELEASE_wasm-embedded}"
-OUT="${NEODISK_WEB_OUT:-$HOME/Documents/personal/personal-website/public/neodisk/neodisk-engine.wasm}"
+OUT="${NEODISK_WEB_OUT:-$HOME/Projects/neodisk-site/public/neodisk/neodisk-engine.wasm}"
 
 # String hashing (Set<String> in SunburstLayout) needs the Unicode
 # normalization tables, which Embedded Swift keeps in a separate archive.

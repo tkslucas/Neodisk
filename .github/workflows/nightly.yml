@@ -31,8 +31,14 @@ jobs:
             echo "build=true" >> "$GITHUB_OUTPUT"
           fi
 
-  mac:
+  memory:
     needs: check
+    if: needs.check.outputs.build == 'true'
+    uses: ./.github/workflows/memory-gate.yml
+    secrets: inherit
+
+  mac:
+    needs: [check, memory]
     if: needs.check.outputs.build == 'true'
     runs-on: macos-26
     steps:

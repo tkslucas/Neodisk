@@ -28,8 +28,8 @@ final class LargestFilesModel {
     static let partialBrowseLimit = 100
 
     private(set) var isLoading = false
-    /// The listed files as records, not their tree: a hidden tab never refreshes,
-    /// and holding the tree kept every replaced scan in memory.
+    /// The listed files as records, not their tree: rows kept across a splice
+    /// held the replaced tree in memory.
     private(set) var rows: [FileNodeRecord] = []
     var visibleIDs: [String] { rows.map(\.id) }
     private(set) var totalMatches = 0

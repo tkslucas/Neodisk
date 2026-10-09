@@ -33,13 +33,13 @@ jobs:
 
   memory:
     needs: check
-    if: needs.check.outputs.build == 'true' && github.ref_name == 'main'
+    if: needs.check.outputs.build == 'true'
     uses: ./.github/workflows/memory-gate.yml
     secrets: inherit
 
   mac:
     needs: [check, memory]
-    if: needs.check.outputs.build == 'true' && github.ref_name == 'main'
+    if: needs.check.outputs.build == 'true'
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4

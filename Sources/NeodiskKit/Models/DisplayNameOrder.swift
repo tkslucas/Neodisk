@@ -28,6 +28,16 @@ public enum DisplayNameOrder {
         #endif
     }
 
+    #if canImport(Darwin)
+    /// `precedes` for names already bridged: the `String` form bridges both
+    /// names to NSString on every comparison, which a sort with many
+    /// equal-sized entries repeats n log n times.
+    @inline(__always)
+    nonisolated static func precedes(_ lhs: NSString, _ rhs: NSString) -> Bool {
+        lhs.localizedStandardCompare(rhs as String) == .orderedAscending
+    }
+    #endif
+
     /// Negative, zero, or positive as `lhs` sorts before, equal to, or after
     /// `rhs` in natural order.
     public nonisolated static func naturalOrder(_ lhs: String, _ rhs: String) -> Int {

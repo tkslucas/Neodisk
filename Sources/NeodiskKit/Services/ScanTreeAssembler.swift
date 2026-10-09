@@ -249,7 +249,21 @@ nonisolated enum ScanTreeAssembler {
                 folderRefs.append(ChildRef(key: Int32(childKey), leafIndex: -1))
             }
             let folderSortSince = ScanProfile.now()
+            #if canImport(Darwin)
+            if folderRefs.count > 1 {
+                // Names bridged once each, not on every tie comparison.
+                let keyed = folderRefs.map { ref in
+                    (ref: ref, size: allocated[Int(ref.key)], name: sortName[Int(ref.key)] as NSString)
+                }
+                folderRefs = keyed.sorted { lhs, rhs in
+                    lhs.size == rhs.size
+                        ? DisplayNameOrder.precedes(lhs.name, rhs.name)
+                        : lhs.size > rhs.size
+                }.map(\.ref)
+            }
+            #else
             folderRefs.sort(by: precedes)
+            #endif
             ScanProfile.end(.assemblyFolderSort, since: folderSortSince, count: folderRefs.count)
             var refs: [ChildRef] = []
             refs.reserveCapacity(directLeaves.count + folderRefs.count)

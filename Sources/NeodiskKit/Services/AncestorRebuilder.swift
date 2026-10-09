@@ -71,6 +71,17 @@ nonisolated enum AncestorRebuilder {
             // sizes/names in place rather than through childDisplayOrder's
             // by-value FileNodeRecord parameters (which copy each record).
             var orderedChildIndices = Array(childSlots[range])
+            #if canImport(Darwin)
+            // Names bridged once each, not on every tie comparison.
+            let keyed = orderedChildIndices.map { index in
+                (index: index, size: nodes[Int(index)].allocatedSize, name: nodes[Int(index)].name as NSString)
+            }
+            orderedChildIndices = keyed.sorted { lhs, rhs in
+                lhs.size == rhs.size
+                    ? DisplayNameOrder.precedes(lhs.name, rhs.name)
+                    : lhs.size > rhs.size
+            }.map(\.index)
+            #else
             orderedChildIndices.sort { lhs, rhs in
                 let lhsAllocated = nodes[Int(lhs)].allocatedSize
                 let rhsAllocated = nodes[Int(rhs)].allocatedSize
@@ -79,6 +90,7 @@ nonisolated enum AncestorRebuilder {
                 }
                 return lhsAllocated > rhsAllocated
             }
+            #endif
             childSlots.replaceSubrange(range, with: orderedChildIndices)
 
             // Re-aggregate totals from the child records in place, matching

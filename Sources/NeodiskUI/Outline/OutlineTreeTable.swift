@@ -144,6 +144,8 @@ struct OutlineTreeTable: NSViewRepresentable {
         /// column (the style's horizontal padding).
         private var columnOverhead: CGFloat = 12
         private var isProgrammaticSelection = false
+        // Set while the table reports a selection: syncing back mid-event is reentrant.
+        private var isReportingSelection = false
         /// The selection the outline last scrolled to: reveal again only
         /// when the model's selection actually changes, not on reloads.
         private var lastRevealedID: String?
@@ -236,7 +238,7 @@ struct OutlineTreeTable: NSViewRepresentable {
         }
 
         func syncSelection(to selectedID: String?) {
-            guard let tableView else { return }
+            guard let tableView, !isReportingSelection else { return }
             // A click in flight: the table already shows the clicked row but
             // hasn't told us yet (the delegate fires when tracking ends).
             // Syncing now would revert the user's click to the stale model
@@ -317,6 +319,8 @@ struct OutlineTreeTable: NSViewRepresentable {
             let newID = (row >= 0 && row < rows.count) ? rows[row].id : nil
             if model.selectedNodeID != newID {
                 lastRevealedID = newID
+                isReportingSelection = true
+                defer { isReportingSelection = false }
                 model.selectedNodeID = newID
             }
         }

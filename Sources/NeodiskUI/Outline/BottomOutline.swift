@@ -192,6 +192,8 @@ struct BottomOutlineTable: NSViewRepresentable {
         private var rowIndexByID: [String: Int] = [:]
         private var appliedStructuralVersion: UInt64?
         private var isProgrammaticSelection = false
+        // Set while the table reports a selection: syncing back mid-event is reentrant.
+        private var isReportingSelection = false
         private(set) var structuralApplyCount = 0
         /// The selection the table last scrolled to: reveal again only when
         /// the model's selection actually changes, not on reloads.
@@ -264,7 +266,7 @@ struct BottomOutlineTable: NSViewRepresentable {
         }
 
         func syncSelection(to selectedID: String?) {
-            guard let tableView else { return }
+            guard let tableView, !isReportingSelection else { return }
             if let outlineTable = tableView as? OutlineNSTableView,
                outlineTable.isTrackingClick {
                 return
@@ -391,6 +393,8 @@ struct BottomOutlineTable: NSViewRepresentable {
             let newID = (row >= 0 && row < rows.count) ? rows[row].id : nil
             if model.selectedNodeID != newID {
                 lastRevealedID = newID
+                isReportingSelection = true
+                defer { isReportingSelection = false }
                 model.selectedNodeID = newID
             }
         }

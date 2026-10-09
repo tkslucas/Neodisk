@@ -136,7 +136,7 @@ extension AtomicDirectorySummarizer {
             } catch {
                 continue
             }
-            let normalizedDirectoryPath = directoryURL.standardizedFileURL.path
+            let normalizedDirectoryPath = exclusionMatcher.scanPath(of: directoryURL)
             let directoryName = directoryURL.lastPathComponent
 
             for child in children {

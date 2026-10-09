@@ -67,7 +67,7 @@ extension AtomicDirectorySummarizer {
             category: .summary,
             cancellationCheck: cancellationCheck
         )
-        let normalizedParentPath = item.url.standardizedFileURL.path
+        let normalizedParentPath = exclusionMatcher.scanPath(of: item.url)
         // `item.url.path` (not standardized) so claim keys / recursion identity
         // match the rest of the tree; child path is `basePath + "/" + name`.
         let basePath = item.url.path

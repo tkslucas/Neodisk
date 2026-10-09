@@ -15,6 +15,9 @@ public nonisolated struct ScanExclusionMatcher: Sendable {
     ]
 
     private let rootPath: String
+    /// The root as Foundation's enumerator spells its children (`/private/var/…`
+    /// for a `/var/…` root); nil when the two spellings agree.
+    private let firmlinkedRootPath: String?
     private let patterns: [CompiledPattern]
     private let cloudLocations: [CloudLocation]
 
@@ -27,7 +30,7 @@ public nonisolated struct ScanExclusionMatcher: Sendable {
     ) {
         self.init(
             patterns: patterns,
-            rootPath: rootURL.standardizedFileURL.path,
+            rootPath: rootURL.path,
             includeCloudStorage: includeCloudStorage,
             cloudStorageRootPath: cloudStorageRootPath,
             iCloudDriveRootPath: iCloudDriveRootPath
@@ -43,6 +46,9 @@ public nonisolated struct ScanExclusionMatcher: Sendable {
     ) {
         let normalizedRootPath = Self.normalizedRootPath(rootPath)
         self.rootPath = normalizedRootPath
+        self.firmlinkedRootPath = ["/var", "/tmp", "/etc"].contains {
+            normalizedRootPath == $0 || normalizedRootPath.hasPrefix($0 + "/")
+        } ? "/private" + normalizedRootPath : nil
         self.patterns = Self.normalizedPatterns(patterns).compactMap(CompiledPattern.init(rawPattern:))
         self.cloudLocations = [
             Self.cloudLocation(
@@ -69,18 +75,27 @@ public nonisolated struct ScanExclusionMatcher: Sendable {
     }
 
     func excludes(_ url: URL, isDirectory: Bool) -> Bool {
-        let normalizedPath = url.standardizedFileURL.path
-        return excludes(normalizedPath: normalizedPath, isDirectory: isDirectory)
+        excludes(normalizedPath: scanPath(of: url), isDirectory: isDirectory)
+    }
+
+    /// `url`'s path in the scan root's spelling. Lexical on purpose: `standardizedFileURL`
+    /// strips `/private` only from paths that exist, which broke root-relative patterns.
+    func scanPath(of url: URL) -> String {
+        let path = url.standardized.path
+        guard let firmlinkedRootPath, path.hasPrefix(firmlinkedRootPath),
+              path.count == firmlinkedRootPath.count
+                || path.dropFirst(firmlinkedRootPath.count).hasPrefix("/") else { return path }
+        return String(path.dropFirst("/private".count))
     }
 
     /// Enumeration-hot fast path. The child URL that `excludes(_:isDirectory:)`
     /// would standardize here was just built from an already-normalized parent
     /// path plus a single, dot/slash-free name component, so the normalized
     /// child path is a plain string concatenation — no per-entry URL round trip
-    /// through `standardizedFileURL`'s RFC3986 parse.
+    /// through `scanPath(of:)`.
     ///
     /// `normalizedParentPath` MUST be the parent directory's normalized path
-    /// (`parentURL.standardizedFileURL.path`), computed once per directory.
+    /// (`scanPath(of: parentURL)`), computed once per directory.
     /// `childName` MUST be a single path component as a directory enumerator
     /// yields it: no "/", and never "." or "..". Under those preconditions the
     /// verdict is identical to `excludes(parentURL.appending(path: childName), …)`.
@@ -92,7 +107,7 @@ public nonisolated struct ScanExclusionMatcher: Sendable {
     }
 
     /// Joins a normalized parent path and a clean child component into the
-    /// normalized child path, matching `standardizedFileURL.path` for the
+    /// normalized child path, matching `scanPath(of:)` for the
     /// appended URL. The parent is normalized, so it has no trailing slash
     /// except when it is the volume root "/".
     static func normalizedChildPath(parentPath: String, childName: String) -> String {
@@ -146,7 +161,7 @@ public nonisolated struct ScanExclusionMatcher: Sendable {
 
     static func normalizedRootPath(_ path: String) -> String {
         URL(fileURLWithPath: path, isDirectory: true)
-            .standardizedFileURL
+            .standardized
             .path
     }
 

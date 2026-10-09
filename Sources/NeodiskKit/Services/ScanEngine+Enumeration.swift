@@ -337,7 +337,7 @@ extension ScanEngine {
         // and name gates then work on strings — `parent + "/" + name` — instead
         // of rebuilding and re-standardizing a URL for every entry, and the URL
         // itself is only constructed for entries that survive filtering.
-        let normalizedParentPath = url.standardizedFileURL.path
+        let normalizedParentPath = exclusionMatcher.scanPath(of: url)
         // Node-id base: child path is `childBasePath + "/" + name`, byte-identical
         // to `url.appending(path: name).path` without the per-entry URL work.
         // Uses `url.path` (not standardized) so ids match the compatibility path.

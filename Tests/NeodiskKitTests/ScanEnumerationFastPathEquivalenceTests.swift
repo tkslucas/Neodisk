@@ -56,14 +56,16 @@ import Testing
 
     /// Builds a normalized parent path by starting from a root and appending a
     /// few clean components — the same shape the traversal's parent URLs have.
-    private func normalizedParentPath(root: String, depth: Int, rng: inout SeededGenerator) -> String {
+    private func normalizedParentPath(
+        root: String, depth: Int, matcher: ScanExclusionMatcher, rng: inout SeededGenerator
+    ) -> String {
         var url = URL(filePath: root, directoryHint: .isDirectory)
         for _ in 0..<depth {
             let name = Self.childNames[Int(rng.next() % UInt64(Self.childNames.count))]
             url = url.appending(path: name, directoryHint: .isDirectory)
         }
         // Standardize exactly as the hot path does before handing us the parent.
-        return url.standardizedFileURL.path
+        return matcher.scanPath(of: url)
     }
 
     @Test func fastPathsMatchURLOraclesAcrossRandomizedInputs() {
@@ -84,7 +86,7 @@ import Testing
 
                     for _ in 0..<200 {
                         let depth = Int(rng.next() % 4)
-                        let parentPath = normalizedParentPath(root: root, depth: depth, rng: &rng)
+                        let parentPath = normalizedParentPath(root: root, depth: depth, matcher: matcher, rng: &rng)
                         let parentURL = URL(filePath: parentPath, directoryHint: .isDirectory)
                         let childName = Self.childNames[Int(rng.next() % UInt64(Self.childNames.count))]
                         let isDirectory = rng.next() & 1 == 0
@@ -199,7 +201,7 @@ import Testing
                     includeCloudStorage: includeCloudStorage
                 )
                 let parentURL = URL(filePath: parent, directoryHint: .isDirectory)
-                let parentPath = parentURL.standardizedFileURL.path
+                let parentPath = matcher.scanPath(of: parentURL)
                 for isDirectory in [false, true] {
                     let childURL = parentURL.appending(
                         path: child,

@@ -473,6 +473,67 @@ import Foundation
         #expect(snapshot.root.logicalSize == 64)
     }
 
+    #if os(macOS)
+    /// `/private/var` exists, so standardizing used to rewrite it to `/var`
+    /// and a root-relative pattern under it never matched a scan of `/`.
+    @Test(arguments: [false, true])
+    func testExclusionsUnderPrivateMatchWhenScanningStartupRoot(localizedFailure: Bool) async throws {
+        let rootURL = URL(filePath: "/", directoryHint: .isDirectory)
+        let privateURL = rootURL.appending(path: "private", directoryHint: .isDirectory)
+        let excludedURL = privateURL.appending(path: "var", directoryHint: .isDirectory)
+        let engine = ScanEngine(enumeratedDirectoryContents: { url, _, _, cancellationCheck in
+            try cancellationCheck()
+            switch url.path {
+            case rootURL.path:
+                return ScanEngine.DirectoryEnumerationResult(urls: [privateURL])
+            case privateURL.path where localizedFailure:
+                return ScanEngine.DirectoryEnumerationResult(urls: [], localizedFailures: [
+                    ScanEngine.DirectoryEnumerationFailure(
+                        url: excludedURL, error: POSIXError(.EACCES), isDirectoryHint: true
+                    )
+                ])
+            case privateURL.path:
+                return ScanEngine.DirectoryEnumerationResult(urls: [excludedURL])
+            default:
+                Issue.record("Excluded directory was traversed: \(url.path)")
+                return ScanEngine.DirectoryEnumerationResult(urls: [])
+            }
+        })
+        var options = ScanOptions()
+        options.includeHiddenFiles = true
+        options.autoSummarizeDirectories = false
+        options.exclusionPatterns = ["private/var/"]
+
+        let snapshot = try await finishedSnapshot(
+            target: ScanTarget(url: rootURL, kind: .volume),
+            options: options,
+            engine: engine
+        )
+
+        #expect(snapshot.treeStore.node(id: privateURL.path) != nil)
+        #expect(snapshot.treeStore.node(id: excludedURL.path) == nil)
+        #expect(snapshot.scanWarnings.isEmpty)
+    }
+    #endif
+
+    /// Foundation's enumerator spells a `/var/…` root's children `/private/var/…`;
+    /// path-scoped patterns must still match them in the root's spelling.
+    @Test func testPathScopedExclusionsMatchFirmlinkSpelledChildren() async throws {
+        let rootURL = URL(filePath: "/var/scan-root", directoryHint: .isDirectory)
+        let keptURL = URL(filePath: "/private/var/scan-root/kept", directoryHint: .isDirectory)
+        let excludedURL = URL(filePath: "/private/var/scan-root/sub", directoryHint: .isDirectory)
+        let matcher = ScanExclusionMatcher(patterns: ["sub/"], rootURL: rootURL, includeCloudStorage: true)
+
+        #expect(matcher.excludes(excludedURL, isDirectory: true))
+        #expect(!matcher.excludes(keptURL, isDirectory: true))
+        #expect(matcher.scanPath(of: excludedURL) == "/var/scan-root/sub")
+        // Only the root's own subtree is remapped.
+        #expect(matcher.scanPath(of: URL(filePath: "/private/var/scan-rooted")) == "/private/var/scan-rooted")
+        #expect(
+            matcher.excludes(normalizedParentPath: matcher.scanPath(of: keptURL), childName: "sub", isDirectory: true)
+        )
+    }
+
     @Test func testExcludesDoubleStarPathGlobPatterns() async throws {
         let rootURL = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: rootURL) }

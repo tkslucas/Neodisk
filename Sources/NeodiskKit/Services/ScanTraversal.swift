@@ -410,7 +410,7 @@ nonisolated final class ScanTraversal {
                                     listings: listings,
                                     cancellationCheck: cancellationCheck
                                 )
-                                let leafBatch = try ScanProfile.measure(.leafBatch) {
+                                var leafBatch = try ScanProfile.measure(.leafBatch) {
                                     try Self.makeDirectoryLeafBatch(
                                         from: contents.entries,
                                         ownedDeviceIDs: ownedDeviceIDs,
@@ -418,6 +418,10 @@ nonisolated final class ScanTraversal {
                                         cancellationCheck: cancellationCheck
                                     )
                                 }
+                                leafBatch.urlPathAndName = (
+                                    taskItem.url.path,
+                                    ScanTarget.displayName(for: taskItem.url)
+                                )
                                 return .directory(.success(DirectoryTraversalSuccess(
                                     item: taskItem,
                                     itemKey: taskItemKey,
@@ -906,8 +910,11 @@ nonisolated final class ScanTraversal {
         completedByKey[itemKey] = CompletedDirScan(
             node: nil,
             directLeafNodes: leafBatch.nodes,
+            directLeafNodesAreSorted: true,
+            directLeafTotals: leafBatch.leafTotals,
             metadata: meta,
             url: item.url,
+            pathAndName: leafBatch.urlPathAndName,
             isTraversable: true,
             depth: item.depth
         )

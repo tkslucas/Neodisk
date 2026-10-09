@@ -116,6 +116,8 @@ extension ScanTraversal {
         var duplicateWeightUnits = 0.0
         var fileCount = 0
         var allocatedSize: Int64 = 0
+        /// The folder's own `url.path` and display name, derived on its task.
+        var urlPathAndName: (path: String, name: String)?
         /// The leaves' totals for live partial trees, summed on the worker.
         var leafTotals = ScanEngine.PartialSubtreeTotals()
         /// Count of likely-traversable directory entries across the whole

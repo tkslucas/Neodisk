@@ -118,14 +118,23 @@ nonisolated enum ScanTreeAssembler {
                 var c: Int64 = 0
                 var files = 0
                 var accessible = completed.metadata.isReadable
-                for leaf in completed.directLeafNodes {
-                    a = a.addingClamped(leaf.allocatedSize)
-                    l = l.addingClamped(leaf.logicalSize)
-                    c = c.addingClamped(leaf.cloudOnlyLogicalSize)
-                    files += leaf.isDirectory
-                        ? leaf.descendantFileCount
-                        : (leaf.isSymbolicLink || leaf.isSynthetic ? 0 : 1)
-                    accessible = accessible && leaf.isAccessible
+                if let totals = completed.directLeafTotals {
+                    // Summed by the directory worker over the same records.
+                    a = totals.allocatedSize
+                    l = totals.logicalSize
+                    c = totals.cloudOnlyLogicalSize
+                    files = totals.descendantFileCount
+                    accessible = accessible && totals.isAccessible
+                } else {
+                    for leaf in completed.directLeafNodes {
+                        a = a.addingClamped(leaf.allocatedSize)
+                        l = l.addingClamped(leaf.logicalSize)
+                        c = c.addingClamped(leaf.cloudOnlyLogicalSize)
+                        files += leaf.isDirectory
+                            ? leaf.descendantFileCount
+                            : (leaf.isSymbolicLink || leaf.isSynthetic ? 0 : 1)
+                        accessible = accessible && leaf.isAccessible
+                    }
                 }
                 for childKey in childrenKeysByKey[key] where resolved[childKey] {
                     a = a.addingClamped(allocated[childKey])
@@ -141,7 +150,7 @@ nonisolated enum ScanTreeAssembler {
                 subtreeAccessible[key] = accessible
                 isTraversableDir[key] = true
                 resolved[key] = true
-                sortName[key] = ScanTarget.displayName(for: completed.url)
+                sortName[key] = completed.name
                 resolvedCount += 1
                 directLeafTotal += completed.directLeafNodes.count
                 callbacks.directoryFinalized()
@@ -191,15 +200,7 @@ nonisolated enum ScanTreeAssembler {
             }
             guard let completed = completedByKey[key] else { continue }
             let directLeaves = completed.directLeafNodes
-            var refs: [ChildRef] = []
-            refs.reserveCapacity(directLeaves.count + childrenKeysByKey[key].count)
-            for leafIndex in 0..<directLeaves.count {
-                refs.append(ChildRef(key: Int32(key), leafIndex: Int32(leafIndex)))
-            }
-            for childKey in childrenKeysByKey[key] where resolved[childKey] {
-                refs.append(ChildRef(key: Int32(childKey), leafIndex: -1))
-            }
-            refs.sort { lhs, rhs in
+            func precedes(_ lhs: ChildRef, _ rhs: ChildRef) -> Bool {
                 let lhsAllocated = lhs.leafIndex >= 0
                     ? directLeaves[Int(lhs.leafIndex)].allocatedSize
                     : allocated[Int(lhs.key)]
@@ -217,6 +218,62 @@ nonisolated enum ScanTreeAssembler {
                 }
                 return lhsAllocated > rhsAllocated
             }
+            // The files arrive sorted by this same comparator (presorted on
+            // the directory workers), so only the subfolders are sorted, then
+            // each is binary-searched into place, after any file it ties with:
+            // exactly the stable sort of files-then-folders, without the name
+            // comparisons (Finder order, slow) between equal-sized files.
+            guard completed.directLeafNodesAreSorted else {
+                var refs: [ChildRef] = []
+                refs.reserveCapacity(directLeaves.count + childrenKeysByKey[key].count)
+                for leafIndex in 0..<directLeaves.count {
+                    refs.append(ChildRef(key: Int32(key), leafIndex: Int32(leafIndex)))
+                }
+                for childKey in childrenKeysByKey[key] where resolved[childKey] {
+                    refs.append(ChildRef(key: Int32(childKey), leafIndex: -1))
+                }
+                refs.sort(by: precedes)
+                childRefsByKey[key] = refs
+                continue
+            }
+            #if DEBUG
+            for index in directLeaves.indices.dropFirst() {
+                assert(!precedes(
+                    ChildRef(key: Int32(key), leafIndex: Int32(index)),
+                    ChildRef(key: Int32(key), leafIndex: Int32(index - 1))
+                ), "direct leaves of \(completed.url.path) arrived unsorted")
+            }
+            #endif
+            var folderRefs: [ChildRef] = []
+            for childKey in childrenKeysByKey[key] where resolved[childKey] {
+                folderRefs.append(ChildRef(key: Int32(childKey), leafIndex: -1))
+            }
+            let folderSortSince = ScanProfile.now()
+            folderRefs.sort(by: precedes)
+            ScanProfile.end(.assemblyFolderSort, since: folderSortSince, count: folderRefs.count)
+            var refs: [ChildRef] = []
+            refs.reserveCapacity(directLeaves.count + folderRefs.count)
+            var nextLeaf = 0
+            for folder in folderRefs {
+                var low = nextLeaf
+                var high = directLeaves.count
+                while low < high {
+                    let middle = (low + high) / 2
+                    if precedes(folder, ChildRef(key: Int32(key), leafIndex: Int32(middle))) {
+                        high = middle
+                    } else {
+                        low = middle + 1
+                    }
+                }
+                for leafIndex in nextLeaf..<low {
+                    refs.append(ChildRef(key: Int32(key), leafIndex: Int32(leafIndex)))
+                }
+                refs.append(folder)
+                nextLeaf = low
+            }
+            for leafIndex in nextLeaf..<directLeaves.count {
+                refs.append(ChildRef(key: Int32(key), leafIndex: Int32(leafIndex)))
+            }
             childRefsByKey[key] = refs
         }
         ScanTiming.record("scan.assemble.sort", ContinuousClock.now - sortStart)
@@ -233,8 +290,16 @@ nonisolated enum ScanTreeAssembler {
         parentIndices.reserveCapacity(estimatedNodeCount)
         var aggregateStats = AggregateStatsAccumulator()
         let progressStride = max(estimatedNodeCount / 20, 1)
-        var stack: [FlattenEntry] = [FlattenEntry(key: 0, leafIndex: -1, parent: -1)]
-        while let entry = stack.popLast() {
+        // A folder's files are emitted inline from its file list, fetched once
+        // per visit: reading each file through `completedByKey[key]!` copied
+        // the folder's whole scan record (and retained everything in it) per
+        // file. `resume` continues a folder's children after a subfolder's
+        // subtree, which keeps the order exactly preorder.
+        enum FlattenStep {
+            case keyed(key: Int32, parent: Int32)
+            case resume(key: Int32, index: Int32, nextRef: Int)
+        }
+        func emit(_ record: FileNodeRecord, parent: Int32, hasChildren: Bool) throws -> Int32 {
             if nodes.count.isMultiple(of: 1_024) {
                 try callbacks.cancellationCheck()
                 if nodes.count.isMultiple(of: progressStride) {
@@ -242,18 +307,23 @@ nonisolated enum ScanTreeAssembler {
                     callbacks.progress(min(fraction, 0.45))
                 }
             }
-            let record: FileNodeRecord
-            let refs: [ChildRef]
-            if entry.leafIndex >= 0 {
-                record = completedByKey[Int(entry.key)]!.directLeafNodes[Int(entry.leafIndex)]
-                refs = []
-            } else {
-                let key = Int(entry.key)
+            let index = Int32(nodes.count)
+            nodes.append(record)
+            parentIndices.append(parent)
+            aggregateStats.include(record, hasChildren: hasChildren)
+            return index
+        }
+        var stack: [FlattenStep] = [.keyed(key: 0, parent: -1)]
+        while let step = stack.popLast() {
+            switch step {
+            case .keyed(let keyValue, let parent):
+                let key = Int(keyValue)
                 let completed = completedByKey[key]!
                 if isTraversableDir[key] {
-                    record = FileNodeRecord(
-                        id: completed.url.path,
-                        path: completed.url.path,
+                    let refs = childRefsByKey[key]
+                    let index = try emit(FileNodeRecord(
+                        id: completed.path,
+                        path: completed.path,
                         name: sortName[key],
                         isDirectory: true,
                         isSymbolicLink: false,
@@ -269,19 +339,31 @@ nonisolated enum ScanTreeAssembler {
                         isSynthetic: false,
                         isAutoSummarized: false,
                         cloudOnlyLogicalSize: cloudOnly[key]
-                    )
-                    refs = childRefsByKey[key]
+                    ), parent: parent, hasChildren: !refs.isEmpty)
+                    if !refs.isEmpty {
+                        stack.append(.resume(key: keyValue, index: index, nextRef: 0))
+                    }
                 } else {
-                    record = completed.node!
-                    refs = []
+                    _ = try emit(completed.node!, parent: parent, hasChildren: false)
                 }
-            }
-            let index = Int32(nodes.count)
-            nodes.append(record)
-            parentIndices.append(entry.parent)
-            aggregateStats.include(record, hasChildren: !refs.isEmpty)
-            for ref in refs.reversed() {
-                stack.append(FlattenEntry(key: ref.key, leafIndex: ref.leafIndex, parent: index))
+            case .resume(let keyValue, let index, let nextRef):
+                let key = Int(keyValue)
+                let refs = childRefsByKey[key]
+                let leaves = completedByKey[key]!.directLeafNodes
+                var position = nextRef
+                while position < refs.count {
+                    let ref = refs[position]
+                    position += 1
+                    if ref.leafIndex >= 0 {
+                        _ = try emit(leaves[Int(ref.leafIndex)], parent: index, hasChildren: false)
+                    } else {
+                        if position < refs.count {
+                            stack.append(.resume(key: keyValue, index: index, nextRef: position))
+                        }
+                        stack.append(.keyed(key: ref.key, parent: index))
+                        break
+                    }
+                }
             }
         }
         let (childStarts, initialChildSlots) = TreeStorage.childLayout(parentIndices: parentIndices)

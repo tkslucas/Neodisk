@@ -66,6 +66,8 @@ package nonisolated enum ScanProfile {
         case cloneApply
         /// Assembly clone dedup: the ancestor rebuild after charging.
         case cloneRebuild
+        /// Assembly: sorting each folder's subfolders (count: subfolders).
+        case assemblyFolderSort
         /// Progress events published.
         case progressPublish
     }

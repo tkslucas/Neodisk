@@ -31,12 +31,14 @@ extension ScanEngine {
         /// count for directories).
         var descendantFileCount = 0
         var isAccessible = true
+        var cloudOnlyLogicalSize: Int64 = 0
 
         init() {}
 
         init(of node: FileNodeRecord) {
             allocatedSize = node.allocatedSize
             logicalSize = node.logicalSize
+            cloudOnlyLogicalSize = node.cloudOnlyLogicalSize
             if node.isDirectory {
                 descendantFileCount = node.descendantFileCount
             } else {
@@ -50,6 +52,7 @@ extension ScanEngine {
             logicalSize = logicalSize.addingClamped(child.logicalSize)
             descendantFileCount += child.descendantFileCount
             isAccessible = isAccessible && child.isAccessible
+            cloudOnlyLogicalSize = cloudOnlyLogicalSize.addingClamped(child.cloudOnlyLogicalSize)
         }
     }
 
@@ -156,9 +159,9 @@ extension ScanEngine {
                         }
                     }
                     resolvedNodeByKey[key] = FileNodeRecord(
-                        id: completed.url.path,
+                        id: completed.path,
                         url: completed.url,
-                        name: ScanTarget.displayName(for: completed.url),
+                        name: completed.name,
                         isDirectory: true,
                         isSymbolicLink: false,
                         allocatedSize: totals.allocatedSize,
@@ -188,9 +191,9 @@ extension ScanEngine {
                         uniqueNodesForAssembly(childNodes)
                     )
                     let assembled = FileNodeRecord.directory(
-                        id: completed.url.path,
+                        id: completed.path,
                         url: completed.url,
-                        name: ScanTarget.displayName(for: completed.url),
+                        name: completed.name,
                         children: sortedChildren,
                         lastModified: completed.metadata.lastModified,
                         fileIdentity: completed.metadata.fileIdentity,
@@ -236,9 +239,9 @@ extension ScanEngine {
                 if completed.depth >= maxDepth {
                     let totals = runningTotals.totalsByKey[key]
                     recordByKey[key] = FileNodeRecord(
-                        id: completed.url.path,
+                        id: completed.path,
                         url: completed.url,
-                        name: ScanTarget.displayName(for: completed.url),
+                        name: completed.name,
                         isDirectory: true,
                         isSymbolicLink: false,
                         allocatedSize: totals.allocatedSize,
@@ -269,9 +272,9 @@ extension ScanEngine {
                         children.sort { FileTreeStore.childDisplayOrder($0.node, $1.node) }
                     }
                     recordByKey[key] = FileNodeRecord.directory(
-                        id: completed.url.path,
+                        id: completed.path,
                         url: completed.url,
-                        name: ScanTarget.displayName(for: completed.url),
+                        name: completed.name,
                         children: children.map(\.node),
                         lastModified: completed.metadata.lastModified,
                         fileIdentity: completed.metadata.fileIdentity,

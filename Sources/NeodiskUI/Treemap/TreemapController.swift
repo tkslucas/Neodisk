@@ -81,6 +81,13 @@ final class TreemapController {
     private var sceneQueries = SceneQueries()
 
     private var renderTask: Task<Void, Never>?
+    /// The snapshot and size of the image on screen, so a resize can tell a
+    /// render that only chases the size from one bringing a newer tree.
+    private var displayedSnapshotID: UUID?
+    private var displayedViewSize: CGSize = .zero
+    /// A settled resize arrived while a content render was still running:
+    /// render at the exact size once that one lands.
+    private var needsExactSizeRender = false
     /// Exact pane-size rendering waits for a short quiet period; the last
     /// complete image stretches through `displayTransform` in the meantime.
     private var resizeSettleTask: Task<Void, Never>?
@@ -189,6 +196,12 @@ final class TreemapController {
             labelScale: labelScale
         )
         guard newInputs != inputs else { return }
+        if snapshot?.isComplete == true, FeltTiming.engineFinishedProfileSince != 0 {
+            ScanProfile.addNamed(
+                newInputs.snapshotID == inputs.snapshotID ? "app.finalInputsChanged" : "app.finalInputsArrived",
+                since: FeltTiming.engineFinishedProfileSince
+            )
+        }
 
         // Arm the flat drill morph on a root change within the same
         // snapshot. The drill-in footprint must be read from the outgoing
@@ -230,6 +243,9 @@ final class TreemapController {
 
     func setViewSize(_ size: CGSize) {
         guard size != viewSize else { return }
+        if ScanProfile.isEnabled, FeltTiming.engineFinishedProfileSince != 0 {
+            ScanTiming.note("finalRender resize \(viewSize) -> \(size) t=\((ScanProfile.now() &- FeltTiming.engineFinishedProfileSince) / 1_000_000)ms")
+        }
         viewSize = size
         viewport = viewport.clamped(viewSize: size)
         guard size.width >= 1, size.height >= 1 else {
@@ -246,7 +262,12 @@ final class TreemapController {
 
         // Keep the last pixels filling the pane and stop obsolete renders from
         // landing labels on MainActor. One exact render follows after idle.
-        cancelInFlightRender()
+        // A render bringing a newer tree is not obsolete: it lands (stretched
+        // like the old pixels), else a layout shift at a scan's end threw the
+        // final map away and the user waited out the settle delay for it.
+        if !renderBringsNewContent {
+            cancelInFlightRender()
+        }
         pushDisplay()
         scheduleSettledResizeRender()
     }
@@ -613,6 +634,7 @@ final class TreemapController {
     }
 
     private func cancelInFlightRender() {
+        if renderTask != nil { ScanProfile.addNamed("app.treemapRenderCancelled", since: ScanProfile.now()) }
         renderTask?.cancel()
         renderTask = nil
     }
@@ -632,9 +654,23 @@ final class TreemapController {
             }
             guard let self, !Task.isCancelled else { return }
             self.resizeSettleTask = nil
+            if self.renderBringsNewContent {
+                self.needsExactSizeRender = true
+                return
+            }
             self.cancelInFlightRender()
             self.startRender()
         }
+    }
+
+    private static let renderQueue = DispatchQueue(
+        label: "com.neodisk.treemap-render",
+        qos: .userInteractive,
+        attributes: .concurrent
+    )
+
+    private var renderBringsNewContent: Bool {
+        renderTask != nil && inputs.snapshotID != displayedSnapshotID
     }
 
     private func startRender() {
@@ -660,51 +696,70 @@ final class TreemapController {
         let labelScale = inputs.labelScale
         let scale = view?.window?.backingScaleFactor ?? 2
         let background = windowBackgroundRGB()
+        let requestedSince = ScanProfile.now()
+        let traceFinal = FeltTiming.engineFinishedProfileSince
+        @Sendable func trace(_ step: String) {
+            guard ScanProfile.isEnabled, traceFinal != 0 else { return }
+            ScanTiming.note("finalRender \(step) t=\((ScanProfile.now() &- traceFinal) / 1_000_000)ms")
+        }
+        trace("requested")
+        let cancellation = TreemapRenderCancellation()
+        let work: @Sendable () -> (TreemapScene, CGImage?)? = {
+            trace("workStarted")
+            let sceneSince = ScanProfile.now()
+            let scene = TreemapScene.build(
+                store: store, rootID: rootID, style: style, size: size, catalog: catalog,
+                colorMode: colorMode,
+                highlight: highlight,
+                expandedAggregateIDs: expandedAggregateIDs,
+                viewport: viewport,
+                freeSpaceBytes: freeSpaceBytes,
+                hiddenSpaceBytes: hiddenSpaceBytes,
+                includingCloudOnly: includingCloudOnly,
+                palette: palette,
+                background: background,
+                labelScale: labelScale
+            )
+            ScanProfile.addNamed("app.treemapScene", since: sceneSince)
+            trace("sceneBuilt")
+            guard !cancellation.isCancelled else { return nil }
+            let rasterSince = ScanProfile.now()
+            defer { ScanProfile.addNamed("app.treemapRaster", since: rasterSince) }
+            let image = switch style {
+            case .cushion:
+                CushionTreemapRenderer.render(
+                    cells: scene.cells, bounds: scene.renderBounds, scale: scale,
+                    background: nil
+                )
+            case .flat:
+                FlatTreemapRenderer.render(
+                    cells: scene.cells, bounds: scene.renderBounds, scale: scale,
+                    background: nil
+                )
+            }
+            return (scene, image)
+        }
+        // Started now, not from the main-actor task below: right after a scan
+        // finishes the main thread is busy for ~90 ms with the views' updates
+        // for the final tree, and the task could not start until then.
+        let pending = TreemapRenderResult()
+        Self.renderQueue.async { pending.fulfill(work()) }
         renderTask = Task { [weak self] in
             // The detached task doesn't inherit cancellation, so a superseded
             // render (partial bursts, catalog landing mid-render) used to run
             // its full rasterization anyway and steal cores from the render
             // that replaces it. Forward the cancel and bail before rastering.
-            let work = Task.detached(priority: .userInitiated) {
-                () -> (TreemapScene, CGImage?)? in
-                let sceneSince = ScanProfile.now()
-                let scene = TreemapScene.build(
-                    store: store, rootID: rootID, style: style, size: size, catalog: catalog,
-                    colorMode: colorMode,
-                    highlight: highlight,
-                    expandedAggregateIDs: expandedAggregateIDs,
-                    viewport: viewport,
-                    freeSpaceBytes: freeSpaceBytes,
-                    hiddenSpaceBytes: hiddenSpaceBytes,
-                    includingCloudOnly: includingCloudOnly,
-                    palette: palette,
-                    background: background,
-                    labelScale: labelScale
-                )
-                ScanProfile.addNamed("app.treemapScene", since: sceneSince)
-                guard !Task.isCancelled else { return nil }
-                let rasterSince = ScanProfile.now()
-                defer { ScanProfile.addNamed("app.treemapRaster", since: rasterSince) }
-                let image = switch style {
-                case .cushion:
-                    CushionTreemapRenderer.render(
-                        cells: scene.cells, bounds: scene.renderBounds, scale: scale,
-                        background: nil
-                    )
-                case .flat:
-                    FlatTreemapRenderer.render(
-                        cells: scene.cells, bounds: scene.renderBounds, scale: scale,
-                        background: nil
-                    )
-                }
-                return (scene, image)
-            }
+            // On its own user-interactive queue, not the cooperative pool: when
+            // a scan finishes, the statistics jobs for the final tree queue up
+            // there at the same priority and the final map waited ~90 ms for a
+            // thread behind them.
             let result = await withTaskCancellationHandler {
-                await work.value
+                await pending.value
             } onCancel: {
-                work.cancel()
+                cancellation.cancel()
             }
 
+            trace(Task.isCancelled ? "cancelled" : "resultOnMain")
             guard let self, !Task.isCancelled, let result else { return }
             let displaySince = ScanProfile.now()
             defer { ScanProfile.addNamed("app.treemapDisplay", since: displaySince) }
@@ -712,6 +767,8 @@ final class TreemapController {
             self.scene = result.0
             self.image = result.1
             self.renderedScale = scale
+            self.displayedSnapshotID = self.inputs.snapshotID
+            self.displayedViewSize = size
             self.resolveHoverAfterDisplayChange()
             self.pushDisplay(contentsChanged: true)
             self.runPendingDrillAnimation()
@@ -719,6 +776,14 @@ final class TreemapController {
             // the honest "tree displayed" moment for the current snapshot.
             if result.1 != nil {
                 FeltTiming.noteTreemapDisplayed(snapshotID: self.inputs.snapshotID)
+                ScanProfile.addNamed("app.treemapRequestToDisplay", since: requestedSince)
+            }
+            if self.needsExactSizeRender {
+                self.needsExactSizeRender = false
+                if self.displayedViewSize != self.viewSize {
+                    self.startRender()
+                    return
+                }
             }
             // The viewport may have moved on while this render was in
             // flight; chase it until display and viewport agree.
@@ -764,5 +829,58 @@ final class TreemapController {
         let sy = to.height / from.height
         return CGAffineTransform(translationX: to.minX - from.minX * sx, y: to.minY - from.minY * sy)
             .scaledBy(x: sx, y: sy)
+    }
+}
+
+/// Cancellation for a render running outside Swift concurrency.
+private final class TreemapRenderCancellation: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cancelled = false
+
+    var isCancelled: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return cancelled
+    }
+
+    func cancel() {
+        lock.lock()
+        cancelled = true
+        lock.unlock()
+    }
+}
+
+/// A render's result, produced on the render queue and awaited on the main
+/// actor; whichever comes second hands it over.
+private final class TreemapRenderResult: @unchecked Sendable {
+    private let lock = NSLock()
+    private var result: (TreemapScene, CGImage?)??
+    private var waiter: CheckedContinuation<(TreemapScene, CGImage?)?, Never>?
+
+    func fulfill(_ value: (TreemapScene, CGImage?)?) {
+        lock.lock()
+        if let waiter {
+            self.waiter = nil
+            lock.unlock()
+            waiter.resume(returning: value)
+        } else {
+            result = .some(value)
+            lock.unlock()
+        }
+    }
+
+    var value: (TreemapScene, CGImage?)? {
+        get async {
+            await withCheckedContinuation { continuation in
+                lock.lock()
+                if let result {
+                    lock.unlock()
+                    continuation.resume(returning: result)
+                } else {
+                    waiter = continuation
+                    lock.unlock()
+                }
+            }
+        }
     }
 }

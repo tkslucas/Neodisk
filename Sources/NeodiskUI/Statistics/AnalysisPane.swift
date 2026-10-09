@@ -204,19 +204,27 @@ struct StatsFileListView: View {
                     get: { model.selectedNodeID },
                     set: { if let id = $0 { model.select(id) } }
                 )
-                List(visibleIDs, id: \.self, selection: selection) { nodeID in
-                    if let node = (rowStore ?? model.store)?.node(id: nodeID) {
-                        FileResultRow(
-                            node: node,
-                            palette: model.vizPalette,
-                            includeCloudOnly: model.showsCloudOnlyFiles
-                        )
-                        .listRowSeparator(.hidden)
+                ScrollViewReader { proxy in
+                    List(visibleIDs, id: \.self, selection: selection) { nodeID in
+                        if let node = (rowStore ?? model.store)?.node(id: nodeID) {
+                            FileResultRow(
+                                node: node,
+                                palette: model.vizPalette,
+                                includeCloudOnly: model.showsCloudOnlyFiles
+                            )
+                            .listRowSeparator(.hidden)
+                        }
+                    }
+                    .fileNodeActions(model: model)
+                    .environment(\.defaultMinListRowHeight, 20)
+                    .quickLookOnSpace(model: model)
+                    // Rows are kept while a refreshed list arrives, so the list
+                    // would stay anchored to its old top row as bigger files
+                    // land above it; keep the largest in view instead.
+                    .onChange(of: visibleIDs.first) { _, first in
+                        if let first { proxy.scrollTo(first, anchor: .top) }
                     }
                 }
-                .fileNodeActions(model: model)
-                .environment(\.defaultMinListRowHeight, 20)
-                .quickLookOnSpace(model: model)
 
                 if visibleIDs.count < totalMatches {
                     Divider()

@@ -63,6 +63,8 @@ enum FeltTiming {
     }
 
     private static var scanStart: Sample?
+    /// For `profile.app.finalTail`: engine finished → final map displayed.
+    static var engineFinishedProfileSince: UInt64 = 0
     /// Restore is known at scan start; full vs rescan is only known once we see
     /// whether a cached complete map was displayed before the engine finished.
     private static var isRestore = false
@@ -125,6 +127,7 @@ enum FeltTiming {
     /// The engine delivered the final (complete) snapshot for a scan/rescan.
     static func noteEngineFinished(snapshotID: UUID) {
         guard isEnabled, scanStart != nil else { return }
+        engineFinishedProfileSince = ScanProfile.now()
         engineFinished = .now
         finalSnapshotID = snapshotID
     }
@@ -175,7 +178,12 @@ enum FeltTiming {
             cpuFrom: scanStart.cpu, to: finalDisplay.cpu, detail: detail
         )
 
+        if engineFinishedProfileSince != 0 {
+            ScanProfile.addNamed("app.finalTail", since: engineFinishedProfileSince)
+            engineFinishedProfileSince = 0
+        }
         ScanProfile.emitNamed()
+        MainThreadMonitor.emitStallStacks()
         onEpisodeDisplayed?()
         if autoQuit && !driverOwnsQuit {
             scheduleQuit()

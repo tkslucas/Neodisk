@@ -78,4 +78,27 @@ import Foundation
         fastReadsDone.signal()
         #expect(try await slow.value)
     }
+
+    /// Folder ids keep the URL's own spelling of the path (decomposed), which
+    /// snapshots and rescans were built on, even when the name on disk is
+    /// composed.
+    @Test func folderIDsKeepTheURLSpellingOfComposedNames() async throws {
+        let root = URL(filePath: NSTemporaryDirectory(), directoryHint: .isDirectory)
+            .appending(path: "nd-nfc-\(UUID().uuidString)", directoryHint: .isDirectory)
+        let composed = "Funda\u{00E7}\u{00E3}o"
+        let folder = root.appending(path: composed, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data("x".utf8).write(to: folder.appending(path: "file.txt"))
+
+        var finished: ScanSnapshot?
+        for try await event in ScanEngine().scan(target: ScanTarget(url: root, kind: .folder), options: ScanOptions()) {
+            if case .finished(let snapshot) = event { finished = snapshot }
+        }
+        let store = try #require(finished?.treeStore)
+        let folderNode = try #require(store.children(of: store.rootID).first { $0.isDirectory })
+        let expected = root.appending(path: composed, directoryHint: .isDirectory)
+        #expect(Array(folderNode.id.utf8) == Array(expected.path.utf8))
+        #expect(Array(folderNode.name.utf8) == Array(expected.lastPathComponent.utf8))
+    }
 }

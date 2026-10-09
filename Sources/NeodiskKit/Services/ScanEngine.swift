@@ -78,21 +78,41 @@ public final class ScanEngine: Sendable {
         /// keeping them batched here avoids routing millions of leaves through
         /// the coordinator and its keyed dictionaries.
         let directLeafNodes: [FileNodeRecord]
+        /// `directLeafNodes` are already in display order (size, then name),
+        /// as traversal's directory workers sort them; assembly then only
+        /// places the subfolders among them.
+        let directLeafNodesAreSorted: Bool
+        /// The sum of `directLeafNodes` when the worker already took it.
+        let directLeafTotals: PartialSubtreeTotals?
         let metadata: NodeMetadata
         let url: URL
+        /// `url.path` and `ScanTarget.displayName(for: url)`, derived once —
+        /// for a traversed folder on its directory task, in parallel — since
+        /// assembly and every live partial read them per folder. Always the
+        /// URL's own spelling (its decomposed form), never the path string's:
+        /// node ids keep the bytes they always had.
+        let path: String
+        let name: String
         let isTraversable: Bool     // True if this was a directory we intended to traverse.
         let depth: Int              // Levels below the scan root (root is 0).
 
         init(
             node: FileNodeRecord?,
             directLeafNodes: [FileNodeRecord] = [],
+            directLeafNodesAreSorted: Bool = false,
+            directLeafTotals: PartialSubtreeTotals? = nil,
             metadata: NodeMetadata,
             url: URL,
+            pathAndName: (path: String, name: String)? = nil,
             isTraversable: Bool,
             depth: Int
         ) {
+            self.path = pathAndName?.path ?? url.path
+            self.name = pathAndName?.name ?? ScanTarget.displayName(for: url)
             self.node = node
             self.directLeafNodes = directLeafNodes
+            self.directLeafNodesAreSorted = directLeafNodesAreSorted || directLeafNodes.count < 2
+            self.directLeafTotals = directLeafTotals
             self.metadata = metadata
             self.url = url
             self.isTraversable = isTraversable

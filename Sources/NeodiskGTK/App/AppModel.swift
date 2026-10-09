@@ -81,7 +81,17 @@ final class AppModel {
     var selectedNodeID: String?
     var hoveredNodeID: String?
     /// The folder the visualizations are drilled into; nil is the root.
-    var focusID: String?
+    var focusID: String? {
+        didSet {
+            // Every re-root is a step Back can return to, as on the Mac —
+            // except the steps Back/Forward take themselves.
+            guard focusID != oldValue, !isSteppingDrillHistory, let store else { return }
+            drillHistory.recordLeaving(oldValue ?? store.rootID)
+        }
+    }
+    /// Back/Forward over the drill roots; cleared per target.
+    var drillHistory = DrillHistory()
+    @ObservationIgnored private var isSteppingDrillHistory = false
     /// Folders whose "smaller items" cell was clicked open.
     var expandedAggregateIDs: Set<String> = []
 
@@ -213,6 +223,7 @@ final class AppModel {
         selectedNodeID = nil
         hoveredNodeID = nil
         focusID = nil
+        drillHistory = DrillHistory()
         expandedAggregateIDs = []
         catalog = .empty
         ageCatalog = .empty
@@ -516,6 +527,45 @@ final class AppModel {
     }
 
     var canFocusOut: Bool { focusID != nil }
+
+    /// Back (Alt+Left): the root shown before the last re-root. Returns
+    /// false (caller beeps) when there is nowhere to go.
+    @discardableResult
+    func focusBack() -> Bool {
+        stepDrillHistory { history, current, isValid in
+            history.goBack(from: current, isValid: isValid)
+        }
+    }
+
+    /// Forward (Alt+Right): undo a Back.
+    @discardableResult
+    func focusForward() -> Bool {
+        stepDrillHistory { history, current, isValid in
+            history.goForward(from: current, isValid: isValid)
+        }
+    }
+
+    private func stepDrillHistory(
+        _ step: (inout DrillHistory, String, (String) -> Bool) -> String?
+    ) -> Bool {
+        guard let store, let current = focusedRootID else { return false }
+        // A root a rescan removed is skipped (and dropped) on the way.
+        guard let target = step(&drillHistory, current, { store.node(id: $0)?.isDirectory == true }) else {
+            return false
+        }
+        isSteppingDrillHistory = true
+        focusID = target == store.rootID ? nil : target
+        isSteppingDrillHistory = false
+        // Keep the selection when it is still inside the map; otherwise land
+        // on the largest child, as drilling in does.
+        if let selected = selectedNodeID, selected == target || !store.isAncestor(target, of: selected) {
+            let children = store.children(of: target).filter { $0.allocatedSize > 0 }
+            if let largest = children.max(by: { $0.allocatedSize < $1.allocatedSize }) {
+                selectedNodeID = largest.id
+            }
+        }
+        return true
+    }
 }
 
 enum AnalysisTab: String, CaseIterable {

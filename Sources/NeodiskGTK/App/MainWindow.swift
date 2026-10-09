@@ -320,6 +320,8 @@ final class MainWindow {
             Widgets.setVisible(self.stopButton, scanning)
             Widgets.setVisible(self.scanButton, !scanning)
             setActionEnabled(self.actions["focus-out"], self.model.canFocusOut)
+            setActionEnabled(self.actions["focus-back"], self.model.drillHistory.canGoBack)
+            setActionEnabled(self.actions["focus-forward"], self.model.drillHistory.canGoForward)
             setActionEnabled(self.actions["search"], self.model.snapshot != nil)
             let hasSelection = self.model.selectedNode != nil
             for name in ["open-item", "show-in-files", "copy-path"] {
@@ -395,6 +397,16 @@ final class MainWindow {
         }
         actions["focus-out"] = addAction(to: window, "focus-out") { [unowned self] _ in
             self.model.focusOut()
+        }
+        actions["focus-back"] = addAction(to: window, "focus-back") { [unowned self] _ in
+            if !self.model.focusBack() {
+                gtk_widget_error_bell(ptr(self.window))
+            }
+        }
+        actions["focus-forward"] = addAction(to: window, "focus-forward") { [unowned self] _ in
+            if !self.model.focusForward() {
+                gtk_widget_error_bell(ptr(self.window))
+            }
         }
         actions["toggle-sidebar"] = addAction(to: window, "toggle-sidebar") { [unowned self] _ in
             let shown = adw_overlay_split_view_get_show_sidebar(ptr(self.splitView)) != 0

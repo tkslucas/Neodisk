@@ -250,6 +250,8 @@
 "Show Statistics" = "統計を表示";
 "Hide Statistics" = "統計を隠す";
 "Go" = "移動";
+"Back" = "戻る";
+"Forward" = "進む";
 "Enclosing Folder" = "内包しているフォルダ";
 "Zoom Into Selection" = "選択項目にズーム";
 "Back to Scan Root" = "スキャンのルートに戻る";

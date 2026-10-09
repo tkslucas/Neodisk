@@ -250,6 +250,8 @@
 "Show Statistics" = "显示统计";
 "Hide Statistics" = "隐藏统计";
 "Go" = "前往";
+"Back" = "返回";
+"Forward" = "前进";
 "Enclosing Folder" = "上层文件夹";
 "Zoom Into Selection" = "缩放到所选项目";
 "Back to Scan Root" = "返回扫描根目录";

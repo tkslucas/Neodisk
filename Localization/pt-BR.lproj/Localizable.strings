@@ -251,6 +251,8 @@
 "Show Statistics" = "Mostrar Estatísticas";
 "Hide Statistics" = "Ocultar Estatísticas";
 "Go" = "Ir";
+"Back" = "Voltar";
+"Forward" = "Avançar";
 "Enclosing Folder" = "Pasta Superior";
 "Zoom Into Selection" = "Ampliar para a Seleção";
 "Back to Scan Root" = "Voltar à Raiz da Análise";

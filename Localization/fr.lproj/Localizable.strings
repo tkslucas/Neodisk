@@ -250,6 +250,8 @@
 "Show Statistics" = "Afficher les statistiques";
 "Hide Statistics" = "Masquer les statistiques";
 "Go" = "Aller";
+"Back" = "Précédent";
+"Forward" = "Suivant";
 "Enclosing Folder" = "Dossier parent";
 "Zoom Into Selection" = "Zoomer sur la sélection";
 "Back to Scan Root" = "Revenir à la racine de l'analyse";

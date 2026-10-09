@@ -33,6 +33,8 @@ enum ShortcutsWindow {
             Shortcut(title: L("Sunburst"), accelerator: "<Control>3"),
             Shortcut(title: L("Zoom In"), accelerator: "<Control>Down Return"),
             Shortcut(title: L("Zoom Out"), accelerator: "<Control>Up BackSpace"),
+            Shortcut(title: L("Back"), accelerator: "<Alt>Left"),
+            Shortcut(title: L("Forward"), accelerator: "<Alt>Right"),
             Shortcut(title: L("Move Selection"), accelerator: "Left Right Up Down"),
         ]),
         (L("Selection"), [

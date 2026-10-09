@@ -329,6 +329,61 @@ import NeodiskKit
         #expect(model.zoomRootID == nil)          // parent of `sub` is the scan root
         #expect(!model.drillOut())                // already at the root
     }
+
+    @Test func testBackAndForwardRetraceDrills() throws {
+        let fixture = try makeFixture()
+        defer { fixture.tearDown() }
+        let model = fixture.model
+
+        #expect(!model.drillBack())               // nothing to go back to
+        model.select(fixture.area.id)
+        #expect(model.drillIntoSelection())       // root → area
+        #expect(model.drillIn(to: fixture.left.id)) // area → left
+        #expect(model.drillOut())                 // left → area
+
+        #expect(model.drillBack())
+        #expect(model.zoomRootID == fixture.left.id)
+        #expect(model.drillBack())
+        #expect(model.zoomRootID == fixture.area.id)
+        #expect(model.drillBack())
+        #expect(model.zoomRootID == nil)
+        #expect(!model.drillBack())
+
+        #expect(model.drillForward())
+        #expect(model.zoomRootID == fixture.area.id)
+        // Drilling anew drops the forward trail.
+        #expect(model.drillIn(to: fixture.right.id))
+        #expect(!model.drillHistory.canGoForward)
+        #expect(!model.drillForward())
+    }
+
+    @Test func testBackKeepsAnInsideSelectionAndReplacesAnOutsideOne() throws {
+        let fixture = try makeFixture()
+        defer { fixture.tearDown() }
+        let model = fixture.model
+
+        model.select(fixture.sub.id)
+        #expect(model.drillIntoSelection())       // root → sub, selects big
+        #expect(model.drillBack())                // back to the full map
+        #expect(model.zoomRootID == nil)
+        #expect(model.selectedNodeID == fixture.big.id) // still inside
+
+        model.select(fixture.leftFile.id)
+        #expect(model.drillForward())             // into sub, away from leftFile
+        #expect(model.zoomRootID == fixture.sub.id)
+        #expect(model.selectedNodeID == fixture.big.id) // its largest child
+    }
+
+    @Test func testNewScanClearsDrillHistory() throws {
+        let fixture = try makeFixture()
+        defer { fixture.tearDown() }
+        let model = fixture.model
+
+        #expect(model.drillIn(to: fixture.sub.id))
+        #expect(model.drillHistory.canGoBack)
+        model.resetPerScanState()
+        #expect(!model.drillHistory.canGoBack && !model.drillHistory.canGoForward)
+    }
 }
 
 /// A scan service that accepts a scan and holds its stream open forever, so a

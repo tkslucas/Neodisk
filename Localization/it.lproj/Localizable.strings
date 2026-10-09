@@ -250,6 +250,8 @@
 "Show Statistics" = "Mostra statistiche";
 "Hide Statistics" = "Nascondi statistiche";
 "Go" = "Vai";
+"Back" = "Indietro";
+"Forward" = "Avanti";
 "Enclosing Folder" = "Cartella superiore";
 "Zoom Into Selection" = "Zoom sulla selezione";
 "Back to Scan Root" = "Torna alla radice della scansione";

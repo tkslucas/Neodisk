@@ -185,6 +185,22 @@ struct NeodiskCommands: Commands {
         // visualization focused.
         CommandMenu("Go") {
             Button {
+                beepUnless(model.drillBack())
+            } label: {
+                Label("Back", systemImage: "chevron.backward")
+            }
+            .keyboardShortcut("[")
+            .disabled(!model.drillHistory.canGoBack)
+
+            Button {
+                beepUnless(model.drillForward())
+            } label: {
+                Label("Forward", systemImage: "chevron.forward")
+            }
+            .keyboardShortcut("]")
+            .disabled(!model.drillHistory.canGoForward)
+
+            Button {
                 beepUnless(model.drillOut())
             } label: {
                 Label("Enclosing Folder", systemImage: "arrow.up")

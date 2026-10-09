@@ -62,7 +62,17 @@ final class NeodiskViewModel {
         return true
     }
     /// Node the treemap is currently zoomed into; nil means the snapshot root.
-    var zoomRootID: String?
+    var zoomRootID: String? {
+        didSet {
+            // Every re-root, whichever surface drove it, is a step Go > Back
+            // can return to — except the steps Back/Forward take themselves.
+            guard zoomRootID != oldValue, !isSteppingDrillHistory, let store else { return }
+            drillHistory.recordLeaving(oldValue ?? store.root.id)
+        }
+    }
+    /// Go > Back/Forward over the drill roots; cleared per scan.
+    var drillHistory = DrillHistory()
+    @ObservationIgnored var isSteppingDrillHistory = false
     /// Folders whose "smaller items" cell the user clicked open — their
     /// children render individually even when tiny.
     var expandedAggregateIDs: Set<String> = []
@@ -418,6 +428,7 @@ final class NeodiskViewModel {
         selectedNodeID = nil
         setVisualizationHover(nil)
         zoomRootID = nil
+        drillHistory = DrillHistory()
         replaceExpandedOutlineNodes(with: [])
         expandedAggregateIDs = []
         kinds.reset()

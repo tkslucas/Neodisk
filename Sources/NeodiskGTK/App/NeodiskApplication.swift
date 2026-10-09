@@ -101,6 +101,8 @@ final class NeodiskApplication {
         setAccelerators("win.search", ["<Control>f"])
         setAccelerators("win.focus-in", ["<Control>Down"])
         setAccelerators("win.focus-out", ["<Control>Up", "<Alt>Up"])
+        setAccelerators("win.focus-back", ["<Alt>Left", "<Control>bracketleft"])
+        setAccelerators("win.focus-forward", ["<Alt>Right", "<Control>bracketright"])
         setAccelerators("win.toggle-sidebar", ["F9"])
         setAccelerators("win.show-cushion", ["<Control>1"])
         setAccelerators("win.show-flat", ["<Control>2"])

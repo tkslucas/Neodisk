@@ -3,9 +3,10 @@
 //  Neodisk
 //
 //  Navigation verbs over the model's selection/zoom state: selection with
-//  reveal, drill in/out and breadcrumb re-rooting, and the outline's
-//  flattened row list. Stored state (selectedNodeID, zoomRootID,
-//  expandedNodeIDs) stays in NeodiskViewModel.swift; this file only moves.
+//  reveal, drill in/out, breadcrumb re-rooting, Back/Forward, and the
+//  outline's flattened row list. Stored state (selectedNodeID, zoomRootID,
+//  drillHistory, expandedNodeIDs) stays in NeodiskViewModel.swift; this file
+//  only moves.
 //
 
 import Foundation
@@ -171,7 +172,41 @@ extension NeodiskViewModel {
         return true
     }
 
+    /// Go > Back (⌘[): return the map to the root it showed before the last
+    /// re-root. Returns false (caller beeps) when there is nowhere to go.
+    @discardableResult
+    func drillBack() -> Bool {
+        stepDrillHistory { history, current, isValid in
+            history.goBack(from: current, isValid: isValid)
+        }
+    }
 
+    /// Go > Forward (⌘]): undo a Back.
+    @discardableResult
+    func drillForward() -> Bool {
+        stepDrillHistory { history, current, isValid in
+            history.goForward(from: current, isValid: isValid)
+        }
+    }
+
+    private func stepDrillHistory(
+        _ step: (inout DrillHistory, String, (String) -> Bool) -> String?
+    ) -> Bool {
+        guard let store, let current = effectiveRootID else { return false }
+        // A root a rescan removed is skipped (and dropped) on the way.
+        guard let target = step(&drillHistory, current, { store.node(id: $0)?.isDirectory == true }) else {
+            return false
+        }
+        isSteppingDrillHistory = true
+        zoomRootID = target == store.root.id ? nil : target
+        isSteppingDrillHistory = false
+        // Keep the selection when it is still inside the map; otherwise land
+        // on the largest child, as drilling in does.
+        if let selectedNodeID, selectedNodeID == target || !store.isAncestor(target, of: selectedNodeID) {
+            selectLargestChild(of: target, in: store)
+        }
+        return true
+    }
 
     /// Lands the selection on the folder's largest renderable child so arrow
     /// keys keep working inside — shared by ⌘↓ drill-in and breadcrumb

@@ -12,6 +12,7 @@
 //
 
 import AppKit
+import NeodiskKit
 import Sparkle
 
 @MainActor
@@ -88,6 +89,7 @@ final class UpdateDriver: NSObject, SPUUserDriver {
     }
 
     func showUpdaterError(_ error: any Error, acknowledgement: @escaping () -> Void) {
+        DiagnosticLog.app.error("update failed: \(error)")
         if hasIndicatorHost {
             viewModel.state = .failed(
                 message: error.localizedDescription,

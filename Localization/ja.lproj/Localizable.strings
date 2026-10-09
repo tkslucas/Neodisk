@@ -354,6 +354,8 @@
 "About %@" = "%@について";
 "Neodisk on GitHub" = "GitHubでNeodiskを表示";
 "Report Issue…" = "問題を報告…";
+"Export Diagnostics…" = "診断情報を書き出す…";
+"The diagnostics include folder paths from your scans. Review them before sharing." = "診断情報にはスキャンしたフォルダのパスが含まれます。共有する前に内容を確認してください。";
 "Support Neodisk…" = "Neodiskを支援…";
 "Support" = "支援";
 "License" = "ライセンス";

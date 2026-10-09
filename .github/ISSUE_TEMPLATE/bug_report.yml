@@ -128,8 +128,9 @@ body:
     id: logs
     attributes:
       label: Logs, Crash Report, Screenshots, or Diagnostics
-      description: Attach relevant evidence. Be mindful of private paths and file names.
-      render: text
+      description: >-
+        Help > Export Diagnostics… saves a zip with Neodisk's log, crash reports and system details;
+        drag it here. It includes folder paths from your scans, so review it before attaching.
     validations:
       required: false
 

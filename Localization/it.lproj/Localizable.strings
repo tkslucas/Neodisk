@@ -354,6 +354,8 @@
 "About %@" = "Informazioni su %@";
 "Neodisk on GitHub" = "Neodisk su GitHub";
 "Report Issue…" = "Segnala un problema…";
+"Export Diagnostics…" = "Esporta diagnostica…";
+"The diagnostics include folder paths from your scans. Review them before sharing." = "La diagnostica include i percorsi delle cartelle delle tue scansioni. Controllala prima di condividerla.";
 "Support Neodisk…" = "Sostieni Neodisk…";
 "Support" = "Sostieni";
 "License" = "Licenza";

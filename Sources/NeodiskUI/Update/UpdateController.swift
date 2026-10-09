@@ -11,6 +11,7 @@
 
 import AppKit
 import Combine
+import NeodiskKit
 import Sparkle
 
 @MainActor
@@ -52,7 +53,7 @@ final class UpdateController: ObservableObject {
         } catch {
             // Misconfigured bundle (e.g. placeholder feed rejected by
             // Sparkle): run without updates rather than alerting on launch.
-            NSLog("Neodisk: Sparkle updater failed to start: \(error.localizedDescription)")
+            DiagnosticLog.app.error("updater failed to start: \(error)")
             return
         }
         self.updater = updater

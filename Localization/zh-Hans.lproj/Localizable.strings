@@ -354,6 +354,8 @@
 "About %@" = "关于 %@";
 "Neodisk on GitHub" = "GitHub 上的 Neodisk";
 "Report Issue…" = "报告问题…";
+"Export Diagnostics…" = "导出诊断信息…";
+"The diagnostics include folder paths from your scans. Review them before sharing." = "诊断信息包含扫描过的文件夹路径。分享前请先检查。";
 "Support Neodisk…" = "支持 Neodisk…";
 "Support" = "支持";
 "License" = "许可证";

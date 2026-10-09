@@ -16,6 +16,7 @@ public struct NeodiskApp: App {
 
     public init() {
         FeltTiming.markLaunch("appInit")
+        DiagnosticsMonitor.start()
         // Route cloud-kind targets to the CloudScan service (fixture-fed in
         // M1; nil in builds without CloudScanKit, where the router's cloud
         // leg reports the feature as unavailable).

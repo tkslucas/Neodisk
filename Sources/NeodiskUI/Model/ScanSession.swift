@@ -184,6 +184,13 @@ final class ScanSession: Identifiable {
 
         latestSnapshot = snapshot
         state = .finished
+        let stats = snapshot.aggregateStats
+        DiagnosticLog.scan.info(
+            "scan of \(target.id) finished: \(stats.fileCount) files, "
+            + "\(snapshot.treeStore.nodeCount) nodes, \(snapshot.scanWarnings.count) warnings in "
+            + "\(Date().timeIntervalSince(startedAt).formatted(.number.precision(.fractionLength(2))))s; "
+            + MemoryFootprint.summary()
+        )
         releaseScanInputs()
         onCompletion?(self)
     }
@@ -191,6 +198,7 @@ final class ScanSession: Identifiable {
     private func finishFailed(_ error: Error) {
         guard state == .running else { return }
         resetProgressThrottling()
+        DiagnosticLog.scan.error("scan of \(target.id) failed: \(error)")
         state = .failed(error.localizedDescription)
         releaseScanInputs()
         onCompletion?(self)

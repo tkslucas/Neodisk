@@ -170,7 +170,12 @@ final class NeodiskViewModel {
         expanded.formUnion(nodeIDs)
         replaceExpandedOutlineNodes(with: expanded)
     }
-    var actionErrorMessage: String?
+    /// An error shown to the user as an alert; every one is also logged.
+    var actionErrorMessage: String? {
+        didSet {
+            if let actionErrorMessage { DiagnosticLog.app.error("shown to user: \(actionErrorMessage)") }
+        }
+    }
     /// True after the user stops a scan mid-flight while partial results are
     /// on screen: the scan strip stays visible offering Resume.
     var scanWasStopped = false

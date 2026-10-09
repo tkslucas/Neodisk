@@ -836,9 +836,7 @@ final class ScanSessionModel {
                 // instead of paying a predecessor decode plus O(nodes) build.
                 await Self.saveChangeListSidecar(for: snapshot, in: snapshotCache)
             } catch {
-                FileHandle.standardError.write(
-                    Data("Neodisk: failed to persist scan snapshot: \(error)\n".utf8)
-                )
+                DiagnosticLog.cache.error("failed to persist scan snapshot: \(error)")
             }
         }
     }

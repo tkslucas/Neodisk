@@ -38,9 +38,15 @@ Requires macOS 14 (Sonoma) or later.
 
 ### Linux
 
-There are no Linux packages yet; build and install from source (below). The
-Linux app is a native GTK 4 / libadwaita application and needs GTK 4.14 and
-libadwaita 1.5 or newer (Ubuntu 24.04, Fedora 40, Debian 13, and later).
+The [nightly](https://github.com/tkslucas/Neodisk/releases/tag/nightly) has
+AppImages for
+[x86_64](https://github.com/tkslucas/Neodisk/releases/download/nightly/Neodisk-Nightly-x86_64.AppImage)
+and
+[ARM64](https://github.com/tkslucas/Neodisk/releases/download/nightly/Neodisk-Nightly-aarch64.AppImage):
+make the file executable and run it. Or build and install from source
+(below). The Linux app is a native GTK 4 / libadwaita application and needs
+GTK 4.14 and libadwaita 1.5 or newer (Ubuntu 24.04, Fedora 40, Debian 13, and
+later); the AppImage bundles them and needs a system as new as Ubuntu 24.04.
 
 ## About
 

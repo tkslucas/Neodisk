@@ -1,0 +1,33 @@
+name: Memory gate
+
+# Scan, delete files, rescan, then require one resident tree and zero leaks.
+# Runs on PRs and before every nightly; a failure stops the nightly from publishing.
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  pull_request:
+
+jobs:
+  gate:
+    # Fork PRs can't read the internal scripts.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: Neodisk
+      - uses: actions/checkout@v4
+        with:
+          repository: tkslucas/neodisk-internal
+          ssh-key: ${{ secrets.NEODISK_INTERNAL_KEY }}
+          path: internal
+      - name: Memory gate
+        env:
+          NEODISK_REPO: ${{ github.workspace }}/Neodisk
+        run: internal/scripts/mem-gate.sh --keep
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: memory-gate
+          path: /tmp/neodisk-memgate.*/*.txt

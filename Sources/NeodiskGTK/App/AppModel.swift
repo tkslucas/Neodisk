@@ -356,7 +356,7 @@ final class AppModel {
         do {
             try await snapshotCache.save(snapshot)
         } catch {
-            FileHandle.standardError.write(Data("neodisk: could not cache the scan: \(error)\n".utf8))
+            DiagnosticLog.cache.error("could not cache the scan: \(error)")
         }
         await refreshCachedScans()
         await saveKindStatsSidecar(for: snapshot)

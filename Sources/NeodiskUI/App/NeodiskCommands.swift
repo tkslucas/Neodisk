@@ -293,6 +293,14 @@ struct NeodiskCommands: Commands {
             }
 
             Button {
+                DiagnosticsExport.run()
+            } label: {
+                Label("Export Diagnostics…", systemImage: "stethoscope")
+            }
+
+            Divider()
+
+            Button {
                 NSWorkspace.shared.open(AppLinks.sponsor)
             } label: {
                 Label("Support Neodisk…", systemImage: "heart")

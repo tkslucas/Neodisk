@@ -8,7 +8,11 @@
 
 import CGtk
 import Foundation
+import NeodiskAppModel
+import NeodiskKit
 
+DiagnosticLog.persist(to: DiagnosticLog.defaultDirectory)
+DiagnosticLog.app.notice("launch \(AppChannel.current.appName) \(AppVersion.display), \(ProcessInfo.processInfo.operatingSystemVersionString)")
 MainLoopBridge.install()
 let application = NeodiskApplication()
 exit(application.run())

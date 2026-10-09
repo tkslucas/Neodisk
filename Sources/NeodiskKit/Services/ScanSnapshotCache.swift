@@ -302,7 +302,7 @@ public actor ScanSnapshotCache {
         } catch is CancellationError {
             return nil
         } catch {
-            log("discarding unreadable snapshot for \(target.id): \(error)")
+            log("discarding unreadable snapshot for \(target.id): \(error)", level: .warning)
             // The decode ran unisolated; a save may have replaced the file
             // meanwhile, and the corruption verdict only applies to the
             // bytes read — never delete a newer file.
@@ -343,7 +343,7 @@ public actor ScanSnapshotCache {
                     latestBasenames.insert(Self.slotBasename(url))
                 }
             } catch {
-                log("pruning unreadable snapshot at \(url.lastPathComponent): \(error)")
+                log("pruning unreadable snapshot at \(url.lastPathComponent): \(error)", level: .warning)
                 try? FileManager.default.removeItem(at: url)
             }
         }
@@ -593,8 +593,12 @@ public actor ScanSnapshotCache {
     /// cache directory exists, then writes or silently drops the payload
     /// (a failed slot write is a cache miss on the next read, never an error).
     private func writeSlotData(_ data: Data, to url: URL) {
-        try? FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
-        try? data.write(to: url, options: .atomic)
+        do {
+            try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+            try data.write(to: url, options: .atomic)
+        } catch {
+            log("could not write \(url.lastPathComponent): \(error)", level: .warning)
+        }
     }
 
     public func removeSnapshot(forTargetID targetID: String) {
@@ -734,8 +738,8 @@ public actor ScanSnapshotCache {
         (ContinuousClock.now - start).formatted(.units(allowed: [.seconds, .milliseconds]))
     }
 
-    private func log(_ message: String) {
+    private func log(_ message: String, level: DiagnosticLog.Level = .info) {
         guard isLoggingEnabled else { return }
-        FileHandle.standardError.write(Data("Neodisk ScanSnapshotCache: \(message)\n".utf8))
+        DiagnosticLog.cache.log(level, message)
     }
 }

@@ -179,6 +179,7 @@ public final class IncrementalScanService: Sendable {
                 floor: floor
             )
         } catch {
+            DiagnosticLog.rescan.warning("change history unavailable for \(target.id): \(error)")
             return try await forwardFullScan(
                 target: target,
                 options: options,
@@ -361,6 +362,7 @@ public final class IncrementalScanService: Sendable {
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
+                DiagnosticLog.rescan.warning("root relist failed for \(target.id): \(error)")
                 return try await forwardFullScan(
                     target: target, options: options,
                     reason: .rootRelistEnumerationFailed,
@@ -777,6 +779,7 @@ public final class IncrementalScanService: Sendable {
         } catch is CancellationError {
             throw CancellationError()
         } catch {
+            DiagnosticLog.rescan.warning("subtree scan failed for \(target.id): \(error)")
             return try await forwardFullScan(
                 target: target, options: options,
                 reason: .subtreeScanFailed,
@@ -854,6 +857,7 @@ public final class IncrementalScanService: Sendable {
         } catch is CancellationError {
             throw CancellationError()
         } catch {
+            DiagnosticLog.rescan.warning("relist splice failed for \(target.id), rescanning in full: \(error)")
             spliced = nil
         }
         guard let spliced else {
@@ -923,7 +927,7 @@ public final class IncrementalScanService: Sendable {
         continuation: AsyncThrowingStream<ScanProgressEvent, Error>.Continuation,
         floor: RescanProgressFloor
     ) async throws {
-        log("full scan for \(target.id): \(reason.rawValue)")
+        DiagnosticLog.rescan.notice("full scan for \(target.id): \(reason.rawValue)")
         let resumeFrom = floor.current
         for try await event in scan(target: target, options: options) {
             switch event {
@@ -1011,7 +1015,7 @@ public final class IncrementalScanService: Sendable {
     private nonisolated static let rescanProgressCeiling = ScanMetrics.traversalSpan
 
     private nonisolated func log(_ message: String) {
-        FileHandle.standardError.write(Data("Neodisk IncrementalScanService: \(message)\n".utf8))
+        DiagnosticLog.rescan.info(message)
     }
 }
 

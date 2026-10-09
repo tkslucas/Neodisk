@@ -102,3 +102,51 @@ import Foundation
         #expect(Array(folderNode.name.utf8) == Array(expected.lastPathComponent.utf8))
     }
 }
+
+/// Snapshot decode decompresses ahead on another thread; what it hands the
+/// parser must be exactly the payload, in order, and a broken payload must
+/// still fail the read.
+@Suite struct PrefetchingPayloadSourceTests {
+    private static func payload(_ count: Int) -> Data {
+        var generator = SystemRandomNumberGenerator()
+        // Compressible but not trivial: runs of random lengths.
+        var data = Data()
+        while data.count < count {
+            let byte = UInt8.random(in: 0...255, using: &generator)
+            data.append(contentsOf: [UInt8](repeating: byte, count: Int.random(in: 1...40, using: &generator)))
+        }
+        return data.prefix(count)
+    }
+
+    @Test func handsOverExactlyThePayloadAcrossChunks() throws {
+        let original = Self.payload(3_000_123)
+        var compressed = Data()
+        try ScanSnapshotCodec.appendCompressedPayload(original, to: &compressed)
+        let source = PrefetchingPayloadSource(
+            source: try PayloadDecompressor(compressed: compressed),
+            chunkSize: 4_096,
+            depth: 2
+        )
+        var output = Data()
+        let buffer = UnsafeMutableRawPointer.allocate(byteCount: 1_000, alignment: 8)
+        defer { buffer.deallocate() }
+        while case let read = try source.read(into: buffer, count: 1_000), read > 0 {
+            output.append(buffer.assumingMemoryBound(to: UInt8.self), count: read)
+        }
+        #expect(output == original)
+        #expect(source.isFinished)
+        #expect(source.producedCount == original.count)
+    }
+
+    @Test func truncatedPayloadStillFails() throws {
+        var compressed = Data()
+        try ScanSnapshotCodec.appendCompressedPayload(Self.payload(500_000), to: &compressed)
+        let truncated = compressed.prefix(compressed.count / 2)
+        let source = PrefetchingPayloadSource(source: try PayloadDecompressor(compressed: truncated), chunkSize: 8_192)
+        let buffer = UnsafeMutableRawPointer.allocate(byteCount: 8_192, alignment: 8)
+        defer { buffer.deallocate() }
+        #expect(throws: (any Error).self) {
+            while try source.read(into: buffer, count: 8_192) > 0 {}
+        }
+    }
+}

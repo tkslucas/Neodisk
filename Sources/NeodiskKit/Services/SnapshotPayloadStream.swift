@@ -27,8 +27,17 @@ nonisolated protocol PayloadReading: LittleEndianByteReading {
 
 extension PayloadReader: PayloadReading {}
 
+/// Where a streaming payload reader gets its bytes.
+nonisolated protocol PayloadByteSource: AnyObject {
+    var maximumBytes: Int { get }
+    var expectedSizeBound: Int { get }
+    var producedCount: Int { get }
+    var isFinished: Bool { get }
+    func read(into destination: UnsafeMutableRawPointer, count: Int) throws -> Int
+}
+
 /// Produces a compressed payload's bytes on demand.
-nonisolated final class PayloadDecompressor {
+nonisolated final class PayloadDecompressor: PayloadByteSource {
     /// The largest payload accepted.
     let maximumBytes: Int
     /// Decompressed size, when the stream declares it (zstd frames do).
@@ -190,13 +199,13 @@ nonisolated final class PayloadDecompressor {
 /// refills from the decompressor: memory stays at the window's size
 /// instead of the whole payload's.
 nonisolated final class StreamingPayloadReader: PayloadReading {
-    private let source: PayloadDecompressor
+    private let source: any PayloadByteSource
     private var window: UnsafeMutableRawPointer
     private var capacity: Int
     private var start = 0
     private var end = 0
 
-    init(source: PayloadDecompressor, windowSize: Int = 4 << 20) {
+    init(source: any PayloadByteSource, windowSize: Int = 4 << 20) {
         self.source = source
         capacity = windowSize
         window = UnsafeMutableRawPointer.allocate(byteCount: windowSize, alignment: 16)
@@ -275,5 +284,119 @@ nonisolated final class StreamingPayloadReader: PayloadReading {
 
     func load<T>(_ type: T.Type) throws -> T {
         try take(MemoryLayout<T>.size).loadUnaligned(as: type)
+    }
+}
+
+/// Decompresses ahead on its own thread, a few chunks at a time, while the
+/// reader parses what is already out: decoding a snapshot was decompress
+/// then parse, one after the other, on one thread. Errors surface on the
+/// read that would have hit them; cancellation is checked on the reader's
+/// side; the thread stops when the source ends, fails, or this is released.
+nonisolated final class PrefetchingPayloadSource: PayloadByteSource, @unchecked Sendable {
+    private let source: PayloadDecompressor
+    let maximumBytes: Int
+    let expectedSizeBound: Int
+    private(set) var producedCount = 0
+
+    private let condition = NSCondition()
+    private var ready: [Data] = []
+    private var sourceEnded = false
+    private var sourceError: Error?
+    private var stopped = false
+    private let depth: Int
+
+    private var current = Data()
+    private var currentOffset = 0
+
+    init(source: PayloadDecompressor, chunkSize: Int = 1 << 20, depth: Int = 4) {
+        self.source = source
+        self.maximumBytes = source.maximumBytes
+        self.expectedSizeBound = source.expectedSizeBound
+        self.depth = depth
+        let thread = Thread { [self] in produce(chunkSize: chunkSize) }
+        thread.qualityOfService = .userInitiated
+        thread.name = "com.neodisk.snapshot-decompress"
+        thread.start()
+    }
+
+    deinit {
+        condition.lock()
+        stopped = true
+        condition.broadcast()
+        condition.unlock()
+    }
+
+    private func produce(chunkSize: Int) {
+        while true {
+            var chunk = Data(count: chunkSize)
+            var filled = 0
+            var failure: Error?
+            chunk.withUnsafeMutableBytes { raw in
+                guard let base = raw.baseAddress else { return }
+                do {
+                    while filled < chunkSize {
+                        let produced = try source.read(into: base + filled, count: chunkSize - filled)
+                        if produced == 0 { break }
+                        filled += produced
+                    }
+                } catch {
+                    failure = error
+                }
+            }
+            chunk.count = filled
+            condition.lock()
+            while ready.count >= depth && !stopped {
+                condition.wait()
+            }
+            if stopped {
+                condition.unlock()
+                return
+            }
+            if filled > 0 { ready.append(chunk) }
+            if let failure {
+                sourceError = failure
+            }
+            let ended = failure != nil || source.isFinished || filled == 0
+            if ended { sourceEnded = true }
+            condition.broadcast()
+            condition.unlock()
+            if ended { return }
+        }
+    }
+
+    var isFinished: Bool {
+        guard currentOffset >= current.count else { return false }
+        condition.lock()
+        defer { condition.unlock() }
+        return ready.isEmpty && sourceEnded && sourceError == nil
+    }
+
+    func read(into destination: UnsafeMutableRawPointer, count: Int) throws -> Int {
+        guard count > 0 else { return 0 }
+        try Task.checkCancellation()
+        if currentOffset >= current.count {
+            condition.lock()
+            while ready.isEmpty && !sourceEnded {
+                condition.wait()
+            }
+            if ready.isEmpty {
+                let error = sourceError
+                condition.unlock()
+                if let error { throw error }
+                return 0
+            }
+            current = ready.removeFirst()
+            currentOffset = 0
+            condition.broadcast()
+            condition.unlock()
+        }
+        let available = current.count - currentOffset
+        let copied = min(available, count)
+        current.withUnsafeBytes { raw in
+            destination.copyMemory(from: raw.baseAddress! + currentOffset, byteCount: copied)
+        }
+        currentOffset += copied
+        producedCount += copied
+        return copied
     }
 }

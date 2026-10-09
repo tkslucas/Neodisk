@@ -145,13 +145,20 @@ import Testing
     }
 
     @Test func volumeCapacityFollowsDf() throws {
+        // Other tests write files in parallel, so usage can move between two
+        // reads: bracket the load with statvfs on both sides.
+        func usedBytes() -> Int64 {
+            var stats = statvfs()
+            #expect(statvfs("/", &stats) == 0)
+            return Int64(stats.f_blocks - stats.f_bfree) * Int64(stats.f_frsize)
+        }
+        let usedBefore = usedBytes()
         let info = try #require(VolumeSpaceInfo.load(for: URL(filePath: "/")))
-        var stats = statvfs()
-        #expect(statvfs("/", &stats) == 0)
-        let used = Int64(stats.f_blocks - stats.f_bfree) * Int64(stats.f_frsize)
-        #expect(info.usedBytes == used)
+        let usedAfter = usedBytes()
+        #expect(min(usedBefore, usedAfter) <= info.usedBytes)
+        #expect(info.usedBytes <= max(usedBefore, usedAfter))
         #expect(info.purgeableBytes == 0)
-        #expect(info.totalCapacity == used + info.availableCapacity)
+        #expect(info.totalCapacity == info.usedBytes + info.availableCapacity)
     }
 
     @Test func zeroBytesStillReadsAsBytes() {

@@ -283,7 +283,7 @@ nonisolated enum ScanSnapshotCodec {
             // for millions of nodes) never sits in memory beside the tree.
             let compressed = headerReader.readSlice(count: headerReader.remainingByteCount)
             let decompressor = try PayloadDecompressor(compressed: compressed)
-            var reader = StreamingPayloadReader(source: decompressor)
+            var reader = StreamingPayloadReader(source: PrefetchingPayloadSource(source: decompressor))
             (warnings, store) = try decodePayload(from: &reader, metadata: metadata, stats: stats, version: version)
             ScanTiming.record("snapshot.decode.decompress", .nanoseconds(Int64(decompressor.decompressNanoseconds)))
         } else {

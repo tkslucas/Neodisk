@@ -114,6 +114,9 @@ jobs:
             arch: aarch64
     runs-on: ${{ matrix.runner }}
     container: swift:6.4-noble
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
 

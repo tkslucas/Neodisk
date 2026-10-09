@@ -71,6 +71,9 @@ extension ScanTraversal {
         let parentKey: Int
         let depth: Int
         let weight: Double
+        /// Inside another app's container: read on the container lane
+        /// (`ProtectedContainers`).
+        var isInProtectedContainer = false
     }
 
     struct DirectoryTraversalSuccess: Sendable {
@@ -110,13 +113,11 @@ extension ScanTraversal {
         var pendingChildWorkItems: [PendingChildWorkItem] = []
         var hardLinkClaims: [HardLinkClaim] = []
         var duplicateWarnings: [ScanWarning] = []
-        /// Paths of this directory's clone-family members (refCount > 1), so the
-        /// coordinator can prefetch their private sizes while traversal
-        /// continues instead of paying them in the serial clone-dedup tail.
-        var cloneMemberPaths: [String] = []
         var duplicateWeightUnits = 0.0
         var fileCount = 0
         var allocatedSize: Int64 = 0
+        /// The leaves' totals for live partial trees, summed on the worker.
+        var leafTotals = ScanEngine.PartialSubtreeTotals()
         /// Count of likely-traversable directory entries across the whole
         /// directory listing (duplicates included), computed on the worker so
         /// the coordinator's frontier bookkeeping is O(1). Matches the old

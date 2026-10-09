@@ -20,6 +20,10 @@ public nonisolated struct ScanExclusionMatcher: Sendable {
     private let firmlinkedRootPath: String?
     private let patterns: [CompiledPattern]
     private let cloudLocations: [CloudLocation]
+    /// Last path component of every cloud root an active location can match.
+    /// A listed child whose parent was admitted can only hit a cloud rule by
+    /// being a cloud root itself, so other names skip the cloud test.
+    private let cloudRootNames: Set<String>
 
     init(
         patterns: [String],
@@ -64,6 +68,16 @@ public nonisolated struct ScanExclusionMatcher: Sendable {
                 includeCloudStorage: includeCloudStorage
             )
         ]
+        var cloudRootNames = Set<String>()
+        for location in cloudLocations where location.isActive {
+            if let excludedRootPath = location.excludedRootPath {
+                cloudRootNames.insert(Self.basename(fromNormalizedPath: excludedRootPath))
+            }
+            if location.excludesAnyUser, let last = location.userRelativeComponents.last {
+                cloudRootNames.insert(last)
+            }
+        }
+        self.cloudRootNames = cloudRootNames
     }
 
     var isEmpty: Bool {
@@ -81,7 +95,8 @@ public nonisolated struct ScanExclusionMatcher: Sendable {
     /// `url`'s path in the scan root's spelling. Lexical on purpose: `standardizedFileURL`
     /// strips `/private` only from paths that exist, which broke root-relative patterns.
     func scanPath(of url: URL) -> String {
-        let path = url.standardized.path
+        let rawPath = url.path
+        let path = Self.isLexicallyNormal(rawPath) ? rawPath : url.standardized.path
         guard let firmlinkedRootPath, path.hasPrefix(firmlinkedRootPath),
               path.count == firmlinkedRootPath.count
                 || path.dropFirst(firmlinkedRootPath.count).hasPrefix("/") else { return path }
@@ -99,8 +114,15 @@ public nonisolated struct ScanExclusionMatcher: Sendable {
     /// `childName` MUST be a single path component as a directory enumerator
     /// yields it: no "/", and never "." or "..". Under those preconditions the
     /// verdict is identical to `excludes(parentURL.appending(path: childName), …)`.
+    ///
+    /// The parent was itself admitted (it is being listed), so the child can
+    /// only fall under a cloud rule by being a cloud root: other names skip
+    /// that test, which otherwise ran for every file of the scan.
     func excludes(normalizedParentPath: String, childName: String, isDirectory: Bool) -> Bool {
-        excludes(
+        if patterns.isEmpty && !cloudRootNames.contains(childName) {
+            return false
+        }
+        return excludes(
             normalizedPath: Self.normalizedChildPath(parentPath: normalizedParentPath, childName: childName),
             isDirectory: isDirectory
         )
@@ -110,6 +132,32 @@ public nonisolated struct ScanExclusionMatcher: Sendable {
     /// normalized child path, matching `scanPath(of:)` for the
     /// appended URL. The parent is normalized, so it has no trailing slash
     /// except when it is the volume root "/".
+    /// Whether standardizing `path` would leave it unchanged: absolute, no
+    /// empty, "." or ".." components, no trailing slash. Paths the scan builds
+    /// by joining names onto a normalized root always are, and skip the URL
+    /// standardization.
+    static func isLexicallyNormal(_ path: String) -> Bool {
+        var utf8 = path
+        return utf8.withUTF8 { bytes in
+            guard let first = bytes.first, first == UInt8(ascii: "/") else { return false }
+            if bytes.count == 1 { return true }
+            guard bytes[bytes.count - 1] != UInt8(ascii: "/") else { return false }
+            var componentLength = 0
+            var dots = 0
+            for byte in bytes.dropFirst() {
+                if byte == UInt8(ascii: "/") {
+                    if componentLength == 0 || dots == componentLength && dots <= 2 { return false }
+                    componentLength = 0
+                    dots = 0
+                } else {
+                    componentLength += 1
+                    if byte == UInt8(ascii: ".") { dots += 1 }
+                }
+            }
+            return !(dots == componentLength && dots <= 2)
+        }
+    }
+
     static func normalizedChildPath(parentPath: String, childName: String) -> String {
         if parentPath == "/" {
             return "/" + childName

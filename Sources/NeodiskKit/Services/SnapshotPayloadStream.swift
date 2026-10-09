@@ -103,9 +103,16 @@ nonisolated final class PayloadDecompressor {
     /// Writes up to `count` bytes to `destination` and returns how many; 0
     /// once the payload is complete. Throws on corrupt, truncated, or
     /// oversized input, and on cancellation.
+    /// Time spent decompressing, with NEODISK_SCAN_TIMING (decode reports it).
+    private(set) var decompressNanoseconds: UInt64 = 0
+
     func read(into destination: UnsafeMutableRawPointer, count: Int) throws -> Int {
         guard !isFinished, count > 0 else { return 0 }
         try Task.checkCancellation()
+        let since = ScanTiming.isEnabled ? DispatchTime.now().uptimeNanoseconds : 0
+        defer {
+            if ScanTiming.isEnabled { decompressNanoseconds &+= DispatchTime.now().uptimeNanoseconds &- since }
+        }
         #if canImport(Compression)
         return try compressed.withUnsafeBytes { source in
             guard let base = source.bindMemory(to: UInt8.self).baseAddress else { return 0 }

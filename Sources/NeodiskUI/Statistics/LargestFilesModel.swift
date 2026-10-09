@@ -23,9 +23,16 @@ final class LargestFilesModel {
     /// Cap for browsing with no filter typed — past the top files, the
     /// answer is the filter, not scrolling.
     static let browseLimit = 500
+    /// Rows while a scan streams partial trees: the list re-renders with each
+    /// refresh, and 100 rows diff in a fifth of the main-thread time.
+    static let partialBrowseLimit = 100
 
     private(set) var isLoading = false
     private(set) var visibleIDs: [String] = []
+    /// The tree `visibleIDs` were ranked in. Rows read their records from it,
+    /// so a newer partial tree doesn't re-render the list until the list
+    /// itself is refreshed.
+    private(set) var rowStore: FileTreeStore?
     private(set) var totalMatches = 0
     var filterText = "" {
         didSet {
@@ -47,6 +54,10 @@ final class LargestFilesModel {
     /// Whether cloud-only bytes count toward the ranking — mirrors the
     /// toolbar toggle, passed in by the pane on every load.
     @ObservationIgnored private var includeCloudOnly = false
+    /// When the browse list was last refreshed from a partial tree: while a
+    /// scan streams, it refreshes at most every `partialRefreshInterval`.
+    @ObservationIgnored private var lastPartialRefresh: ContinuousClock.Instant?
+    static let partialRefreshInterval: Duration = .seconds(2)
 
     init(coordinator: ScanCoordinator, indexService: SearchIndexService) {
         self.coordinator = coordinator
@@ -63,6 +74,15 @@ final class LargestFilesModel {
         guard loadedSnapshotID != snapshot.id || self.includeCloudOnly != includeCloudOnly else {
             return
         }
+        // Partial trees arrive several times a second; re-ranking and
+        // re-rendering 500 rows for each kept the main thread busy. The final
+        // tree always refreshes, and so does a list that is still empty.
+        if !snapshot.isComplete, !visibleIDs.isEmpty, self.includeCloudOnly == includeCloudOnly,
+           filterText.trimmingCharacters(in: .whitespaces).isEmpty,
+           let lastPartialRefresh, lastPartialRefresh.duration(to: .now) < Self.partialRefreshInterval {
+            return
+        }
+        lastPartialRefresh = snapshot.isComplete ? nil : .now
         let snapshotChanged = loadedSnapshotID != snapshot.id
         loadedSnapshotID = snapshot.id
         self.includeCloudOnly = includeCloudOnly
@@ -80,13 +100,21 @@ final class LargestFilesModel {
     /// tree. The filter text survives (like the outline search query) so a
     /// scan streaming partials doesn't wipe what the user is typing; the
     /// pane's task reloads against the new tree whenever it is visible.
-    func snapshotDidChange() {
+    ///
+    /// A newer tree of the same location (the next partial, or the scan's
+    /// final tree) keeps the rows until the reload replaces them: clearing
+    /// made every partial empty the list and refill 500 rows, a full table
+    /// rebuild twice per partial on the main thread, and a blinking list.
+    func snapshotDidChange(keepingRows: Bool = false) {
         loadTask?.cancel()
         filterDebouncer.cancel()
         entries = []
         loadedSnapshotID = nil
         isLoading = false
+        guard !keepingRows else { return }
+        lastPartialRefresh = nil
         visibleIDs = []
+        rowStore = nil
         totalMatches = 0
     }
 
@@ -135,10 +163,11 @@ final class LargestFilesModel {
         if !entries.isEmpty, !includeCloudOnly {
             isLoading = false
             visibleIDs = entries.prefix(Self.browseLimit).map(\.id)
+            rowStore = snapshot.treeStore
             totalMatches = entries.count
             return
         }
-        let limit = Self.browseLimit
+        let limit = snapshot.isComplete ? Self.browseLimit : Self.partialBrowseLimit
         let includeCloudOnly = includeCloudOnly
         loadTask = Task { [weak self] in
             let store = snapshot.treeStore
@@ -150,6 +179,7 @@ final class LargestFilesModel {
                   self.filterText.trimmingCharacters(in: .whitespaces).isEmpty else { return }
             self.isLoading = false
             self.visibleIDs = result.ids
+            self.rowStore = store
             self.totalMatches = result.totalMatches
         }
     }
@@ -209,6 +239,7 @@ final class LargestFilesModel {
             }
             self.isLoading = false
             self.visibleIDs = results.ids
+            self.rowStore = store
             self.totalMatches = results.totalMatches
         }
     }

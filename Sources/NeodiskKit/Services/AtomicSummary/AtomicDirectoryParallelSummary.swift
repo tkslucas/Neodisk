@@ -18,6 +18,7 @@ extension AtomicDirectorySummarizer {
         exclusionMatcher: ScanExclusionMatcher,
         metadataLoader: ScanMetadataLoader,
         bulkEnumerationEnabled: Bool,
+        listings: DirectoryListingCache? = nil,
         cancellationCheck: CancellationCheck,
         sink: AtomicSummaryLevelSink
     ) throws {
@@ -27,6 +28,7 @@ extension AtomicDirectorySummarizer {
             do {
                 try processDirectoryLevelUsingBulkReader(
                     item,
+                    listings: listings,
                     includeHiddenFiles: includeHiddenFiles,
                     exclusionMatcher: exclusionMatcher,
                     cancellationCheck: cancellationCheck,
@@ -57,16 +59,18 @@ extension AtomicDirectorySummarizer {
     /// metadata arrive together, so there is no per-child resourceValues call.
     private nonisolated static func processDirectoryLevelUsingBulkReader(
         _ item: AtomicSummaryWorkItem,
+        listings: DirectoryListingCache?,
         includeHiddenFiles: Bool,
         exclusionMatcher: ScanExclusionMatcher,
         cancellationCheck: CancellationCheck,
         sink: AtomicSummaryLevelSink
     ) throws {
-        let bulkChildren = try BulkDirectoryReader.children(
-            ofDirectory: item.url,
-            category: .summary,
-            cancellationCheck: cancellationCheck
-        )
+        let bulkChildren = try listings?.take(forDirectory: item.url.path)
+            ?? BulkDirectoryReader.children(
+                ofDirectory: item.url,
+                category: .summary,
+                cancellationCheck: cancellationCheck
+            )
         let normalizedParentPath = exclusionMatcher.scanPath(of: item.url)
         // `item.url.path` (not standardized) so claim keys / recursion identity
         // match the rest of the tree; child path is `basePath + "/" + name`.

@@ -8,9 +8,10 @@
 //  past the volume's Finder-reported used space and swallow the hidden-space
 //  figure. The deterministic first member (path order, like hard links)
 //  keeps its full size; every other member is charged only its private
-//  (unshared) bytes, fetched lazily via ATTR_CMNEXT_PRIVATESIZE for just
-//  those few files and stamped into their records so cached snapshots
-//  rebalance without the volume mounted. Diverged clones can be slightly
+//  (unshared) bytes, ATTR_CMNEXT_PRIVATESIZE, which traversal reads for
+//  every member as it lists the member's folder (fetched here only for a
+//  record that lacks it) and which stays stamped in the records so cached
+//  snapshots rebalance without the volume mounted. Diverged clones can be slightly
 //  under-counted; the residual surfaces as hidden space, never as a
 //  negative.
 //
@@ -80,12 +81,15 @@ nonisolated enum CloneDeduplicator {
         cancellationCheck: () throws -> Void = {},
         progress: (_ fraction: Double) -> Void = { _ in }
     ) rethrows {
+        let groupSince = ScanProfile.now()
         var memberIndicesByFamily: [CloneFamilyKey: [Int32]] = [:]
         for (index, node) in nodes.enumerated() {
             guard let cloneInfo = node.cloneInfo, !node.isDirectory, !node.isSymbolicLink,
                   !node.isSynthetic else { continue }
             memberIndicesByFamily[cloneInfo.familyKey, default: []].append(Int32(index))
         }
+        ScanProfile.end(.cloneGroup, since: groupSince, count: memberIndicesByFamily.count)
+        let orderSince = ScanProfile.now()
 
         // Every family's non-first members (by path, then id) are the ones
         // charged. Charges are independent per member, so flattening the
@@ -96,17 +100,28 @@ nonisolated enum CloneDeduplicator {
             let sorted = memberIndices.sorted { SharedSizeDeduplication.precedes(nodes[Int($0)], nodes[Int($1)]) }
             chargedIndices.append(contentsOf: sorted.dropFirst())
         }
+        ScanProfile.end(.cloneOrder, since: orderSince, count: chargedIndices.count)
         guard !chargedIndices.isEmpty else { return }
+        let applySince = ScanProfile.now()
+        defer { ScanProfile.end(.cloneApply, since: applySince) }
 
         // Resolve each charged member's private size: the stamped figure when
         // present, otherwise a getattrlist read. The reads run concurrently
         // (bounded, disjoint slots), cancellation is polled between batches.
-        let chargedPaths = chargedIndices.map { nodes[Int($0)].path }
         let stampedPrivateSizes = chargedIndices.map { nodes[Int($0)].cloneInfo?.privateSize }
-        var resolvedPrivateSizes = [Int64?](repeating: nil, count: chargedIndices.count)
+        // Traversal stamps every member it reads, so a fresh scan has nothing
+        // to fetch; only older snapshots and single-item metadata do.
+        let needsFetch = stampedPrivateSizes.contains { $0 == nil }
+        let chargedPaths = needsFetch ? chargedIndices.map { nodes[Int($0)].path } : []
+        var resolvedPrivateSizes = needsFetch
+            ? [Int64?](repeating: nil, count: chargedIndices.count)
+            : stampedPrivateSizes
         let workerLimit = ScanConcurrencyPolicy.cloneMetadataFetchWorkerLimit()
         let batchSize = 4_096
-        var batchStart = 0
+        var batchStart = needsFetch ? 0 : chargedIndices.count
+        if !needsFetch {
+            progress(1)
+        }
         while batchStart < chargedIndices.count {
             try cancellationCheck()
             let rangeStart = batchStart
@@ -145,13 +160,17 @@ nonisolated enum CloneDeduplicator {
                 charged,
                 // Stamp the fetched figure so cached snapshots
                 // rebalance offline with the same answer.
-                cloneInfo: node.cloneInfo?.withPrivateSize(privateSize ?? 0)
+                cloneInfo: node.cloneInfo?.privateSize == privateSize
+                    ? CloneInfo??.none
+                    : .some(node.cloneInfo?.withPrivateSize(privateSize ?? 0))
             )
             if charged != node.allocatedSize {
                 changedIndices.insert(index)
             }
         }
 
+        let rebuildSince = ScanProfile.now()
+        defer { ScanProfile.end(.cloneRebuild, since: rebuildSince, count: changedIndices.count) }
         AncestorRebuilder.rebuildAffectedAncestors(
             of: changedIndices,
             nodes: &nodes,
@@ -170,9 +189,11 @@ nonisolated enum CloneDeduplicator {
     /// into the records at scan time.
     nonisolated static func rebalancedStore(
         _ store: FileTreeStore,
+        families: Set<CloneFamilyKey>? = nil,
         cancellationCheck: () throws -> Void = {}
     ) throws -> FileTreeStore {
         let storage = store.storage
+        if let families, families.isEmpty { return store }
         var memberIndicesByFamily: [CloneFamilyKey: [Int32]] = [:]
         for (offset, node) in storage.nodes.enumerated() {
             if offset.isMultiple(of: 256) {
@@ -180,7 +201,9 @@ nonisolated enum CloneDeduplicator {
             }
             guard let cloneInfo = node.cloneInfo, !node.isDirectory, !node.isSymbolicLink,
                   !node.isSynthetic else { continue }
-            memberIndicesByFamily[cloneInfo.familyKey, default: []].append(Int32(offset))
+            let familyKey = cloneInfo.familyKey
+            if let families, !families.contains(familyKey) { continue }
+            memberIndicesByFamily[familyKey, default: []].append(Int32(offset))
         }
         // No early-out on families of one: a family shrunk by a subtree
         // removal still needs its surviving member restored to full size.
@@ -223,14 +246,57 @@ nonisolated enum CloneDeduplicator {
 /// clones (only ever lowers current sizes). Subtree mutations call this
 /// instead of the individual passes.
 nonisolated enum SharedSizeDeduplication {
+    /// The shared-block families an edit can have changed: those with a
+    /// member in a removed or replaced subtree, or in an inserted one. Every
+    /// other family kept its members and records, so it is still balanced
+    /// exactly as before the edit and the rebalance can leave it alone.
+    struct Scope {
+        var cloneFamilies = Set<CloneFamilyKey>()
+        var hardLinkIdentities = Set<FileIdentity>()
+
+        mutating func include(_ node: FileNodeRecord) {
+            guard !node.isDirectory, !node.isSymbolicLink, !node.isSynthetic else { return }
+            if let cloneInfo = node.cloneInfo {
+                cloneFamilies.insert(cloneInfo.familyKey)
+            }
+            if node.linkCount > 1, let identity = node.fileIdentity {
+                hardLinkIdentities.insert(identity)
+            }
+        }
+    }
+
     nonisolated static func rebalancedStore(
         _ store: FileTreeStore,
+        scope: Scope? = nil,
         cancellationCheck: () throws -> Void = {}
     ) throws -> FileTreeStore {
-        try CloneDeduplicator.rebalancedStore(
-            HardLinkDeduplicator.rebalancedStore(store, cancellationCheck: cancellationCheck),
-            cancellationCheck: cancellationCheck
-        )
+        let hardLinked = try ScanTiming.measure("rescan.splice.rebalance.hardLinks") {
+            try HardLinkDeduplicator.rebalancedStore(
+                store,
+                identities: scope?.hardLinkIdentities,
+                cancellationCheck: cancellationCheck
+            )
+        }
+        return try ScanTiming.measure("rescan.splice.rebalance.clones") {
+            try CloneDeduplicator.rebalancedStore(
+                hardLinked,
+                families: scope.map { scope in
+                    // The hard-link pass may have resized a member of an
+                    // otherwise untouched clone family: that family is
+                    // touched too.
+                    var families = scope.cloneFamilies
+                    guard !scope.hardLinkIdentities.isEmpty else { return families }
+                    for node in hardLinked.storage.nodes where node.linkCount > 1 {
+                        if let cloneInfo = node.cloneInfo, let identity = node.fileIdentity,
+                           scope.hardLinkIdentities.contains(identity) {
+                            families.insert(cloneInfo.familyKey)
+                        }
+                    }
+                    return families
+                },
+                cancellationCheck: cancellationCheck
+            )
+        }
     }
 
     /// The deterministic tie-break both passes charge on: order shared-block

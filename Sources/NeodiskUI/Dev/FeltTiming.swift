@@ -86,10 +86,19 @@ enum FeltTiming {
 
     // MARK: - Signals from the model / view
 
+    /// Launch milestone: `app.launch.<name>` with the time since process
+    /// creation, for finding where launch-to-scan goes.
+    static func markLaunch(_ name: String) {
+        guard isEnabled, !launchMarkEmitted, let processStartDate else { return }
+        let wall = Duration.seconds(Date().timeIntervalSince(processStartDate))
+        ScanTiming.record("app.launch.\(name)", wall, cpuFrom: nil, to: nil)
+    }
+
     /// A scan or rescan of the launch target begins. Resets the per-episode
     /// state and, once per process, emits `app.launchToScanStart`.
     static func noteScanStart(restore: Bool = false) {
         guard isEnabled else { return }
+        MainThreadMonitor.startIfProfiling()
         scanStart = .now
         isRestore = restore
         sawCachedDisplay = false
@@ -166,6 +175,7 @@ enum FeltTiming {
             cpuFrom: scanStart.cpu, to: finalDisplay.cpu, detail: detail
         )
 
+        ScanProfile.emitNamed()
         onEpisodeDisplayed?()
         if autoQuit && !driverOwnsQuit {
             scheduleQuit()

@@ -277,6 +277,10 @@ import Foundation
         #expect(original.cloneInfo != nil)
         #expect(clone.cloneInfo != nil)
         #expect(original.cloneInfo?.familyKey == clone.cloneInfo?.familyKey)
+        // Traversal reads every member's private size as it lists the folder,
+        // so deduplication never has to go back to the file system.
+        #expect(original.cloneInfo?.privateSize != nil)
+        #expect(clone.cloneInfo?.privateSize != nil)
         // The family's shared blocks count once: the pair's total is the
         // payload, not double it.
         #expect(original.allocatedSize + clone.allocatedSize >= Int64(payloadSize))

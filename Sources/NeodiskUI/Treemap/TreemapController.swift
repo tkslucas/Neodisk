@@ -667,6 +667,7 @@ final class TreemapController {
             // that replaces it. Forward the cancel and bail before rastering.
             let work = Task.detached(priority: .userInitiated) {
                 () -> (TreemapScene, CGImage?)? in
+                let sceneSince = ScanProfile.now()
                 let scene = TreemapScene.build(
                     store: store, rootID: rootID, style: style, size: size, catalog: catalog,
                     colorMode: colorMode,
@@ -680,7 +681,10 @@ final class TreemapController {
                     background: background,
                     labelScale: labelScale
                 )
+                ScanProfile.addNamed("app.treemapScene", since: sceneSince)
                 guard !Task.isCancelled else { return nil }
+                let rasterSince = ScanProfile.now()
+                defer { ScanProfile.addNamed("app.treemapRaster", since: rasterSince) }
                 let image = switch style {
                 case .cushion:
                     CushionTreemapRenderer.render(
@@ -702,6 +706,8 @@ final class TreemapController {
             }
 
             guard let self, !Task.isCancelled, let result else { return }
+            let displaySince = ScanProfile.now()
+            defer { ScanProfile.addNamed("app.treemapDisplay", since: displaySince) }
             self.renderTask = nil
             self.scene = result.0
             self.image = result.1

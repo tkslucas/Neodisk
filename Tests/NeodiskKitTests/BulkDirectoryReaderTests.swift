@@ -38,7 +38,9 @@ import Foundation
         }
 
         #expect(executor.workerCount == 2)
-        #expect(contextIDs.count == 2)
+        // Threads start on demand, so a quick run may never need the second:
+        // what matters is that 12 reads shared at most one buffer per thread.
+        #expect((1...2).contains(contextIDs.count))
     }
 
     @Test func scannerBulkPathDecodesDirectlyIntoDirectoryEntries() throws {

@@ -648,8 +648,14 @@ final class NeodiskViewModel {
         }
     }
 
+    /// The location of the last displayed tree, so a newer tree of the same
+    /// location (partials, the final tree) can keep list rows on screen.
+    @ObservationIgnored private var lastSnapshotTargetID: String?
+
     private func snapshotDidChange(_ snapshot: ScanSnapshot?) {
         freeSpace.update()
+        let isSameLocation = snapshot != nil && snapshot?.target.id == lastSnapshotTargetID
+        lastSnapshotTargetID = snapshot?.target.id
 
         diff.snapshotDidChange(snapshot)
 
@@ -657,7 +663,7 @@ final class NeodiskViewModel {
         // search index are all keyed to the replaced tree.
         searchIndexService.invalidate()
         kinds.snapshotDidChange(snapshot)
-        largest.snapshotDidChange()
+        largest.snapshotDidChange(keepingRows: isSameLocation)
         ages.snapshotDidChange(snapshot)
         duplicates.snapshotDidChange()
         changes.snapshotDidChange()

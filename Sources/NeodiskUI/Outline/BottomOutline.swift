@@ -247,10 +247,12 @@ struct BottomOutlineTable: NSViewRepresentable {
             }
             pendingApply = nil
             appliedStructuralVersion = snapshot.structuralVersion
+            let sameRows = rows.count == snapshot.rows.count
+                && zip(rows, snapshot.rows).allSatisfy { $0.id == $1.id }
             rows = snapshot.rows
             rowIndexByID = snapshot.rowIndexByID
             structuralApplyCount += 1
-            tableView?.reloadData()
+            tableView?.reloadRows(keepingRowViews: sameRows)
         }
 
         /// Reflect the persisted sort into the header arrows. Guarded by

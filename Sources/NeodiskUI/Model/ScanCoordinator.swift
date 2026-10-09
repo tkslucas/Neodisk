@@ -298,7 +298,9 @@ final class ScanCoordinator {
     func showDisplayedPartial(from session: ScanSession) {
         guard session === displayedSession, !suppressesPartialEvents else { return }
         guard let partial = session.latestSnapshot, !partial.isComplete else { return }
+        let since = ScanProfile.now()
         snapshot = partial
+        ScanProfile.addNamed("app.applyPartial", since: since)
     }
 
     /// The displayed session reached a terminal state — settle the display and
@@ -312,7 +314,9 @@ final class ScanCoordinator {
         case .finished:
             guard let finished = session.latestSnapshot, finished.isComplete else { return }
             FeltTiming.noteEngineFinished(snapshotID: finished.id)
+            let since = ScanProfile.now()
             apply(snapshot: finished)
+            ScanProfile.addNamed("app.applyFinal", since: since)
             displaySource = .liveStreaming
             phase = .displaying
         case .failed(let message):

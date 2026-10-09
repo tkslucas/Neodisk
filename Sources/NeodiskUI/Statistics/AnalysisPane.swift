@@ -139,6 +139,9 @@ struct StatsFileListView: View {
     var backHelp: LocalizedStringKey = ""
     let isLoading: Bool
     let visibleIDs: [String]
+    /// The tree the rows read from, when the list keeps its own (else the
+    /// displayed tree).
+    var rowStore: FileTreeStore?
     let totalMatches: Int
     @Binding var filterText: String
     var onClose: (() -> Void)?
@@ -202,7 +205,7 @@ struct StatsFileListView: View {
                     set: { if let id = $0 { model.select(id) } }
                 )
                 List(visibleIDs, id: \.self, selection: selection) { nodeID in
-                    if let node = model.store?.node(id: nodeID) {
+                    if let node = (rowStore ?? model.store)?.node(id: nodeID) {
                         FileResultRow(
                             node: node,
                             palette: model.vizPalette,

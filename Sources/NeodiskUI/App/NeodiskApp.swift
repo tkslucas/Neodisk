@@ -15,6 +15,7 @@ public struct NeodiskApp: App {
     @StateObject private var updates = UpdateController()
 
     public init() {
+        FeltTiming.markLaunch("appInit")
         // Route cloud-kind targets to the CloudScan service (fixture-fed in
         // M1; nil in builds without CloudScanKit, where the router's cloud
         // leg reports the feature as unavailable).
@@ -25,6 +26,7 @@ public struct NeodiskApp: App {
             ),
             cloudScan: cloudScan
         ))
+        FeltTiming.markLaunch("modelReady")
 
         // Single-window app: no window tabs, so the View menu loses the
         // useless "Show Tab Bar"/"Show All Tabs" items.

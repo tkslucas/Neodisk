@@ -15,6 +15,7 @@ import NeodiskKit
 struct CLIOptions {
     var path: String?
     var json = false
+    var dumpRecords = false
     /// Tree depth to print; 0 means unlimited.
     var depth = 1
     /// Entries shown per directory; 0 means unlimited.
@@ -38,6 +39,8 @@ func printUsage(to handle: FileHandle) {
     once, like du). Progress goes to stderr, results to stdout.
 
       --json       machine-readable summary + tree on stdout
+      --dump-records  every node with every field, one per line in display
+                   order: for diffing two builds' results exactly
       --depth N    directory levels to include (default 1, 0 = unlimited)
       --top N      largest entries kept per directory (default 10, 0 = all)
       --no-hidden  skip hidden files and directories (default: included)
@@ -72,6 +75,8 @@ func parseOptions(_ arguments: [String]) -> CLIOptions? {
         switch argument {
         case "--json":
             options.json = true
+        case "--dump-records":
+            options.dumpRecords = true
         case "--depth":
             guard let value = numericValue(for: "--depth") else { return nil }
             options.depth = value
@@ -142,6 +147,33 @@ struct ProgressReporter {
 }
 
 // MARK: - Text output
+
+/// One line per node in display preorder with every record field, so two
+/// builds' scans of a still tree can be compared byte for byte.
+func dumpRecords(_ store: FileTreeStore) {
+    var output = ""
+    var stack = [store.root]
+    while let node = stack.popLast() {
+        let clone = node.cloneInfo.map {
+            "clone=\($0.device):\($0.cloneID):\($0.refCount):\($0.privateSize.map(String.init) ?? "nil")"
+        } ?? "clone=-"
+        let modified = node.lastModified.map { String($0.timeIntervalSince1970) } ?? "-"
+        output += "\(node.id)\tpath=\(node.path)\tname=\(node.name)\talloc=\(node.allocatedSize)"
+            + "\tundup=\(node.unduplicatedAllocatedSize)\tlogical=\(node.logicalSize)"
+            + "\tfiles=\(node.descendantFileCount)\tcloudOnly=\(node.cloudOnlyLogicalSize)"
+            + "\tdir=\(node.isDirectory)\tlink=\(node.isSymbolicLink)\tpkg=\(node.isPackage)"
+            + "\taccess=\(node.isAccessible)/\(node.isSelfAccessible)\tsynthetic=\(node.isSynthetic)"
+            + "\tsummarized=\(node.isAutoSummarized)\tdataless=\(node.isDataless)"
+            + "\tlinks=\(node.linkCount)\tidentity=\(node.fileIdentity.map { "\($0)" } ?? "-")"
+            + "\tmodified=\(modified)\t\(clone)\n"
+        if output.utf8.count > 1 << 20 {
+            FileHandle.standardOutput.write(Data(output.utf8))
+            output = ""
+        }
+        stack.append(contentsOf: store.children(of: node.id).reversed())
+    }
+    FileHandle.standardOutput.write(Data(output.utf8))
+}
 
 func printTextReport(snapshot: ScanSnapshot, options: CLIOptions) {
     let store = snapshot.treeStore
@@ -455,7 +487,9 @@ if !snapshot.scanWarnings.isEmpty {
     )
 }
 
-if cliOptions.json {
+if cliOptions.dumpRecords {
+    dumpRecords(snapshot.treeStore)
+} else if cliOptions.json {
     try printJSONReport(snapshot: snapshot, options: cliOptions)
 } else {
     printTextReport(snapshot: snapshot, options: cliOptions)

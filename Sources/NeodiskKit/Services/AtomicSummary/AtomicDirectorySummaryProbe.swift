@@ -89,6 +89,7 @@ extension AtomicDirectorySummarizer {
     /// matching the FileManager errorHandler that always continues.
     private nonisolated func bulkDescendantAtomicProbeProfile(
         at url: URL,
+        rootEntries: [DirectoryEntry]?,
         includeHiddenFiles: Bool,
         isNodeDependencyLayout: Bool,
         minFileCount: Int,
@@ -122,20 +123,37 @@ extension AtomicDirectorySummarizer {
             : max(1_000, minFileCount)
 
         var directoryStack: [URL] = [url]
+        // The root's listing is the one traversal just read (already through
+        // the hidden and exclusion gates the loop below applies); reading the
+        // folder again cost a second full listing of every probed folder.
+        var rootChildren = rootEntries?.map { entry in
+            BulkDirectoryChild(
+                name: entry.name,
+                metadata: entry.metadata,
+                entryErrno: nil,
+                isHidden: false,
+                deviceID: entry.deviceID,
+                directoryMountStatus: entry.directoryMountStatus
+            )
+        }
         while let directoryURL = directoryStack.popLast() {
             try cancellationCheck()
             let children: [BulkDirectoryChild]
-            do {
+            if let listed = rootChildren {
+                children = listed
+                rootChildren = nil
+            } else { do {
                 children = try BulkDirectoryReader.children(
                     ofDirectory: directoryURL,
                     category: .probe,
                     cancellationCheck: cancellationCheck
                 )
+                summaryPool?.listings.store(children, forDirectory: directoryURL.path)
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
                 continue
-            }
+            } }
             let normalizedDirectoryPath = exclusionMatcher.scanPath(of: directoryURL)
             let directoryName = directoryURL.lastPathComponent
 
@@ -208,6 +226,7 @@ extension AtomicDirectorySummarizer {
 
     nonisolated func descendantAtomicProbeProfile(
         at url: URL,
+        rootEntries: [DirectoryEntry]? = nil,
         includeHiddenFiles: Bool,
         isNodeDependencyLayout: Bool,
         minFileCount: Int,
@@ -223,6 +242,7 @@ extension AtomicDirectorySummarizer {
         if bulkEnumerationEnabled {
             return try bulkDescendantAtomicProbeProfile(
                 at: url,
+                rootEntries: rootEntries,
                 includeHiddenFiles: includeHiddenFiles,
                 isNodeDependencyLayout: isNodeDependencyLayout,
                 minFileCount: minFileCount,

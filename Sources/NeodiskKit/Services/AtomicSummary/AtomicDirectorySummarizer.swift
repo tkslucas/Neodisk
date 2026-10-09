@@ -138,6 +138,7 @@ nonisolated struct AtomicDirectorySummarizer: Sendable {
             }
             let profile = try descendantAtomicProbeProfile(
                 at: url,
+                rootEntries: childEntries,
                 includeHiddenFiles: includeHiddenFiles,
                 isNodeDependencyLayout: isNodeDependencyLayout,
                 minFileCount: minFileCount,

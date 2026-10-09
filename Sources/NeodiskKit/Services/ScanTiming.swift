@@ -23,6 +23,7 @@ import Foundation
 /// type so the line format stays defined in one place; hence the public API.
 public nonisolated enum ScanTiming {
     public static let isEnabled = ProcessInfo.processInfo.environment["NEODISK_SCAN_TIMING"] == "1"
+        || ProcessInfo.processInfo.environment["NEODISK_SCAN_PROFILE"] == "1"
 
     /// A process-wide CPU reading (user, system) in milliseconds, captured at
     /// a phase boundary. Callers hold one at a phase's start and hand it back

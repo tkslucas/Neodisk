@@ -481,8 +481,24 @@ extension FileTreeStore {
             ),
             rootID: rootID
         )
+        // Only the families with a member in what was removed, replaced or
+        // inserted can have changed (a scan-wide rebalance was ~0.3 s of
+        // every incremental rescan of a home folder).
+        var scope = SharedSizeDeduplication.Scope()
+        for target in resolved {
+            for index in Int(target.rangeStart)..<Int(target.rangeStart + target.rangeCount) {
+                scope.include(storage.nodes[index])
+            }
+        }
+        for replacement in replacements {
+            for node in replacement.store.storage.nodes { scope.include(node) }
+        }
+        for insertion in insertions {
+            for node in insertion.store.storage.nodes { scope.include(node) }
+        }
         let rebalanced = try SharedSizeDeduplication.rebalancedStore(
             updatedStore,
+            scope: scope,
             cancellationCheck: cancellationCheck
         )
         ScanTiming.record("rescan.splice.rebalance", ContinuousClock.now - rebalanceStart)

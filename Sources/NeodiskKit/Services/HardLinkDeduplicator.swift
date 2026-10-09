@@ -145,16 +145,24 @@ nonisolated struct HardLinkDeduplicator {
     /// Re-derives hard-link claims from the store's own nodes and reapplies
     /// deduplication — used after subtree mutations, where a removed or
     /// replaced owner can shift which link claims a shared file's size.
+    /// `identities`, when given, limits the pass to those files (the ones an
+    /// edit touched; see `SharedSizeDeduplication.Scope`).
     nonisolated static func rebalancedStore(
         _ store: FileTreeStore,
+        identities: Set<FileIdentity>? = nil,
         cancellationCheck: () throws -> Void = {}
     ) throws -> FileTreeStore {
         let storage = store.storage
+        if let identities, identities.isEmpty { return store }
         var claims: [HardLinkClaim] = []
 
         for (offset, node) in storage.nodes.enumerated() {
             if offset.isMultiple(of: 256) {
                 try cancellationCheck()
+            }
+            if let identities {
+                guard node.linkCount > 1, let identity = node.fileIdentity,
+                      identities.contains(identity) else { continue }
             }
             guard let claim = claim(for: node) else { continue }
             claims.append(claim)

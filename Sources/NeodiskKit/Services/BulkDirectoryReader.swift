@@ -156,6 +156,41 @@ nonisolated enum BulkDirectoryReader {
         cancellationCheck: CancellationCheck,
         onChild: (BulkDirectoryChild) throws -> Void
     ) throws -> Int {
+        try ProtectedContainers.withReadSlot(forDirectory: url.path) {
+            readSlots.wait()
+            defer { readSlots.signal() }
+            return try readChildrenUngated(
+                ofDirectory: url,
+                using: context,
+                category: category,
+                cancellationCheck: cancellationCheck,
+                onChild: onChild
+            )
+        }
+    }
+
+    /// Directory reads in the kernel at once, across traversal, probes and
+    /// summaries. A machine kept fully busy starves the system daemons that
+    /// vouch for app-container access until their five-second timeout (C
+    /// walks on the M4: 8 threads beside a 1-thread container walk stalled it
+    /// in 4 of 6 runs, 6 + 2 threads in 0 of 6), and past ~8 readers
+    /// getattrlistbulk only contends with itself. `~`, interleaved: on the
+    /// 10-core M4, 8 slots 13.7 s median with 2 of 6 runs stalled up to 17.4 s,
+    /// 7 slots 13.8 s with none (worst 14.2 s), 6 slots 14.4 s; on the 8-core
+    /// M1, 7 and 8 slots tie (8.2 s), 5 slots 8.7 s.
+    /// `NEODISK_SCAN_READ_SLOTS=<n>` overrides it.
+    static let readSlotCount: Int = ProcessInfo.processInfo.environment["NEODISK_SCAN_READ_SLOTS"]
+        .flatMap(Int.init).map { max(1, $0) }
+        ?? min(7, max(2, ProcessInfo.processInfo.activeProcessorCount - 1))
+    private static let readSlots = DispatchSemaphore(value: readSlotCount)
+
+    private static func readChildrenUngated(
+        ofDirectory url: URL,
+        using context: Context,
+        category: ScanSyscallCategory,
+        cancellationCheck: CancellationCheck,
+        onChild: (BulkDirectoryChild) throws -> Void
+    ) throws -> Int {
         try cancellationCheck()
 
         // Never trigger downloads of dataless (cloud-evicted) files while
@@ -167,14 +202,32 @@ nonisolated enum BulkDirectoryReader {
             IOPOL_MATERIALIZE_DATALESS_FILES_OFF
         )
 
+        let readSince = ScanProfile.now()
+        let readToken = category == .traversal ? ScanProfile.started(.ioRead, url.path) : 0
         let fd = url.withUnsafeFileSystemRepresentation { path -> Int32 in
             guard let path else { return -1 }
             return open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         }
         guard fd >= 0 else {
-            throw BulkDirectoryReadError.openFailed(errno)
+            let openErrno = errno
+            ScanProfile.finish(readToken)
+            throw BulkDirectoryReadError.openFailed(openErrno)
         }
-        defer { close(fd) }
+        ScanProfile.end(.ioOpen, since: readSince)
+        var syscallNanoseconds: UInt64 = 0
+        var parseNanoseconds: UInt64 = 0
+        var entriesRead = 0
+        defer {
+            close(fd)
+            ScanProfile.finish(readToken)
+            ScanProfile.noteSlowRead(
+                path: "\(category) \(url.path)",
+                since: readSince,
+                syscallNanoseconds: syscallNanoseconds,
+                parseNanoseconds: parseNanoseconds,
+                entries: entriesRead
+            )
+        }
 
         // Diagnostic syscall accounting (NEODISK_SCAN_SYSCALLS). Recorded once
         // per successfully opened directory; no-op when the flag is off.
@@ -216,6 +269,7 @@ nonisolated enum BulkDirectoryReader {
         while true {
             try cancellationCheck()
             bulkCallCount += 1
+            let bulkSince = ScanProfile.now()
             let batchCount = getattrlistbulk(
                 fd,
                 &request,
@@ -226,7 +280,19 @@ nonisolated enum BulkDirectoryReader {
             if batchCount < 0 {
                 throw BulkDirectoryReadError.bulkListFailed(errno)
             }
+            ScanProfile.end(batchCount > 0 ? .ioBulk : .ioBulkEnd, since: bulkSince)
+            if ScanProfile.isEnabled {
+                syscallNanoseconds &+= ScanProfile.now() &- bulkSince
+                entriesRead += Int(max(batchCount, 0))
+            }
+            let parseSince = ScanProfile.now()
+            defer {
+                if ScanProfile.isEnabled { parseNanoseconds &+= ScanProfile.now() &- parseSince }
+            }
             if batchCount == 0 {
+                if category == .traversal {
+                    ScanProfile.add(.entries, count: emittedCount)
+                }
                 emittedForTally = emittedCount
                 return emittedCount
             }
@@ -237,6 +303,7 @@ nonisolated enum BulkDirectoryReader {
                 if let child = parseEntry(
                     at: entry,
                     directoryFD: fd,
+                    resolvesClonePrivateSize: category == .traversal || category == .probe,
                     fallbackDirectoryDevice: &fallbackDirectoryDevice,
                     didProbeFallbackDirectoryDevice: &didProbeFallbackDirectoryDevice
                 ) {
@@ -250,6 +317,49 @@ nonisolated enum BulkDirectoryReader {
 
     /// UInt32 views of the sys/attr.h request bits (they import into Swift
     /// with mixed signedness; attrgroup_t is UInt32).
+    static let verifiesClonePrivateSizes = ProcessInfo.processInfo.environment["NEODISK_SCAN_VERIFY_CLONES"] == "1"
+
+    private static func familyMemberPrivateSize(name: UnsafeMutableRawPointer?, directoryFD: Int32) -> Int64? {
+        guard verifiesClonePrivateSizes, let name else { return 0 }
+        let size = privateSize(of: name, inDirectory: directoryFD)
+        if size != 0 {
+            ScanProfile.add(.clonePrivateSizeMismatch)
+            ScanTiming.note(
+                "clone private size \(size.map(String.init) ?? "unknown") for "
+                + String(cString: name.assumingMemoryBound(to: CChar.self))
+            )
+        }
+        return size
+    }
+
+    /// One getattrlistat(2) for ATTR_CMNEXT_PRIVATESIZE of `name` inside the
+    /// open directory; nil when the kernel won't say.
+    private static func privateSize(of name: UnsafeMutableRawPointer, inDirectory directoryFD: Int32) -> Int64? {
+        let since = ScanProfile.now()
+        defer { ScanProfile.end(.clonePrivateSize, since: since) }
+        ScanSyscallTally.recordCloneGetattr(count: 1)
+        var request = attrlist()
+        request.bitmapcount = u_short(ATTR_BIT_MAP_COUNT)
+        request.forkattr = UInt32(bitPattern: ATTR_CMNEXT_PRIVATESIZE)
+        // returned length (u32) + off_t, padded to 4-byte boundaries.
+        var buffer: (UInt64, UInt64) = (0, 0)
+        let status = withUnsafeMutableBytes(of: &buffer) { raw in
+            getattrlistat(
+                directoryFD,
+                name.assumingMemoryBound(to: CChar.self),
+                &request,
+                raw.baseAddress,
+                raw.count,
+                UInt(FSOPT_NOFOLLOW | FSOPT_ATTR_CMN_EXTENDED)
+            )
+        }
+        guard status == 0 else { return nil }
+        return withUnsafeBytes(of: &buffer) { raw in
+            guard raw.loadUnaligned(fromByteOffset: 0, as: UInt32.self) >= 12 else { return nil }
+            return max(raw.loadUnaligned(fromByteOffset: 4, as: Int64.self), 0)
+        }
+    }
+
     private enum RequestedAttributes {
         static let error = UInt32(bitPattern: ATTR_CMN_ERROR)
         static let name = UInt32(bitPattern: ATTR_CMN_NAME)
@@ -280,6 +390,7 @@ nonisolated enum BulkDirectoryReader {
     private static func parseEntry(
         at entryStart: UnsafeMutableRawPointer,
         directoryFD: Int32,
+        resolvesClonePrivateSize: Bool,
         fallbackDirectoryDevice: inout UInt64?,
         didProbeFallbackDirectoryDevice: inout Bool
     ) -> BulkDirectoryChild? {
@@ -300,11 +411,13 @@ nonisolated enum BulkDirectoryReader {
         }
 
         var name: String?
+        var nameStart: UnsafeMutableRawPointer?
         if common & RequestedAttributes.name != 0 {
             let reference = field.loadUnaligned(as: attrreference_t.self)
-            let nameStart = field + Int(reference.attr_dataoffset)
             if reference.attr_length > 0 {
-                name = String(cString: nameStart.assumingMemoryBound(to: CChar.self))
+                let start = field + Int(reference.attr_dataoffset)
+                nameStart = start
+                name = String(cString: start.assumingMemoryBound(to: CChar.self))
             }
             field += MemoryLayout<attrreference_t>.size
         }
@@ -445,9 +558,27 @@ nonisolated enum BulkDirectoryReader {
             : nil
         // Clone-family membership matters only when blocks are actually
         // shared (refCount > 1), so the non-cloned majority carries nothing.
+        // A clone family member's private (unshared) size is 0: files share a
+        // clone ID only while their data is identical, and any write to one
+        // gives it a new ID with a reference count of 1, taking it out of the
+        // family (checked: overwrite, truncate and hole punch all do; xattrs
+        // don't touch data). ATTR_CMNEXT_PRIVATESIZE agreed on every one of
+        // 511k members on two Macs' whole disks, so traversal records 0
+        // instead of one getattrlistat per member (~1.2 s of a home-folder
+        // scan). NEODISK_SCAN_VERIFY_CLONES=1 reads it anyway and counts
+        // disagreements.
         let cloneInfo: CloneInfo? = !isDirectory && !isSymbolicLink
             && cloneRefCount > 1
-            ? cloneID.map { CloneInfo(device: device, cloneID: $0, refCount: cloneRefCount) }
+            ? cloneID.map {
+                CloneInfo(
+                    device: device,
+                    cloneID: $0,
+                    refCount: cloneRefCount,
+                    privateSize: resolvesClonePrivateSize
+                        ? familyMemberPrivateSize(name: nameStart, directoryFD: directoryFD)
+                        : nil
+                )
+            }
             : nil
 
         return BulkDirectoryChild(

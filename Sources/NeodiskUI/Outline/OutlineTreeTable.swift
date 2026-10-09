@@ -179,11 +179,13 @@ struct OutlineTreeTable: NSViewRepresentable {
             }
             pendingApply = nil
             appliedStructuralVersion = snapshot.structuralVersion
+            let sameRows = rows.count == snapshot.rows.count
+                && zip(rows, snapshot.rows).allSatisfy { $0.id == $1.id }
             rows = snapshot.rows
             rowIndexByID = snapshot.rowIndexByID
             contentWidth = snapshot.contentWidth
             structuralApplyCount += 1
-            tableView?.reloadData()
+            tableView?.reloadRows(keepingRowViews: sameRows)
         }
 
         /// The column always spans at least the visible width and grows to
@@ -566,5 +568,24 @@ final class OutlineNSTableView: NSTableView {
         super.mouseDown(with: event)
         isTrackingClick = false
         clickTrackingEnded()
+    }
+}
+
+extension NSTableView {
+    /// Applies new row data. When the rows are the same nodes in the same
+    /// order (a partial tree during a scan, which mostly changes sizes), only
+    /// the visible rows are refreshed in place; a full `reloadData` purged
+    /// and rebuilt every row view on each partial, a main-thread cost the
+    /// window paid several times a second.
+    func reloadRows(keepingRowViews sameRows: Bool) {
+        let visible = rows(in: visibleRect)
+        guard sameRows, numberOfRows > 0, visible.length > 0 else {
+            reloadData()
+            return
+        }
+        reloadData(
+            forRowIndexes: IndexSet(integersIn: visible.location..<visible.location + visible.length),
+            columnIndexes: IndexSet(integersIn: 0..<numberOfColumns)
+        )
     }
 }

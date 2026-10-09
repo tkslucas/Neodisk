@@ -22,6 +22,7 @@ struct LargestPane: View {
             swatch: nil,
             isLoading: model.largest.isLoading,
             visibleIDs: model.largest.visibleIDs,
+            rowStore: model.largest.rowStore,
             totalMatches: model.largest.totalMatches,
             filterText: $largest.filterText
         )

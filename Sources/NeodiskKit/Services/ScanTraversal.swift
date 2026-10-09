@@ -60,6 +60,9 @@ nonisolated final class ScanTraversal {
     private let directoryIOExecutor: DirectoryIOExecutor
     private var ownedDeviceIDs: Set<UInt64> = []
     private var workStack: [ScanWorkItem] = []
+    /// Directories inside other apps' containers, read at most
+    /// `ProtectedContainers.concurrentReadLimit` at a time beside `workStack`.
+    private var protectedWorkStack: [ScanWorkItem] = []
     /// Maps a key to its completed result (leaf or assembled directory).
     /// Keys are dense (0..<nextKey), allocated in the coordinator loop, so a
     /// flat array indexed by key beats a hash map: a nil slot is a key
@@ -69,10 +72,9 @@ nonisolated final class ScanTraversal {
     /// Maps parent key → child keys, built during phase 1. Same dense-key
     /// array shape as `completedByKey`; a key with no children keeps `[]`.
     private var childrenKeysByKey: [[Int]] = []
+    /// Running subtree totals for the live partial trees.
+    private var partialTotals = ScanEngine.PartialTreeTotals()
     private var seenScannedNodeIDs = Set<String>()
-    /// Prefetches clone members' private sizes during traversal so the
-    /// clone-dedup assemble pass reads mostly-cached values. Created in `run()`.
-    private var clonePrivateSizePrefetcher: ClonePrivateSizePrefetcher?
     private var nextKey = 0
     // Live partial-tree emission: the first partial goes out as soon as
     // the root listing is in; afterwards the interval adapts to assembly
@@ -127,7 +129,7 @@ nonisolated final class ScanTraversal {
         // thermal/low-power pressure must be able to speed back up when the
         // pressure clears. The adaptive in-flight limit does the throttling.
         self.directoryIOExecutor = DirectoryIOExecutor(
-            workerCount: concurrency.undegradedTraversalWorkerLimit
+            workerCount: concurrency.undegradedTraversalWorkerLimit + ProtectedContainers.concurrentReadLimit
         )
         self.metrics = metrics
         self.warnings = warnings
@@ -149,10 +151,8 @@ nonisolated final class ScanTraversal {
         summaryPool = pool
         atomicDirectorySummarizer = atomicDirectorySummarizer.withSummaryPool(pool)
         pool.start()
-        clonePrivateSizePrefetcher = ClonePrivateSizePrefetcher(
-            workerLimit: ScanConcurrencyPolicy.cloneMetadataFetchWorkerLimit()
-        )
         ScanSyscallTally.reset()
+        ScanProfile.begin()
 
         do {
             try Task.checkCancellation()
@@ -197,9 +197,10 @@ nonisolated final class ScanTraversal {
             }
             await pool.finish()
             ScanSyscallTally.emit()
+            ScanProfile.emit()
             return store
         } catch {
-            clonePrivateSizePrefetcher?.cancel()
+            ScanProfile.emit()
             await pool.cancelAndFinish(with: error)
             throw error
         }
@@ -273,7 +274,8 @@ nonisolated final class ScanTraversal {
                 blocksTraversalAtMountBoundary: false,
                 parentKey: -1,
                 depth: baseDepth,
-                weight: 1
+                weight: 1,
+                isInProtectedContainer: ProtectedContainers.contains(target.url.path)
             )
         ]
 
@@ -289,6 +291,7 @@ nonisolated final class ScanTraversal {
         let directoryResourceKeys = ScanMetadataLoader.scanResourceKeys
         let usesBulkEnumeration = bulkEnumerationEnabled
         let directoryIOExecutor = self.directoryIOExecutor
+        let listings = summaryPool?.listings
         let continuation = self.continuation
         // Set once in `run()` before this task group starts and never mutated
         // during traversal, so the workers capture an immutable Sendable copy
@@ -306,6 +309,7 @@ nonisolated final class ScanTraversal {
 
         try await withThrowingTaskGroup(of: ScanTaskOutcome.self) { group in
             var activeDirectoryTasks = 0
+            var activeProtectedDirectoryTasks = 0
             // One counter for both package and atomic-directory summary tasks.
             var activeSummaryTasks = 0
             // Packages and atomic-summary candidates waiting for a request slot.
@@ -315,10 +319,20 @@ nonisolated final class ScanTraversal {
             var pendingPackageScans: [(item: ScanWorkItem, itemKey: Int, metadata: NodeMetadata)] = []
             var pendingAtomicScans: [AtomicDirectoryCandidate] = []
 
+            var busySince = ScanProfile.now()
             while true {
                 concurrency.refreshIfDue()
-                while activeDirectoryTasks < concurrency.traversalWorkerLimit,
-                      let item = workStack.popLast() {
+                while true {
+                    let item: ScanWorkItem
+                    if activeProtectedDirectoryTasks < ProtectedContainers.concurrentReadLimit,
+                       let protectedItem = protectedWorkStack.popLast() {
+                        item = protectedItem
+                    } else if activeDirectoryTasks < concurrency.traversalWorkerLimit,
+                              let mainItem = workStack.popLast() {
+                        item = mainItem
+                    } else {
+                        break
+                    }
                     try Task.checkCancellation()
 
                     guard seenScannedNodeIDs.insert(item.path).inserted else {
@@ -333,6 +347,7 @@ nonisolated final class ScanTraversal {
                     // completed slot fills later at one of the completion sites.
                     completedByKey.append(nil)
                     childrenKeysByKey.append([])
+                    partialTotals.allocate(parentKey: item.parentKey, depth: item.depth)
 
                     // Register this child with its parent (skip root which has parentKey -1).
                     if item.parentKey >= 0 {
@@ -370,7 +385,12 @@ nonisolated final class ScanTraversal {
                         let taskItemKey = itemKey
                         let taskMetadata = meta
                         let taskClassificationWorkerLimit = concurrency.classificationWorkerLimit
-                        activeDirectoryTasks += 1
+                        if item.isInProtectedContainer {
+                            activeProtectedDirectoryTasks += 1
+                        } else {
+                            activeDirectoryTasks += 1
+                        }
+                        ScanProfile.add(.directoriesDispatched)
                         group.addTask {
                             #if DEBUG
                             let traversalStart = DispatchTime.now().uptimeNanoseconds
@@ -387,14 +407,17 @@ nonisolated final class ScanTraversal {
                                     classificationWorkerLimit: taskClassificationWorkerLimit,
                                     usesBulkEnumeration: usesBulkEnumeration,
                                     directoryIOExecutor: directoryIOExecutor,
+                                    listings: listings,
                                     cancellationCheck: cancellationCheck
                                 )
-                                let leafBatch = try Self.makeDirectoryLeafBatch(
-                                    from: contents.entries,
-                                    ownedDeviceIDs: ownedDeviceIDs,
-                                    summarizer: summarizer,
-                                    cancellationCheck: cancellationCheck
-                                )
+                                let leafBatch = try ScanProfile.measure(.leafBatch) {
+                                    try Self.makeDirectoryLeafBatch(
+                                        from: contents.entries,
+                                        ownedDeviceIDs: ownedDeviceIDs,
+                                        summarizer: summarizer,
+                                        cancellationCheck: cancellationCheck
+                                    )
+                                }
                                 return .directory(.success(DirectoryTraversalSuccess(
                                     item: taskItem,
                                     itemKey: taskItemKey,
@@ -454,6 +477,8 @@ nonisolated final class ScanTraversal {
                     let taskEmissionState = emissionState
                     activeSummaryTasks += 1
                     group.addTask {
+                        let profileToken = ScanProfile.started(.packageTask, taskItem.path)
+                        defer { ScanProfile.finish(profileToken) }
                         var localMetrics = taskMetrics
                         var localEmissionState = taskEmissionState
                         let leaf = try await summarizer.makeLeafNode(
@@ -481,6 +506,8 @@ nonisolated final class ScanTraversal {
                     let taskEmissionState = emissionState
                     activeSummaryTasks += 1
                     group.addTask {
+                        let profileToken = ScanProfile.started(.summaryTask, candidate.item.path)
+                        defer { ScanProfile.finish(profileToken) }
                         var localMetrics = taskMetrics
                         var localEmissionState = taskEmissionState
                         let summary = try await summarizer.summaryIfNeeded(
@@ -505,15 +532,29 @@ nonisolated final class ScanTraversal {
                     }
                 }
 
-                guard activeDirectoryTasks + activeSummaryTasks > 0 else { break }
+                guard activeDirectoryTasks + activeProtectedDirectoryTasks + activeSummaryTasks > 0 else { break }
+                ScanProfile.end(.coordinatorBusy, since: busySince)
+                let waitSince = ScanProfile.now()
                 guard let outcome = try await group.next() else { break }
+                busySince = ScanProfile.now()
+                ScanProfile.end(.coordinatorWait, since: waitSince)
 
                 switch outcome {
                 case .directory(.success(let success)):
-                    activeDirectoryTasks -= 1
-                    try handleTraversalSuccess(success, pendingAtomicScans: &pendingAtomicScans)
+                    if success.item.isInProtectedContainer {
+                        activeProtectedDirectoryTasks -= 1
+                    } else {
+                        activeDirectoryTasks -= 1
+                    }
+                    try ScanProfile.measure(.handleDirectory) {
+                        try handleTraversalSuccess(success, pendingAtomicScans: &pendingAtomicScans)
+                    }
                 case .directory(.failure(let failure)):
-                    activeDirectoryTasks -= 1
+                    if failure.item.isInProtectedContainer {
+                        activeProtectedDirectoryTasks -= 1
+                    } else {
+                        activeDirectoryTasks -= 1
+                    }
                     handleTraversalFailure(failure)
                 case .package(let packageOutcome):
                     activeSummaryTasks -= 1
@@ -590,13 +631,11 @@ nonisolated final class ScanTraversal {
 
             let node = summarizer.makeFileNode(path: entry.path, name: entry.name, metadata: metadata)
             batch.nodes.append(node)
-            if node.cloneInfo != nil {
-                batch.cloneMemberPaths.append(node.path)
-            }
             if !node.isSymbolicLink {
                 batch.fileCount += 1
             }
             batch.allocatedSize = batch.allocatedSize.addingClamped(node.allocatedSize)
+            batch.leafTotals.add(ScanEngine.PartialSubtreeTotals(of: node))
             if let claim = HardLinkDeduplicator.claim(
                 for: metadata,
                 ownerNodeID: node.id,
@@ -614,6 +653,15 @@ nonisolated final class ScanTraversal {
         batch.nodes.reverse()
         batch.pendingChildWorkItems.reverse()
         batch.duplicateWarnings.reverse()
+        // Pre-sort into display order (size, then name) here, in parallel on
+        // the directory workers: assembly's per-folder sort uses the same
+        // comparator and is stable, so presorted runs make it near-linear and
+        // leave its result unchanged.
+        batch.nodes.sort { lhs, rhs in
+            lhs.allocatedSize == rhs.allocatedSize
+                ? DisplayNameOrder.precedes(lhs.name, rhs.name)
+                : lhs.allocatedSize > rhs.allocatedSize
+        }
         return batch
     }
 
@@ -624,7 +672,6 @@ nonisolated final class ScanTraversal {
         weightPerEntry: Double
     ) {
         hardLinkClaims.append(contentsOf: batch.hardLinkClaims)
-        clonePrivateSizePrefetcher?.enqueue(paths: batch.cloneMemberPaths)
         metrics.filesVisited += batch.fileCount
         metrics.bytesDiscovered = metrics.bytesDiscovered.addingClamped(batch.allocatedSize)
         metrics.completedItems += batch.completedEntryCount
@@ -670,6 +717,9 @@ nonisolated final class ScanTraversal {
             isTraversable: false,
             depth: item.depth
         )
+        if let node = completedByKey[itemKey]?.node {
+            partialTotals.add(ScanEngine.PartialSubtreeTotals(of: node), at: itemKey)
+        }
     }
 
     /// Folds a completed leaf (plain file/symlink, or a summarized package) into
@@ -704,6 +754,9 @@ nonisolated final class ScanTraversal {
             isTraversable: false,
             depth: item.depth
         )
+        if let node = completedByKey[itemKey]?.node {
+            partialTotals.add(ScanEngine.PartialSubtreeTotals(of: node), at: itemKey)
+        }
     }
 
     /// Loop-side handling of an enumerated directory: frontier bookkeeping, then
@@ -820,23 +873,34 @@ nonisolated final class ScanTraversal {
         // units — the coordinator only stamps the parent-relative fields. The
         // `item.weight * weightUnits / totalWeightUnits` association is
         // unchanged, so pushed weights stay bit-identical.
+        let childrenAreInProtectedContainer = ProtectedContainers.containsChildren(ofDirectory: item.path)
         for (offset, pending) in leafBatch.pendingChildWorkItems.enumerated() {
             if offset.isMultiple(of: 256) {
                 try Task.checkCancellation()
             }
-            workStack.append(
-                ScanWorkItem(
-                    url: pending.url,
-                    path: pending.path,
-                    metadata: pending.metadata,
-                    localizedEnumerationError: pending.localizedEnumerationError,
-                    isDirectoryHint: pending.isDirectoryHint,
-                    blocksTraversalAtMountBoundary: pending.blocksTraversalAtMountBoundary,
-                    parentKey: itemKey,
-                    depth: item.depth + 1,
-                    weight: item.weight * pending.weightUnits / totalWeightUnits
-                )
+            let child = ScanWorkItem(
+                url: pending.url,
+                path: pending.path,
+                metadata: pending.metadata,
+                localizedEnumerationError: pending.localizedEnumerationError,
+                isDirectoryHint: pending.isDirectoryHint,
+                blocksTraversalAtMountBoundary: pending.blocksTraversalAtMountBoundary,
+                parentKey: itemKey,
+                depth: item.depth + 1,
+                weight: item.weight * pending.weightUnits / totalWeightUnits,
+                isInProtectedContainer: childrenAreInProtectedContainer
             )
+            // A container folder itself (…/Library/Group Containers) goes on
+            // the container lane too: that lane is served first, so container
+            // reads start as soon as the folder is found instead of whenever
+            // depth-first order reaches it — late in a home folder scan, where
+            // one container read stalling five seconds became the scan's tail.
+            if childrenAreInProtectedContainer
+                || ProtectedContainers.containsChildren(ofDirectory: pending.path) {
+                protectedWorkStack.append(child)
+            } else {
+                workStack.append(child)
+            }
         }
         // Register this directory so phase 2 can assemble it.
         completedByKey[itemKey] = CompletedDirScan(
@@ -847,6 +911,9 @@ nonisolated final class ScanTraversal {
             isTraversable: true,
             depth: item.depth
         )
+        var leafTotals = leafBatch.leafTotals
+        leafTotals.isAccessible = leafTotals.isAccessible && meta.isReadable
+        partialTotals.add(leafTotals, at: itemKey)
     }
 
     /// Folds a pooled package summary back onto the loop.
@@ -932,6 +999,9 @@ nonisolated final class ScanTraversal {
             isTraversable: false,
             depth: item.depth
         )
+        if let node = completedByKey[candidate.itemKey]?.node {
+            partialTotals.add(ScanEngine.PartialSubtreeTotals(of: node), at: candidate.itemKey)
+        }
     }
 
     private func handleTraversalFailure(_ failure: DirectoryTraversalFailure) {
@@ -981,6 +1051,9 @@ nonisolated final class ScanTraversal {
             isTraversable: false,
             depth: item.depth
         )
+        if let node = completedByKey[itemKey]?.node {
+            partialTotals.add(ScanEngine.PartialSubtreeTotals(of: node), at: itemKey)
+        }
     }
 
     private func maybeEmitPartialTree() {
@@ -989,7 +1062,8 @@ nonisolated final class ScanTraversal {
         if let partialStore = ScanEngine.assemblePartialTree(
             completedByKey: completedByKey,
             childrenKeysByKey: childrenKeysByKey,
-            nextKey: nextKey
+            nextKey: nextKey,
+            runningTotals: partialTotals
         ) {
             if let scanStart = firstPartialReference {
                 firstPartialReference = nil
@@ -999,6 +1073,8 @@ nonisolated final class ScanTraversal {
         }
         lastPartialEmission = ContinuousClock.now
         let buildDuration = lastPartialEmission - buildStart
+        ScanProfile.add(.partialBuild, nanoseconds: UInt64(buildDuration.components.attoseconds / 1_000_000_000)
+            + UInt64(buildDuration.components.seconds) * 1_000_000_000)
         partialEmissionInterval = max(.milliseconds(300), buildDuration * 10)
     }
 
@@ -1034,13 +1110,6 @@ nonisolated final class ScanTraversal {
         // the assembler (kept intact for a duplicate-id fallback rerun).
         let completed = completedByKey
         completedByKey = []
-        // Collect the clone private sizes prefetched during traversal; the
-        // deduplicator reads them first and falls back to a synchronous read for
-        // any member not (yet) cached, so the result is identical either way.
-        let prefetchedCloneSizes = clonePrivateSizePrefetcher?.drain() ?? [:]
-        let cloneProvider: CloneDeduplicator.PrivateSizeProvider = { path in
-            prefetchedCloneSizes[path] ?? CloneDeduplicator.systemPrivateSize(path: path)
-        }
         let store = try ScanTreeAssembler.assemble(
             completedByKey: completed,
             childrenKeysByKey: childrenKeysByKey,
@@ -1049,7 +1118,6 @@ nonisolated final class ScanTraversal {
             minimumAllocatedSizeByNodeID: minimumAllocatedSizeByNodeID,
             targetURL: target.url,
             diagnostics: diagnostics,
-            clonePrivateSizeProvider: cloneProvider,
             callbacks: callbacks
         )
 
@@ -1167,6 +1235,9 @@ nonisolated final class ScanTraversal {
             isTraversable: false,
             depth: item.depth
         )
+        if let node = completedByKey[itemKey]?.node {
+            partialTotals.add(ScanEngine.PartialSubtreeTotals(of: node), at: itemKey)
+        }
     }
 
     private func maybeEmitProgress() {
@@ -1185,6 +1256,7 @@ nonisolated final class ScanTraversal {
     }
 
     private func publishProgress() {
+        ScanProfile.add(.progressPublish)
         if let summaryPool {
             summaryPool.publishProgressBase(metrics)
         } else {

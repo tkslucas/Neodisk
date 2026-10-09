@@ -178,6 +178,9 @@ nonisolated private final class AtomicSummaryProgressHeartbeat: @unchecked Senda
 /// discovered small bundles. Created once per `ScanTraversal.run()` and torn
 /// down when it finishes (drain) or errors/cancels (`cancelAndFinish`).
 nonisolated final class AtomicDirectorySummaryPool: @unchecked Sendable {
+    /// Listings the run's probes read, for the summaries that follow them.
+    let listings = DirectoryListingCache()
+
     private struct Lease: @unchecked Sendable {
         let jobID: Int
         let leaseID: Int
@@ -435,6 +438,7 @@ nonisolated final class AtomicDirectorySummaryPool: @unchecked Sendable {
                     exclusionMatcher: lease.request.exclusionMatcher,
                     metadataLoader: lease.request.metadataLoader,
                     bulkEnumerationEnabled: lease.request.bulkEnumerationEnabled,
+                    listings: listings,
                     cancellationCheck: {
                         try lease.request.cancellationCheck()
                         try lease.token.check()

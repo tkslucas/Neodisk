@@ -63,6 +63,7 @@ public struct ContentView: View {
             }
             // NEODISK_* launch env hooks (autoscan, forced tab/view/style/
             // update state, autoreveal) — inert unless set. See DevLaunchHooks.
+            FeltTiming.markLaunch("contentAppeared")
             DevLaunchHooks.apply(model: model, updates: updates)
         }
         .onDisappear {

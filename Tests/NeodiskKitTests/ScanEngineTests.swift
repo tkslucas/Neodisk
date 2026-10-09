@@ -971,16 +971,28 @@ import Foundation
             .appending(path: "Contents/Resources", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: packageContentsURL, withIntermediateDirectories: true)
 
-        for index in 0..<8_000 {
-            let fileURL = packageContentsURL.appending(path: "payload-\(index).tmp")
-            try Data([UInt8(index % 256)]).write(to: fileURL)
+        // 8,000 files over 1,000 folders, summarized by one worker below: a
+        // summary that reliably outlasts the test's own scheduling, so the
+        // cancel always lands mid-summary.
+        for folder in 0..<1_000 {
+            let folderURL = packageContentsURL.appending(path: "f\(folder)", directoryHint: .isDirectory)
+            try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: false)
+            for index in 0..<8 {
+                try Data([UInt8(index)]).write(to: folderURL.appending(path: "payload-\(index).tmp"))
+            }
         }
+        var options = ScanOptions()
+        options.tuning.atomicSummaryWorkerLimit = 1
 
         let engine = ScanEngine()
+        // Cancels on the scan's first event, while the package summary is
+        // still running: a wall-clock sleep before cancelling raced the scan,
+        // which can summarize the whole package first on a fast machine.
         let scanTask = Task {
             var didFinish = false
             do {
-                for try await event in engine.scan(target: ScanTarget(url: rootURL), options: ScanOptions()) {
+                for try await event in engine.scan(target: ScanTarget(url: rootURL), options: options) {
+                    withUnsafeCurrentTask { $0?.cancel() }
                     if case .finished = event {
                         didFinish = true
                     }
@@ -991,8 +1003,6 @@ import Foundation
             return didFinish
         }
 
-        try await Task.sleep(for: .milliseconds(10))
-        scanTask.cancel()
         let didFinishCancelledScan = try await scanTask.value
 
         #expect(!(didFinishCancelledScan))

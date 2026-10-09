@@ -113,7 +113,11 @@ import Testing
         func store(rootPath: String, depth: Int) -> FileTreeStore {
             var childrenByID: [String: [FileNodeRecord]] = [:]
             let root = directory(path: rootPath, depth: depth, childrenByID: &childrenByID)
-            return FileTreeStore(root: root, childrenByID: childrenByID)
+            // Balanced like every store the app splices: a scan deduplicates
+            // shared blocks as it assembles, and each splice rebalances the
+            // families it touched, so untouched families are already settled.
+            let store = FileTreeStore(root: root, childrenByID: childrenByID)
+            return (try? SharedSizeDeduplication.rebalancedStore(store)) ?? store
         }
     }
 

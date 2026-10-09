@@ -27,8 +27,9 @@ public final class CloneInfo: Sendable, Equatable, Hashable {
     /// Number of files sharing the family's blocks at capture time.
     public let refCount: UInt32
     /// Bytes unique to this file — not shared with the rest of the family
-    /// (ATTR_CMNEXT_PRIVATESIZE). Nil until deduplication fetches it for
-    /// the family members it charges; the kept member never needs it.
+    /// (ATTR_CMNEXT_PRIVATESIZE). Read during traversal for every member;
+    /// nil when it wasn't (single-item metadata, older snapshots), and then
+    /// deduplication fetches it for the members it charges.
     public let privateSize: Int64?
 
     public init(device: UInt64, cloneID: UInt64, refCount: UInt32, privateSize: Int64? = nil) {

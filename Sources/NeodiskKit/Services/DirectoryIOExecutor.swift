@@ -2,27 +2,17 @@
 //  DirectoryIOExecutor.swift
 //  Neodisk
 //
-//  Blocking directory syscalls run on bounded, dedicated serial GCD workers
-//  instead of occupying Swift's cooperative executor. Each worker owns one
-//  reusable getattrlistbulk context for its lifetime.
+//  Blocking directory syscalls run on bounded, dedicated threads instead of
+//  occupying Swift's cooperative executor. The threads share one queue, so
+//  whichever is idle takes the next directory: a slow listing (a cache folder
+//  with tens of thousands of entries) holds one thread, never the work queued
+//  behind it. Each thread owns one reusable getattrlistbulk context.
 //
 
 import Dispatch
 import Foundation
 
 nonisolated final class DirectoryIOExecutor: @unchecked Sendable {
-    private final class Worker: @unchecked Sendable {
-        let queue: DispatchQueue
-        let bulkContext = BulkDirectoryReader.Context()
-
-        init(index: Int) {
-            queue = DispatchQueue(
-                label: "com.neodisk.directory-io.\(index)",
-                qos: .userInitiated
-            )
-        }
-    }
-
     private final class CancellationState: @unchecked Sendable {
         private let lock = NSLock()
         private var isCancelled = false
@@ -43,14 +33,83 @@ nonisolated final class DirectoryIOExecutor: @unchecked Sendable {
         }
     }
 
-    private let selectionLock = NSLock()
-    private let workers: [Worker]
-    private var nextWorkerIndex = 0
+    /// The queue and its threads. Threads hold this, not the executor, so the
+    /// executor's deinit can tell them to exit once the queue drains.
+    private final class Shared: @unchecked Sendable {
+        let condition = NSCondition()
+        var jobs: [(BulkDirectoryReader.Context) -> Void] = []
+        var head = 0
+        var isShutDown = false
+        var startedThreadCount = 0
+        var idleThreadCount = 0
+        let maximumThreadCount: Int
 
-    var workerCount: Int { workers.count }
+        init(maximumThreadCount: Int) {
+            self.maximumThreadCount = maximumThreadCount
+        }
+
+        func submit(_ job: @escaping (BulkDirectoryReader.Context) -> Void) {
+            condition.lock()
+            jobs.append(job)
+            // Threads start on demand: a traversal that lists one directory
+            // never pays for the whole pool.
+            let needsThread = idleThreadCount == 0 && startedThreadCount < maximumThreadCount
+            if needsThread {
+                startedThreadCount += 1
+            }
+            condition.signal()
+            condition.unlock()
+            if needsThread {
+                let thread = Thread { [self] in work() }
+                thread.qualityOfService = .userInitiated
+                thread.name = "com.neodisk.directory-io"
+                thread.start()
+            }
+        }
+
+        private func work() {
+            let context = BulkDirectoryReader.Context()
+            condition.lock()
+            while true {
+                if head < jobs.count {
+                    let job = jobs[head]
+                    head += 1
+                    if head == jobs.count {
+                        jobs.removeAll(keepingCapacity: true)
+                        head = 0
+                    }
+                    condition.unlock()
+                    job(context)
+                    condition.lock()
+                } else if isShutDown {
+                    condition.unlock()
+                    return
+                } else {
+                    idleThreadCount += 1
+                    condition.wait()
+                    idleThreadCount -= 1
+                }
+            }
+        }
+
+        func shutDown() {
+            condition.lock()
+            isShutDown = true
+            condition.broadcast()
+            condition.unlock()
+        }
+    }
+
+    private let shared: Shared
+
+    var workerCount: Int { shared.maximumThreadCount }
 
     init(workerCount: Int) {
-        workers = (0..<max(1, workerCount)).map(Worker.init(index:))
+        shared = Shared(maximumThreadCount: max(1, workerCount))
+    }
+
+    deinit {
+        shared.shutDown()
     }
 
     func run<Result: Sendable>(
@@ -60,17 +119,16 @@ nonisolated final class DirectoryIOExecutor: @unchecked Sendable {
         ) throws -> Result
     ) async throws -> Result {
         let cancellationState = CancellationState()
-        let worker = selectWorker()
+        let shared = self.shared
 
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
-                worker.queue.async {
+                let queued = ScanProfile.started(.ioQueueWait)
+                shared.submit { context in
+                    ScanProfile.finish(queued)
                     do {
                         try cancellationState.check()
-                        let result = try operation(
-                            worker.bulkContext,
-                            cancellationState.check
-                        )
+                        let result = try operation(context, cancellationState.check)
                         continuation.resume(returning: result)
                     } catch {
                         continuation.resume(throwing: error)
@@ -80,13 +138,5 @@ nonisolated final class DirectoryIOExecutor: @unchecked Sendable {
         } onCancel: {
             cancellationState.cancel()
         }
-    }
-
-    private func selectWorker() -> Worker {
-        selectionLock.lock()
-        let worker = workers[nextWorkerIndex]
-        nextWorkerIndex = (nextWorkerIndex + 1) % workers.count
-        selectionLock.unlock()
-        return worker
     }
 }

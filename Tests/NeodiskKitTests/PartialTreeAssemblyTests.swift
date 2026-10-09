@@ -159,3 +159,100 @@ import Testing
         #expect(store.root.descendantFileCount == 2)
     }
 }
+
+/// The running-totals partial build must match the full walk it replaced, on
+/// random trees with folders still in flight, unreadable folders, and every
+/// depth limit.
+@Suite struct PartialTreeRunningTotalsEquivalenceTests {
+    private static func metadata(isDirectory: Bool, isReadable: Bool) -> NodeMetadata {
+        NodeMetadata(
+            isDirectory: isDirectory, isPackage: false, isSymbolicLink: false,
+            logicalSize: 0, allocatedSize: 0, lastModified: nil, isReadable: isReadable,
+            volumeUsedCapacity: nil, fileIdentity: nil, linkCount: 1
+        )
+    }
+
+    private static func dump(_ store: FileTreeStore) -> [String] {
+        var lines: [String] = []
+        var stack = [store.rootID]
+        while let id = stack.popLast() {
+            guard let node = store.node(id: id) else { continue }
+            let children = store.children(of: id).map(\.id)
+            lines.append("\(id)|\(node.allocatedSize)|\(node.logicalSize)|\(node.descendantFileCount)|\(node.isAccessible)|\(children)")
+            stack.append(contentsOf: children)
+        }
+        return lines
+    }
+
+    @Test(arguments: 0..<24)
+    func runningTotalsMatchTheFullWalk(seed: Int) throws {
+        var generator = SeededGenerator(seed: UInt64(seed + 1))
+        for maxDepth in 1...4 {
+            var completed: [ScanEngine.CompletedDirScan?] = []
+            var childrenKeys: [[Int]] = []
+            var totals = ScanEngine.PartialTreeTotals(maxDepth: maxDepth)
+            var paths: [String] = []
+            var depths: [Int] = []
+            // Keys in allocation order: each new key's parent is an earlier folder.
+            for key in 0..<60 {
+                // Children are only discovered once their folder's listing is
+                // in: a parent is a completed folder (the root always is).
+                let parent = key == 0 ? -1 : Int.random(in: 0..<key, using: &generator)
+                let parentIsListedFolder = parent < 0 || completed[parent]?.isTraversable == true
+                let parentKey = parentIsListedFolder ? parent : 0
+                let depth = parentKey < 0 ? 0 : depths[parentKey] + 1
+                let path = parentKey < 0 ? "/r" : "\(paths[parentKey])/k\(key)"
+                paths.append(path)
+                depths.append(depth)
+                childrenKeys.append([])
+                if parentKey >= 0 { childrenKeys[parentKey].append(key) }
+                totals.allocate(parentKey: parentKey, depth: depth)
+                let roll = Int.random(in: 0..<10, using: &generator)
+                if roll < 1 && key > 0 {
+                    completed.append(nil) // still in flight
+                } else if roll < 6 || key == 0 {
+                    let readable = Int.random(in: 0..<8, using: &generator) > 0
+                    let leaves = (0..<Int.random(in: 0..<4, using: &generator)).map {
+                        makeTestFileNode(id: "\(path)/f\($0)", name: "f\($0)", size: Int64.random(in: 1...999, using: &generator))
+                    }
+                    completed.append(ScanEngine.CompletedDirScan(
+                        node: nil, directLeafNodes: leaves,
+                        metadata: Self.metadata(isDirectory: true, isReadable: readable),
+                        url: URL(filePath: path, directoryHint: .isDirectory),
+                        isTraversable: true, depth: depth
+                    ))
+                    var leafTotals = ScanEngine.PartialSubtreeTotals()
+                    for leaf in leaves { leafTotals.add(ScanEngine.PartialSubtreeTotals(of: leaf)) }
+                    leafTotals.isAccessible = leafTotals.isAccessible && readable
+                    totals.add(leafTotals, at: key)
+                } else {
+                    let node = makeTestFileNode(id: path, name: "k\(key)", size: Int64.random(in: 1...999, using: &generator))
+                    completed.append(ScanEngine.CompletedDirScan(
+                        node: node, metadata: Self.metadata(isDirectory: false, isReadable: true),
+                        url: node.url, isTraversable: false, depth: depth
+                    ))
+                    totals.add(ScanEngine.PartialSubtreeTotals(of: node), at: key)
+                }
+            }
+            let full = try #require(ScanEngine.assemblePartialTree(
+                completedByKey: completed, childrenKeysByKey: childrenKeys, nextKey: 60, maxDepth: maxDepth
+            ))
+            let running = try #require(ScanEngine.assemblePartialTree(
+                completedByKey: completed, childrenKeysByKey: childrenKeys, nextKey: 60, runningTotals: totals
+            ))
+            #expect(Self.dump(full) == Self.dump(running), "seed \(seed) maxDepth \(maxDepth)")
+        }
+    }
+}
+
+private struct SeededGenerator: RandomNumberGenerator {
+    var state: UInt64
+    init(seed: UInt64) { state = seed }
+    mutating func next() -> UInt64 {
+        state &+= 0x9E37_79B9_7F4A_7C15
+        var z = state
+        z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+        z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+        return z ^ (z >> 31)
+    }
+}

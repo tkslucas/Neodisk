@@ -761,7 +761,7 @@ import NeodiskKit
         #expect(FileKindClassifier.kindID(for: makeNode("libssl.so.3.0.13"), mode: .types) == "so")
         // Only a numeric version after ".so." qualifies.
         #expect(FileKindClassifier.kindID(for: makeNode("notes.so.txt"), mode: .categories) == "cat-docs")
-        #expect(FileKindClassifier.kindID(for: makeNode("backup.so.bak"), mode: .categories) == "cat-other")
+        #expect(FileKindClassifier.kindID(for: makeNode("backup.so.bak"), mode: .categories) == "cat-backups")
     }
 
     @Test func extensionsMapToExpectedCategories() {

@@ -53,11 +53,20 @@ package struct FileKindCatalog: Sendable {
     /// Distinguishes catalog builds cheaply; every rebuild may reassign
     /// palette colors even when the kind count is unchanged.
     package let buildID = UUID()
+    /// The category rules the catalog was built under; coloring a node
+    /// classifies it with these, so the map matches the legend even while
+    /// a rules change is still rebuilding.
+    package let rules: FileCategoryRules
     private let rgbByKindID: [String: SIMD3<Float>]
 
-    package nonisolated init(stats: [FileKindStat], mode: FileKindDisplayMode = .types) {
+    package nonisolated init(
+        stats: [FileKindStat],
+        mode: FileKindDisplayMode = .types,
+        rules: FileCategoryRules = .builtIn
+    ) {
         self.stats = stats
         self.mode = mode
+        self.rules = rules
         var mapping: [String: SIMD3<Float>] = [:]
         mapping.reserveCapacity(stats.count)
         for stat in stats {
@@ -76,7 +85,7 @@ package struct FileKindCatalog: Sendable {
         if node.isDirectory, !FileKindClassifier.isLeafLike(node) {
             return Self.directoryRGB
         }
-        return rgb(forKindID: FileKindClassifier.kindID(for: node, mode: mode))
+        return rgb(forKindID: FileKindClassifier.kindID(for: node, mode: mode, rules: rules))
     }
 
     /// Builds kind statistics for every countable node in the tree — files
@@ -90,14 +99,15 @@ package struct FileKindCatalog: Sendable {
     package nonisolated static func build(
         from store: FileTreeStore,
         mode: FileKindDisplayMode = .types,
-        palette: VizPalette = .standard
+        palette: VizPalette = .standard,
+        rules: FileCategoryRules = .current
     ) -> FileKindCatalog {
         var sizeByKindID: [String: (size: Int64, count: Int)] = [:]
 
         for node in store.allNodes {
             if Task.isCancelled { break }
             guard FileKindClassifier.isKindCountable(node, in: store) else { continue }
-            let kindID = FileKindClassifier.kindID(for: node, mode: mode)
+            let kindID = FileKindClassifier.kindID(for: node, mode: mode, rules: rules)
             let existing = sizeByKindID[kindID] ?? (0, 0)
             sizeByKindID[kindID] = (existing.size + node.allocatedSize, existing.count + 1)
         }
@@ -107,7 +117,8 @@ package struct FileKindCatalog: Sendable {
                 PersistedKindStat(kindID: $0.key, size: $0.value.size, count: $0.value.count)
             },
             mode: mode,
-            palette: palette
+            palette: palette,
+            rules: rules
         )
     }
 
@@ -118,7 +129,8 @@ package struct FileKindCatalog: Sendable {
     package nonisolated static func build(
         fromAggregated aggregated: [PersistedKindStat],
         mode: FileKindDisplayMode,
-        palette: VizPalette = .standard
+        palette: VizPalette = .standard,
+        rules: FileCategoryRules = .current
     ) -> FileKindCatalog {
         let ranked = aggregated.sorted {
             if $0.size != $1.size {
@@ -131,7 +143,7 @@ package struct FileKindCatalog: Sendable {
             let rgb: SIMD3<Float>
             switch mode {
             case .categories:
-                rgb = palette.categoryRGB[entry.kindID] ?? otherRGB
+                rgb = palette.categoryRGB(forID: entry.kindID, rules: rules)
             case .types:
                 rgb = index < palette.kindPalette.count ? palette.kindPalette[index] : otherRGB
             }
@@ -143,7 +155,7 @@ package struct FileKindCatalog: Sendable {
             )
         }
 
-        return FileKindCatalog(stats: stats, mode: mode)
+        return FileKindCatalog(stats: stats, mode: mode, rules: rules)
     }
 
     /// The catalog's aggregates in persistable form (colors and display
@@ -161,7 +173,8 @@ package struct FileKindCatalog: Sendable {
     /// Both grouping modes aggregated in a single pass over the tree — the
     /// save-time producer of the persisted stats a restore rebuilds from.
     package nonisolated static func aggregateBothModes(
-        from store: FileTreeStore
+        from store: FileTreeStore,
+        rules: FileCategoryRules = .current
     ) -> (categories: [PersistedKindStat], types: [PersistedKindStat]) {
         var categorySizes: [String: (size: Int64, count: Int)] = [:]
         var typeSizes: [String: (size: Int64, count: Int)] = [:]
@@ -169,8 +182,8 @@ package struct FileKindCatalog: Sendable {
         for node in store.allNodes {
             if Task.isCancelled { break }
             guard FileKindClassifier.isKindCountable(node, in: store) else { continue }
-            let categoryID = FileKindClassifier.kindID(for: node, mode: .categories)
-            let typeID = FileKindClassifier.kindID(for: node, mode: .types)
+            let categoryID = FileKindClassifier.kindID(for: node, mode: .categories, rules: rules)
+            let typeID = FileKindClassifier.kindID(for: node, mode: .types, rules: rules)
             categorySizes[categoryID, default: (0, 0)].size += node.allocatedSize
             categorySizes[categoryID, default: (0, 0)].count += 1
             typeSizes[typeID, default: (0, 0)].size += node.allocatedSize

@@ -216,6 +216,9 @@
 "Code & Development" = "コードと開発";
 "Data & Machine Learning" = "データと機械学習";
 "Applications" = "アプリケーション";
+"3D & CAD" = "3DとCAD";
+"Games" = "ゲーム";
+"Backups" = "バックアップ";
 "System Data" = "システムデータ";
 "Summarized Folders" = "まとめられたフォルダ";
 "Summarized Contents" = "まとめられた内容";
@@ -223,6 +226,21 @@
 "Folder" = "フォルダ";
 "Alias" = "エイリアス";
 "No Extension" = "拡張子なし";
+
+/* MARK: - File categories */
+"Category" = "カテゴリ";
+"New Category…" = "新規カテゴリ…";
+"Use Default Category" = "デフォルトのカテゴリを使用";
+"Rename Category…" = "カテゴリ名を変更…";
+"Delete Category" = "カテゴリを削除";
+"New Category" = "新規カテゴリ";
+"Rename Category" = "カテゴリ名を変更";
+"Create" = "作成";
+"Rename" = "名前を変更";
+"File Categories" = "ファイルカテゴリ";
+"To move a file type to another category or a new one, group the Kinds tab by Types and right-click the type. Right-click a category you made to rename or delete it." = "ファイルタイプを別のカテゴリや新しいカテゴリに移すには、「種類」タブをタイプでグループ化し、そのタイプを右クリックします。自分で作成したカテゴリを右クリックすると、名前の変更や削除ができます。";
+"Reset Categories" = "カテゴリをリセット";
+"Reset" = "リセット";
 
 /* MARK: - Sidebar */
 "Volumes" = "ボリューム";

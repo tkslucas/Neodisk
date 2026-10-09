@@ -36,6 +36,9 @@ final class Preferences {
         didSet { if !isOverriding, treemapStyle != oldValue { savedTreemapStyle = nil }; scheduleSave() }
     }
     var kindMode: FileKindDisplayMode = .categories { didSet { scheduleSave() } }
+    /// The user's changes to the Categories grouping. Change it through
+    /// `AppModel.updateFileCategories`, which reclassifies.
+    var fileCategories = FileCategoryCustomization() { didSet { scheduleSave() } }
     var showsStatistics = true { didSet { scheduleSave() } }
     var showsOutline = true { didSet { scheduleSave() } }
     /// Folders the user scanned or pinned, most recent first — the
@@ -108,6 +111,7 @@ final class Preferences {
         var vizMode: String?
         var treemapStyle: String?
         var kindMode: String?
+        var fileCategories: String?
         var showsStatistics: Bool?
         var showsOutline: Bool?
         var recentFolders: [String]?
@@ -128,6 +132,7 @@ final class Preferences {
         if let value = stored.vizMode.flatMap(VizViewMode.init(rawValue:)) { vizMode = value }
         if let value = stored.treemapStyle.flatMap(TreemapStyle.init(rawValue:)) { treemapStyle = value }
         if let value = stored.kindMode.flatMap(FileKindDisplayMode.init(rawValue:)) { kindMode = value }
+        if let value = stored.fileCategories { fileCategories = FileCategoryCustomization(json: value) }
         if let value = stored.showsStatistics { showsStatistics = value }
         if let value = stored.showsOutline { showsOutline = value }
         if let value = stored.recentFolders { recentFolders = value }
@@ -155,6 +160,7 @@ final class Preferences {
             vizMode: (savedVizMode ?? vizMode).rawValue,
             treemapStyle: (savedTreemapStyle ?? treemapStyle).rawValue,
             kindMode: kindMode.rawValue,
+            fileCategories: fileCategories.isEmpty ? nil : fileCategories.json,
             showsStatistics: showsStatistics,
             showsOutline: showsOutline,
             recentFolders: recentFolders,

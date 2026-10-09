@@ -25,6 +25,7 @@ import NeodiskKit
             targetPath: "/",
             finishedAt: Date(timeIntervalSince1970: 0),
             nodeCount: 1,
+            categoryRules: nil,
             categories: categories,
             types: []
         )

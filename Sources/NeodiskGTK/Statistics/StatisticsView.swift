@@ -6,7 +6,9 @@
 //  Kinds (space by file category or type, the treemap's color legend), and
 //  Age (space by last-modified bucket). The visible tab decides what map
 //  color means, and picking a kind or age row lights just those cells —
-//  the Mac's AnalysisPane behavior on the shared catalogs.
+//  the Mac's AnalysisPane behavior on the shared catalogs. Right-clicking a
+//  type moves it to another category; right-clicking a category the user
+//  made renames or deletes it.
 //
 
 import CGtk
@@ -32,6 +34,12 @@ final class StatisticsView {
     private var largestGeneration = -1
     private var isSyncing = false
     private var tokens: [ObservationToken] = []
+    private var kindMenu: GPtr?
+    /// The kind row the open menu is about.
+    private var menuKindID: String?
+    /// "kinds.category": stateful, so the menu shows the type's category
+    /// as the checked choice.
+    private var categoryAction: GPtr?
 
     nonisolated static let largestLimit = 150
 
@@ -89,6 +97,7 @@ final class StatisticsView {
             let bucket = self.ageBuckets[index]
             self.model.highlightedAgeBucket = self.model.highlightedAgeBucket == bucket ? nil : bucket
         }
+        addKindMenu()
         connect(categoriesToggle, "toggled") { [unowned self] in
             guard !self.isSyncing, gtk_toggle_button_get_active(ptr(self.categoriesToggle)) != 0 else { return }
             self.setKindMode(.categories)
@@ -176,6 +185,123 @@ final class StatisticsView {
                 gtk_list_box_select_row(ptr(kindsList), ptr(row))
             }
         }
+    }
+
+    // MARK: - Kind menu
+
+    private func addKindMenu() {
+        let group = raw(g_simple_action_group_new())!
+        let stringType = g_variant_type_new("s")
+        if let action = raw(g_simple_action_new_stateful("category", stringType, g_variant_new_string(""))) {
+            connectPointer(action, "change-state") { [unowned self] variant in
+                guard let ext = self.menuKindID,
+                      let categoryID = variant.flatMap({ string(from: g_variant_get_string(ptr($0), nil)) }) else { return }
+                self.model.updateFileCategories { $0.assign(extension: ext, to: categoryID) }
+            }
+            g_action_map_add_action(ptr(group), ptr(action))
+            categoryAction = action
+            g_object_unref(action)
+        }
+        g_variant_type_free(stringType)
+        addAction(to: group, "new-category") { [unowned self] _ in
+            guard let ext = self.menuKindID else { return }
+            self.promptForName(title: L("New Category"), confirm: L("Create"), initial: "") { name in
+                self.model.updateFileCategories { customization in
+                    guard let id = customization.addCategory(named: name) else { return }
+                    customization.assign(extension: ext, to: id)
+                }
+            }
+        }
+        addAction(to: group, "default-category") { [unowned self] _ in
+            guard let ext = self.menuKindID else { return }
+            self.model.updateFileCategories {
+                $0.assign(extension: ext, to: FileCategoryRules.builtInCategoryID(forExtension: ext))
+            }
+        }
+        addAction(to: group, "rename-category") { [unowned self] _ in
+            guard let id = self.menuKindID,
+                  let current = FileCategoryRules.current.customKindsByID[id] else { return }
+            self.promptForName(title: L("Rename Category"), confirm: L("Rename"), initial: current.displayName) { name in
+                self.model.updateFileCategories { $0.renameCategory(id: id, to: name) }
+            }
+        }
+        addAction(to: group, "delete-category") { [unowned self] _ in
+            guard let id = self.menuKindID else { return }
+            self.model.updateFileCategories { $0.removeCategory(id: id) }
+        }
+        gtk_widget_insert_action_group(ptr(widget), "kinds", ptr(group))
+        g_object_unref(group)
+
+        let click = raw(gtk_gesture_click_new())!
+        gtk_gesture_single_set_button(ptr(click), 3)
+        connectPress(click, "pressed") { [unowned self] _, x, y in
+            guard let row = gtk_list_box_get_row_at_y(ptr(self.kindsList), Int32(y)) else { return }
+            let index = Int(gtk_list_box_row_get_index(row))
+            guard self.kindIDs.indices.contains(index) else { return }
+            self.showKindMenu(for: self.kindIDs[index], at: CGPoint(x: x, y: y))
+        }
+        gtk_widget_add_controller(ptr(kindsList), ptr(click))
+    }
+
+    private func showKindMenu(for kindID: String, at point: CGPoint) {
+        let rules = FileCategoryRules.current
+        let menu = raw(g_menu_new())!
+        defer { g_object_unref(menu) }
+        switch model.catalog.mode {
+        case .types where FileCategoryRules.isAssignableTypeID(kindID):
+            g_simple_action_set_state(ptr(categoryAction), g_variant_new_string(rules.categoryID(forExtension: kindID)))
+            let choices = raw(g_menu_new())!
+            for category in rules.assignableCategories {
+                g_menu_append(ptr(choices), L(category.displayName), "kinds.category::\(category.id)")
+            }
+            let section = raw(g_menu_new())!
+            g_menu_append_submenu(ptr(section), L("Category"), ptr(choices))
+            g_menu_append(ptr(section), L("New Category…"), "kinds.new-category")
+            if rules.isOverridden(extension: kindID) {
+                g_menu_append(ptr(section), L("Use Default Category"), "kinds.default-category")
+            }
+            g_menu_append_section(ptr(menu), nil, ptr(section))
+            g_object_unref(choices)
+            g_object_unref(section)
+        case .categories where rules.customKindsByID[kindID] != nil:
+            g_menu_append(ptr(menu), L("Rename Category…"), "kinds.rename-category")
+            g_menu_append(ptr(menu), L("Delete Category"), "kinds.delete-category")
+        default:
+            return
+        }
+        menuKindID = kindID
+        if kindMenu == nil {
+            kindMenu = raw(gtk_popover_menu_new_from_model(nil))
+            gtk_widget_set_parent(ptr(kindMenu), ptr(kindsList))
+            gtk_popover_set_has_arrow(ptr(kindMenu), gbool(false))
+        }
+        gtk_popover_menu_set_menu_model(ptr(kindMenu), ptr(menu))
+        var rect = GdkRectangle(x: Int32(point.x), y: Int32(point.y), width: 1, height: 1)
+        gtk_popover_set_pointing_to(ptr(kindMenu), &rect)
+        gtk_popover_popup(ptr(kindMenu))
+    }
+
+    /// Asks for a category name; `commit` gets it trimmed and non-empty.
+    private func promptForName(title: String, confirm: String, initial: String, commit: @escaping @MainActor (String) -> Void) {
+        let dialog = raw(adw_alert_dialog_new(title, nil))!
+        let entry = raw(gtk_entry_new())!
+        gtk_editable_set_text(ptr(entry), initial)
+        gtk_entry_set_placeholder_text(ptr(entry), L("Name"))
+        gtk_entry_set_activates_default(ptr(entry), gbool(true))
+        adw_alert_dialog_set_extra_child(ptr(dialog), ptr(entry))
+        adw_alert_dialog_add_response(ptr(dialog), "cancel", L("Cancel"))
+        adw_alert_dialog_add_response(ptr(dialog), "confirm", confirm)
+        adw_alert_dialog_set_response_appearance(ptr(dialog), "confirm", ADW_RESPONSE_SUGGESTED)
+        adw_alert_dialog_set_default_response(ptr(dialog), "confirm")
+        adw_alert_dialog_set_close_response(ptr(dialog), "cancel")
+        connectPointer(dialog, "response") { response in
+            guard string(from: response?.assumingMemoryBound(to: CChar.self)) == "confirm",
+                  let name = string(from: gtk_editable_get_text(ptr(entry)))?
+                    .trimmingCharacters(in: .whitespacesAndNewlines),
+                  !name.isEmpty else { return }
+            commit(name)
+        }
+        adw_dialog_present(ptr(dialog), ptr(widget))
     }
 
     // MARK: - Age

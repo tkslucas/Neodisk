@@ -166,6 +166,20 @@ final class KindStatsModel {
         }
     }
 
+    /// The category rules changed: categories built under the old ones,
+    /// and persisted stats aggregated under them, no longer hold.
+    func categoryRulesDidChange() {
+        catalogCache[.categories] = nil
+        activeSeed = nil
+        pendingSeed = nil
+        if drill.context?.mode == .categories {
+            closeFileList()
+        }
+        if displayMode == .categories, let store = coordinator.snapshot?.treeStore {
+            rebuildCatalog(from: store)
+        }
+    }
+
     // MARK: - Drill-in file list
 
     /// Opens the drill-in list for a kind row ("where are all my videos").

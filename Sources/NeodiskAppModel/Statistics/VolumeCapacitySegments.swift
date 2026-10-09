@@ -105,12 +105,13 @@ package nonisolated enum VolumeCapacitySegments {
         palette: VizPalette,
         fraction: (Int64) -> Double
     ) -> [VolumeCapacitySegment] {
-        sizes.map { kindID, size in
+        let rules = FileCategoryRules.current
+        return sizes.map { kindID, size in
             VolumeCapacitySegment(
                 id: kindID,
                 label: FileKindClassifier.kind(forID: kindID, mode: .categories).displayName,
                 size: size,
-                rgb: palette.categoryRGB[kindID] ?? FileKindCatalog.otherRGB,
+                rgb: palette.categoryRGB(forID: kindID, rules: rules),
                 fraction: fraction(size)
             )
         }

@@ -41,10 +41,24 @@ package struct VizPalette: Sendable, Equatable, Identifiable {
     /// Fixed colors for the Categories kind mode, keyed by category id — a
     /// category keeps its color regardless of size rank.
     package let categoryRGB: [String: SIMD3<Float>]
+    /// Colors for the user's own categories, by their position: the kind
+    /// table's slots no built-in category holds first, then the rest of
+    /// the table (repeats only past that).
+    package let customCategoryRGB: [SIMD3<Float>]
     /// Age-bucket colors, indexed by `AgeBucket.rawValue`.
     package let ageRamp: [SIMD3<Float>]
     /// How SunburstCore's branch-hue resolver draws under this palette.
     package let sunburst: SunburstPalette
+
+    /// A category's color under these rules: its fixed color, or for a
+    /// user category the custom slot its position picks.
+    package func categoryRGB(forID id: String, rules: FileCategoryRules) -> SIMD3<Float> {
+        if let rgb = categoryRGB[id] { return rgb }
+        guard let index = rules.customColorIndex(forID: id), !customCategoryRGB.isEmpty else {
+            return FileKindCatalog.otherRGB
+        }
+        return customCategoryRGB[index % customCategoryRGB.count]
+    }
 
     package func ageRGB(_ bucket: AgeBucket) -> SIMD3<Float> {
         ageRamp.indices.contains(bucket.rawValue) ? ageRamp[bucket.rawValue] : FileKindCatalog.otherRGB
@@ -209,7 +223,10 @@ package struct VizPalette: Sendable, Equatable, Identifiable {
         "cat-data": 6,       // purple
         "cat-audio": 7,      // cyan
         "cat-summarized": 8, // teal
+        "cat-3d": 9,         // pink
+        "cat-games": 10,     // lime
         "cat-system": 11,    // brown
+        "cat-backups": 13,   // plum
     ]
 
     /// Age ramp as kind-table indices, cool → hot with age so stale files
@@ -297,6 +314,9 @@ package struct VizPalette: Sendable, Equatable, Identifiable {
         "cat-audio": 7,       // bright aqua
         "cat-archive": 5,     // bright orange
         "cat-data": 6,        // purple
+        "cat-backups": 8,     // red
+        "cat-3d": 9,          // blue
+        "cat-games": 10,      // green
         "cat-summarized": 12, // aqua
         "cat-system": 13,     // orange
     ]
@@ -336,8 +356,11 @@ package struct VizPalette: Sendable, Equatable, Identifiable {
         "cat-archive": 5,     // orange
         "cat-data": 6,        // comment blue
         "cat-audio": 7,       // cyan
+        "cat-3d": 8,          // bright magenta
+        "cat-games": 9,       // bright green
         "cat-summarized": 11, // bright cyan
         "cat-system": 10,     // bright purple
+        "cat-backups": 13,    // bright red
     ]
 
     /// A scheme's accent table punched up for the map: saturation raised on
@@ -396,6 +419,10 @@ package struct VizPalette: Sendable, Equatable, Identifiable {
         var categories = categoryRoles.mapValues { kindPalette[$0] }
         categories["cat-other"] = FileKindCatalog.otherRGB
         self.categoryRGB = categories
+        let taken = Set(categoryRoles.values)
+        self.customCategoryRGB = kindPalette.indices
+            .sorted { (taken.contains($0) ? 1 : 0, $0) < (taken.contains($1) ? 1 : 0, $1) }
+            .map { kindPalette[$0] }
         self.ageRamp = ageRamp
         self.sunburst = sunburst
     }

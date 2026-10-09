@@ -720,7 +720,7 @@ package struct TreemapScene: Sendable {
     ) -> Bool {
         switch highlight {
         case .kind(let kindID):
-            return FileKindClassifier.kindID(for: node, mode: catalog.mode) == kindID
+            return FileKindClassifier.kindID(for: node, mode: catalog.mode, rules: catalog.rules) == kindID
         case .ageBucket(let bucket):
             guard case .age(let referenceDate) = colorMode,
                   FileKindClassifier.isLeafLike(node) else { return false }

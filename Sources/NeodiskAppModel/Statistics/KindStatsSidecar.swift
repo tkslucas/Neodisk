@@ -18,6 +18,10 @@ package nonisolated struct KindStatsSidecar: Codable, Sendable {
     package let targetPath: String
     package let finishedAt: Date?
     package let nodeCount: Int
+    /// The category rules the categories were aggregated under
+    /// (`FileCategoryRules.fingerprint`); nil in sidecars from before
+    /// categories could change.
+    package let categoryRules: String?
 
     package let categories: [PersistedKindStat]
     package let types: [PersistedKindStat]
@@ -29,10 +33,12 @@ package nonisolated struct KindStatsSidecar: Codable, Sendable {
         }
     }
 
-    /// Whether these stats describe the given snapshot. Dates go through
-    /// JSON with sub-second loss, so equality is tolerant.
+    /// Whether these stats describe the given snapshot under the category
+    /// rules in effect. Dates go through JSON with sub-second loss, so
+    /// equality is tolerant.
     package nonisolated func matches(_ snapshot: ScanSnapshot) -> Bool {
         guard snapshot.isComplete,
+              categoryRules == FileCategoryRules.current.fingerprint,
               targetPath == snapshot.target.id,
               nodeCount == snapshot.treeStore.nodeCount else {
             return false
@@ -48,11 +54,13 @@ package nonisolated struct KindStatsSidecar: Codable, Sendable {
     }
 
     package nonisolated static func make(for snapshot: ScanSnapshot) -> KindStatsSidecar {
-        let aggregated = FileKindCatalog.aggregateBothModes(from: snapshot.treeStore)
+        let rules = FileCategoryRules.current
+        let aggregated = FileKindCatalog.aggregateBothModes(from: snapshot.treeStore, rules: rules)
         return KindStatsSidecar(
             targetPath: snapshot.target.id,
             finishedAt: snapshot.finishedAt,
             nodeCount: snapshot.treeStore.nodeCount,
+            categoryRules: rules.fingerprint,
             categories: aggregated.categories,
             types: aggregated.types
         )

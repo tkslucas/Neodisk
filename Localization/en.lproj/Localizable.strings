@@ -216,6 +216,9 @@
 "Code & Development" = "Code & Development";
 "Data & Machine Learning" = "Data & Machine Learning";
 "Applications" = "Applications";
+"3D & CAD" = "3D & CAD";
+"Games" = "Games";
+"Backups" = "Backups";
 "System Data" = "System Data";
 "Summarized Folders" = "Summarized Folders";
 "Summarized Contents" = "Summarized Contents";
@@ -223,6 +226,21 @@
 "Folder" = "Folder";
 "Alias" = "Alias";
 "No Extension" = "No Extension";
+
+/* MARK: - File categories */
+"Category" = "Category";
+"New Category…" = "New Category…";
+"Use Default Category" = "Use Default Category";
+"Rename Category…" = "Rename Category…";
+"Delete Category" = "Delete Category";
+"New Category" = "New Category";
+"Rename Category" = "Rename Category";
+"Create" = "Create";
+"Rename" = "Rename";
+"File Categories" = "File Categories";
+"To move a file type to another category or a new one, group the Kinds tab by Types and right-click the type. Right-click a category you made to rename or delete it." = "To move a file type to another category or a new one, group the Kinds tab by Types and right-click the type. Right-click a category you made to rename or delete it.";
+"Reset Categories" = "Reset Categories";
+"Reset" = "Reset";
 
 /* MARK: - Sidebar */
 "Volumes" = "Volumes";

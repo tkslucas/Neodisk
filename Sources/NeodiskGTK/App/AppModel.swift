@@ -113,6 +113,7 @@ final class AppModel {
     init(preferences: Preferences, snapshotCache: ScanSnapshotCache = ScanSnapshotCache()) {
         self.preferences = preferences
         self.snapshotCache = snapshotCache
+        FileCategoryRules.install(preferences.fileCategories)
         minuteTimer = Task { [weak self] in
             while (try? await Task.sleep(for: .seconds(60))) != nil {
                 self?.minuteTick &+= 1
@@ -459,6 +460,29 @@ final class AppModel {
     func kindModeDidChange() {
         guard let store else { return }
         rebuildKindCatalog(for: store)
+    }
+
+    /// Changes the category customization (the Kinds list's menu, Settings)
+    /// and reclassifies when that changes what files are filed under:
+    /// categories built or persisted under the old rules no longer hold.
+    func updateFileCategories(_ change: (inout FileCategoryCustomization) -> Void) {
+        var customization = preferences.fileCategories
+        change(&customization)
+        preferences.fileCategories = customization
+        guard FileCategoryRules.install(customization) else { return }
+        kindCatalogCache[.categories] = nil
+        pendingSeed = nil
+        activeSeed = nil
+        searchIndex.invalidate()
+        if preferences.kindMode == .categories {
+            highlightedKindID = nil
+            if let store { rebuildKindCatalog(for: store) }
+        }
+        // The scan on screen keeps its persisted stats (sidebar bar, next
+        // restore) in step with the new categories.
+        if let snapshot, snapshot.isComplete, cachedScans[snapshot.target.id] != nil {
+            Task { await self.saveKindStatsSidecar(for: snapshot) }
+        }
     }
 
     /// Palette changed: colors are baked into kind catalogs at build time.

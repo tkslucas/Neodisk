@@ -452,6 +452,7 @@ final class NeodiskViewModel {
                 self?.syncCloudOnlyPreference()
                 self?.syncOutlinePreferences()
                 self?.syncTextScale()
+                self?.syncFileCategories()
             }
         freeSpace.update()
         syncVizPalette()
@@ -460,6 +461,7 @@ final class NeodiskViewModel {
         syncCloudOnlyPreference()
         syncOutlinePreferences()
         syncTextScale()
+        syncFileCategories()
     }
 
     /// Mirror the persisted text scale onto the model, and push it into the
@@ -542,6 +544,26 @@ final class NeodiskViewModel {
         if kinds.palette != palette {
             kinds.palette = palette
         }
+    }
+
+    /// Put the persisted category customization in effect. When it changes
+    /// what files are filed under, everything holding categories redoes
+    /// them: the kind catalog (and the map colors it carries), the search
+    /// index's per-node kinds, and the displayed scan's persisted stats.
+    private func syncFileCategories() {
+        guard let preferences,
+              FileCategoryRules.install(preferences.fileCategories) else { return }
+        searchIndexService.invalidate()
+        kinds.categoryRulesDidChange()
+        session.categoryRulesDidChange()
+    }
+
+    /// Changes the category customization (the Kinds tab's menus, Settings).
+    func updateFileCategories(_ change: (inout FileCategoryCustomization) -> Void) {
+        guard let preferences else { return }
+        var customization = preferences.fileCategories
+        change(&customization)
+        preferences.fileCategories = customization
     }
 
     /// Stops the running scan, keeping any partial results on screen. The

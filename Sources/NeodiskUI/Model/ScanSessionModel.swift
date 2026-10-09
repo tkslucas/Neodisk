@@ -595,6 +595,19 @@ final class ScanSessionModel {
     /// on this, not on the scan date, or they reload too early and miss it.
     private(set) var kindStatsSidecarGeneration = 0
 
+    /// The category rules changed: the displayed scan's persisted kind
+    /// stats file things under the old categories. Rewrite them, so its
+    /// sidebar bar and next restore show the new ones.
+    func categoryRulesDidChange() {
+        guard let snapshot = coordinator.snapshot, snapshot.isComplete,
+              cachedScanInfo[snapshot.target.id] != nil else { return }
+        let snapshotCache = snapshotCache
+        Task { [weak self] in
+            await Self.saveKindStatsSidecar(for: snapshot, in: snapshotCache)
+            self?.kindStatsSidecarGeneration += 1
+        }
+    }
+
     /// Snapshots cached before sidecars existed (or whose sidecar went
     /// stale) get one after display, so their next restore is seeded. Only
     /// the no-rescan endings need this — when a refresh scan keeps running,

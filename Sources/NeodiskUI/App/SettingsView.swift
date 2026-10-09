@@ -165,6 +165,16 @@ private struct ViewSettingsTab: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
+
+            Section("File Categories") {
+                Text("To move a file type to another category or a new one, group the Kinds tab by Types and right-click the type. Right-click a category you made to rename or delete it.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Button("Reset Categories") {
+                    preferences.fileCategoriesJSON = ""
+                }
+                .disabled(preferences.fileCategoriesJSON.isEmpty)
+            }
         }
         .formStyle(.grouped)
     }

@@ -217,6 +217,9 @@
 "Code & Development" = "Código e Desenvolvimento";
 "Data & Machine Learning" = "Dados e Aprendizado de Máquina";
 "Applications" = "Aplicativos";
+"3D & CAD" = "3D e CAD";
+"Games" = "Jogos";
+"Backups" = "Backups";
 "System Data" = "Dados do Sistema";
 "Summarized Folders" = "Pastas Resumidas";
 "Summarized Contents" = "Conteúdo Resumido";
@@ -224,6 +227,21 @@
 "Folder" = "Pasta";
 "Alias" = "Alias";
 "No Extension" = "Sem Extensão";
+
+/* MARK: - File categories */
+"Category" = "Categoria";
+"New Category…" = "Nova Categoria…";
+"Use Default Category" = "Usar Categoria Padrão";
+"Rename Category…" = "Renomear Categoria…";
+"Delete Category" = "Apagar Categoria";
+"New Category" = "Nova Categoria";
+"Rename Category" = "Renomear Categoria";
+"Create" = "Criar";
+"Rename" = "Renomear";
+"File Categories" = "Categorias de Arquivos";
+"To move a file type to another category or a new one, group the Kinds tab by Types and right-click the type. Right-click a category you made to rename or delete it." = "Para mover um tipo de arquivo para outra categoria ou uma nova, agrupe a aba Tipos por tipos e clique com o botão direito no tipo. Clique com o botão direito em uma categoria que você criou para renomeá-la ou apagá-la.";
+"Reset Categories" = "Redefinir Categorias";
+"Reset" = "Redefinir";
 
 /* MARK: - Sidebar */
 "Volumes" = "Volumes";

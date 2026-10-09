@@ -112,6 +112,9 @@ final class AppPreferences: ObservableObject {
     /// by the Settings picker and by View ▸ Zoom In/Out; read through
     /// `textScale`, which snaps it to the ladder. See TextScale.
     @AppStorage("textScale") var textScaleRaw = TextScale.standard
+    /// The user's changes to the Categories grouping, as
+    /// FileCategoryCustomization JSON; "" for none.
+    @AppStorage("fileCategories") var fileCategoriesJSON = ""
 
     /// Backing store defaults to UserDefaults.standard; tests pass their
     /// own suite so preference writes never leak into real settings.
@@ -174,12 +177,18 @@ final class AppPreferences: ObservableObject {
         _textScaleRaw = AppStorage(
             wrappedValue: TextScale.standard, "textScale", store: defaults
         )
+        _fileCategoriesJSON = AppStorage(wrappedValue: "", "fileCategories", store: defaults)
     }
 
     /// The workspace text scale, always one of TextScale's steps.
     var textScale: Double {
         get { TextScale.snapped(textScaleRaw) }
         set { textScaleRaw = TextScale.snapped(newValue) }
+    }
+
+    var fileCategories: FileCategoryCustomization {
+        get { FileCategoryCustomization(json: fileCategoriesJSON) }
+        set { fileCategoriesJSON = newValue.json }
     }
 
     var theme: ThemePreference {
@@ -299,5 +308,6 @@ final class AppPreferences: ObservableObject {
         prepareChangesAfterScan = true
         autoScanDuplicates = false
         textScaleRaw = TextScale.standard
+        fileCategoriesJSON = ""
     }
 }

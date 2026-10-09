@@ -216,6 +216,9 @@
 "Code & Development" = "代码与开发";
 "Data & Machine Learning" = "数据与机器学习";
 "Applications" = "应用程序";
+"3D & CAD" = "3D 与 CAD";
+"Games" = "游戏";
+"Backups" = "备份";
 "System Data" = "系统数据";
 "Summarized Folders" = "已汇总的文件夹";
 "Summarized Contents" = "已汇总的内容";
@@ -223,6 +226,21 @@
 "Folder" = "文件夹";
 "Alias" = "替身";
 "No Extension" = "无扩展名";
+
+/* MARK: - File categories */
+"Category" = "分类";
+"New Category…" = "新建分类…";
+"Use Default Category" = "使用默认分类";
+"Rename Category…" = "重命名分类…";
+"Delete Category" = "删除分类";
+"New Category" = "新建分类";
+"Rename Category" = "重命名分类";
+"Create" = "创建";
+"Rename" = "重命名";
+"File Categories" = "文件分类";
+"To move a file type to another category or a new one, group the Kinds tab by Types and right-click the type. Right-click a category you made to rename or delete it." = "要将某种文件类型移到其他分类或新分类，请将“类型”标签页按类型分组，然后右键点按该类型。右键点按你创建的分类可以重命名或删除它。";
+"Reset Categories" = "重置分类";
+"Reset" = "重置";
 
 /* MARK: - 边栏 */
 "Volumes" = "宗卷";

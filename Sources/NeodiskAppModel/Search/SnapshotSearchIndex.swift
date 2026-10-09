@@ -35,6 +35,7 @@ package struct SnapshotSearchIndex: Sendable {
             var kindIDs: [String] = []
             var lowercasedOverrides: [Int32: String] = [:]
         }
+        let rules = FileCategoryRules.current
         let chunkCount = max(1, min(ProcessInfo.processInfo.activeProcessorCount, 16, nodeCount / 50_000))
         let chunkSize = (nodeCount + chunkCount - 1) / max(chunkCount, 1)
         var chunks = [Chunk](repeating: Chunk(), count: chunkCount)
@@ -56,8 +57,8 @@ package struct SnapshotSearchIndex: Sendable {
                     if i & 4095 == 0, Task.isCancelled { break }
                     let node = nodes[i]
                     chunk.codes.append((
-                        code(FileKindClassifier.kindID(for: node, mode: .categories)),
-                        code(FileKindClassifier.kindID(for: node, mode: .types)),
+                        code(FileKindClassifier.kindID(for: node, mode: .categories, rules: rules)),
+                        code(FileKindClassifier.kindID(for: node, mode: .types, rules: rules)),
                         FileKindClassifier.isKindCountable(node, in: store)
                     ))
                     if !SearchEntryTable.asciiFoldingLowercases(node.name) {

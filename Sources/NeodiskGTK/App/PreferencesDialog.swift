@@ -40,6 +40,23 @@ enum PreferencesDialog {
                   subtitle: L("Draw a volume's free space as a block of its own"),
                   isOn: preferences.showFreeSpace) { preferences.showFreeSpace = $0 }
         adw_preferences_page_add(ptr(viewPage), ptr(treemap))
+
+        let categories = group(
+            L("File Categories"),
+            description: L("To move a file type to another category or a new one, group the Kinds tab by Types and right-click the type. Right-click a category you made to rename or delete it.")
+        )
+        let resetRow = raw(adw_action_row_new())!
+        adw_preferences_row_set_title(ptr(resetRow), L("Reset Categories"))
+        let resetButton = raw(gtk_button_new_with_label(L("Reset")))!
+        gtk_widget_set_valign(ptr(resetButton), GTK_ALIGN_CENTER)
+        gtk_widget_set_sensitive(ptr(resetButton), gbool(!preferences.fileCategories.isEmpty))
+        adw_action_row_add_suffix(ptr(resetRow), ptr(resetButton))
+        connect(resetButton, "clicked") {
+            model.updateFileCategories { $0 = FileCategoryCustomization() }
+            gtk_widget_set_sensitive(ptr(resetButton), gbool(false))
+        }
+        adw_preferences_group_add(ptr(categories), ptr(resetRow))
+        adw_preferences_page_add(ptr(viewPage), ptr(categories))
         adw_preferences_dialog_add(ptr(dialog), ptr(viewPage))
 
         // Scanning.

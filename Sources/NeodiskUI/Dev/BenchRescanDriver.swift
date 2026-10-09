@@ -20,6 +20,9 @@
 //    NEODISK_BENCH_RESCANS=<count>            how many in-app rescans to time
 //    NEODISK_BENCH_RESCAN_INTERVAL=<seconds>  wait before each (default 60), so
 //                                             real fs-event churn accumulates
+//    NEODISK_BENCH_TARGETS=<path:path:…>      every other step scans the next of
+//                                             these instead (memory soak, issue #9)
+//    NEODISK_BENCH_STAY=1                     stay open after the last step
 //
 
 import AppKit
@@ -35,6 +38,8 @@ final class BenchRescanDriver {
     private weak var model: NeodiskViewModel?
     private var armed = false
     private var sawInitialScan = false
+    private var targets: [ScanTarget] = []
+    private var step = 0
 
     /// Arms the driver if NEODISK_BENCH_RESCANS is set. Safe to call more than
     /// once (per window onAppear); only the first arms.
@@ -49,6 +54,9 @@ final class BenchRescanDriver {
            let seconds = Double(rawInterval) {
             interval = .seconds(seconds)
         }
+        targets = (ProcessInfo.processInfo.environment["NEODISK_BENCH_TARGETS"] ?? "")
+            .split(separator: ":")
+            .map { ScanTarget(url: URL(filePath: String($0), directoryHint: .isDirectory)) }
         ScanTiming.note("bench: in-app rescan driver armed, \(count) rescans")
         FeltTiming.onEpisodeDisplayed = { [weak self] in self?.episodeDisplayed() }
     }
@@ -63,7 +71,7 @@ final class BenchRescanDriver {
         }
         remaining -= 1
         if remaining <= 0 {
-            terminate()
+            if ProcessInfo.processInfo.environment["NEODISK_BENCH_STAY"] == nil { terminate() }
         } else {
             scheduleNextRescan()
         }
@@ -71,11 +79,13 @@ final class BenchRescanDriver {
 
     private func scheduleNextRescan() {
         let model = model
+        let target = targets.isEmpty || step % 2 == 0 ? nil : targets[(step / 2) % targets.count]
+        step += 1
         Task { @MainActor in
             try? await Task.sleep(for: interval)
             // forcesRescan: refresh the on-screen target with its in-memory
             // snapshot as the incremental baseline — the in-app rescan path.
-            model?.rescan()
+            if let target { model?.startScan(target) } else { model?.rescan() }
         }
     }
 

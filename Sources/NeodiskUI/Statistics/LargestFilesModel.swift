@@ -28,11 +28,10 @@ final class LargestFilesModel {
     static let partialBrowseLimit = 100
 
     private(set) var isLoading = false
-    private(set) var visibleIDs: [String] = []
-    /// The tree `visibleIDs` were ranked in. Rows read their records from it,
-    /// so a newer partial tree doesn't re-render the list until the list
-    /// itself is refreshed.
-    private(set) var rowStore: FileTreeStore?
+    /// The listed files as records, not their tree: a hidden tab never refreshes,
+    /// and holding the tree kept every replaced scan in memory.
+    private(set) var rows: [FileNodeRecord] = []
+    var visibleIDs: [String] { rows.map(\.id) }
     private(set) var totalMatches = 0
     var filterText = "" {
         didSet {
@@ -77,7 +76,7 @@ final class LargestFilesModel {
         // Partial trees arrive several times a second; re-ranking and
         // re-rendering 500 rows for each kept the main thread busy. The final
         // tree always refreshes, and so does a list that is still empty.
-        if !snapshot.isComplete, !visibleIDs.isEmpty, self.includeCloudOnly == includeCloudOnly,
+        if !snapshot.isComplete, !rows.isEmpty, self.includeCloudOnly == includeCloudOnly,
            filterText.trimmingCharacters(in: .whitespaces).isEmpty,
            let lastPartialRefresh, lastPartialRefresh.duration(to: .now) < Self.partialRefreshInterval {
             return
@@ -92,7 +91,7 @@ final class LargestFilesModel {
         }
         // Keep the previous list on screen while a partial refresh rebuilds;
         // the spinner is for the nothing-yet case only.
-        isLoading = visibleIDs.isEmpty
+        isLoading = rows.isEmpty
         applyFilter()
     }
 
@@ -113,8 +112,7 @@ final class LargestFilesModel {
         isLoading = false
         guard !keepingRows else { return }
         lastPartialRefresh = nil
-        visibleIDs = []
-        rowStore = nil
+        rows = []
         totalMatches = 0
     }
 
@@ -162,8 +160,7 @@ final class LargestFilesModel {
         // the top-N rescan (which ranks by display weight) stays the truth.
         if !entries.isEmpty, !includeCloudOnly {
             isLoading = false
-            visibleIDs = entries.prefix(Self.browseLimit).map(\.id)
-            rowStore = snapshot.treeStore
+            rows = entries.prefix(Self.browseLimit).compactMap { snapshot.treeStore.node(id: $0.id) }
             totalMatches = entries.count
             return
         }
@@ -172,14 +169,14 @@ final class LargestFilesModel {
         loadTask = Task { [weak self] in
             let store = snapshot.treeStore
             let result = await Task.detached(priority: .userInitiated) {
-                TopLargestFiles.select(from: store, limit: limit, includeCloudOnly: includeCloudOnly)
+                let result = TopLargestFiles.select(from: store, limit: limit, includeCloudOnly: includeCloudOnly)
+                return (rows: result.ids.compactMap { store.node(id: $0) }, totalMatches: result.totalMatches)
             }.cancellableValue
             guard let self, !Task.isCancelled,
                   self.coordinator.snapshot?.id == snapshot.id,
                   self.filterText.trimmingCharacters(in: .whitespaces).isEmpty else { return }
             self.isLoading = false
-            self.visibleIDs = result.ids
-            self.rowStore = store
+            self.rows = result.rows
             self.totalMatches = result.totalMatches
         }
     }
@@ -231,15 +228,14 @@ final class LargestFilesModel {
                         return lhsWeight != rhsWeight ? lhsWeight > rhsWeight : lhs < rhs
                     }
                 }
-                return results
+                return (rows: results.ids.compactMap { store?.node(id: $0) }, totalMatches: results.totalMatches)
             }.cancellableValue
             guard let self, !Task.isCancelled,
                   self.filterText.trimmingCharacters(in: .whitespaces) == query else {
                 return
             }
             self.isLoading = false
-            self.visibleIDs = results.ids
-            self.rowStore = store
+            self.rows = results.rows
             self.totalMatches = results.totalMatches
         }
     }

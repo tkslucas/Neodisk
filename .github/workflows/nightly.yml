@@ -49,9 +49,9 @@ jobs:
         env:
           CERT_P12: ${{ secrets.DEVELOPER_ID_P12 }}
           CERT_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
-          APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
-          TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
-          NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
+          NOTARY_KEY: ${{ secrets.NOTARY_KEY }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER: ${{ secrets.NOTARY_ISSUER }}
         run: |
           kc="$RUNNER_TEMP/signing.keychain-db"; pw=$(uuidgen)
           security create-keychain -p "$pw" "$kc"
@@ -62,8 +62,11 @@ jobs:
           rm "$RUNNER_TEMP/cert.p12"
           security set-key-partition-list -S apple-tool:,apple: -s -k "$pw" "$kc" >/dev/null
           security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
+          # An App Store Connect API key: notarizes, can't reach the Apple ID's iCloud data.
+          printf '%s' "$NOTARY_KEY" > "$RUNNER_TEMP/notary.p8"
           xcrun notarytool store-credentials neodisk-notary --keychain "$kc" \
-            --apple-id "$APPLE_ID" --team-id "$TEAM_ID" --password "$NOTARY_PASSWORD"
+            --key "$RUNNER_TEMP/notary.p8" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER"
+          rm "$RUNNER_TEMP/notary.p8"
 
       - name: Build, sign and notarize
         env:

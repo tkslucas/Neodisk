@@ -85,7 +85,7 @@ final class BenchRescanDriver {
             try? await Task.sleep(for: interval)
             // forcesRescan: refresh the on-screen target with its in-memory
             // snapshot as the incremental baseline — the in-app rescan path.
-            if let target { model?.startScan(target) } else { model?.rescan() }
+            if let target { model?.startScan(target, forcesRescan: true) } else { model?.rescan() }
         }
     }
 

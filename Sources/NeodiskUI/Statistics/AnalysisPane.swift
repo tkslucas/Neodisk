@@ -139,9 +139,8 @@ struct StatsFileListView: View {
     var backHelp: LocalizedStringKey = ""
     let isLoading: Bool
     let visibleIDs: [String]
-    /// The tree the rows read from, when the list keeps its own (else the
-    /// displayed tree).
-    var rowStore: FileTreeStore?
+    /// The rows' records when the list keeps its own; else `visibleIDs` resolve in the displayed tree.
+    var rows: [FileNodeRecord]?
     let totalMatches: Int
     @Binding var filterText: String
     var onClose: (() -> Void)?
@@ -205,15 +204,16 @@ struct StatsFileListView: View {
                     set: { if let id = $0 { model.select(id) } }
                 )
                 ScrollViewReader { proxy in
-                    List(visibleIDs, id: \.self, selection: selection) { nodeID in
-                        if let node = (rowStore ?? model.store)?.node(id: nodeID) {
-                            FileResultRow(
-                                node: node,
-                                palette: model.vizPalette,
-                                includeCloudOnly: model.showsCloudOnlyFiles
-                            )
-                            .listRowSeparator(.hidden)
-                        }
+                    // Only ids the store still resolves: a row with no node
+                    // would be an empty, zero-height row.
+                    let nodes = rows ?? visibleIDs.compactMap { model.store?.node(id: $0) }
+                    List(nodes, id: \.id, selection: selection) { node in
+                        FileResultRow(
+                            node: node,
+                            palette: model.vizPalette,
+                            includeCloudOnly: model.showsCloudOnlyFiles
+                        )
+                        .listRowSeparator(.hidden)
                     }
                     .fileNodeActions(model: model)
                     .environment(\.defaultMinListRowHeight, 20)

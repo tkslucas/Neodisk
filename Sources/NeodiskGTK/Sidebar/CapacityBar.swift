@@ -7,6 +7,8 @@
 //  colors, a neutral tail for used space the scan couldn't see, and the
 //  empty track for free space. Hovering a stretch shows its name and size
 //  in a bubble pointing at it. Before any scan it's a plain used/total bar.
+//  Under a scanned folder (no space of its own) the categories alone fill
+//  it, and it hides until there is a scan.
 //
 
 import CGtk
@@ -18,7 +20,7 @@ import NeodiskKit
 final class CapacityBar: CanvasDelegate {
     var widget: GPtr { canvas.widget }
     private let canvas = Canvas()
-    private let space: VolumeSpaceInfo
+    private let space: VolumeSpaceInfo?
     private let bubble: GPtr
     private let bubbleTitle: GPtr
     private let bubbleSize: GPtr
@@ -29,6 +31,9 @@ final class CapacityBar: CanvasDelegate {
     var segments: [VolumeCapacitySegment] = [] {
         didSet {
             guard segments != oldValue else { return }
+            if space == nil {
+                Widgets.setVisible(canvas.widget, !segments.isEmpty)
+            }
             canvas.queueDraw()
             if let hoveredID { hover(at: nil, id: hoveredID) }
         }
@@ -37,7 +42,7 @@ final class CapacityBar: CanvasDelegate {
     private static let height = 6
     private static let freeTrackID = "free-track"
 
-    init(space: VolumeSpaceInfo) {
+    init(space: VolumeSpaceInfo?) {
         self.space = space
         gtk_widget_set_vexpand(ptr(canvas.widget), gbool(false))
         gtk_widget_set_focusable(ptr(canvas.widget), gbool(false))
@@ -56,6 +61,9 @@ final class CapacityBar: CanvasDelegate {
         gtk_widget_set_parent(ptr(bubble), ptr(canvas.widget))
         canvas.delegate = self
         attach(self, to: canvas.widget, key: "neodisk-capacity-bar")
+        if space == nil {
+            Widgets.setVisible(canvas.widget, false)
+        }
 
         let motion = raw(gtk_event_controller_motion_new())!
         connectPoint(motion, "enter") { [unowned self] x, _ in self.hover(at: x) }
@@ -89,6 +97,7 @@ final class CapacityBar: CanvasDelegate {
         let isDark = adw_style_manager_get_dark(adw_style_manager_get_default()) != 0
         Snapshot.fill(snapshot, bounds, (isDark ? RGBA.white : RGBA(red: 0, green: 0, blue: 0, alpha: 1)).withAlpha(0.12))
         if segments.isEmpty {
+            guard let space else { return }
             let used = Double(space.usedBytes) / Double(max(1, space.totalCapacity))
             Snapshot.fill(snapshot, CGRect(x: 0, y: 0, width: width * min(1, used), height: height), Accent.color)
             return
@@ -121,7 +130,9 @@ final class CapacityBar: CanvasDelegate {
             result.append(Stretch(id: segment.id, label: L(segment.label), size: segment.size, range: start...end))
             start = end
         }
-        result.append(Stretch(id: Self.freeTrackID, label: L("Available"), size: space.availableCapacity, range: start...max(start, width)))
+        if let space {
+            result.append(Stretch(id: Self.freeTrackID, label: L("Available"), size: space.availableCapacity, range: start...max(start, width)))
+        }
         return result
     }
 

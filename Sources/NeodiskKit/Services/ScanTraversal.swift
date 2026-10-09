@@ -971,7 +971,8 @@ nonisolated final class ScanTraversal {
             isSelfAccessible: meta.isReadable,
             isSynthetic: false,
             isAutoSummarized: true,
-            cloudOnlyLogicalSize: summary.cloudOnlyLogicalSize
+            cloudOnlyLogicalSize: summary.cloudOnlyLogicalSize,
+            summarizedClones: SummarizedClones.make(members: summary.cloneMembers)
         )
         hardLinkClaims.append(contentsOf: summary.hardLinkClaims)
         minimumAllocatedSizeByNodeID[atomicNode.id] = meta.allocatedSize

@@ -48,12 +48,20 @@ public struct FileNodeRecord: Identifiable, Sendable {
         let resourceIdentifier: Data?
         let cloneInfo: CloneInfo?
         let cloudOnlyLogicalSize: Int64
+        let summarizedClones: SummarizedClones?
 
-        init(path: String?, resourceIdentifier: Data?, cloneInfo: CloneInfo?, cloudOnlyLogicalSize: Int64) {
+        init(
+            path: String?,
+            resourceIdentifier: Data?,
+            cloneInfo: CloneInfo?,
+            cloudOnlyLogicalSize: Int64,
+            summarizedClones: SummarizedClones?
+        ) {
             self.path = path
             self.resourceIdentifier = resourceIdentifier
             self.cloneInfo = cloneInfo
             self.cloudOnlyLogicalSize = cloudOnlyLogicalSize
+            self.summarizedClones = summarizedClones
         }
     }
 
@@ -94,6 +102,9 @@ public struct FileNodeRecord: Identifiable, Sendable {
     /// the file shares blocks with others (refCount > 1). Drives clone
     /// deduplication so scanned totals track real disk usage.
     public var cloneInfo: CloneInfo? { extras?.cloneInfo }
+    /// The clone families inside a summarized directory (package or
+    /// auto-summarized folder), which has no file records to carry them.
+    public var summarizedClones: SummarizedClones? { extras?.summarizedClones }
 
     /// URL form of `path`. Computed on demand — see `path`.
     public nonisolated var url: URL {
@@ -126,7 +137,8 @@ public struct FileNodeRecord: Identifiable, Sendable {
         isAutoSummarized: Bool,
         isDataless: Bool = false,
         cloudOnlyLogicalSize: Int64? = nil,
-        cloneInfo: CloneInfo? = nil
+        cloneInfo: CloneInfo? = nil,
+        summarizedClones: SummarizedClones? = nil
     ) {
         self.init(
             id: id,
@@ -148,7 +160,8 @@ public struct FileNodeRecord: Identifiable, Sendable {
             isAutoSummarized: isAutoSummarized,
             isDataless: isDataless,
             cloudOnlyLogicalSize: cloudOnlyLogicalSize,
-            cloneInfo: cloneInfo
+            cloneInfo: cloneInfo,
+            summarizedClones: summarizedClones
         )
     }
 
@@ -172,11 +185,13 @@ public struct FileNodeRecord: Identifiable, Sendable {
         isAutoSummarized: Bool,
         isDataless: Bool = false,
         cloudOnlyLogicalSize: Int64? = nil,
-        cloneInfo: CloneInfo? = nil
+        cloneInfo: CloneInfo? = nil,
+        summarizedClones: SummarizedClones? = nil
     ) {
         let isDataless = isDataless && !isDirectory
         let cloudOnlyLogicalSize = cloudOnlyLogicalSize ?? (isDataless ? logicalSize : 0)
         let cloneInfo = isDirectory ? nil : cloneInfo
+        let summarizedClones = isDirectory ? summarizedClones : nil
 
         self.id = id
         self.name = name
@@ -213,12 +228,14 @@ public struct FileNodeRecord: Identifiable, Sendable {
         self.flags = flags
 
         let pathOverride = path == id ? nil : path
-        if pathOverride != nil || resourceIdentifier != nil || cloneInfo != nil || cloudOnlyLogicalSize != 0 {
+        if pathOverride != nil || resourceIdentifier != nil || cloneInfo != nil || cloudOnlyLogicalSize != 0
+            || summarizedClones != nil {
             extras = Extras(
                 path: pathOverride,
                 resourceIdentifier: resourceIdentifier,
                 cloneInfo: cloneInfo,
-                cloudOnlyLogicalSize: cloudOnlyLogicalSize
+                cloudOnlyLogicalSize: cloudOnlyLogicalSize,
+                summarizedClones: summarizedClones
             )
         } else {
             extras = nil
@@ -362,7 +379,8 @@ extension FileNodeRecord {
             isAutoSummarized: isAutoSummarized,
             isDataless: isDataless,
             cloudOnlyLogicalSize: cloudOnlyLogicalSize,
-            cloneInfo: cloneInfo
+            cloneInfo: cloneInfo,
+            summarizedClones: summarizedClones
         )
     }
 
@@ -399,13 +417,15 @@ extension FileNodeRecord {
             isAutoSummarized: isAutoSummarized,
             isDataless: isDataless,
             cloudOnlyLogicalSize: cloudOnlyLogicalSize,
-            cloneInfo: cloneInfo
+            cloneInfo: cloneInfo,
+            summarizedClones: summarizedClones
         )
     }
 
     nonisolated func replacingAllocatedSize(
         _ allocatedSize: Int64,
-        cloneInfo: CloneInfo?? = nil
+        cloneInfo: CloneInfo?? = nil,
+        summarizedClones: SummarizedClones?? = nil
     ) -> FileNodeRecord {
         FileNodeRecord(
             id: id,
@@ -427,7 +447,8 @@ extension FileNodeRecord {
             isAutoSummarized: isAutoSummarized,
             isDataless: isDataless,
             cloudOnlyLogicalSize: cloudOnlyLogicalSize,
-            cloneInfo: cloneInfo ?? self.cloneInfo
+            cloneInfo: cloneInfo ?? self.cloneInfo,
+            summarizedClones: summarizedClones ?? self.summarizedClones
         )
     }
 

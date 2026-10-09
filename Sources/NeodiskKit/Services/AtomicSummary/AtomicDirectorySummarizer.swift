@@ -298,7 +298,8 @@ nonisolated struct AtomicDirectorySummarizer: Sendable {
                 isSelfAccessible: metadata.isReadable,
                 isSynthetic: false,
                 isAutoSummarized: false,
-                cloudOnlyLogicalSize: summary.cloudOnlyLogicalSize
+                cloudOnlyLogicalSize: summary.cloudOnlyLogicalSize,
+                summarizedClones: SummarizedClones.make(members: summary.cloneMembers)
             ),
             warnings: summary.warnings,
             hardLinkClaims: summary.hardLinkClaims,

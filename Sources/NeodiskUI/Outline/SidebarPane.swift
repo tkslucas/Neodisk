@@ -18,7 +18,7 @@ struct SidebarPane: View {
 
     @State private var selection: Set<String> = []
     @State private var capacityByPath: [String: String] = [:]
-    @State private var volumeBars: [String: VolumeBarData] = [:]
+    @State private var kindBars: [String: VolumeBarData] = [:]
     /// The cloud account a sign-out confirmation is pending for.
     @State private var signOutTarget: ScanTarget?
     /// Frames and hover state for the scan-bar hover bubbles, which the List
@@ -52,7 +52,7 @@ struct SidebarPane: View {
         List(selection: $selection) {
             Section("Volumes") {
                 ForEach(model.volumeLocations) { target in
-                    builtInLocationRow(target, now: now, bar: volumeBars[target.id] ?? .empty)
+                    builtInLocationRow(target, now: now, bar: kindBars[target.id] ?? .empty)
                 }
             }
 
@@ -98,7 +98,7 @@ struct SidebarPane: View {
                         subtitle: capacityByPath[target.id] ?? target.id,
                         lastScanned: model.session.cachedScanInfo[target.id]?.lastScanDate,
                         now: now,
-                        bar: cloudBar(for: target),
+                        bar: cloudBar(for: target) ?? kindBars[target.id],
                         scanProgress: backgroundScanProgress(for: target),
                         onScanBarFrameChange: updateScanBarFrame,
                         onScanBarHover: updateScanBarHover
@@ -208,8 +208,8 @@ struct SidebarPane: View {
                 SystemIntegration.targetCapacityDescriptions()
             }.value
         }
-        .task(id: volumeBarsTaskID) {
-            await loadVolumeBars()
+        .task(id: kindBarsTaskID) {
+            await loadKindBars()
         }
     }
 
@@ -378,7 +378,8 @@ struct SidebarPane: View {
 
     /// The on-this-Mac / cloud-only bar under scanned cloud locations and
     /// folders — straight from the cache index, no snapshot decode. Volume
-    /// rows keep their kind-colored capacity bar instead.
+    /// rows keep their kind-colored capacity bar instead, and folders without
+    /// cloud-only files their kinds bar.
     private func cloudBar(for target: ScanTarget) -> VolumeBarData? {
         guard let info = model.session.cachedScanInfo[target.id] else { return nil }
         return VolumeBarData.cloudProportions(
@@ -387,15 +388,15 @@ struct SidebarPane: View {
         )
     }
 
-    // MARK: - Volume capacity bars
+    // MARK: - Kind bars
 
     /// Reloads whenever a sidecar lands or the palette changes. The
     /// sidecar generation — not the scan date — is the fresh-scan trigger:
     /// the sidecar is written asynchronously after the save that updates
     /// `cachedScanInfo`, so a date-keyed reload would run too early, find
     /// no sidecar, and leave the bar empty until the next scan.
-    private var volumeBarsTaskID: String {
-        let scans = model.volumeLocations.map { target in
+    private var kindBarsTaskID: String {
+        let scans = (model.volumeLocations + visibleFolders).map { target in
             "\(target.id)|\(model.session.cachedScanInfo[target.id].map(\.lastScanDate.timeIntervalSince1970) ?? 0)"
         }
         return scans.joined(separator: ",")
@@ -403,10 +404,10 @@ struct SidebarPane: View {
             + "|\(model.vizPalette.id)"
     }
 
-    private func loadVolumeBars() async {
+    private func loadKindBars() async {
         let palette = model.vizPalette
         var bars: [String: VolumeBarData] = [:]
-        for target in model.volumeLocations {
+        for target in model.volumeLocations + visibleFolders {
             // Never scanned → the bar stays an empty track (no sidecar to
             // color it, and no misleading half-answer from volume stats).
             guard let info = model.session.cachedScanInfo[target.id] else { continue }
@@ -415,15 +416,18 @@ struct SidebarPane: View {
             }
             let url = target.url
             let scannedBytes = info.totalAllocatedSize
+            let isVolume = target.kind == .volume
             bars[target.id] = await Task.detached(priority: .utility) {
-                VolumeBarData.make(
-                    space: VolumeSpaceInfo.load(for: url),
-                    sidecar: sidecar,
-                    scannedBytes: scannedBytes,
-                    palette: palette
-                )
+                isVolume
+                    ? VolumeBarData.make(
+                        space: VolumeSpaceInfo.load(for: url),
+                        sidecar: sidecar,
+                        scannedBytes: scannedBytes,
+                        palette: palette
+                    )
+                    : VolumeBarData.composition(sidecar: sidecar, scannedBytes: scannedBytes, palette: palette)
             }.value
         }
-        volumeBars = bars
+        kindBars = bars
     }
 }

@@ -93,6 +93,10 @@ nonisolated enum ScanSnapshotCodec {
         /// Trailing clone-family payload: device u64 · cloneID u64 ·
         /// refCount u32 · privateSize i64 (−1 when unknown).
         static let hasCloneInfo = NodeExtraFlags(rawValue: 1 << 0)
+        /// v5+, a summarized directory's clone families: count u32, then
+        /// per family device u64 · cloneID u64 · memberCount u32 ·
+        /// totalSize i64 · largestSize i64 · charge i64.
+        static let hasSummarizedClones = NodeExtraFlags(rawValue: 1 << 1)
     }
 
     private static let magic: UInt32 = 0x4E44_5343 // "NDSC"
@@ -249,12 +253,25 @@ nonisolated enum ScanSnapshotCodec {
         if version >= 4 {
             var extraFlags: NodeExtraFlags = []
             if node.cloneInfo != nil { extraFlags.insert(.hasCloneInfo) }
+            let summarizedClones = version >= 5 ? node.summarizedClones : nil
+            if summarizedClones != nil { extraFlags.insert(.hasSummarizedClones) }
             writer.append(extraFlags.rawValue)
             if let cloneInfo = node.cloneInfo {
                 writer.append(cloneInfo.device)
                 writer.append(cloneInfo.cloneID)
                 writer.append(cloneInfo.refCount)
                 writer.append(cloneInfo.privateSize ?? -1)
+            }
+            if let summarizedClones {
+                writer.append(UInt32(summarizedClones.families.count))
+                for family in summarizedClones.families {
+                    writer.append(family.familyKey.device)
+                    writer.append(family.familyKey.cloneID)
+                    writer.append(family.memberCount)
+                    writer.append(family.totalSize)
+                    writer.append(family.largestSize)
+                    writer.append(family.charge)
+                }
             }
         }
         writer.append(UInt32(childCount))
@@ -329,7 +346,10 @@ nonisolated enum ScanSnapshotCodec {
             aggregateStats: stats,
             isComplete: true,
             scanOptions: metadata.scanOptions,
-            incrementalCheckpoint: metadata.incrementalCheckpoint
+            // Before v5, packages counted the clones inside them at full
+            // size; without a checkpoint the next scan is a full one, which
+            // recounts them instead of carrying the old sizes forward.
+            incrementalCheckpoint: version >= 5 ? metadata.incrementalCheckpoint : nil
         )
     }
 
@@ -582,6 +602,7 @@ nonisolated enum ScanSnapshotCodec {
 
         let linkCount = flags.contains(.hasLinkCount) ? try reader.readUInt64() : 1
         var cloneInfo: CloneInfo?
+        var summarizedClones: SummarizedClones?
         if version >= 4 {
             let extraFlags = NodeExtraFlags(rawValue: try reader.readUInt8())
             if extraFlags.contains(.hasCloneInfo) {
@@ -595,6 +616,32 @@ nonisolated enum ScanSnapshotCodec {
                     refCount: max(refCount, 1),
                     privateSize: privateSize >= 0 ? privateSize : nil
                 )
+            }
+            if version >= 5, extraFlags.contains(.hasSummarizedClones) {
+                let count = Int(try reader.readUInt32())
+                guard count <= reader.remainingByteCount / 44 else {
+                    throw ScanSnapshotCacheError.corruptData("implausible clone family count \(count) for \(id)")
+                }
+                var families: [SummarizedCloneFamily] = []
+                families.reserveCapacity(count)
+                for _ in 0..<count {
+                    let familyKey = CloneFamilyKey(device: try reader.readUInt64(), cloneID: try reader.readUInt64())
+                    let memberCount = try reader.readUInt32()
+                    let totalSize = try reader.readInt64()
+                    let largestSize = try reader.readInt64()
+                    let charge = try reader.readInt64()
+                    guard totalSize >= 0, largestSize >= 0, charge >= 0 else {
+                        throw ScanSnapshotCacheError.corruptData("node \(id) has a negative clone size")
+                    }
+                    families.append(SummarizedCloneFamily(
+                        familyKey: familyKey,
+                        memberCount: memberCount,
+                        totalSize: totalSize,
+                        largestSize: largestSize,
+                        charge: charge
+                    ))
+                }
+                summarizedClones = SummarizedClones(families: families)
             }
         }
         let childCount = Int(try reader.readUInt32())
@@ -623,7 +670,8 @@ nonisolated enum ScanSnapshotCodec {
             isAutoSummarized: flags.contains(.isAutoSummarized),
             isDataless: hasCloudOnly && !isDirectory,
             cloudOnlyLogicalSize: isDirectory ? directoryCloudOnlySize : nil,
-            cloneInfo: cloneInfo
+            cloneInfo: cloneInfo,
+            summarizedClones: summarizedClones
         )
         return (node, childCount)
     }

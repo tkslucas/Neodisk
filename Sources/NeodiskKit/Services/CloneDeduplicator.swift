@@ -13,7 +13,9 @@
 //  record that lacks it) and which stays stamped in the records so cached
 //  snapshots rebalance without the volume mounted. Diverged clones can be slightly
 //  under-counted; the residual surfaces as hidden space, never as a
-//  negative.
+//  negative. A summarized directory (package, auto-summarized folder) has no
+//  file records, so its `summarizedClones` tallies stand in for its members:
+//  it is charged for each member it doesn't keep.
 //
 
 #if canImport(Darwin)
@@ -82,13 +84,8 @@ nonisolated enum CloneDeduplicator {
         progress: (_ fraction: Double) -> Void = { _ in }
     ) rethrows {
         let groupSince = ScanProfile.now()
-        var memberIndicesByFamily: [CloneFamilyKey: [Int32]] = [:]
-        for (index, node) in nodes.enumerated() {
-            guard let cloneInfo = node.cloneInfo, !node.isDirectory, !node.isSymbolicLink,
-                  !node.isSynthetic else { continue }
-            memberIndicesByFamily[cloneInfo.familyKey, default: []].append(Int32(index))
-        }
-        ScanProfile.end(.cloneGroup, since: groupSince, count: memberIndicesByFamily.count)
+        let members = try familyMembers(of: nodes, families: nil, cancellationCheck: cancellationCheck)
+        ScanProfile.end(.cloneGroup, since: groupSince, count: members.byFamily.count)
         let orderSince = ScanProfile.now()
 
         // Every family's non-first members (by path, then id) are the ones
@@ -96,12 +93,21 @@ nonisolated enum CloneDeduplicator {
         // families into one list keeps the output byte-identical regardless of
         // family iteration order.
         var chargedIndices: [Int32] = []
-        for memberIndices in memberIndicesByFamily.values where memberIndices.count > 1 {
-            let sorted = memberIndices.sorted { SharedSizeDeduplication.precedes(nodes[Int($0)], nodes[Int($1)]) }
-            chargedIndices.append(contentsOf: sorted.dropFirst())
+        var summaryCharges: SummaryCharges = [:]
+        for family in members.byFamily.values {
+            // A lone file has nothing to share with.
+            if family.count == 1, family[0].family < 0 { continue }
+            for (position, member) in ordered(family, in: nodes, summaryPaths: members.summaryPaths).enumerated() {
+                if member.family >= 0 {
+                    recordSummaryCharge(of: member, holdsFirstMember: position == 0, in: nodes, into: &summaryCharges)
+                } else if position > 0 {
+                    chargedIndices.append(member.index)
+                }
+            }
         }
         ScanProfile.end(.cloneOrder, since: orderSince, count: chargedIndices.count)
-        guard !chargedIndices.isEmpty else { return }
+        var changedIndices = applySummaryCharges(summaryCharges, to: &nodes)
+        guard !chargedIndices.isEmpty || !changedIndices.isEmpty else { return }
         let applySince = ScanProfile.now()
         defer { ScanProfile.end(.cloneApply, since: applySince) }
 
@@ -150,7 +156,6 @@ nonisolated enum CloneDeduplicator {
         }
 
         // Apply the charges sequentially, in the original order.
-        var changedIndices: Set<Int32> = []
         for (offset, index) in chargedIndices.enumerated() {
             let node = nodes[Int(index)]
             let privateSize = resolvedPrivateSizes[offset]
@@ -192,52 +197,163 @@ nonisolated enum CloneDeduplicator {
         families: Set<CloneFamilyKey>? = nil,
         cancellationCheck: () throws -> Void = {}
     ) throws -> FileTreeStore {
-        let storage = store.storage
         if let families, families.isEmpty { return store }
-        var memberIndicesByFamily: [CloneFamilyKey: [Int32]] = [:]
-        for (offset, node) in storage.nodes.enumerated() {
-            if offset.isMultiple(of: 256) {
-                try cancellationCheck()
-            }
-            guard let cloneInfo = node.cloneInfo, !node.isDirectory, !node.isSymbolicLink,
-                  !node.isSynthetic else { continue }
-            let familyKey = cloneInfo.familyKey
-            if let families, !families.contains(familyKey) { continue }
-            memberIndicesByFamily[familyKey, default: []].append(Int32(offset))
-        }
+        let members = try familyMembers(
+            of: store.storage.nodes,
+            families: families,
+            cancellationCheck: cancellationCheck
+        )
         // No early-out on families of one: a family shrunk by a subtree
         // removal still needs its surviving member restored to full size.
-        guard !memberIndicesByFamily.isEmpty else { return store }
+        guard !members.byFamily.isEmpty else { return store }
 
         return try AncestorRebuilder.rebalancedStore(store, cancellationCheck: cancellationCheck) { nodes in
             var changedIndices: Set<Int32> = []
-            for memberIndices in memberIndicesByFamily.values {
+            var summaryCharges: SummaryCharges = [:]
+            for family in members.byFamily.values {
                 try cancellationCheck()
-                let sorted = memberIndices.sorted { SharedSizeDeduplication.precedes(nodes[Int($0)], nodes[Int($1)]) }
-                // A subtree removal can promote a previously-charged member to
-                // first; restore it to full size so the family's shared blocks
-                // stay counted exactly once. Never touch hard-link-managed
-                // nodes (the pass before this one owns their sizes), and only
-                // undo a charge this deduplicator made (stamped privateSize).
-                let firstIndex = sorted[0]
-                let first = nodes[Int(firstIndex)]
-                let firstIsHardLinkManaged = first.linkCount > 1 && first.fileIdentity != nil
-                if !firstIsHardLinkManaged,
-                   first.cloneInfo?.privateSize != nil,
-                   first.allocatedSize != first.unduplicatedAllocatedSize {
-                    nodes[Int(firstIndex)] = first.replacingAllocatedSize(first.unduplicatedAllocatedSize)
-                    changedIndices.insert(firstIndex)
-                }
-                for index in sorted.dropFirst() {
+                for (position, member) in ordered(family, in: nodes, summaryPaths: members.summaryPaths).enumerated() {
+                    if member.family >= 0 {
+                        recordSummaryCharge(of: member, holdsFirstMember: position == 0, in: nodes, into: &summaryCharges)
+                        continue
+                    }
+                    let index = member.index
                     let node = nodes[Int(index)]
+                    if position == 0 {
+                        // A subtree removal can promote a previously-charged
+                        // member to first; restore it to full size so the
+                        // family's shared blocks stay counted exactly once.
+                        // Never touch hard-link-managed nodes (the pass before
+                        // this one owns their sizes), and only undo a charge
+                        // this deduplicator made (stamped privateSize).
+                        let isHardLinkManaged = node.linkCount > 1 && node.fileIdentity != nil
+                        if !isHardLinkManaged,
+                           node.cloneInfo?.privateSize != nil,
+                           node.allocatedSize != node.unduplicatedAllocatedSize {
+                            nodes[Int(index)] = node.replacingAllocatedSize(node.unduplicatedAllocatedSize)
+                            changedIndices.insert(index)
+                        }
+                        continue
+                    }
                     let charged = min(node.allocatedSize, max(node.cloneInfo?.privateSize ?? 0, 0))
                     guard charged != node.allocatedSize else { continue }
                     nodes[Int(index)] = node.replacingAllocatedSize(charged)
                     changedIndices.insert(index)
                 }
             }
+            changedIndices.formUnion(applySummaryCharges(summaryCharges, to: &nodes))
             return changedIndices
         }
+    }
+
+    /// One member of a clone family: a file record, or a summarized
+    /// directory's tally of the family (`family` indexes its
+    /// `summarizedClones.families`; -1 for a file).
+    private struct Member {
+        let index: Int32
+        let family: Int32
+    }
+
+    /// Each family's members, limited to `families` when given, plus each
+    /// summarized directory's sort key (see `ordered`).
+    private struct FamilyMembers {
+        var byFamily: [CloneFamilyKey: [Member]] = [:]
+        var summaryPaths: [Int32: String] = [:]
+    }
+
+    private static func familyMembers(
+        of nodes: [FileNodeRecord],
+        families: Set<CloneFamilyKey>?,
+        cancellationCheck: () throws -> Void
+    ) rethrows -> FamilyMembers {
+        var members = FamilyMembers()
+        for (offset, node) in nodes.enumerated() {
+            if offset.isMultiple(of: 4_096) {
+                try cancellationCheck()
+            }
+            if node.isDirectory {
+                guard let summarized = node.summarizedClones else { continue }
+                var isMember = false
+                for (family, tally) in summarized.families.enumerated() {
+                    if let families, !families.contains(tally.familyKey) { continue }
+                    members.byFamily[tally.familyKey, default: []]
+                        .append(Member(index: Int32(offset), family: Int32(family)))
+                    isMember = true
+                }
+                if isMember {
+                    members.summaryPaths[Int32(offset)] = node.path + "/"
+                }
+            } else if let cloneInfo = node.cloneInfo, !node.isSymbolicLink, !node.isSynthetic {
+                let familyKey = cloneInfo.familyKey
+                if let families, !families.contains(familyKey) { continue }
+                members.byFamily[familyKey, default: []].append(Member(index: Int32(offset), family: -1))
+            }
+        }
+        return members
+    }
+
+    /// A family's members in charge order (`SharedSizeDeduplication.precedes`).
+    /// A summarized directory's members sort as its path plus "/": they live
+    /// below it, so after it and before a sibling whose name extends its own.
+    private static func ordered(
+        _ members: [Member],
+        in nodes: [FileNodeRecord],
+        summaryPaths: [Int32: String]
+    ) -> [Member] {
+        guard members.count > 1 else { return members }
+        guard members.contains(where: { $0.family >= 0 }) else {
+            return members.sorted { SharedSizeDeduplication.precedes(nodes[Int($0.index)], nodes[Int($1.index)]) }
+        }
+        let keyed: [(path: String, id: String, member: Member)] = members.map { member in
+            let node = nodes[Int(member.index)]
+            let path = member.family >= 0 ? summaryPaths[member.index] ?? node.path + "/" : node.path
+            return (path, node.id, member)
+        }
+        let sorted = keyed.sorted { lhs, rhs in
+            lhs.path == rhs.path ? lhs.id < rhs.id : lhs.path < rhs.path
+        }
+        return sorted.map(\.member)
+    }
+
+    /// New charges per summarized directory (node index) and family offset.
+    private typealias SummaryCharges = [Int32: [Int32: Int64]]
+
+    private static func recordSummaryCharge(
+        of member: Member,
+        holdsFirstMember: Bool,
+        in nodes: [FileNodeRecord],
+        into charges: inout SummaryCharges
+    ) {
+        guard let tally = nodes[Int(member.index)].summarizedClones?.families[Int(member.family)] else { return }
+        charges[member.index, default: [:]][member.family] = tally.charge(holdsFirstMember: holdsFirstMember)
+    }
+
+    /// Moves each summarized directory by the change in its families'
+    /// charges and stamps the new ones; returns the directories it resized.
+    private static func applySummaryCharges(
+        _ charges: SummaryCharges,
+        to nodes: inout [FileNodeRecord]
+    ) -> Set<Int32> {
+        var changedIndices: Set<Int32> = []
+        for (index, chargeByFamily) in charges {
+            let node = nodes[Int(index)]
+            guard var families = node.summarizedClones?.families else { continue }
+            var delta: Int64 = 0
+            for (family, charge) in chargeByFamily where families[Int(family)].charge != charge {
+                delta += charge - families[Int(family)].charge
+                families[Int(family)] = families[Int(family)].withCharge(charge)
+            }
+            guard families != node.summarizedClones?.families else { continue }
+            let allocatedSize = max(0, node.allocatedSize - delta)
+            nodes[Int(index)] = node.replacingAllocatedSize(
+                allocatedSize,
+                summarizedClones: .some(SummarizedClones(families: families))
+            )
+            if allocatedSize != node.allocatedSize {
+                changedIndices.insert(index)
+            }
+        }
+        return changedIndices
     }
 }
 
@@ -255,6 +371,9 @@ nonisolated enum SharedSizeDeduplication {
         var hardLinkIdentities = Set<FileIdentity>()
 
         mutating func include(_ node: FileNodeRecord) {
+            for tally in node.summarizedClones?.families ?? [] {
+                cloneFamilies.insert(tally.familyKey)
+            }
             guard !node.isDirectory, !node.isSymbolicLink, !node.isSynthetic else { return }
             if let cloneInfo = node.cloneInfo {
                 cloneFamilies.insert(cloneInfo.familyKey)

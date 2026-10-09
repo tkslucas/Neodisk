@@ -17,7 +17,8 @@ import NeodiskAppModel
 /// The macOS-storage-style bar under a volume row: one segment per file
 /// kind category (same colors as the Kinds tab, palette-aware), a neutral
 /// segment for used-but-unscanned capacity (hidden space / other users),
-/// and the empty track standing for free space. `.empty` before any scan.
+/// and the empty track standing for free space. Under a scanned folder, its
+/// categories alone fill the bar. `.empty` before any scan.
 nonisolated struct VolumeBarData: Equatable, Sendable {
     struct Segment: Equatable, Sendable, Identifiable {
         let id: String
@@ -102,6 +103,28 @@ nonisolated struct VolumeBarData: Equatable, Sendable {
             )
         }
         return VolumeBarData(segments: segments, availableSize: space.availableCapacity)
+    }
+
+    /// A scanned folder's bar: its categories, filling the bar.
+    static func composition(
+        sidecar: KindStatsSidecar,
+        scannedBytes: Int64,
+        palette: VizPalette
+    ) -> VolumeBarData {
+        let segments = VolumeCapacitySegments.composition(
+            sidecar: sidecar,
+            scannedBytes: scannedBytes,
+            palette: palette
+        ).map { segment in
+            Segment(
+                id: segment.id,
+                label: segment.label,
+                size: segment.size,
+                rgb: segment.rgb,
+                fraction: segment.fraction
+            )
+        }
+        return VolumeBarData(segments: segments, availableSize: nil)
     }
 }
 

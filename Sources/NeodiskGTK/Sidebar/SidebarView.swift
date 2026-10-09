@@ -25,9 +25,11 @@ final class SidebarView {
     private var locations: [Location] = []
     private var recents: [Location] = []
     private var volumeMonitor: GObjectRef?
-    /// The bars on screen, by location, and the segments last loaded for
-    /// each scanned volume (rows are rebuilt often; segments outlive them).
+    /// The bars on screen, by location (each list's own, as each is rebuilt
+    /// on its own), and the segments last loaded for each scanned location
+    /// (rows are rebuilt often; segments outlive them).
     private var capacityBars: [String: CapacityBar] = [:]
+    private var recentBars: [String: CapacityBar] = [:]
     private var segments: [String: [VolumeCapacitySegment]] = [:]
     private var segmentsTask: Task<Void, Never>?
     private var tokens: [ObservationToken] = []
@@ -114,7 +116,7 @@ final class SidebarView {
         capacityBars = [:]
         gtk_list_box_remove_all(ptr(locationsList))
         for location in locations {
-            gtk_list_box_append(ptr(locationsList), ptr(makeRow(for: location)))
+            gtk_list_box_append(ptr(locationsList), ptr(makeRow(for: location, bars: &capacityBars)))
         }
         syncSelection(with: model.target?.id)
     }
@@ -124,26 +126,29 @@ final class SidebarView {
         recents = folders
             .filter { !locationIDs.contains($0) && FileManager.default.fileExists(atPath: $0) }
             .map(Locations.folder)
+        recentBars = [:]
         gtk_list_box_remove_all(ptr(recentsList))
         for location in recents {
-            gtk_list_box_append(ptr(recentsList), ptr(makeRow(for: location)))
+            gtk_list_box_append(ptr(recentsList), ptr(makeRow(for: location, bars: &recentBars)))
         }
+        reloadSegments()
         Widgets.setVisible(recentsHeading, !recents.isEmpty)
         Widgets.setVisible(recentsList, !recents.isEmpty)
         syncSelection(with: model.target?.id)
     }
 
-    private func makeRow(for location: Location) -> GPtr {
+    private func makeRow(for location: Location, bars: inout [String: CapacityBar]) -> GPtr {
         let icon = Widgets.image(location.iconName)
         let title = Widgets.label(location.title, ellipsize: true)
         let subtitle = Widgets.label(subtitleText(for: location), classes: ["dim-label", "neodisk-caption"], ellipsize: true)
         let text = Widgets.box(GTK_ORIENTATION_VERTICAL, spacing: 2, [title, subtitle])
         gtk_widget_set_hexpand(ptr(text), gbool(true))
 
-        if let space = location.space, space.totalCapacity > 0 {
+        let space = location.space.flatMap { $0.totalCapacity > 0 ? $0 : nil }
+        if space != nil || location.space == nil {
             let bar = CapacityBar(space: space)
             bar.segments = segments[location.id] ?? []
-            capacityBars[location.id] = bar
+            bars[location.id] = bar
             Widgets.setMargins(bar.widget, top: 4, bottom: 1, end: 2)
             Widgets.append(text, bar.widget)
         }
@@ -159,28 +164,33 @@ final class SidebarView {
         return row
     }
 
-    /// Colors each scanned volume's bar from its kind-stats sidecar. A
-    /// volume never scanned keeps the plain used/total bar.
+    /// Colors each scanned location's bar from its kind-stats sidecar: a
+    /// volume's capacity, a folder's makeup. A volume never scanned keeps
+    /// the plain used/total bar; a folder never scanned shows none.
     private func reloadSegments() {
-        let volumes = locations.filter { $0.space != nil && model.cachedScans[$0.id] != nil }
-        let scannedBytes = volumes.map { model.cachedScans[$0.id]?.totalAllocatedSize ?? 0 }
+        let scanned = (locations + recents).filter { model.cachedScans[$0.id] != nil }
+        let scannedBytes = scanned.map { model.cachedScans[$0.id]?.totalAllocatedSize ?? 0 }
         let palette = model.palette
         segmentsTask?.cancel()
         segmentsTask = Task { [weak self] in
             guard let self else { return }
             var loaded: [String: [VolumeCapacitySegment]] = [:]
-            for (volume, scanned) in zip(volumes, scannedBytes) {
-                guard let sidecar = await self.model.loadKindStatsSidecar(forTargetID: volume.id) else { continue }
-                loaded[volume.id] = VolumeCapacitySegments.make(
-                    space: volume.space,
-                    sidecar: sidecar,
-                    scannedBytes: scanned,
-                    palette: palette
-                )
+            for (location, scannedBytes) in zip(scanned, scannedBytes) {
+                guard let sidecar = await self.model.loadKindStatsSidecar(forTargetID: location.id) else { continue }
+                loaded[location.id] = if let space = location.space {
+                    VolumeCapacitySegments.make(
+                        space: space,
+                        sidecar: sidecar,
+                        scannedBytes: scannedBytes,
+                        palette: palette
+                    )
+                } else {
+                    VolumeCapacitySegments.composition(sidecar: sidecar, scannedBytes: scannedBytes, palette: palette)
+                }
             }
             guard !Task.isCancelled else { return }
             self.segments = loaded
-            for (id, bar) in self.capacityBars {
+            for (id, bar) in self.capacityBars.merging(self.recentBars, uniquingKeysWith: { location, _ in location }) {
                 bar.segments = loaded[id] ?? []
             }
         }

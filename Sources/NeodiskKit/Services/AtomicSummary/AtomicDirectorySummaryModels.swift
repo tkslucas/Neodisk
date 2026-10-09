@@ -63,6 +63,7 @@ nonisolated struct AtomicDirectorySummary: Sendable {
     let isAccessible: Bool
     let warnings: [ScanWarning]
     let hardLinkClaims: [HardLinkClaim]
+    let cloneMembers: [SummarizedCloneMember]
     /// Pool jobs whose live progress contribution is still displayed. The
     /// traversal acknowledges these IDs when it folds this summary into its
     /// authoritative metrics base.
@@ -95,6 +96,7 @@ nonisolated struct AtomicDirectorySummaryPartial: Sendable {
     var isAccessible = true
     var warnings: [ScanWarning] = []
     var hardLinkClaims: [HardLinkClaim] = []
+    var cloneMembers: [SummarizedCloneMember] = []
     var progressJobIDs: [Int] = []
 
     mutating func updateAccessibility(_ readable: Bool) {
@@ -118,6 +120,9 @@ nonisolated struct AtomicDirectorySummaryPartial: Sendable {
         if let claim = HardLinkDeduplicator.claim(for: metadata, ownerNodeID: ownerNodeID, path: path) {
             hardLinkClaims.append(claim)
         }
+        if let cloneInfo = metadata.cloneInfo, !metadata.isDirectory, !metadata.isSymbolicLink {
+            cloneMembers.append(SummarizedCloneMember(familyKey: cloneInfo.familyKey, allocatedSize: metadata.allocatedSize))
+        }
     }
 
     mutating func merge(_ other: AtomicDirectorySummaryPartial) {
@@ -128,6 +133,7 @@ nonisolated struct AtomicDirectorySummaryPartial: Sendable {
         isAccessible = isAccessible && other.isAccessible
         warnings.append(contentsOf: other.warnings)
         hardLinkClaims.append(contentsOf: other.hardLinkClaims)
+        cloneMembers.append(contentsOf: other.cloneMembers)
         progressJobIDs.append(contentsOf: other.progressJobIDs)
     }
 
@@ -139,6 +145,7 @@ nonisolated struct AtomicDirectorySummaryPartial: Sendable {
         isAccessible = isAccessible && summary.isAccessible
         warnings.append(contentsOf: summary.warnings)
         hardLinkClaims.append(contentsOf: summary.hardLinkClaims)
+        cloneMembers.append(contentsOf: summary.cloneMembers)
         progressJobIDs.append(contentsOf: summary.progressJobIDs)
     }
 
@@ -151,6 +158,7 @@ nonisolated struct AtomicDirectorySummaryPartial: Sendable {
             isAccessible: isAccessible,
             warnings: warnings,
             hardLinkClaims: hardLinkClaims,
+            cloneMembers: cloneMembers,
             progressJobIDs: progressJobIDs + additionalProgressJobIDs
         )
     }

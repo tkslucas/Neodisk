@@ -5,7 +5,7 @@
 //  The sidebar capacity bar's segments, shared by both apps: category
 //  segments plus the uncategorized remainder tile the scanned tree, and the
 //  hidden tail uses the same used-minus-scanned formula as the sunburst
-//  legend.
+//  legend; a folder's bar is its categories alone.
 //
 
 import Foundation
@@ -58,6 +58,45 @@ import NeodiskKit
             palette: .standard
         )
         #expect(!segments.contains { $0.id == "unscanned" })
+    }
+
+    @Test func overCountedScanStillLeavesTheFreeTrack() {
+        // 900 scanned on a volume using 600: the categories share the used
+        // space, so the free 400 stays visible; sizes stay as scanned.
+        let segments = VolumeCapacitySegments.make(
+            space: space,
+            sidecar: sidecar(categories: [
+                PersistedKindStat(kindID: "cat-images", size: 600, count: 3),
+                PersistedKindStat(kindID: "cat-other", size: 300, count: 1),
+            ]),
+            scannedBytes: 900,
+            palette: .standard
+        )
+        #expect(segments.map(\.size) == [600, 300])
+        #expect(segments.map(\.fraction) == [0.4, 0.2])
+    }
+
+    @Test func folderCompositionFillsTheBar() {
+        let segments = VolumeCapacitySegments.composition(
+            sidecar: sidecar(categories: [
+                PersistedKindStat(kindID: "cat-images", size: 300, count: 3),
+                PersistedKindStat(kindID: "cat-other", size: 100, count: 1),
+            ]),
+            scannedBytes: 500,
+            palette: .standard
+        )
+        #expect(segments.map(\.id) == ["cat-images", "cat-other"])
+        #expect(segments.map(\.size) == [300, 200])
+        #expect(segments.map(\.fraction) == [0.6, 0.4])
+    }
+
+    @Test func emptyFolderYieldsNoSegments() {
+        let segments = VolumeCapacitySegments.composition(
+            sidecar: sidecar(categories: []),
+            scannedBytes: 0,
+            palette: .standard
+        )
+        #expect(segments.isEmpty)
     }
 
     @Test func missingSpaceInfoYieldsNoSegments() {

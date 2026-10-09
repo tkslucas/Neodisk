@@ -105,9 +105,21 @@ import Testing
         // Metadata is version-independent; an explicit v2 file must carry the
         // new fields just as v3 does.
         let blob = try ScanSnapshotCodec.encode(makeSnapshot(), version: 2)
-        let decoded = try ScanSnapshotCodec.decode(blob)
-        #expect(decoded.incrementalCheckpoint == Self.checkpoint)
-        #expect(decoded.scanOptions == Self.options)
+        #expect(try ScanSnapshotCodec.decode(blob).scanOptions == Self.options)
+        let url = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString + ".ndscan")
+        try blob.write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        #expect(try ScanSnapshotCodec.readMetadata(fromFileAt: url).incrementalCheckpoint == Self.checkpoint)
+    }
+
+    @Test func testPreV5SnapshotsAreNoIncrementalBaseline() throws {
+        // Their packages counted inner clones at full size: a full rescan
+        // has to recount them.
+        let blob = try ScanSnapshotCodec.encode(makeSnapshot(), version: 4)
+        #expect(try ScanSnapshotCodec.decode(blob).incrementalCheckpoint == nil)
+        let current = try ScanSnapshotCodec.encode(makeSnapshot())
+        #expect(try ScanSnapshotCodec.decode(current).incrementalCheckpoint == Self.checkpoint)
     }
 
     @Test func testNonPersistableSourceNilsCheckpoint() throws {

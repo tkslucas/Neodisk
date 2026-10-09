@@ -15,7 +15,11 @@
 //  negative.
 //
 
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 import Foundation
 
 nonisolated enum CloneDeduplicator {
@@ -30,6 +34,7 @@ nonisolated enum CloneDeduplicator {
     /// Called only for duplicate clone-family members, never in scan hot
     /// loops.
     nonisolated static func systemPrivateSize(path: String) -> Int64? {
+        #if canImport(Darwin)
         ScanSyscallTally.recordCloneGetattr(count: 1)
         var request = attrlist()
         request.bitmapcount = u_short(ATTR_BIT_MAP_COUNT)
@@ -48,6 +53,11 @@ nonisolated enum CloneDeduplicator {
             guard returnedLength >= 12 else { return nil }
             return max(raw.loadUnaligned(fromByteOffset: 4, as: Int64.self), 0)
         }
+        #else
+        // Clone families are an APFS attribute; other platforms' readers
+        // never record `cloneInfo`, so nothing reaches this pass.
+        return nil
+        #endif
     }
 
     /// Applies clone deduplication to the finalize handoff's mutable tree

@@ -8,12 +8,12 @@
 //
 
 import Foundation
-import Compression
 
 /// Encodes a complete `ScanSnapshot` to a self-contained binary blob:
 ///
 ///     magic (4) · version (4) · metadata length (4) · metadata JSON
-///     payload — LZFSE-compressed in version 2, raw in version 1:
+///     payload — compressed in version 2+ (LZFSE on Apple platforms, zstd
+///     on Linux; see SnapshotPayloadCompression.swift), raw in version 1:
 ///         warning count (4) · warnings
 ///         node records in depth-first preorder, each carrying its child count
 ///
@@ -147,15 +147,21 @@ nonisolated enum ScanSnapshotCodec {
             payload.appendString(warning.category.rawValue)
         }
 
+        // Display preorder, not array order: the decoder rebuilds each
+        // directory's children in stream order, and an in-place rebuild
+        // (dedup, splice) may have re-sorted a directory's child slots
+        // without moving its records.
         let storage = store.storage
-        for (index, node) in storage.nodes.enumerated() {
-            if index & 1023 == 0 { try Task.checkCancellation() }
-            let parentIndex = storage.parentIndices[index]
+        var visited = 0
+        try storage.forEachIndexInDisplayPreorder { index in
+            if visited & 1023 == 0 { try Task.checkCancellation() }
+            visited += 1
+            let parentIndex = storage.parentIndices[Int(index)]
             let parentID = parentIndex >= 0 ? storage.nodes[Int(parentIndex)].id : nil
             appendNode(
-                node,
+                storage.nodes[Int(index)],
                 parentID: parentID,
-                childCount: storage.childCount(of: Int32(index)),
+                childCount: storage.childCount(of: index),
                 version: version,
                 to: &payload
             )
@@ -171,7 +177,7 @@ nonisolated enum ScanSnapshotCodec {
         writer.append(UInt32(metadataData.count))
         writer.data.append(metadataData)
         if version >= 2 {
-            writer.data.append(try (payload.data as NSData).compressed(using: .lzfse) as Data)
+            try appendCompressedPayload(payload.data, to: &writer.data)
         } else {
             writer.data.append(payload.data)
         }
@@ -261,14 +267,6 @@ nonisolated enum ScanSnapshotCodec {
         let (version, metadataLength) = try validatedHeader(from: &headerReader)
         let metadata = try decodeMetadata(try headerReader.readBytes(count: metadataLength))
 
-        let payload: Data
-        if version >= 2 {
-            let compressed = try headerReader.readBytes(count: headerReader.remainingByteCount)
-            payload = try decompressPayload(compressed)
-        } else {
-            payload = try headerReader.readBytes(count: headerReader.remainingByteCount)
-        }
-
         let stats = ScanAggregateStats(
             totalAllocatedSize: metadata.totalAllocatedSize,
             totalLogicalSize: metadata.totalLogicalSize,
@@ -278,38 +276,23 @@ nonisolated enum ScanSnapshotCodec {
             inaccessibleItemCount: metadata.inaccessibleItemCount
         )
 
-        // The payload is decoded through raw-pointer reads: per-node Data
-        // subscripting and subdata copies were a measurable share of loading
-        // a millions-of-nodes snapshot.
-        let (warnings, store) = try payload.withUnsafeBytes { bytes in
-            var reader = PayloadReader(buffer: bytes)
-
-            let warningCount = Int(try reader.readUInt32())
-            guard warningCount <= reader.remainingByteCount / 12 else {
-                throw ScanSnapshotCacheError.corruptData("implausible warning count \(warningCount)")
+        let warnings: [ScanWarning]
+        let store: FileTreeStore
+        if version >= 2 {
+            // Parsed as it decompresses: the whole payload (hundreds of MB
+            // for millions of nodes) never sits in memory beside the tree.
+            let compressed = headerReader.readSlice(count: headerReader.remainingByteCount)
+            var reader = StreamingPayloadReader(source: try PayloadDecompressor(compressed: compressed))
+            (warnings, store) = try decodePayload(from: &reader, metadata: metadata, stats: stats, version: version)
+        } else {
+            // The payload is decoded through raw-pointer reads: per-node Data
+            // subscripting and subdata copies were a measurable share of
+            // loading a millions-of-nodes snapshot.
+            let payload = headerReader.readSlice(count: headerReader.remainingByteCount)
+            (warnings, store) = try payload.withUnsafeBytes { bytes in
+                var reader = PayloadReader(buffer: bytes)
+                return try decodePayload(from: &reader, metadata: metadata, stats: stats, version: version)
             }
-            var warnings: [ScanWarning] = []
-            warnings.reserveCapacity(warningCount)
-            for _ in 0..<warningCount {
-                let path = try reader.readString()
-                let message = try reader.readString()
-                let categoryRaw = try reader.readString()
-                guard let category = ScanWarningCategory(rawValue: categoryRaw) else {
-                    throw ScanSnapshotCacheError.corruptData("unknown warning category \(categoryRaw)")
-                }
-                warnings.append(ScanWarning(path: path, message: message, category: category))
-            }
-
-            let store = try readTreeStore(
-                nodeCount: metadata.nodeCount,
-                aggregateStats: stats,
-                version: version,
-                from: &reader
-            )
-            guard reader.isAtEnd else {
-                throw ScanSnapshotCacheError.corruptData("trailing bytes after node records")
-            }
-            return (warnings, store)
         }
         guard store.nodeCount == metadata.nodeCount else {
             throw ScanSnapshotCacheError.corruptData(
@@ -348,44 +331,38 @@ nonisolated enum ScanSnapshotCodec {
         )
     }
 
-    /// Bound untrusted output before allocating it. A streaming decoder also
-    /// checks cancellation between chunks instead of retaining obsolete work.
-    static func decompressPayload(_ compressed: Data, maximumBytes: Int = 2 * 1024 * 1024 * 1024) throws -> Data {
-        let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: 64 * 1024)
-        defer { buffer.deallocate() }
-        var stream = compression_stream(dst_ptr: buffer, dst_size: 0, src_ptr: UnsafePointer(buffer), src_size: 0, state: nil)
-        guard compression_stream_init(&stream, COMPRESSION_STREAM_DECODE, COMPRESSION_LZFSE) != COMPRESSION_STATUS_ERROR else {
-            throw ScanSnapshotCacheError.corruptData("payload decompression failed")
+    private static func decodePayload<Reader: PayloadReading>(
+        from reader: inout Reader,
+        metadata: Metadata,
+        stats: ScanAggregateStats,
+        version: UInt32
+    ) throws -> (warnings: [ScanWarning], store: FileTreeStore) {
+        let warningCount = Int(try reader.readUInt32())
+        guard warningCount <= reader.remainingByteCount / 12 else {
+            throw ScanSnapshotCacheError.corruptData("implausible warning count \(warningCount)")
         }
-        defer { compression_stream_destroy(&stream) }
-        return try compressed.withUnsafeBytes { source in
-            guard let base = source.bindMemory(to: UInt8.self).baseAddress else {
-                throw ScanSnapshotCacheError.corruptData("empty compressed payload")
+        var warnings: [ScanWarning] = []
+        warnings.reserveCapacity(min(warningCount, 1 << 16))
+        for _ in 0..<warningCount {
+            let path = try reader.readString()
+            let message = try reader.readString()
+            let categoryRaw = try reader.readString()
+            guard let category = ScanWarningCategory(rawValue: categoryRaw) else {
+                throw ScanSnapshotCacheError.corruptData("unknown warning category \(categoryRaw)")
             }
-            stream.src_ptr = base
-            stream.src_size = source.count
-            var output = Data()
-            while true {
-                try Task.checkCancellation()
-                stream.dst_ptr = buffer
-                stream.dst_size = 64 * 1024
-                let status = compression_stream_process(&stream, Int32(COMPRESSION_STREAM_FINALIZE.rawValue))
-                let produced = 64 * 1024 - stream.dst_size
-                guard status != COMPRESSION_STATUS_ERROR, produced <= maximumBytes - output.count else {
-                    throw ScanSnapshotCacheError.corruptData("invalid or oversized compressed payload")
-                }
-                output.append(buffer, count: produced)
-                if status == COMPRESSION_STATUS_END {
-                    guard stream.src_size == 0 else {
-                        throw ScanSnapshotCacheError.corruptData("trailing compressed payload bytes")
-                    }
-                    return output
-                }
-                guard produced > 0 else {
-                    throw ScanSnapshotCacheError.corruptData("truncated compressed payload")
-                }
-            }
+            warnings.append(ScanWarning(path: path, message: message, category: category))
         }
+
+        let store = try readTreeStore(
+            nodeCount: metadata.nodeCount,
+            aggregateStats: stats,
+            version: version,
+            from: &reader
+        )
+        guard reader.isAtEnd else {
+            throw ScanSnapshotCacheError.corruptData("trailing bytes after node records")
+        }
+        return (warnings, store)
     }
 
     /// Reads just the header of a cache file — enough for pruning and
@@ -444,11 +421,11 @@ nonisolated enum ScanSnapshotCodec {
         }
     }
 
-    private static func readTreeStore(
+    private static func readTreeStore<Reader: PayloadReading>(
         nodeCount: Int,
         aggregateStats: ScanAggregateStats,
         version: UInt32,
-        from reader: inout PayloadReader
+        from reader: inout Reader
     ) throws -> FileTreeStore {
         // Even an empty-name record needs flags, a string length, size,
         // child count, and (v4+) extended flags. Reject before reserving arrays.
@@ -525,6 +502,14 @@ nonisolated enum ScanSnapshotCodec {
         guard let built = NodeIDIndex.building(from: nodes) else {
             throw ScanSnapshotCacheError.corruptData("duplicate node IDs")
         }
+        // Files written before the encoder walked display preorder stored
+        // some siblings in stale pre-dedup order; restore display order so
+        // those caches render sorted. A no-op on files written since.
+        TreeStorage.restoreChildDisplayOrder(
+            nodes: nodes,
+            childStarts: childStarts,
+            childSlots: &childSlots
+        )
 
         return FileTreeStore(
             trustedStorage: TreeStorage(
@@ -540,10 +525,10 @@ nonisolated enum ScanSnapshotCodec {
         )
     }
 
-    private static func readNode(
+    private static func readNode<Reader: PayloadReading>(
         parentID: String?,
         version: UInt32,
-        from reader: inout PayloadReader
+        from reader: inout Reader
     ) throws -> (node: FileNodeRecord, childCount: Int) {
         let flags = NodeFlags(rawValue: try reader.readUInt16())
         let name = try reader.readString()

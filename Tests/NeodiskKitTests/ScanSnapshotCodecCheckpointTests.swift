@@ -124,7 +124,8 @@ import Testing
 
     @Test func decompressionRejectsOversizedOutputAndTruncation() throws {
         let raw = Data(repeating: 0, count: 200_000)
-        let compressed = try (raw as NSData).compressed(using: .lzfse) as Data
+        var compressed = Data()
+        try ScanSnapshotCodec.appendCompressedPayload(raw, to: &compressed)
         #expect(throws: ScanSnapshotCacheError.self) {
             try ScanSnapshotCodec.decompressPayload(compressed, maximumBytes: 199_999)
         }

@@ -3,7 +3,9 @@
 //  TreemapKit
 //
 
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
 import Foundation
 import Testing
 import TreemapKit

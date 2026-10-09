@@ -14,6 +14,7 @@ import AppKit
 import Foundation
 import TreemapKit
 import NeodiskKit
+import NeodiskAppModel
 
 @MainActor
 final class TreemapController {
@@ -52,16 +53,32 @@ final class TreemapController {
     private(set) var viewSize: CGSize = .zero
     /// Scene and image backing the content layer; `scene.viewport` is what
     /// the image was rendered at, which may trail `viewport`.
-    private(set) var scene: TreemapScene?
+    private(set) var scene: TreemapScene? {
+        didSet { sceneQueries = SceneQueries() }
+    }
     private(set) var image: CGImage?
     /// Pixel density the current image was rendered at; tracks the window's
     /// backingScaleFactor so non-Retina displays don't pay 4× the pixels.
     private(set) var renderedScale: CGFloat = 2
 
     private var inputs = Inputs()
-    private var store: FileTreeStore?
+    private var store: FileTreeStore? {
+        didSet { sceneQueries = SceneQueries() }
+    }
     private var catalog: FileKindCatalog = .empty
     private var selectedNodeID: String?
+
+    /// Answers derived from the displayed scene, memoized until the scene
+    /// or store changes (both are immutable, so nothing else can stale
+    /// them). `selectionRect` is read on every display refresh — gesture,
+    /// resize, and hover-settle ticks included — and re-running the layout
+    /// down the selection's path each time was pure repeat work; arrow keys
+    /// likewise refiltered every cell per press.
+    private struct SceneQueries {
+        var navigationCandidates: [TreemapKeyboardNav.Candidate]?
+        var selectionRect: (nodeID: String, rect: CGRect?)?
+    }
+    private var sceneQueries = SceneQueries()
 
     private var renderTask: Task<Void, Never>?
     /// Exact pane-size rendering waits for a short quiet period; the last
@@ -291,7 +308,12 @@ final class TreemapController {
     /// space), or nil when nothing is selected or the node left the tree.
     var selectionRect: CGRect? {
         guard let scene, let store, let selectedNodeID else { return nil }
-        return scene.rect(forNodeID: selectedNodeID, in: store)
+        if let memo = sceneQueries.selectionRect, memo.nodeID == selectedNodeID {
+            return memo.rect
+        }
+        let rect = scene.rect(forNodeID: selectedNodeID, in: store)
+        sceneQueries.selectionRect = (selectedNodeID, rect)
+        return rect
     }
 
     /// Hovered cell's rect in rendered-scene coordinates, or nil when the
@@ -497,7 +519,7 @@ final class TreemapController {
 
     // MARK: - Keyboard navigation
 
-    enum MoveDirection { case up, down, left, right }
+    typealias MoveDirection = TreemapKeyboardNav.Direction
 
     /// Routes a key event to a navigation action. Returns true when handled so
     /// the view stops it from propagating. Arrow keys move the selection
@@ -527,41 +549,29 @@ final class TreemapController {
     /// anchor to move from.
     private func moveSelection(_ direction: MoveDirection) {
         guard let model, let scene else { return }
-        // Free-space, hidden-space, and "smaller items" aggregate tiles
-        // aren't real files; navigate only among concrete file/folder tiles.
-        // Flat-style containers are excluded too — their centers sit on top
-        // of their children, which would make spatial movement erratic.
-        let tiles = scene.cells.filter {
-            !$0.isFreeSpace && !$0.isHiddenSpace && $0.aggregate == nil && !$0.isContainer
+        let candidates: [TreemapKeyboardNav.Candidate]
+        if let cached = sceneQueries.navigationCandidates {
+            candidates = cached
+        } else {
+            candidates = TreemapKeyboardNav.candidates(in: scene.cells)
+            sceneQueries.navigationCandidates = candidates
         }
-        guard !tiles.isEmpty else { return }
+        guard !candidates.isEmpty else { return }
 
         guard let from = selectionRect.map({ CGPoint(x: $0.midX, y: $0.midY) }) else {
-            if let largest = tiles.max(by: { $0.rect.area < $1.rect.area }) {
-                model.select(largest.nodeID)
+            if let largest = TreemapKeyboardNav.largest(in: candidates) {
+                model.select(largest)
             }
             return
         }
 
-        // Nearest tile whose center lies in `direction`, biased toward small
-        // perpendicular offset so movement tracks the visual row/column. The
-        // view is flipped, so up = smaller y, down = larger y.
-        var best: (nodeID: String, score: CGFloat)?
-        for tile in tiles where tile.nodeID != selectedNodeID {
-            let to = CGPoint(x: tile.rect.midX, y: tile.rect.midY)
-            let dx = to.x - from.x, dy = to.y - from.y
-            let primary: CGFloat
-            let perpendicular: CGFloat
-            switch direction {
-            case .left: guard dx < -0.5 else { continue }; primary = -dx; perpendicular = abs(dy)
-            case .right: guard dx > 0.5 else { continue }; primary = dx; perpendicular = abs(dy)
-            case .up: guard dy < -0.5 else { continue }; primary = -dy; perpendicular = abs(dx)
-            case .down: guard dy > 0.5 else { continue }; primary = dy; perpendicular = abs(dx)
-            }
-            let score = primary + 2 * perpendicular
-            if best == nil || score < best!.score { best = (tile.nodeID, score) }
+        if let target = TreemapKeyboardNav.target(
+            from: from, direction: direction, excluding: selectedNodeID, in: candidates
+        ) {
+            model.select(target)
+        } else {
+            NSSound.beep()
         }
-        if let best { model.select(best.nodeID) } else { NSSound.beep() }
     }
 
     private func revealSelectionInFinder() {
@@ -749,8 +759,4 @@ final class TreemapController {
         return CGAffineTransform(translationX: to.minX - from.minX * sx, y: to.minY - from.minY * sy)
             .scaledBy(x: sx, y: sy)
     }
-}
-
-private extension CGRect {
-    var area: CGFloat { width * height }
 }

@@ -11,6 +11,7 @@ import AppKit
 import SwiftUI
 import TreemapKit
 import NeodiskKit
+import NeodiskAppModel
 
 enum ThemePreference: String, CaseIterable, Identifiable {
     case system

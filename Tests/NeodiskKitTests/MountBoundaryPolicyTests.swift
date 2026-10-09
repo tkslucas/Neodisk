@@ -1,4 +1,8 @@
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 import Testing
 @testable import NeodiskKit
 
@@ -53,6 +57,7 @@ import Testing
         ) == [42])
     }
 
+    #if os(macOS)
     /// A "/" scan must own every device of the startup APFS volume group —
     /// the sealed system snapshot and the firmlinked Data volume. On systems
     /// where the group shares one device this collapses to a single entry;
@@ -68,4 +73,5 @@ import Testing
             )
         }
     }
+    #endif
 }

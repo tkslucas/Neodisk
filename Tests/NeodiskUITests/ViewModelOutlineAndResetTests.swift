@@ -2,6 +2,7 @@ import Foundation
 import Testing
 import NeodiskKit
 @testable import NeodiskUI
+@testable import NeodiskAppModel
 
 /// Characterization tests pinning the view model's outline flattening, its
 /// per-scan state reset, warning-dismissal reset on rescan, and the

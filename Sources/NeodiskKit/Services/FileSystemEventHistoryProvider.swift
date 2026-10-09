@@ -10,6 +10,7 @@
 //  leaving, so the planner and scan service stay CoreServices-free.
 //
 
+#if canImport(CoreServices)
 import CoreServices
 import Darwin
 import Dispatch
@@ -426,6 +427,8 @@ final class FSEventHistoryCollector: @unchecked Sendable {
         map(kFSEventStreamEventFlagItemCreated, .itemCreated)
         map(kFSEventStreamEventFlagItemRemoved, .itemRemoved)
         map(kFSEventStreamEventFlagItemRenamed, .itemRenamed)
+        map(kFSEventStreamEventFlagItemIsHardlink, .itemIsHardLink)
+        map(kFSEventStreamEventFlagItemIsLastHardlink, .itemIsLastHardLink)
         return flags
     }
 }
@@ -456,3 +459,5 @@ private final class FSEventStreamLifetime: @unchecked Sendable {
         FSEventStreamRelease(stream)
     }
 }
+
+#endif

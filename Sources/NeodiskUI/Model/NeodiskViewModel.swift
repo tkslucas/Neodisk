@@ -13,6 +13,7 @@ import Observation
 import SwiftUI
 import TreemapKit
 import NeodiskKit
+import NeodiskAppModel
 
 @MainActor
 @Observable

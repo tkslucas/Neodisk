@@ -3,6 +3,7 @@ import Foundation
 @testable import NeodiskKit
 
 @Suite struct ScanEngineTests {
+    #if canImport(Darwin)
     @Test func testPackagesAreLeafNodesByDefault() async throws {
         let rootURL = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -26,6 +27,7 @@ import Foundation
         #expect(packageNode.logicalSize >= Int64("binary".utf8.count))
         #expect(snapshot.aggregateStats.fileCount >= 1)
     }
+    #endif
 
     @Test func testPackageLeafNodesIncludeNestedPackageContents() async throws {
         let rootURL = try makeTemporaryDirectory()
@@ -69,6 +71,7 @@ import Foundation
         #expect(packageNode.allocatedSize >= 1_024)
     }
 
+    #if canImport(Darwin)
     @Test func testPackageRootHardLinksOnlyCountAllocatedStorageOnce() async throws {
         let rootURL = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -92,6 +95,7 @@ import Foundation
         #expect(snapshot.root.allocatedSize < snapshot.root.logicalSize)
         #expect(snapshot.aggregateStats.totalAllocatedSize == snapshot.root.allocatedSize)
     }
+    #endif
 
     @Test func testParallelPackageSummaryMatchesSerialSummary() async throws {
         let rootURL = try makeTemporaryDirectory()
@@ -154,6 +158,7 @@ import Foundation
         #expect(packageNode.descendantFileCount == 1)
     }
 
+    #if canImport(Darwin)
     /// "Show Package Contents": scanning a package as the root with
     /// `treatRootPackageAsDirectory` opens up that package only — bundles
     /// nested inside remain opaque leaves with aggregate sizes.
@@ -199,7 +204,9 @@ import Foundation
         #expect(!containsChildren(nested, in: snapshot))
         #expect(nested.descendantFileCount == 1)
     }
+    #endif
 
+    #if canImport(Darwin)
     @Test func testAtomicPackageAccessFailuresProduceWarnings() async throws {
         let rootURL = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -228,6 +235,7 @@ import Foundation
         #expect(!(snapshot.scanWarnings.isEmpty))
         #expect(snapshot.scanWarnings.contains(where: { $0.path.contains("Locked.app") }))
     }
+    #endif
 
     @Test func testUnreadableOrdinaryDirectoryProducesWarningAndContinuesScan() async throws {
         let rootURL = try makeTemporaryDirectory()
@@ -816,6 +824,7 @@ import Foundation
         #expect(snapshot.root.logicalSize == 128)
     }
 
+    #if canImport(Darwin)
     @Test func testExcludedPackageContentsStillEmitSummaryProgress() async throws {
         let rootURL = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -850,6 +859,7 @@ import Foundation
         #expect(!(containsChildren(packageNode, in: snapshot)))
         #expect(progressPaths.contains(where: { $0.hasSuffix("/Sample.app/debug.log") }), "Expected package summary progress to include excluded file path")
     }
+    #endif
 
     @Test func testExcludedFilesDoNotContributeThroughAutoSummaries() async throws {
         let rootURL = try makeTemporaryDirectory()
@@ -1333,7 +1343,7 @@ import Foundation
         // Volume snapshots carry only scanned bytes on every filesystem;
         // the gap up to used capacity is the UI's hidden space, never a
         // synthetic node.
-        let children = try rootChildren(in: snapshot)
+        let children = rootChildren(in: snapshot)
         let hasSyntheticChild = children.contains { $0.isSynthetic }
         #expect(!hasSyntheticChild)
         #expect(snapshot.root.isAccessible)

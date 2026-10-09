@@ -1,0 +1,183 @@
+//
+//  SunburstStyling.swift
+//  Neodisk
+//
+//  App-side glue over SunburstCore's pure layout, shared by every shell: the
+//  color style (kind/age modes lean on FileKindCatalog/VizPalette) and the
+//  `styled` fill pass that resolves each segment's final RGB. Drawing the
+//  arcs is each platform's own business.
+//
+
+import Foundation
+import NeodiskKit
+import SunburstCore
+
+extension FileNodeRecord {
+    /// Whether the sunburst treats this node as a drillable folder. Packages
+    /// (.app, .imovielibrary, …) are directories on disk, but the scan keeps
+    /// them opaque, so the sunburst treats them as files: gray in branch
+    /// mode, Quick Look on click, never a drill target. Once "Show Package
+    /// Contents" splices a package's children into the store it behaves like
+    /// any other folder.
+    package nonisolated func isSunburstFolder(in store: FileTreeStore) -> Bool {
+        SunburstLayout.isSunburstFolder(self, in: store)
+    }
+}
+
+/// How sunburst segments are colored, derived from the active analysis tab:
+/// The branch-hue algorithm on Largest (folders colored, files gray,
+/// colorblind palette honored), the treemap's kind/age semantics on the
+/// other tabs. Every mode resolves its final fill (including highlight
+/// dimming) into `SunburstSegment.fillRGB` via the `styled` pass; the
+/// styler's token fallback only covers segments without a node.
+package struct SunburstColorStyle: Equatable, Sendable {
+    package enum Mode: Equatable, Sendable {
+        /// Branch hues — the global size-midpoint wheel, scan-root
+        /// anchored (Largest tab).
+        case branch
+        /// Kind catalog colors, directories neutral (Kinds/Duplicates tabs).
+        case kind
+        /// Modification-age ramp against the scan date (Age tab).
+        case age(referenceDate: Date)
+    }
+
+    package var mode: Mode = .branch
+    package var catalog: FileKindCatalog = .empty
+    package var highlight: TreemapHighlight?
+    package var palette: VizPalette = .standard
+
+    package init(
+        mode: Mode = .branch,
+        catalog: FileKindCatalog = .empty,
+        highlight: TreemapHighlight? = nil,
+        palette: VizPalette = .standard
+    ) {
+        self.mode = mode
+        self.catalog = catalog
+        self.highlight = highlight
+        self.palette = palette
+    }
+
+    package static func == (lhs: SunburstColorStyle, rhs: SunburstColorStyle) -> Bool {
+        lhs.mode == rhs.mode
+            && lhs.catalog.buildID == rhs.catalog.buildID
+            && lhs.highlight == rhs.highlight
+            && lhs.palette == rhs.palette
+    }
+}
+
+extension SunburstLayout {
+    /// Layout and fills in one call — the convenience for tests and callers
+    /// that don't restyle; the chart itself lays out once and restyles via
+    /// `styled` as colors change.
+    package nonisolated static func segments(
+        in treeStore: FileTreeStore,
+        rootID: String,
+        depthLimit: Int,
+        minimumAngle: Double = .pi / 90,
+        style: SunburstColorStyle = SunburstColorStyle(),
+        freeSpaceBytes: Int64? = nil,
+        hiddenSpaceBytes: Int64? = nil,
+        expandedAggregateIDs: Set<String> = [],
+        includeCloudOnly: Bool = false
+    ) -> [SunburstSegment] {
+        let unstyled = (try? segments(
+            in: treeStore,
+            rootID: rootID,
+            depthLimit: depthLimit,
+            minimumAngle: minimumAngle,
+            freeSpaceBytes: freeSpaceBytes,
+            hiddenSpaceBytes: hiddenSpaceBytes,
+            expandedAggregateIDs: expandedAggregateIDs,
+            includeCloudOnly: includeCloudOnly,
+            freeSpaceLabel: AppStrings.localized("Free Space", comment: "Sunburst free-space segment label"),
+            hiddenSpaceLabel: AppStrings.localized("Hidden Space", comment: "Sunburst hidden-space segment label"),
+            cancellationCheck: {}
+        )) ?? []
+        return styled(unstyled, style: style, in: treeStore)
+    }
+
+    /// Re-resolves every segment's fill for a color style — O(segments), so
+    /// tab, palette, highlight, and catalog changes recolor the finished
+    /// layout instead of recomputing it.
+    package nonisolated static func styled(
+        _ segments: [SunburstSegment],
+        style: SunburstColorStyle,
+        in treeStore: FileTreeStore
+    ) -> [SunburstSegment] {
+        segments.map { segment in
+            var segment = segment
+            segment.fillRGB = segment.nodeID
+                .flatMap { treeStore.node(id: $0) }
+                .flatMap { resolvedFillRGB(for: $0, token: segment.colorToken, style: style) }
+            return segment
+        }
+    }
+
+    // MARK: - Fill resolution
+
+    /// A node's final fill, resolved by the `styled` pass. Kind/age modes
+    /// mirror the treemap: kind catalog colors (directories neutral), the
+    /// age ramp, and `TreemapScene.dimmedRGB` for segments a highlight
+    /// doesn't match.
+    /// Branch mode resolves the token (branch hues honoring the palette —
+    /// colorblind branches restrict to Okabe-Ito hues — and gray files).
+    /// Internal (not private) so the legend list can resolve the same fill
+    /// for nodes without a rendered segment (children of a max-depth folder).
+    package nonisolated static func resolvedFillRGB(
+        for node: FileNodeRecord,
+        token: SunburstColorToken,
+        style: SunburstColorStyle
+    ) -> SIMD3<Float>? {
+        var rgb = semanticFillRGB(for: node, token: token, style: style)
+        guard style.mode != .branch else { return rgb }
+        // Only .kind and .age reach here, so the highlight-match predicate
+        // is shared with the treemap unchanged.
+        if let highlight = style.highlight,
+           !TreemapScene.matches(
+               node,
+               highlight: highlight,
+               colorMode: style.mode.treemapColorMode,
+               catalog: style.catalog
+           ) {
+            rgb = TreemapScene.dimmedRGB(rgb)
+        }
+        return rgb
+    }
+
+    /// Undimmed semantic fill for status-bar swatches. The segment's token
+    /// already carries its branch coordinate, so this is O(1) for every
+    /// color mode and never walks ancestors or siblings during hover.
+    package nonisolated static func semanticFillRGB(
+        for node: FileNodeRecord,
+        token: SunburstColorToken,
+        style: SunburstColorStyle
+    ) -> SIMD3<Float> {
+        switch style.mode {
+        case .branch:
+            return SunburstColorResolver.rgb(for: token, palette: style.palette.sunburst)
+        case .kind:
+            return style.catalog.rgb(for: node)
+        case .age(let referenceDate):
+            if FileKindClassifier.isLeafLike(node) {
+                return style.palette.ageRGB(
+                    AgeBucket.bucket(for: node.lastModified, reference: referenceDate)
+                )
+            }
+            return FileKindCatalog.directoryRGB
+        }
+    }
+}
+
+private extension SunburstColorStyle.Mode {
+    /// The treemap color mode this maps to, so both visualizations share one
+    /// highlight-match predicate (`TreemapScene.matches`). Only the `.age`
+    /// reference date is load-bearing there; `.branch` never reaches the
+    /// predicate, so it collapses to `.kind` like any non-age mode.
+    var treemapColorMode: TreemapColorMode {
+        switch self {
+        case .age(let referenceDate): return .age(referenceDate: referenceDate)
+        case .kind, .branch: return .kind
+        }
+    }
+}

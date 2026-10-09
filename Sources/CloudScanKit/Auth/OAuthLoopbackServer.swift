@@ -16,6 +16,8 @@
 import Foundation
 #if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
 #endif
 
 enum OAuthLoopbackError: Error, Equatable, Sendable {
@@ -52,7 +54,11 @@ final class OAuthLoopbackServer: @unchecked Sendable {
     /// Binds an ephemeral loopback port and returns a listener ready to accept
     /// the redirect.
     static func start() throws -> OAuthLoopbackServer {
+        #if os(Linux)
+        let fd = socket(AF_INET, Int32(SOCK_STREAM.rawValue), 0)
+        #else
         let fd = socket(AF_INET, SOCK_STREAM, 0)
+        #endif
         guard fd >= 0 else { throw OAuthLoopbackError.listenerFailed("socket errno \(errno)") }
 
         var reuse: Int32 = 1
@@ -169,7 +175,13 @@ final class OAuthLoopbackServer: @unchecked Sendable {
             guard let base = raw.bindMemory(to: UInt8.self).baseAddress else { return }
             var sent = 0
             while sent < data.count {
+                // MSG_NOSIGNAL: a browser that hangs up early must not
+                // SIGPIPE the process.
+                #if os(Linux)
+                let n = send(connection, base + sent, data.count - sent, Int32(MSG_NOSIGNAL))
+                #else
                 let n = send(connection, base + sent, data.count - sent, 0)
+                #endif
                 if n <= 0 { break }
                 sent += n
             }

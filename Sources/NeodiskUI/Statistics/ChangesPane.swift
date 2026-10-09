@@ -13,6 +13,7 @@
 
 import SwiftUI
 import NeodiskKit
+import NeodiskAppModel
 
 struct ChangesPane: View {
     let model: NeodiskViewModel

@@ -13,6 +13,7 @@
 //  failure message back to Tests/TreemapKitTests/Fixtures/cushion-golden.png.
 //
 
+#if canImport(CoreGraphics) && canImport(ImageIO)
 import CoreGraphics
 import Foundation
 import ImageIO
@@ -137,3 +138,5 @@ import UniformTypeIdentifiers
         return url
     }
 }
+
+#endif

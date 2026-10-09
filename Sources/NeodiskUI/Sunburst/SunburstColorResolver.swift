@@ -10,6 +10,7 @@
 import SwiftUI
 import NeodiskKit
 import SunburstCore
+import NeodiskAppModel
 
 extension SunburstColorComponents {
     nonisolated var color: Color {

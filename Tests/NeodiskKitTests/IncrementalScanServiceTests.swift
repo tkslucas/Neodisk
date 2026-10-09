@@ -377,6 +377,58 @@ struct IncrementalScanServiceTests {
         #expect(requests.first?.through == 20)
     }
 
+    /// `ln` after the baseline: the journal names only the new link, and
+    /// the existing link's baseline record still reads link count 1 with no
+    /// identity. A relist of the new link's folder would count the shared
+    /// bytes twice; the hard-link flag must route the rescan to a full scan.
+    @Test func newHardLinkFallsBackToFullScanAndMatchesFreshScan() async throws {
+        let root = try makeTemporaryTree()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let target = ScanTarget(url: root)
+        let options = ScanOptions()
+        let provider = StubEventHistoryProvider(checkpoints: [checkpoint(10), checkpoint(20)])
+        let service = IncrementalScanService(engine: ScanEngine(), historyProvider: provider)
+
+        let baseline = try #require(try await finishedSnapshot(
+            from: service.scan(target: target, options: options)
+        ))
+        let original = try #require(baseline.treeStore.node(id: target.id + "/alpha/a.bin"))
+        #expect(original.linkCount == 1)
+
+        try FileManager.default.linkItem(
+            at: root.appending(path: "alpha/a.bin"),
+            to: root.appending(path: "beta/a-link.bin")
+        )
+        provider.setHistory(.success(FileSystemEventHistory(events: [
+            FileSystemChangeEvent(
+                path: target.id + "/beta/a-link.bin",
+                eventID: 15,
+                flags: [.itemCreated, .itemIsHardLink]
+            ),
+        ])))
+
+        var progress: [ScanMetrics] = []
+        var finished: ScanSnapshot?
+        for try await event in service.rescan(target: target, options: options, baselineProvider: { baseline }) {
+            switch event {
+            case .progress(let metrics): progress.append(metrics)
+            case .finished(let snapshot): finished = snapshot
+            default: break
+            }
+        }
+        let rescanned = try #require(finished)
+        let fresh = try #require(try await finishedSnapshot(
+            from: ScanEngine().scan(target: target, options: options)
+        ))
+
+        #expect(progress.contains { $0.isFullScanFallback })
+        expectHardLinkParity(rescanned.treeStore, fresh.treeStore)
+        #expect(rescanned.aggregateStats.totalAllocatedSize == fresh.aggregateStats.totalAllocatedSize)
+        // The shared bytes are counted once: adding a second link to an
+        // existing file leaves the total where the baseline had it.
+        #expect(rescanned.aggregateStats.totalAllocatedSize == baseline.aggregateStats.totalAllocatedSize)
+    }
+
     @Test func noChangesAdvancesCheckpointOnSameTree() async throws {
         let root = try makeTemporaryTree()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -845,6 +897,7 @@ struct IncrementalScanServiceTests {
         #expect(rescanned.scanWarnings.contains(keptWarning))
     }
 
+    #if canImport(CoreServices)
     /// Whole chain against the real fseventsd journal: capture → mutate →
     /// replay → plan → splice. Self-skips when the volume has no usable
     /// journal (the checkpoint capture fails). The journal write is
@@ -884,6 +937,7 @@ struct IncrementalScanServiceTests {
         }
         Issue.record("the journal never surfaced the mutation within the deadline")
     }
+    #endif
 
     @Test func cancellationEndsStreamWithoutFinished() async throws {
         let root = try makeTemporaryTree()

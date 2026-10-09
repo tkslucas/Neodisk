@@ -11,9 +11,15 @@
 //  fstat fallback, and close.
 //
 
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 import Foundation
+#if canImport(UniformTypeIdentifiers)
 import UniformTypeIdentifiers
+#endif
 
 /// A child entry produced by `BulkDirectoryReader`.
 nonisolated struct BulkDirectoryChild: Sendable {
@@ -138,6 +144,7 @@ nonisolated enum BulkDirectoryReader {
         }
     }
 
+    #if canImport(Darwin)
     /// Streams decoded records to `onChild`, avoiding the complete
     /// `[BulkDirectoryChild]` allocation on the scan hot path. The callback is
     /// synchronous and executes while `context` is exclusively borrowed.
@@ -484,7 +491,9 @@ nonisolated enum BulkDirectoryReader {
         return device
     }
 
-    private static func isHiddenName(_ name: String) -> Bool {
+    #endif
+
+    static func isHiddenName(_ name: String) -> Bool {
         name.utf8.first == UInt8(ascii: ".")
     }
 
@@ -517,6 +526,7 @@ nonisolated final class PackageExtensionCatalog: @unchecked Sendable {
         }
         lock.unlock()
 
+        #if canImport(UniformTypeIdentifiers)
         // The plain UTType(filenameExtension:) lookup resolves to *file*
         // types (e.g. "app" → com.apple.application-file); constraining the
         // lookup to directory types is what matches isPackageKey semantics.
@@ -526,6 +536,10 @@ nonisolated final class PackageExtensionCatalog: @unchecked Sendable {
             conformingTo: .directory
         )
         let verdict = directoryType?.conforms(to: .package) ?? false
+        #else
+        // Only Apple platforms present directories as opaque packages.
+        let verdict = false
+        #endif
 
         lock.lock()
         verdictByExtension[filenameExtension] = verdict

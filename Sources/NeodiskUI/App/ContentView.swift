@@ -10,6 +10,7 @@ import AppKit
 import SwiftUI
 import TreemapKit
 import NeodiskKit
+import NeodiskAppModel
 
 public struct ContentView: View {
     @Bindable var model: NeodiskViewModel
@@ -444,7 +445,7 @@ private struct WorkspaceView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .layoutPriority(1)
 
-                if model.showKindStats {
+                if model.showKindStats, !metrics.analysisFloats {
                     PaneSplitter(
                         size: kindStatsPaneSize,
                         range: metrics.analysisRange,
@@ -457,6 +458,19 @@ private struct WorkspaceView: View {
                     )
                     AnalysisPane(model: model)
                         .frame(width: metrics.analysisWidth)
+                        .transition(.move(edge: .trailing))
+                }
+            }
+            // A window too narrow to dock the analysis pane beside the map
+            // floats it over the map's trailing edge instead.
+            .overlay(alignment: .trailing) {
+                if model.showKindStats, metrics.analysisFloats {
+                    AnalysisPane(model: model)
+                        .frame(width: metrics.analysisWidth)
+                        .frame(maxHeight: .infinity)
+                        .background(.background)
+                        .overlay(alignment: .leading) { Divider() }
+                        .shadow(color: .black.opacity(0.18), radius: 10, x: -2)
                         .transition(.move(edge: .trailing))
                 }
             }

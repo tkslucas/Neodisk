@@ -29,7 +29,11 @@
 //    added+deleted; hard-linked files (shared identity) are never matched.
 //
 
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+import Crypto
+#endif
 import Foundation
 
 /// One row of the changes list.
@@ -384,7 +388,7 @@ public struct ScanChangeList: Sendable, Equatable, Codable {
     }
 
     /// A digest of exactly the tree content the change surfaces read: per
-    /// node (in preorder) its ID, allocated size, file identity, link count,
+    /// node (in display preorder) its ID, allocated size, file identity, link count,
     /// and synthetic flag. Two stores with equal digests produce an empty
     /// change list and an all-zero `ScanSizeBaseline` delta, which is what
     /// lets the snapshot cache keep the previous slot's older baseline
@@ -401,8 +405,15 @@ public struct ScanChangeList: Sendable, Equatable, Codable {
         func updateInteger<T: FixedWidthInteger>(_ value: T) {
             withUnsafeBytes(of: value.littleEndian) { hasher.update(bufferPointer: $0) }
         }
-        for (index, node) in store.storage.nodes.enumerated() {
-            if index & 1023 == 0 { try checkCancellation() }
+        // Display preorder (child-slot order), the same sequence the codec
+        // writes: array order can lag an in-place re-sort, which would make
+        // two content-identical trees digest differently.
+        let storage = store.storage
+        var visited = 0
+        try storage.forEachIndexInDisplayPreorder { index in
+            if visited & 1023 == 0 { try checkCancellation() }
+            visited += 1
+            let node = storage.nodes[Int(index)]
             var id = node.id
             // Length-prefixed: IDs can contain any byte (synthetic nodes
             // embed NUL), so a separator can't delimit them.

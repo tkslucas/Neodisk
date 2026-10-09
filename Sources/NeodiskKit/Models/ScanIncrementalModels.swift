@@ -72,6 +72,11 @@ struct FileSystemEventFlags: OptionSet, Sendable, Hashable {
     static let itemCreated = FileSystemEventFlags(rawValue: 1 << 9)
     static let itemRemoved = FileSystemEventFlags(rawValue: 1 << 10)
     static let itemRenamed = FileSystemEventFlags(rawValue: 1 << 11)
+    /// The named item is a hard link (link count > 1) — set on the event
+    /// that created the link and on later events for any of its links.
+    static let itemIsHardLink = FileSystemEventFlags(rawValue: 1 << 12)
+    /// The named item was the last remaining hard link to its file.
+    static let itemIsLastHardLink = FileSystemEventFlags(rawValue: 1 << 13)
 
     /// Flags that individually invalidate the whole replay.
     var demandsFullScan: Bool {
@@ -83,6 +88,16 @@ struct FileSystemEventFlags: OptionSet, Sendable, Hashable {
     /// parent, not just the named path.
     var indicatesMembershipChange: Bool {
         !isDisjoint(with: [.itemCreated, .itemRemoved, .itemRenamed])
+    }
+
+    /// Whether the event touched a multiply-linked file. Hard-link dedup
+    /// charges a shared file's bytes to exactly one of its links across the
+    /// whole tree, and the journal names only the link that changed — a new
+    /// link, a removed one, or a write through either — never its siblings.
+    /// A shallow relist of that one directory therefore cannot reproduce a
+    /// full scan's ownership.
+    var touchesHardLink: Bool {
+        !isDisjoint(with: [.itemIsHardLink, .itemIsLastHardLink])
     }
 }
 
@@ -107,6 +122,9 @@ struct FileSystemEventHistory: Sendable {
 /// Why the incremental path refused a checkpoint or replay. Every case is a
 /// silent fall-back-to-full-scan, never a user-facing error.
 enum FileSystemEventHistoryError: Error, Equatable {
+    /// The platform keeps no persistent change journal to replay (Linux:
+    /// inotify/fanotify only see changes while a watcher runs).
+    case unsupportedPlatform
     /// The target's volume is not MNT_LOCAL (network mounts have no
     /// trustworthy journal).
     case nonLocalVolume
@@ -174,6 +192,9 @@ enum IncrementalFullScanReason: String, Sendable, Equatable {
     case eventIDsWrapped
     case watchedRootChanged
     case nestedVolumeChanged
+    /// A hard link was created, removed, or written through; scan-wide
+    /// shared-size ownership can't be rebuilt from a partial relist.
+    case hardLinkTopologyChanged
     case changedScanRoot
     case eventOutsideTarget
     case noMaterializedAncestor

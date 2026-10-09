@@ -243,6 +243,7 @@ import Foundation
         #expect(rebalanced.root.allocatedSize == 60)
     }
 
+    #if canImport(Darwin)
     @Test func testEndToEndScanCountsClonedFileOnce() async throws {
         let fileManager = FileManager.default
         let rootURL = URL(filePath: NSTemporaryDirectory(), directoryHint: .isDirectory)
@@ -281,4 +282,5 @@ import Foundation
         #expect(original.allocatedSize + clone.allocatedSize >= Int64(payloadSize))
         #expect(original.allocatedSize + clone.allocatedSize < Int64(payloadSize) * 2)
     }
+    #endif
 }

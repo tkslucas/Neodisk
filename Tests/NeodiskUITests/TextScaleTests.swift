@@ -12,8 +12,10 @@ import Foundation
 import SwiftUI
 import Testing
 @testable import NeodiskUI
+@testable import NeodiskAppModel
 
-@Suite struct TextScaleTests {
+// Serialized: two tests drive the process-wide OutlineRowMetrics.scale.
+@Suite(.serialized) struct TextScaleTests {
     @Test func stepsAreSortedAndContainTheStandardSize() {
         #expect(TextScale.steps == TextScale.steps.sorted())
         #expect(TextScale.steps.contains(TextScale.standard))
@@ -127,8 +129,10 @@ import Testing
                 storedBottomOutlineHeight: PaneLayout.bottomOutlineMaxHeight(scale: step),
                 textScale: step
             )
-            let map = width - metrics.outlineWidth - metrics.analysisWidth
-                - 2 * PaneLayout.splitterThickness
+            // A pane that can't dock floats over the map instead.
+            let docked = metrics.analysisFloats
+                ? 0 : metrics.analysisWidth + PaneLayout.splitterThickness
+            let map = width - metrics.outlineWidth - PaneLayout.splitterThickness - docked
             #expect(map >= PaneLayout.mapMinWidth)
         }
     }
@@ -231,5 +235,39 @@ import Testing
         // Row height is text plus a fixed margin, not a straight multiple:
         // larger text stays as dense as it can.
         #expect(OutlineRowMetrics.rowHeight < 2 * plainRow)
+    }
+
+    /// Outline cells are reused across reloads, and a text-size change hands
+    /// a cell the same row again. The hosted row views read their metrics
+    /// from OutlineRowMetrics' static scale, so the scale has to be part of
+    /// the view's value: otherwise SwiftUI sees an unchanged view, skips the
+    /// body, and the row keeps its old font inside the new row geometry
+    /// (issue #10). The skip only shows in the live table, so this pins the
+    /// invariant the fix relies on.
+    @MainActor
+    @Test func outlineRowViewsCarryTheScaleTheyWereBuiltFor() {
+        defer { OutlineRowMetrics.scale = 1 }
+
+        let model = NeodiskViewModel()
+        let row = NeodiskViewModel.OutlineRow(
+            node: makeTestFileNode(id: "/scan/notes.txt", name: "notes.txt", size: 4096),
+            depth: 1,
+            isExpandable: false,
+            fractionOfParent: 0.5
+        )
+        let state = OutlineRowSelectionState()
+
+        OutlineRowMetrics.scale = 1
+        let plainName = OutlineNameSection(model: model, row: row, state: state)
+        let plainCluster = OutlineTrailingSection(model: model, row: row, state: state)
+
+        OutlineRowMetrics.scale = 2
+        let zoomedName = OutlineNameSection(model: model, row: row, state: state)
+        let zoomedCluster = OutlineTrailingSection(model: model, row: row, state: state)
+
+        #expect(plainName.scale == 1)
+        #expect(zoomedName.scale == 2)
+        #expect(plainCluster.scale == 1)
+        #expect(zoomedCluster.scale == 2)
     }
 }

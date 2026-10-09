@@ -10,6 +10,9 @@
 //
 
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// Tokens returned by the token endpoint.
 struct OAuthTokens: Equatable, Sendable {

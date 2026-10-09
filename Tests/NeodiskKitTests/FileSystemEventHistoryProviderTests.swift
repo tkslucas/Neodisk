@@ -1,3 +1,4 @@
+#if canImport(CoreServices)
 import Foundation
 import Testing
 @testable import NeodiskKit
@@ -212,3 +213,5 @@ struct FileSystemEventHistoryProviderTests {
         }
     }
 }
+
+#endif

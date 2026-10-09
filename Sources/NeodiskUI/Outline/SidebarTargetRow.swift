@@ -8,6 +8,7 @@
 
 import SwiftUI
 import NeodiskKit
+import NeodiskAppModel
 
 struct SidebarTargetRow: View {
     @Environment(\.neoTextScale) private var textScale

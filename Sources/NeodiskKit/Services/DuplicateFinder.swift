@@ -24,8 +24,16 @@
 //  reading, nothing is modified.
 //
 
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+import Crypto
+#endif
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 import Foundation
 
 /// One set of files whose contents are byte-identical.
@@ -471,11 +479,16 @@ public enum DuplicateFinder {
         var info = stat()
         guard path.withCString({ stat($0, &info) }) == 0 else { return nil }
         guard (info.st_mode & mode_t(S_IFMT)) == mode_t(S_IFREG) else { return nil }
+        #if canImport(Darwin)
         guard info.st_flags & BSDFileFlags.dataless == 0 else { return nil }
+        let modified = info.st_mtimespec
+        #else
+        let modified = info.st_mtim
+        #endif
         return DuplicateHashCache.FileStamp(
             size: Int64(info.st_size),
-            modifiedAtNanoseconds: Int64(info.st_mtimespec.tv_sec) * 1_000_000_000
-                + Int64(info.st_mtimespec.tv_nsec),
+            modifiedAtNanoseconds: Int64(modified.tv_sec) * 1_000_000_000
+                + Int64(modified.tv_nsec),
             inode: UInt64(info.st_ino)
         )
     }
@@ -560,15 +573,23 @@ public enum DuplicateFinder {
     //
     // All three tiers read through raw descriptors opened with F_NOCACHE so a
     // full-disk dedup scan never evicts the user's page cache. The full pass
-    // adds F_RDAHEAD for its long sequential streaming.
+    // adds F_RDAHEAD for its long sequential streaming. Linux has no
+    // per-descriptor cache bypass short of O_DIRECT's aligned I/O, so it gets
+    // the advisory equivalents: NOREUSE keeps the pages off the active list
+    // (reclaimed first), SEQUENTIAL widens readahead.
 
     /// Opens `path` read-only with caching disabled. The caller owns the
     /// returned descriptor and must `close` it.
     private static func openUncached(_ path: String, readahead: Bool = false) throws -> Int32 {
         let fd = open(path, O_RDONLY)
         guard fd >= 0 else { throw posixError() }
+        #if canImport(Darwin)
         _ = fcntl(fd, F_NOCACHE, 1)
         if readahead { _ = fcntl(fd, F_RDAHEAD, 1) }
+        #else
+        _ = posix_fadvise(fd, 0, 0, POSIX_FADV_NOREUSE)
+        if readahead { _ = posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL) }
+        #endif
         return fd
     }
 

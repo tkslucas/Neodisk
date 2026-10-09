@@ -13,6 +13,7 @@ import ImageIO
 import UniformTypeIdentifiers
 import TreemapKit
 import NeodiskKit
+import NeodiskAppModel
 
 public enum HeadlessRender {
     /// Handles `--render-png` if present. Returns true when the invocation
@@ -56,7 +57,11 @@ public enum HeadlessRender {
         originFraction: CGPoint = .zero
     ) -> Int32 {
         let semaphore = DispatchSemaphore(value: 0)
-        nonisolated(unsafe) var result: Int32 = 1
+        // A box rather than a captured `nonisolated(unsafe) var`: release
+        // builds reject sending a closure that captures a mutable local.
+        // The semaphore orders the write before the read.
+        final class ExitCode: @unchecked Sendable { var value: Int32 = 1 }
+        let result = ExitCode()
 
         Task.detached {
             defer { semaphore.signal() }
@@ -166,13 +171,13 @@ public enum HeadlessRender {
                 print("scanned \(stats.fileCount) files, \(stats.totalAllocatedSize) bytes")
                 print("cells: \(scene.cells.count), kinds: \(catalog.stats.count)")
                 print("wrote \(outputPath)")
-                result = 0
+                result.value = 0
             } catch {
                 FileHandle.standardError.write(Data("scan failed: \(error)\n".utf8))
             }
         }
 
         semaphore.wait()
-        return result
+        return result.value
     }
 }

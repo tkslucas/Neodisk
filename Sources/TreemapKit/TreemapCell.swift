@@ -9,6 +9,8 @@
 
 #if canImport(CoreGraphics)
 import CoreGraphics
+#elseif canImport(Foundation)
+import Foundation  // CG geometry types off Darwin
 #endif
 
 /// Accumulated cushion surface for a cell. The surface height field is a sum

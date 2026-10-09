@@ -13,6 +13,7 @@
 
 import AppKit
 import TreemapKit
+import NeodiskAppModel
 
 final class TreemapNSView: NSView {
     let controller: TreemapController

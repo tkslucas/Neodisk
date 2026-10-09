@@ -175,6 +175,39 @@ struct IncrementalRescanPlannerTests {
         #expect(plan([event("/scan/docs/report.txt", flag)]) == .fullScan(reason))
     }
 
+    @Test(arguments: [
+        FileSystemEventFlags([.itemCreated, .itemIsHardLink]),
+        [.itemRemoved, .itemIsHardLink],
+        [.itemRemoved, .itemIsLastHardLink],
+        [.itemIsHardLink],
+    ])
+    func hardLinkEventForcesFullScan(flags: FileSystemEventFlags) {
+        // Dedup ownership is scan-wide; the journal names only the touched
+        // link, so relisting its folder can double-count the shared bytes.
+        #expect(plan([event("/scan/docs/report.txt", flags)]) == .fullScan(.hardLinkTopologyChanged))
+    }
+
+    @Test func hardLinkEventAfterOrdinaryEventsStillForcesFullScan() {
+        let result = plan([
+            event("/scan/docs/report.txt", [.itemCreated], id: 1),
+            event("/scan/apps/link.bin", [.itemCreated, .itemIsHardLink], id: 2),
+        ])
+        #expect(result == .fullScan(.hardLinkTopologyChanged))
+    }
+
+    @Test func hardLinkEventsOutsideScannedContentAreIgnored() {
+        // Paths the baseline never covered can't hold a counted link: hidden
+        // (hidden files off) and excluded paths keep the incremental path.
+        var excluding = ScanOptions()
+        excluding.exclusionPatterns = ["docs/nested"]
+        let result = plan([
+            event("/scan/.cache/link.bin", [.itemCreated, .itemIsHardLink]),
+            event("/scan/docs/nested/deep.txt", [.itemCreated, .itemIsHardLink]),
+            event("/scan/docs/report.txt", [.itemCreated]),
+        ], options: excluding)
+        #expect(result == .relistDirectories(dirIDs: ["/scan/docs"], deepRescanRootIDs: []))
+    }
+
     @Test func hiddenPathsAreSkippedWhenHiddenFilesAreExcluded() {
         // .zsh_history-style churn directly under the scan root must not
         // force a full scan when the baseline never scanned hidden files.

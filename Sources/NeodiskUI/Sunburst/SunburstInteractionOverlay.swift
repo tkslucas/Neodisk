@@ -11,13 +11,7 @@
 
 import AppKit
 import SwiftUI
-
-enum SunburstPinchDirection {
-    /// Fingers spreading apart — drill into the arc under the cursor.
-    case drillIn
-    /// Fingers pinching together — go up to the parent folder.
-    case drillOut
-}
+import NeodiskAppModel
 
 struct SunburstInteractionOverlay: NSViewRepresentable {
     let onHover: (CGPoint?) -> Void

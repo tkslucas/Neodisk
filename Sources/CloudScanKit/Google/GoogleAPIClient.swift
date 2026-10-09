@@ -17,6 +17,9 @@
 //
 
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 struct GoogleAPIClient: Sendable {
     let transport: any CloudTransport

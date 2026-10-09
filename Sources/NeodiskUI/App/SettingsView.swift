@@ -10,6 +10,7 @@
 import SwiftUI
 import TreemapKit
 import NeodiskKit
+import NeodiskAppModel
 
 struct SettingsView: View {
     let model: NeodiskViewModel

@@ -196,4 +196,21 @@ private final class ConditionsBox: @unchecked Sendable {
         #expect(concurrency.classificationWorkerLimit == expectedSerious)
         #expect(concurrency.classificationWorkerLimit >= 1)
     }
+
+    /// Summary workers block on the cooperative pool (one thread per core).
+    /// Filling it starves the traversal loop that dispatches packages and
+    /// publishes progress, so the default must leave a thread free.
+    @Test func atomicSummaryWorkersLeaveACooperativeThreadFree() throws {
+        try #require(ProcessInfo.processInfo.environment["NEODISK_SCAN_ATOMIC_SUMMARY_WORKERS"] == nil)
+        let cores = ProcessInfo.processInfo.activeProcessorCount
+        let limit = ScanConcurrencyPolicy.atomicSummaryWorkerLimit(for: ScanOptions())
+        #expect(limit >= 1)
+        if cores > 1 {
+            #expect(limit < cores)
+        }
+
+        var tuned = ScanOptions()
+        tuned.tuning.atomicSummaryWorkerLimit = 12
+        #expect(ScanConcurrencyPolicy.atomicSummaryWorkerLimit(for: tuned) == 12)
+    }
 }

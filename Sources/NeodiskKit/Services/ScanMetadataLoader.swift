@@ -3,7 +3,11 @@
 //  Neodisk
 //
 
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 import Foundation
 
 nonisolated final class LinkCountCapabilityCache: @unchecked Sendable {
@@ -234,6 +238,13 @@ nonisolated struct ScanMetadataLoader: Sendable {
         includeVolumeDetails: Bool = false,
         captureDirectoryIdentity: Bool = false
     ) throws -> NodeMetadata {
+        #if os(Linux)
+        // swift-corelibs-foundation's resource values disagree with lstat
+        // (directory link counts, allocated sizes), so every Linux path
+        // reads the same lstat the bulk reader does.
+        ScanSyscallTally.recordMetadataLoad()
+        return try LinuxStat.metadata(for: url, includeVolumeDetails: includeVolumeDetails)
+        #else
         let keys = includeVolumeDetails ? Self.rootResourceKeys : Self.scanResourceKeys
         ScanSyscallTally.recordMetadataLoad()
         #if DEBUG
@@ -262,9 +273,14 @@ nonisolated struct ScanMetadataLoader: Sendable {
             includeVolumeDetails: includeVolumeDetails,
             captureDirectoryIdentity: captureDirectoryIdentity
         )
+        #endif
     }
 
     func atomicSummaryMetadata(for url: URL) throws -> NodeMetadata {
+        #if os(Linux)
+        ScanSyscallTally.recordMetadataLoad()
+        return try LinuxStat.metadata(for: url)
+        #else
         ScanSyscallTally.recordMetadataLoad()
         #if DEBUG
         let start = diagnostics?.start()
@@ -287,6 +303,7 @@ nonisolated struct ScanMetadataLoader: Sendable {
             throw error
         }
         return metadata(for: url, prefetchedResourceValues: values)
+        #endif
     }
 
     nonisolated func metadata(
@@ -295,7 +312,14 @@ nonisolated struct ScanMetadataLoader: Sendable {
         includeVolumeDetails: Bool = false,
         captureDirectoryIdentity: Bool = false
     ) -> NodeMetadata {
-        Self.nodeMetadata(
+        #if os(Linux)
+        // Same lstat as the bulk reader (see `metadata(for:)`); the
+        // enumerator's prefetched values only stand in if the item vanished.
+        if let metadata = try? LinuxStat.metadata(for: url, includeVolumeDetails: includeVolumeDetails) {
+            return metadata
+        }
+        #endif
+        return Self.nodeMetadata(
             for: url,
             resourceValues: values,
             includeVolumeDetails: includeVolumeDetails,
@@ -427,8 +451,14 @@ nonisolated struct ScanMetadataLoader: Sendable {
     private nonisolated static func fileIdentity(
         from resourceIdentifier: (any NSCopying & NSSecureCoding & NSObjectProtocol)?
     ) -> FileIdentity? {
+        #if canImport(Darwin)
         guard let identifierData = resourceIdentifier as? Data else { return nil }
         return FileIdentity(resourceIdentifier: identifierData)
+        #else
+        // swift-corelibs-foundation vends no resource identifiers; identity
+        // comes from the lstat fallback's device+inode instead.
+        return nil
+        #endif
     }
 }
 

@@ -41,6 +41,27 @@ import Testing
         #expect(storage.childCount(of: storage.index(of: "/r/small.bin")!) == 0)
     }
 
+    @Test func displayPreorderFollowsChildSlotsNotArrayOrder() {
+        let base = makeStore().storage
+        // Simulate an in-place re-sort: flip the root's slots without moving
+        // any record, as the ancestor rebuild does after a size change.
+        var childSlots = base.childSlots
+        let rootRange = Int(base.childStarts[0])..<Int(base.childStarts[1])
+        childSlots[rootRange].reverse()
+        let storage = TreeStorage(
+            nodes: base.nodes,
+            parentIndices: base.parentIndices,
+            childStarts: base.childStarts,
+            childSlots: childSlots,
+            indexByID: base.indexByID
+        )
+
+        var visited: [String] = []
+        storage.forEachIndexInDisplayPreorder { visited.append(storage.nodes[Int($0)].id) }
+
+        #expect(visited == ["/r", "/r/small.bin", "/r/big", "/r/big/x.bin", "/r/big/y.bin"])
+    }
+
     @Test func indexLookupCoversEveryNode() {
         let storage = makeStore().storage
 

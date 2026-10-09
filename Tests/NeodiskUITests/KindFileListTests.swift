@@ -2,6 +2,7 @@ import Foundation
 import Testing
 import NeodiskKit
 @testable import NeodiskUI
+@testable import NeodiskAppModel
 
 /// Drill-in from a kind row to the searchable file list.
 @MainActor

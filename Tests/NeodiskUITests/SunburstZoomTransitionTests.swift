@@ -12,6 +12,7 @@ import CoreGraphics
 import Foundation
 import Testing
 @testable import NeodiskUI
+@testable import NeodiskAppModel
 
 @Suite struct SunburstZoomTransitionTests {
     private let metrics = SunburstRingMetrics(depthLimit: 6)

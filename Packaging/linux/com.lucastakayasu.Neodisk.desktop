@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Neodisk
+GenericName=Disk Usage Analyzer
+Comment=See what takes up space on your disks
+Exec=neodisk
+Icon=com.lucastakayasu.Neodisk
+Terminal=false
+Categories=GTK;GNOME;System;Filesystem;
+Keywords=disk;space;usage;storage;treemap;sunburst;analyzer;
+StartupNotify=true
+SingleMainWindow=true

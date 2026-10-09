@@ -5,6 +5,7 @@
 
 import SwiftUI
 import NeodiskKit
+import NeodiskAppModel
 
 /// Floating bottom-right notice shown when a location opened from its
 /// snapshot instead of auto-rescanning (the last scan took long enough that

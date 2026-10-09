@@ -1,0 +1,38 @@
+name: Linux
+
+# Builds the shared core and the GTK app, and runs the core suites, on the
+# oldest supported platform (Ubuntu 24.04: GTK 4.14, libadwaita 1.5), so a
+# change made and tested on macOS can't silently break the Linux build.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-24.04
+    container: swift:6.4-noble
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install GTK, libadwaita, and zstd development packages
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            libgtk-4-dev libadwaita-1-dev libzstd-dev pkg-config
+
+      # Build and test as an unprivileged user: the permission tests
+      # (unreadable directories) need one, since root reads everything, and
+      # SwiftPM's lock files must belong to whoever runs the tests.
+      - name: Create an unprivileged user
+        run: |
+          useradd --create-home ci
+          chown -R ci "$GITHUB_WORKSPACE"
+
+      - name: Build
+        run: su ci -c "cd '$GITHUB_WORKSPACE' && swift build --build-tests"
+
+      - name: Test
+        run: su ci -c "cd '$GITHUB_WORKSPACE' && swift test --skip-build"

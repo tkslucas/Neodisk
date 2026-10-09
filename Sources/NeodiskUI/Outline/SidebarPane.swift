@@ -11,6 +11,7 @@
 import AppKit
 import SwiftUI
 import NeodiskKit
+import NeodiskAppModel
 
 struct SidebarPane: View {
     let model: NeodiskViewModel

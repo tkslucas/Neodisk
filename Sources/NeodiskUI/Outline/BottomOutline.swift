@@ -13,6 +13,7 @@
 import AppKit
 import SwiftUI
 import NeodiskKit
+import NeodiskAppModel
 
 // MARK: - Pane
 

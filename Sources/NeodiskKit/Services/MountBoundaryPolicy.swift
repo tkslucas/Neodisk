@@ -3,7 +3,11 @@
 //  Neodisk
 //
 
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 
 /// A scan owns the filesystem containing its explicitly selected root. Child
 /// mount points remain visible as zero-child directory records, but traversal
@@ -11,7 +15,13 @@ import Darwin
 /// mounted directory as the scan root makes its device the owned device and
 /// therefore preserves explicit-target behavior.
 nonisolated enum MountBoundaryPolicy {
+    #if canImport(Darwin)
     static let mountPointFlag = UInt32(bitPattern: DIR_MNTSTATUS_MNTPOINT)
+    #else
+    /// Darwin's DIR_MNTSTATUS_MNTPOINT bit. The Linux reader never sets it:
+    /// there, nested mounts show up only as a device change.
+    static let mountPointFlag: UInt32 = 0x0000_0001
+    #endif
 
     static func isNestedMount(
         deviceID: UInt64?,
@@ -40,6 +50,7 @@ nonisolated enum MountBoundaryPolicy {
         if let rootDeviceID {
             owned.insert(rootDeviceID)
         }
+        #if os(macOS)
         guard rootPath == "/" else { return owned }
         // "/" covers whichever side of the group the root stat resolved to,
         // "/System" the sealed snapshot, "/System/Volumes/Data" the Data
@@ -53,6 +64,7 @@ nonisolated enum MountBoundaryPolicy {
                 owned.insert(UInt64(bitPattern: Int64(status.st_dev)))
             }
         }
+        #endif
         return owned
     }
 }

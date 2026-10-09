@@ -14,6 +14,7 @@ import SunburstCore
 import Foundation
 import SwiftUI
 import NeodiskKit
+import NeodiskAppModel
 
 /// One legend list row: a child of the displayed folder, the pooled
 /// "Smaller Items" aggregate, or the synthetic free/hidden-space arcs.

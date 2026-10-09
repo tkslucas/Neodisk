@@ -14,6 +14,7 @@ import AppKit
 import SwiftUI
 import TreemapKit
 import NeodiskKit
+import NeodiskAppModel
 
 struct SunburstPane: View {
     /// Rings drawn below the focused root (no settings knob in v1): the

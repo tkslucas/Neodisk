@@ -3,6 +3,7 @@ import Testing
 import NeodiskKit
 import SunburstCore
 @testable import NeodiskUI
+@testable import NeodiskAppModel
 
 /// The palette registry and its wiring through the kind catalog.
 @MainActor

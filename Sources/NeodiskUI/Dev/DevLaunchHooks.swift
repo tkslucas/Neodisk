@@ -12,6 +12,7 @@
 import Foundation
 import NeodiskKit
 import TreemapKit
+import NeodiskAppModel
 
 enum DevLaunchHooks {
     @MainActor

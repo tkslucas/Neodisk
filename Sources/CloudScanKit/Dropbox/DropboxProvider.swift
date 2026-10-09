@@ -10,6 +10,9 @@
 //
 
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 public struct DropboxProvider: CloudProvider {
     public let providerID = "dropbox"

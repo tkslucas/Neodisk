@@ -13,6 +13,7 @@ import SwiftUI
 import Testing
 import NeodiskKit
 @testable import NeodiskUI
+@testable import NeodiskAppModel
 
 @Suite struct SunburstLegendTests {
     // MARK: - Sorting

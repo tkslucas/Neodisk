@@ -22,6 +22,9 @@
 //
 
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 struct GraphAPIClient: Sendable {
     let transport: any CloudTransport

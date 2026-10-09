@@ -1,5 +1,8 @@
 import Testing
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 @testable import CloudScanKit
 
 /// Real ephemeral listener exercised over the loopback interface with

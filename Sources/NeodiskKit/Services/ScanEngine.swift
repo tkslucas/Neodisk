@@ -3,7 +3,11 @@
 //  Neodisk
 //
 
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 import Dispatch
 import Foundation
 
@@ -205,6 +209,9 @@ public final class ScanEngine: Sendable {
     }
 
     private nonisolated static func defaultVolumeFileSystemType(for url: URL) -> String? {
+        #if os(Linux)
+        return LinuxMountTable.fileSystemType(forPath: url.path)
+        #else
         var fileSystemStats = statfs()
         let result = url.withUnsafeFileSystemRepresentation { path in
             guard let path else { return Int32(-1) }
@@ -217,6 +224,7 @@ public final class ScanEngine: Sendable {
             guard let baseAddress = buffer.baseAddress else { return nil }
             return String(cString: baseAddress)
         }
+        #endif
     }
 
     nonisolated static func enumeratedDirectoryContents(

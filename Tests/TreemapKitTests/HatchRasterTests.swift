@@ -7,7 +7,10 @@
 //  body and the scalar tail agreeing pixel-for-pixel (no seam).
 //
 
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
+import Foundation
 import Testing
 import TreemapKit
 

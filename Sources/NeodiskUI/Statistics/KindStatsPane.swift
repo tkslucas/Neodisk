@@ -8,6 +8,7 @@
 
 import SwiftUI
 import NeodiskKit
+import NeodiskAppModel
 
 struct KindStatsPane: View {
     let model: NeodiskViewModel

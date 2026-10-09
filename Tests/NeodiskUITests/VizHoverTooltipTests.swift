@@ -2,6 +2,7 @@ import Foundation
 import Testing
 import NeodiskKit
 @testable import NeodiskUI
+@testable import NeodiskAppModel
 
 /// The tooltip content model is view-model-free, so its primary/secondary
 /// lines can be exercised directly. `swift test` has no `.lproj` in

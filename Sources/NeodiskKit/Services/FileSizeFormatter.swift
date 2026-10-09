@@ -46,6 +46,11 @@ private final class FormatterCache: @unchecked Sendable {
     }
 
     func size(_ bytes: Int64) -> String {
+        #if !canImport(Darwin)
+        // swift-corelibs-foundation renders zero as "Zero KB" even with
+        // byte units allowed; Darwin says "Zero bytes".
+        if bytes == 0 { return "Zero bytes" }
+        #endif
         lock.lock()
         defer { lock.unlock() }
         return byteFormatter.string(fromByteCount: bytes)

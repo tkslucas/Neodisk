@@ -7,7 +7,9 @@
 //  rasterizeRGBA/render parity (the same contract the cushion path pins).
 //
 
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
 import Foundation
 import Testing
 import TreemapKit
@@ -115,6 +117,7 @@ import TreemapKit
         #expect(sorted[1] - sorted[0] > 20)
     }
 
+    #if canImport(CoreGraphics)
     @Test func rasterizeRGBAMatchesRenderPixels() throws {
         let bounds = CGRect(x: 0, y: 0, width: 120, height: 90)
         let cells = [
@@ -135,4 +138,5 @@ import TreemapKit
         let cgPixels = try #require(image.dataProvider?.data as Data?)
         #expect(Array(cgPixels) == portable.pixels)
     }
+    #endif
 }

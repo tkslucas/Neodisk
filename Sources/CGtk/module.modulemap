@@ -1,0 +1,6 @@
+module CGtk [system] {
+    header "shim.h"
+    link "gtk-4"
+    link "adwaita-1"
+    export *
+}

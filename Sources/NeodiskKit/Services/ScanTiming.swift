@@ -3,7 +3,11 @@
 //  Neodisk
 //
 
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 import Foundation
 
 /// Wall-clock phase timings for scans, printed to stderr as
@@ -111,7 +115,12 @@ public nonisolated enum ScanTiming {
     /// sequentially within a scan.
     private static func processCPUMilliseconds() -> (user: Double, system: Double) {
         var usage = rusage()
-        guard getrusage(RUSAGE_SELF, &usage) == 0 else { return (0, 0) }
+        #if os(Linux)
+        let who = __rusage_who_t(RUSAGE_SELF.rawValue)
+        #else
+        let who = RUSAGE_SELF
+        #endif
+        guard getrusage(who, &usage) == 0 else { return (0, 0) }
         func milliseconds(_ time: timeval) -> Double {
             Double(time.tv_sec) * 1000 + Double(time.tv_usec) / 1000
         }

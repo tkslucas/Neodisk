@@ -9,6 +9,7 @@
 //
 
 import Foundation
+import NeodiskKit
 
 enum DataDirectory {
     enum Resource {
@@ -48,7 +49,7 @@ enum DataDirectory {
         let executable = URL(filePath: CommandLine.arguments[0]).resolvingSymlinksInPath()
         roots.append(
             executable.deletingLastPathComponent().deletingLastPathComponent()
-                .appending(path: "share/neodisk", directoryHint: .isDirectory)
+                .appending(path: "share/\(AppChannel.current.slug)", directoryHint: .isDirectory)
         )
         var candidates = roots.map { $0.appending(path: resource.installedName, directoryHint: .isDirectory) }
         // Sources/NeodiskGTK/App/DataDirectory.swift → repository root.

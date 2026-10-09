@@ -36,6 +36,8 @@ shared core rather than in an app.
   swift-testing dependency and the `lib_TestingInterop` linker flags. Do not
   remove either.
 - Run the app: `swift run -c release Neodisk`.
+- `-Xswiftc -DNEODISK_NIGHTLY` builds Neodisk Nightly (`AppChannel`): its own
+  name, id and storage, so it installs beside the stable app.
 - Dev hooks:
   - `NEODISK_AUTOSCAN=<path>` — scan on launch. Also accepts a connected
     cloud account's target ID (`cloudscan://<provider>/<account>`), composing

@@ -142,7 +142,7 @@ public struct ContentView: View {
         finderUsedBytes: Int64?,
         scannedTotalBytes: Int64?
     ) -> String {
-        guard let targetName else { return "Neodisk" }
+        guard let targetName else { return AppChannel.current.appName }
         let total: Int64? = if targetKind == .volume, let finderUsedBytes {
             finderUsedBytes
         } else {

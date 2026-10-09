@@ -11,12 +11,13 @@
 import CGtk
 import Foundation
 import NeodiskAppModel
+import NeodiskKit
 
 @MainActor
 final class NeodiskApplication {
     /// The reverse-DNS identity the macOS bundle uses; also the D-Bus name,
     /// the .desktop file name, and the icon name.
-    static let applicationID = "com.lucastakayasu.Neodisk"
+    static let applicationID = AppChannel.current.identifier
 
     let app: GPtr
     let preferences = Preferences()
@@ -27,7 +28,7 @@ final class NeodiskApplication {
     init() {
         model = AppModel(preferences: preferences)
         app = raw(adw_application_new(Self.applicationID, GApplicationFlags(rawValue: 0)))!
-        g_set_application_name("Neodisk")
+        g_set_application_name(AppChannel.current.appName)
         connect(app, "startup") { [unowned self] in self.startup() }
         connect(app, "activate") { [unowned self] in self.activate() }
         connect(app, "shutdown") { [unowned self] in self.preferences.saveNow() }

@@ -6,6 +6,7 @@
 import AppKit
 import SwiftUI
 import NeodiskAppModel
+import NeodiskKit
 
 /// Project links used by the Help menu and the About window.
 enum AppLinks {
@@ -28,12 +29,12 @@ struct AboutView: View {
                 .resizable()
                 .frame(width: 108, height: 108)
 
-            Text(verbatim: "Neodisk")
+            Text(verbatim: AppChannel.current.appName)
                 .font(.title)
                 .bold()
                 .padding(.top, 4)
 
-            Text("Version \(AppVersion.string)")
+            Text("Version \(AppVersion.display)")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)

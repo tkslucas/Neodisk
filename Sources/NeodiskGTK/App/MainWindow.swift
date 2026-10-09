@@ -55,7 +55,7 @@ final class MainWindow {
         gtk_window_set_default_size(ptr(window), Int32(preferences.windowWidth), Int32(preferences.windowHeight))
         // Breakpoints need a floor to collapse the layout against.
         gtk_widget_set_size_request(ptr(window), 640, 480)
-        gtk_window_set_title(ptr(window), "Neodisk")
+        gtk_window_set_title(ptr(window), AppChannel.current.appName)
 
         sidebar = SidebarView(model: model)
         treemap = TreemapView(model: model)
@@ -70,7 +70,7 @@ final class MainWindow {
         // Sidebar pane: its own header bar, like GNOME Files.
         let sidebarToolbar = raw(adw_toolbar_view_new())!
         let sidebarHeader = raw(adw_header_bar_new())!
-        let sidebarTitle = raw(adw_window_title_new("Neodisk", nil))!
+        let sidebarTitle = raw(adw_window_title_new(AppChannel.current.appName, nil))!
         adw_header_bar_set_title_widget(ptr(sidebarHeader), ptr(sidebarTitle))
         let menuButton = raw(gtk_menu_button_new())!
         gtk_menu_button_set_icon_name(ptr(menuButton), "open-menu-symbolic")
@@ -94,7 +94,7 @@ final class MainWindow {
         gtk_button_set_icon_name(ptr(sidebarToggle), "sidebar-show-symbolic")
         gtk_widget_set_tooltip_text(ptr(sidebarToggle), L("Toggle Sidebar"))
         adw_header_bar_pack_start(ptr(header), ptr(sidebarToggle))
-        titleLabel = Widgets.label("Neodisk", classes: ["heading"])
+        titleLabel = Widgets.label(AppChannel.current.appName, classes: ["heading"])
         gtk_label_set_ellipsize(ptr(titleLabel), PANGO_ELLIPSIZE_END)
         subtitleLabel = Widgets.label("", classes: ["dim-label", "neodisk-caption", "neodisk-numeric"])
         gtk_label_set_ellipsize(ptr(subtitleLabel), PANGO_ELLIPSIZE_END)
@@ -305,12 +305,12 @@ final class MainWindow {
                 gtk_label_set_text(ptr(self.restoreLabel), L("Opening last scan of %@…", self.displayName(target)))
             }
 
-            let title = self.model.target.map(self.displayName) ?? "Neodisk"
+            let title = self.model.target.map(self.displayName) ?? AppChannel.current.appName
             gtk_label_set_text(ptr(self.titleLabel), title)
             let subtitle = self.subtitle()
             gtk_label_set_text(ptr(self.subtitleLabel), subtitle ?? "")
             Widgets.setVisible(self.subtitleLabel, subtitle != nil)
-            gtk_window_set_title(ptr(self.window), self.model.target == nil ? "Neodisk" : "\(title) — Neodisk")
+            gtk_window_set_title(ptr(self.window), self.model.target == nil ? AppChannel.current.appName : "\(title) — \(AppChannel.current.appName)")
 
             let scanning = self.model.isScanning || self.model.phase == .restoring
             // Persistent controls that disable when unusable, never vanish

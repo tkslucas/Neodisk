@@ -10,6 +10,7 @@
 //
 
 import Foundation
+import NeodiskKit
 #if canImport(Security)
 import Security
 #endif
@@ -54,7 +55,8 @@ public enum TokenStoreError: Error, Equatable, Sendable {
 /// "app.neodisk.cloudscan.<providerID>", account = accountID, value = the
 /// JSON-encoded credentials. Never exercised in unit tests.
 public struct KeychainTokenStore: TokenStoring {
-    private static let servicePrefix = "app.neodisk.cloudscan."
+    private static let servicePrefix = AppChannel.current == .stable
+        ? "app.neodisk.cloudscan." : "app.neodisk.nightly.cloudscan."
 
     public init() {}
 

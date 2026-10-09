@@ -154,7 +154,7 @@ struct SidebarPane: View {
             Text("Neodisk will disconnect \(target.displayName) and remove its cached scan. You can reconnect at any time.")
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            Text("v\(AppVersion.string)")
+            Text("v\(AppVersion.display)")
                 .neoFont(9)
                 .foregroundStyle(.tertiary)
                 .frame(maxWidth: .infinity, alignment: .leading)

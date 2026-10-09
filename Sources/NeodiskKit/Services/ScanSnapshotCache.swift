@@ -148,7 +148,7 @@ public actor ScanSnapshotCache {
             for: .applicationSupportDirectory,
             in: .userDomainMask
         ).first ?? FileManager.default.temporaryDirectory
-        return applicationSupportURL.appending(path: "Neodisk/ScanCache", directoryHint: .isDirectory)
+        return applicationSupportURL.appending(path: "\(AppChannel.current.appName)/ScanCache", directoryHint: .isDirectory)
     }
 
     public init(

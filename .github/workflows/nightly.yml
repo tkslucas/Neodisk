@@ -1,0 +1,163 @@
+name: Nightly
+
+# Builds Neodisk Nightly from main once a day when main moved: a signed,
+# notarized universal Mac app (launch-checked on Intel) and Linux tarballs,
+# published to the rolling "nightly" pre-release. Off until the repository
+# variable NEODISK_NIGHTLY is "true".
+
+on:
+  schedule:
+    - cron: "0 10 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency: nightly
+
+jobs:
+  check:
+    if: vars.NEODISK_NIGHTLY == 'true'
+    runs-on: ubuntu-24.04
+    outputs:
+      build: ${{ steps.check.outputs.build }}
+    steps:
+      - id: check
+        run: |
+          tagged=$(git ls-remote "https://github.com/$GITHUB_REPOSITORY.git" refs/tags/nightly | cut -f1)
+          if [[ "$tagged" == "$GITHUB_SHA" && "$GITHUB_EVENT_NAME" == schedule ]]; then
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  mac:
+    needs: check
+    if: needs.check.outputs.build == 'true'
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: Neodisk
+      - uses: actions/checkout@v4
+        with:
+          repository: tkslucas/neodisk-internal
+          ssh-key: ${{ secrets.NEODISK_INTERNAL_KEY }}
+          path: internal
+
+      - name: Signing keychain
+        env:
+          CERT_P12: ${{ secrets.DEVELOPER_ID_P12 }}
+          CERT_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+          APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
+          NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
+        run: |
+          kc="$RUNNER_TEMP/signing.keychain-db"; pw=$(uuidgen)
+          security create-keychain -p "$pw" "$kc"
+          security set-keychain-settings -lut 21600 "$kc"
+          security unlock-keychain -p "$pw" "$kc"
+          echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$kc" -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/cert.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$pw" "$kc" >/dev/null
+          security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
+          xcrun notarytool store-credentials neodisk-notary --keychain "$kc" \
+            --apple-id "$APPLE_ID" --team-id "$TEAM_ID" --password "$NOTARY_PASSWORD"
+
+      - name: Build, sign and notarize
+        env:
+          NEODISK_REPO: ${{ github.workspace }}/Neodisk
+          NEODISK_CHANNEL: nightly
+          NEODISK_NOTARY_PROFILE: neodisk-notary
+          NEODISK_NIGHTLY_ED_PUBLIC_KEY: ${{ vars.NEODISK_NIGHTLY_ED_PUBLIC_KEY }}
+        run: |
+          npm install --global create-dmg
+          internal/scripts/package-app.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac
+          path: |
+            Neodisk/dist/Neodisk-Nightly-*.zip
+            Neodisk/dist/Neodisk-Nightly-*.dmg
+
+  intel:
+    needs: mac
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: mac
+      - name: Launch on Intel
+        run: |
+          ditto -x -k Neodisk-Nightly-*.zip .
+          bin="Neodisk Nightly.app/Contents/MacOS/Neodisk"
+          lipo "$bin" -verify_arch x86_64 arm64
+          "$bin" -hasSeenWelcome YES & pid=$!
+          sleep 20
+          kill -0 "$pid" || { echo "Neodisk Nightly quit on Intel"; exit 1; }
+          kill "$pid"
+
+  linux:
+    needs: check
+    if: needs.check.outputs.build == 'true'
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    container: swift:6.4-noble
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install GTK, libadwaita, and zstd development packages
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            libgtk-4-dev libadwaita-1-dev libzstd-dev pkg-config
+
+      # Unpacks into /usr/local: sudo tar -xzf <file> -C /usr/local
+      - name: Build and pack
+        run: |
+          version=$(sed -n 's/.*static let string = "\(.*\)".*/\1/p' Sources/NeodiskAppModel/AppVersion.swift)
+          name="neodisk-nightly-$version-$(date -u +%Y%m%d)-${GITHUB_SHA::7}-linux-${{ matrix.arch }}.tar.gz"
+          DESTDIR="$PWD/stage" Packaging/linux/install.sh --nightly /usr/local
+          tar -C stage/usr/local -czf "$name" .
+          echo "NAME=$name" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}
+          path: ${{ env.NAME }}
+
+  publish:
+    needs: [mac, intel, linux]
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: Neodisk
+      - uses: actions/checkout@v4
+        with:
+          repository: tkslucas/neodisk-internal
+          ssh-key: ${{ secrets.NEODISK_INTERNAL_KEY }}
+          path: internal
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Publish the nightly pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEODISK_REPO: ${{ github.workspace }}/Neodisk
+          ED_KEY: ${{ secrets.NEODISK_NIGHTLY_ED_KEY }}
+        run: |
+          key="$RUNNER_TEMP/nightly-ed-key"
+          printf '%s' "$ED_KEY" > "$key"
+          NEODISK_NIGHTLY_ED_KEY_FILE="$key" internal/scripts/nightly.sh artifacts
+          rm "$key"

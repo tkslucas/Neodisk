@@ -96,7 +96,7 @@ final class Preferences {
         let environment = ProcessInfo.processInfo.environment
         let configHome = environment["XDG_CONFIG_HOME"].flatMap { $0.isEmpty ? nil : URL(filePath: $0) }
             ?? FileManager.default.homeDirectoryForCurrentUser.appending(path: ".config")
-        return configHome.appending(path: "neodisk/settings.json")
+        return configHome.appending(path: "\(AppChannel.current.slug)/settings.json")
     }
 
     private struct Stored: Codable {

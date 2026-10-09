@@ -6,14 +6,15 @@
 import CGtk
 import Foundation
 import NeodiskAppModel
+import NeodiskKit
 
 @MainActor
 enum AboutDialog {
     static func present(from window: GPtr?) {
         let dialog = adw_about_dialog_new()
-        adw_about_dialog_set_application_name(OpaquePointer(dialog), "Neodisk")
+        adw_about_dialog_set_application_name(OpaquePointer(dialog), AppChannel.current.appName)
         adw_about_dialog_set_application_icon(OpaquePointer(dialog), NeodiskApplication.applicationID)
-        adw_about_dialog_set_version(OpaquePointer(dialog), AppVersion.string)
+        adw_about_dialog_set_version(OpaquePointer(dialog), AppVersion.display)
         adw_about_dialog_set_developer_name(OpaquePointer(dialog), "Lucas Takayasu")
         adw_about_dialog_set_comments(
             OpaquePointer(dialog),

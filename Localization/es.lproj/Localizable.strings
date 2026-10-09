@@ -334,7 +334,7 @@
 "Automatic updates work only in the packaged app." = "Las actualizaciones automáticas solo funcionan en la app empaquetada.";
 
 /* MARK: - Help & About */
-"About Neodisk" = "Acerca de Neodisk";
+"About %@" = "Acerca de %@";
 "Neodisk on GitHub" = "Neodisk en GitHub";
 "Report Issue…" = "Informar de un problema…";
 "Support Neodisk…" = "Apoyar a Neodisk…";

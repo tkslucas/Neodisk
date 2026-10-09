@@ -5,6 +5,7 @@
 
 import AppKit
 import SwiftUI
+import NeodiskKit
 
 public struct NeodiskApp: App {
     @State private var model: NeodiskViewModel
@@ -64,7 +65,7 @@ public struct NeodiskApp: App {
             SettingsView(model: model, preferences: preferences, updates: updates)
         }
 
-        Window("About Neodisk", id: "about") {
+        Window("About \(AppChannel.current.appName)", id: "about") {
             AboutView()
                 .fixedSize()
         }

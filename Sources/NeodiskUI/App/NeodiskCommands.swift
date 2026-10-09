@@ -8,6 +8,7 @@
 
 import AppKit
 import SwiftUI
+import NeodiskKit
 import TreemapKit
 
 struct NeodiskCommands: Commands {
@@ -309,7 +310,7 @@ private struct AboutMenuItem: View {
         Button {
             openWindow(id: "about")
         } label: {
-            Label("About Neodisk", systemImage: "info.circle")
+            Label("About \(AppChannel.current.appName)", systemImage: "info.circle")
         }
     }
 }

@@ -333,7 +333,7 @@
 "Automatic updates work only in the packaged app." = "自動アップデートはパッケージ版のアプリでのみ機能します。";
 
 /* MARK: - Help & About */
-"About Neodisk" = "Neodiskについて";
+"About %@" = "%@について";
 "Neodisk on GitHub" = "GitHubでNeodiskを表示";
 "Report Issue…" = "問題を報告…";
 "Support Neodisk…" = "Neodiskを支援…";

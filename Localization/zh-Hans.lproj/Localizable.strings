@@ -333,7 +333,7 @@
 "Automatic updates work only in the packaged app." = "自动更新仅在打包的 App 中可用。";
 
 /* MARK: - Help & About */
-"About Neodisk" = "关于 Neodisk";
+"About %@" = "关于 %@";
 "Neodisk on GitHub" = "GitHub 上的 Neodisk";
 "Report Issue…" = "报告问题…";
 "Support Neodisk…" = "支持 Neodisk…";

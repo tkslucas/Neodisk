@@ -370,8 +370,9 @@ struct OutlineTreeTable: NSViewRepresentable {
 /// Draws the List-style rounded selection pinned to the visible width, so
 /// it neither stretches across the whole (possibly much wider) content nor
 /// slides away when the tree pans. Selection and focus state are forwarded
-/// to the hosted SwiftUI row, which AppKit cannot signal directly.
-private final class OutlineTableRowView: NSTableRowView {
+/// to the hosted SwiftUI row, which AppKit cannot signal directly. Also the
+/// row of the statistics lists (StatsListTable).
+final class OutlineTableRowView: NSTableRowView {
     override var isSelected: Bool {
         didSet { forwardSelectionState() }
     }
@@ -381,7 +382,7 @@ private final class OutlineTableRowView: NSTableRowView {
     }
 
     private func forwardSelectionState() {
-        for case let cell as OutlineCellView in subviews {
+        for case let cell as SelectionStateReceiving in subviews {
             cell.selectionDidChange(isSelected: isSelected, isEmphasized: isEmphasized)
         }
         needsDisplay = true
@@ -389,7 +390,7 @@ private final class OutlineTableRowView: NSTableRowView {
 
     override func didAddSubview(_ subview: NSView) {
         super.didAddSubview(subview)
-        (subview as? OutlineCellView)?
+        (subview as? SelectionStateReceiving)?
             .selectionDidChange(isSelected: isSelected, isEmphasized: isEmphasized)
     }
 
@@ -426,7 +427,7 @@ private final class OutlineTableRowView: NSTableRowView {
 /// position uses Auto Layout so the pin only moves a constraint constant
 /// per scroll frame, and intrinsic-size changes (the spinner appearing,
 /// sizes updating mid-scan) reflow on their own.
-private final class OutlineCellView: NSView {
+private final class OutlineCellView: NSView, SelectionStateReceiving {
     static let reuseIdentifier = NSUserInterfaceItemIdentifier("OutlineCell")
 
     private let selectionState = OutlineRowSelectionState()
@@ -513,6 +514,13 @@ private final class OutlineCellView: NSView {
         guard abs(clusterTrailing.constant - visible.maxX) > 0.01 else { return }
         clusterTrailing.constant = visible.maxX
     }
+}
+
+/// Forwarded AppKit selection state, so hosted SwiftUI cell content can
+/// switch to the white-on-accent style (AppKit cannot signal it directly).
+@MainActor
+protocol SelectionStateReceiving: AnyObject {
+    func selectionDidChange(isSelected: Bool, isEmphasized: Bool)
 }
 
 /// Per-row selection/focus state bridged from AppKit into the hosted

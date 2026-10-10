@@ -126,16 +126,7 @@ struct DuplicatesPane: View {
                     .frame(maxWidth: .infinity)
                 Spacer()
             } else {
-                List(model.duplicates.liveGroups) { group in
-                    DuplicateGroupRow(model: model, group: group)
-                        .listRowSeparator(.hidden)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            model.duplicates.open(group)
-                        }
-                        .help("Show the copies in this group")
-                }
-                .environment(\.defaultMinListRowHeight, 20)
+                DuplicateGroupList(model: model, groups: model.duplicates.liveGroups)
             }
         }
     }
@@ -219,16 +210,7 @@ private struct DuplicateResultsView: View {
                     .frame(maxWidth: .infinity)
                 Spacer()
             } else {
-                List(results.groups) { group in
-                    DuplicateGroupRow(model: model, group: group)
-                        .listRowSeparator(.hidden)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            model.duplicates.open(group)
-                        }
-                        .help("Show the copies in this group")
-                }
-                .environment(\.defaultMinListRowHeight, 20)
+                DuplicateGroupList(model: model, groups: results.groups)
             }
 
             if results.unreadableCount > 0 {
@@ -275,6 +257,27 @@ private struct DuplicateResultsView: View {
             ),
             results.unreadableCount.formatted()
         )
+    }
+}
+
+/// Groups largest waste first; clicking one opens its copies.
+private struct DuplicateGroupList: View {
+    let model: NeodiskViewModel
+    let groups: [DuplicateGroup]
+
+    var body: some View {
+        StatsListTable(
+            model: model,
+            rows: groups,
+            click: .opens { id in
+                if let group = groups.first(where: { $0.id == id }) {
+                    model.duplicates.open(group)
+                }
+            }
+        ) { group in
+            DuplicateGroupRow(model: model, group: group)
+                .help("Show the copies in this group")
+        }
     }
 }
 
@@ -375,23 +378,18 @@ private struct DuplicateGroupDetailView: View {
 
             Divider()
 
-            let selection = Binding<String?>(
-                get: { model.selectedNodeID },
-                set: { if let id = $0 { model.select(id) } }
-            )
-            List(group.nodeIDs, id: \.self, selection: selection) { nodeID in
-                if let node = model.store?.node(id: nodeID) {
-                    FileResultRow(
-                        node: node,
-                        palette: model.vizPalette,
-                        includeCloudOnly: model.showsCloudOnlyFiles
-                    )
-                    .listRowSeparator(.hidden)
-                }
+            StatsListTable(
+                model: model,
+                rows: group.nodeIDs.compactMap { model.store?.node(id: $0) },
+                click: .selectsNode { model.select($0) },
+                selectedID: model.selectedNodeID
+            ) { node in
+                FileResultRow(
+                    node: node,
+                    palette: model.vizPalette,
+                    includeCloudOnly: model.showsCloudOnlyFiles
+                )
             }
-            .fileNodeActions(model: model)
-            .environment(\.defaultMinListRowHeight, 20)
-            .quickLookOnSpace(model: model)
         }
     }
 

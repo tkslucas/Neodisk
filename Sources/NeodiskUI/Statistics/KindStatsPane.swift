@@ -70,7 +70,17 @@ struct KindStatsPane: View {
                     .frame(maxWidth: .infinity)
                 Spacer()
             } else {
-                List(model.kinds.catalog.stats) { stat in
+                // By type, a scan can hold hundreds of extensions.
+                let stats = model.kinds.catalog.stats
+                StatsListTable(
+                    model: model,
+                    rows: stats,
+                    click: .opens { id in
+                        if let stat = stats.first(where: { $0.id == id }) {
+                            model.kinds.openFileList(for: stat)
+                        }
+                    }
+                ) { stat in
                     StatsLegendRow(
                         swatch: stat.color,
                         name: LocalizedStringKey(stat.kind.displayName),
@@ -78,15 +88,9 @@ struct KindStatsPane: View {
                         totalAllocatedSize: stat.totalAllocatedSize,
                         totalSize: totalSize
                     )
-                    .listRowSeparator(.hidden)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        model.kinds.openFileList(for: stat)
-                    }
                     .help("Show every file of this kind")
                     .contextMenu { categoryMenu(for: stat.kind) }
                 }
-                .environment(\.defaultMinListRowHeight, 20)
             }
         }
         .alert(

@@ -2,8 +2,9 @@
 //  FileNodeActions.swift
 //  Neodisk
 //
-//  Context menu + double-click-to-reveal for the selection Lists of file
-//  nodes (outline tree, search results, stats drill-ins, duplicate copies).
+//  Context menu + double-click-to-reveal for the file lists: the SwiftUI
+//  variant for the search results List, the AppKit variant for the outline
+//  tables, the statistics lists, the treemap and the sunburst.
 //
 //  Uses contextMenu(forSelectionType:primaryAction:) — the only mechanism
 //  that adds double-click to a macOS List without breaking single-click row
@@ -92,12 +93,16 @@ extension NSMenu {
 
     /// Delegate-driven menus (the outline's menuNeedsUpdate) populate an
     /// existing menu with the same items instead of building a fresh one.
+    /// The flat statistics lists leave out the contents-expansion item, as
+    /// their SwiftUI predecessors did.
     @MainActor
-    func addFileNodeActionItems(for node: FileNodeRecord, model: NeodiskViewModel) {
+    func addFileNodeActionItems(
+        for node: FileNodeRecord, model: NeodiskViewModel, includeExpandContents: Bool = true
+    ) {
         addItem(ClosureMenuItem(title: NSLocalizedString("Reveal in Finder", comment: "File node context menu")) { model.reveal(node) })
         addItem(ClosureMenuItem(title: NSLocalizedString("Open", comment: "File node context menu")) { model.open(node) })
         addItem(ClosureMenuItem(title: NSLocalizedString("Copy Path", comment: "File node context menu")) { model.copyPath(node) })
-        if let expansion = model.contentsExpansion(for: node) {
+        if includeExpandContents, let expansion = model.contentsExpansion(for: node) {
             addItem(.separator())
             let item = ClosureMenuItem(title: NSLocalizedString(expansion.menuTitleKey, comment: "File node context menu")) { model.expandNodeContents(node) }
             item.isEnabled = model.canRefreshSubtree

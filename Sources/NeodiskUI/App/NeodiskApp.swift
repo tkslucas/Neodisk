@@ -9,7 +9,7 @@ import NeodiskKit
 
 public struct NeodiskApp: App {
     @State private var model: NeodiskViewModel
-    @StateObject private var preferences = AppPreferences()
+    @StateObject private var preferences: AppPreferences
     // Sparkle auto-updates; inert (no updater) for unbundled `swift run`
     // builds and bundles without an appcast feed. See UpdateController.
     @StateObject private var updates = UpdateController()
@@ -21,12 +21,19 @@ public struct NeodiskApp: App {
         // M1; nil in builds without CloudScanKit, where the router's cloud
         // leg reports the feature as unavailable).
         let cloudScan = CloudScanFactory.make()
-        _model = State(initialValue: NeodiskViewModel(
+        let model = NeodiskViewModel(
             coordinator: ScanCoordinator(
                 scanService: RoutingScanService(cloudService: cloudScan?.scanService)
             ),
             cloudScan: cloudScan
-        ))
+        )
+        // Bound before the first frame, so the workspace opens at the saved
+        // text size. Binding on appear drew one frame at 100% first, and a
+        // control that took focus there kept its 100% focus ring on macOS 26.
+        let preferences = AppPreferences()
+        model.preferences = preferences
+        _model = State(initialValue: model)
+        _preferences = StateObject(wrappedValue: preferences)
         FeltTiming.markLaunch("modelReady")
 
         // Single-window app: no window tabs, so the View menu loses the

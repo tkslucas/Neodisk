@@ -176,7 +176,7 @@ private struct QuickLookSpaceKey: ViewModifier {
 
 extension View {
     /// Quick Look the model's selected node on space. Attach to selection
-    /// Lists (outline tree, search results, kind drill-in).
+    /// Lists (the search results; the AppKit tables handle space themselves).
     func quickLookOnSpace(model: NeodiskViewModel) -> some View {
         modifier(QuickLookSpaceKey(model: model))
     }

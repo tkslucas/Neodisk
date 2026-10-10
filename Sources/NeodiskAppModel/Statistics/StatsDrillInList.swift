@@ -16,8 +16,8 @@ import NeodiskKit
 @MainActor
 @Observable
 package final class StatsDrillInList<Context: Sendable> {
-    /// Cap for browsing with no filter typed — SwiftUI's List degrades with
-    /// hundreds of thousands of rows; the tail is reachable via search.
+    /// Cap for browsing with no filter typed: hundreds of thousands of rows
+    /// are more than anyone scrolls; the tail is reachable via search.
     package static var browseLimit: Int { 3_000 }
 
     /// The open list's subject, set once its files have finished loading —

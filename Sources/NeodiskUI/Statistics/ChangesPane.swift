@@ -118,17 +118,15 @@ private struct ChangeResultsView: View {
                 // a deleted entry's ID is its old path — absent from the
                 // store, so those helpers no-op and the click handler routes
                 // to the nearest surviving ancestor.
-                let selection = Binding<String?>(
-                    get: { model.selectedNodeID },
-                    set: { if let id = $0 { select(entryID: id) } }
-                )
-                List(entries, selection: selection) { entry in
+                StatsListTable(
+                    model: model,
+                    rows: entries,
+                    click: .selectsNode { select(entryID: $0) },
+                    selectedID: model.selectedNodeID,
+                    keepsLeaderInView: true
+                ) { entry in
                     ChangeEntryRow(model: model, entry: entry)
-                        .listRowSeparator(.hidden)
                 }
-                .fileNodeActions(model: model)
-                .environment(\.defaultMinListRowHeight, 20)
-                .quickLookOnSpace(model: model)
 
                 if entries.count < list.totalCount(for: filter) {
                     Divider()

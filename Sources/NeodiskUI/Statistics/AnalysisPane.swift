@@ -199,31 +199,20 @@ struct StatsFileListView: View {
                     .frame(maxWidth: .infinity)
                 Spacer()
             } else {
-                let selection = Binding<String?>(
-                    get: { model.selectedNodeID },
-                    set: { if let id = $0 { model.select(id) } }
-                )
-                ScrollViewReader { proxy in
-                    // Only ids the store still resolves: a row with no node
-                    // would be an empty, zero-height row.
-                    let nodes = rows ?? visibleIDs.compactMap { model.store?.node(id: $0) }
-                    List(nodes, id: \.id, selection: selection) { node in
-                        FileResultRow(
-                            node: node,
-                            palette: model.vizPalette,
-                            includeCloudOnly: model.showsCloudOnlyFiles
-                        )
-                        .listRowSeparator(.hidden)
-                    }
-                    .fileNodeActions(model: model)
-                    .environment(\.defaultMinListRowHeight, 20)
-                    .quickLookOnSpace(model: model)
-                    // Rows are kept while a refreshed list arrives, so the list
-                    // would stay anchored to its old top row as bigger files
-                    // land above it; keep the largest in view instead.
-                    .onChange(of: visibleIDs.first) { _, first in
-                        if let first { proxy.scrollTo(first, anchor: .top) }
-                    }
+                // Only ids the store still resolves: a row with no node
+                // would be an empty row.
+                StatsListTable(
+                    model: model,
+                    rows: rows ?? visibleIDs.compactMap { model.store?.node(id: $0) },
+                    click: .selectsNode { model.select($0) },
+                    selectedID: model.selectedNodeID,
+                    keepsLeaderInView: true
+                ) { node in
+                    FileResultRow(
+                        node: node,
+                        palette: model.vizPalette,
+                        includeCloudOnly: model.showsCloudOnlyFiles
+                    )
                 }
 
                 if visibleIDs.count < totalMatches {

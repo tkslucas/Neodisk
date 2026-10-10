@@ -525,13 +525,6 @@ private struct BottomDetailText: View {
 
 // MARK: - AppKit cell/row plumbing
 
-/// Forwarded AppKit selection state, so hosted SwiftUI cell content can
-/// switch to the white-on-accent style (AppKit cannot signal it directly).
-@MainActor
-private protocol SelectionStateReceiving: AnyObject {
-    func selectionDidChange(isSelected: Bool, isEmphasized: Bool)
-}
-
 /// One recycled table cell hosting a SwiftUI view; the coordinator swaps
 /// the root view on reuse and the per-cell selection state flows in
 /// through OutlineRowSelectionState.

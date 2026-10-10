@@ -553,16 +553,19 @@ struct IncrementalRescanEquivalenceTests {
         let synthSet = relistSet(synthesized) ?? []
 
         // Poll the real journal until it has surfaced the newest churned path
-        // (the create of d0/newf.bin) — proof the window is complete, not a
-        // partial early flush — draining the full window each time.
+        // (the create of d0/nd/n.bin, the last op above) — fseventsd numbers
+        // events in order, so its presence proves every earlier op is in the
+        // window too, not a partial early flush — draining the full window
+        // each time.
+        let newestChurnedPath = "/d0/nd/n.bin"
         var realEvents: [FileSystemChangeEvent] = []
         for _ in 0..<120 {
             let through = try provider.currentCheckpoint(for: target)
             realEvents = (try? await provider.history(since: since, through: through, target: target))?.events ?? []
-            if realEvents.contains(where: { $0.path.hasSuffix("/d0/newf.bin") }) { break }
+            if realEvents.contains(where: { $0.path.hasSuffix(newestChurnedPath) }) { break }
             try await Task.sleep(for: .milliseconds(250))
         }
-        guard realEvents.contains(where: { $0.path.hasSuffix("/d0/newf.bin") }) else {
+        guard realEvents.contains(where: { $0.path.hasSuffix(newestChurnedPath) }) else {
             FileHandle.standardError.write(Data("FIDELITY: SKIPPED (journal never surfaced the churn within deadline)\n".utf8))
             return
         }

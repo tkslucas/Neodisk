@@ -150,13 +150,14 @@ import NeodiskKit
         let model = environment.makeModel()
 
         // Full scan first: it persists and records the honest full-scan
-        // date/duration in the cache index.
+        // date/duration in the cache index. Await the persist pipeline
+        // itself: the cache serves a save still encoding from memory, so
+        // polling `loadSnapshot` returns before anything is on disk.
         model.startScan(target)
         let fixture = makeSummarizedFixture(rootPath: target.id, target: target)
-        environment.scanService.yield(.finished(fixture.snapshot), scanIndex: 0)
-        environment.scanService.finish(scanIndex: 0)
-        try await waitUntilAsync("full scan persisted") {
-            await environment.cache.loadSnapshot(for: target) != nil
+        await awaitSnapshotPersist(on: model, of: target) {
+            environment.scanService.yield(.finished(fixture.snapshot), scanIndex: 0)
+            environment.scanService.finish(scanIndex: 0)
         }
         let fullScanInfo = try #require(model.session.cachedScanInfo[target.id])
 
@@ -167,13 +168,12 @@ import NeodiskKit
             environment.scanService.scanCount == 2
         }
         let refreshed = makeRefreshedSubtreeSnapshot(directoryID: fixture.summarized.id)
-        environment.scanService.yield(.finished(refreshed), scanIndex: 1)
-        environment.scanService.finish(scanIndex: 1)
-
-        try await waitUntilAsync("spliced snapshot persisted") {
-            let cached = await environment.cache.loadSnapshot(for: target)
-            return cached?.treeStore.node(id: fixture.summarized.id + "/new1.bin") != nil
+        await awaitSnapshotPersist(on: model, of: target) {
+            environment.scanService.yield(.finished(refreshed), scanIndex: 1)
+            environment.scanService.finish(scanIndex: 1)
         }
+        let cached = await environment.cache.loadSnapshot(for: target)
+        #expect(cached?.treeStore.node(id: fixture.summarized.id + "/new1.bin") != nil)
 
         // The cache index keeps the full scan's date and duration (a subtree
         // refresh predicts nothing about a full rescan); only the node count

@@ -63,13 +63,15 @@ struct FileSystemEventHistoryProviderTests {
         try FileManager.default.removeItem(at: doomed) // remove
 
         // Event paths, after firmlink normalization, are prefixed with the
-        // target's own resolved path (the tree's namespace).
+        // target's own resolved path (the tree's namespace). Wait for the
+        // last mutation (the removal): fseventsd numbers events in order, so
+        // once it is in the window every earlier one is too.
         let history = try await waitForHistory(
             provider: provider,
             since: since,
             target: target,
             deadline: Date().addingTimeInterval(10)
-        ) { $0.path.hasPrefix(alpha.path) }
+        ) { $0.path.hasPrefix(doomed.path) }
 
         let events = try #require(history).events
         #expect(events.contains { $0.path.hasPrefix(alpha.path) })

@@ -958,7 +958,7 @@ import Foundation
         #expect(cacheNode.logicalSize == 10 * 32)
     }
 
-    @Test func testCancellingScanStopsPackageLeafSummaryWork() async throws {
+    @Test(.timeLimit(.minutes(1))) func testCancellingScanStopsPackageLeafSummaryWork() async throws {
         let rootURL = try makeTemporaryDirectory()
         let followUpURL = try makeTemporaryDirectory()
         defer {
@@ -971,9 +971,8 @@ import Foundation
             .appending(path: "Contents/Resources", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: packageContentsURL, withIntermediateDirectories: true)
 
-        // 8,000 files over 1,000 folders, summarized by one worker below: a
-        // summary that reliably outlasts the test's own scheduling, so the
-        // cancel always lands mid-summary.
+        // 8,000 files over 1,000 folders, summarized by one worker below, so
+        // the summary is usually still walking when the cancel lands.
         for folder in 0..<1_000 {
             let folderURL = packageContentsURL.appending(path: "f\(folder)", directoryHint: .isDirectory)
             try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: false)
@@ -981,18 +980,20 @@ import Foundation
                 try Data([UInt8(index)]).write(to: folderURL.appending(path: "payload-\(index).tmp"))
             }
         }
+        // A sibling folder whose listing holds until the scan is cancelled,
+        // and cancels it: the scan cannot finish first.
+        let heldURL = rootURL.appending(path: "held", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: heldURL, withIntermediateDirectories: false)
+        let hold = ListingHeldUntilCancelled(url: heldURL, afterEntries: 0)
+
         var options = ScanOptions()
         options.tuning.atomicSummaryWorkerLimit = 1
 
-        let engine = ScanEngine()
-        // Cancels on the scan's first event, while the package summary is
-        // still running: a wall-clock sleep before cancelling raced the scan,
-        // which can summarize the whole package first on a fast machine.
+        let engine = ScanEngine(enumeratedDirectoryContents: hold.contents)
         let scanTask = Task {
             var didFinish = false
             do {
                 for try await event in engine.scan(target: ScanTarget(url: rootURL), options: options) {
-                    withUnsafeCurrentTask { $0?.cancel() }
                     if case .finished = event {
                         didFinish = true
                     }
@@ -1003,23 +1004,17 @@ import Foundation
             return didFinish
         }
 
+        hold.cancelOnceHeld(scanTask)
         let didFinishCancelledScan = try await scanTask.value
 
         #expect(!(didFinishCancelledScan))
-
-        let followUpFinished = try await withTimeout(.seconds(1)) {
-            for try await event in engine.scan(target: ScanTarget(url: followUpURL), options: ScanOptions()) {
-                if case .finished = event {
-                    return true
-                }
-            }
-            return false
-        }
-
+        // The scan's own work saw the cancel: the held listing ended.
+        #expect(await hold.listedEntriesOnceEnded() == 0)
+        let followUpFinished = try await scanFinishes(engine: engine, at: followUpURL)
         #expect(followUpFinished)
     }
 
-    @Test func testCancellingScanStopsWideDirectoryEnumerationWork() async throws {
+    @Test(.timeLimit(.minutes(1))) func testCancellingScanStopsWideDirectoryEnumerationWork() async throws {
         let rootURL = try makeTemporaryDirectory()
         let followUpURL = try makeTemporaryDirectory()
         defer {
@@ -1035,7 +1030,10 @@ import Foundation
         var options = ScanOptions()
         options.autoSummarizeDirectories = false
 
-        let engine = ScanEngine()
+        // The root's real listing holds 64 entries in and cancels the scan,
+        // so the cancel always lands mid-enumeration.
+        let hold = ListingHeldUntilCancelled(url: rootURL, afterEntries: 64)
+        let engine = ScanEngine(enumeratedDirectoryContents: hold.contents)
         let scanTask = Task {
             var didFinish = false
             do {
@@ -1050,23 +1048,14 @@ import Foundation
             return didFinish
         }
 
-        try await Task.sleep(for: .milliseconds(10))
-        scanTask.cancel()
-        let didFinishCancelledScan = try await withTimeout(.seconds(2)) {
-            try await scanTask.value
-        }
+        hold.cancelOnceHeld(scanTask)
+        let didFinishCancelledScan = try await scanTask.value
 
         #expect(!(didFinishCancelledScan))
-
-        let followUpFinished = try await withTimeout(.seconds(1)) {
-            for try await event in engine.scan(target: ScanTarget(url: followUpURL), options: ScanOptions()) {
-                if case .finished = event {
-                    return true
-                }
-            }
-            return false
-        }
-
+        // The enumeration stopped at the cancel instead of listing the rest.
+        let listedEntries = try #require(await hold.listedEntriesOnceEnded())
+        #expect(listedEntries < 10_000)
+        let followUpFinished = try await scanFinishes(engine: engine, at: followUpURL)
         #expect(followUpFinished)
     }
 
@@ -2444,6 +2433,138 @@ private func makeScanEngineFileNode(id: String, name: String, size: Int64) -> Fi
         isSynthetic: false,
         isAutoSummarized: false
     )
+}
+
+/// Scans `url` to completion with `engine`, returning whether `.finished`
+/// arrived: the engine still serves new scans after a cancelled one.
+private func scanFinishes(engine: ScanEngine, at url: URL) async throws -> Bool {
+    for try await event in engine.scan(target: ScanTarget(url: url), options: ScanOptions()) {
+        if case .finished = event {
+            return true
+        }
+    }
+    return false
+}
+
+/// Real FileManager listings, except that the listing of `url` stops after
+/// `afterEntries` entries, cancels the scan's task from there and holds until
+/// the cancel reaches the engine's own cancellation check. A scan through it
+/// can never finish before its cancel lands, the cancel doesn't wait for the
+/// test task to be scheduled, and a scan whose work ignores the cancel never
+/// lets the listing end.
+private final class ListingHeldUntilCancelled: @unchecked Sendable {
+    /// Resolved: the engine lists children in the enumerator's spelling
+    /// (`/private/var/…` for a `/var/…` temporary folder).
+    private let path: String
+    private let afterEntries: Int
+    private let ended = AsyncStream<Int>.makeStream()
+    private let lock = NSLock()
+    private var cancelScan: (@Sendable () -> Void)?
+
+    init(url: URL, afterEntries: Int) {
+        self.path = url.resolvingSymlinksInPath().path
+        self.afterEntries = afterEntries
+    }
+
+    func contents(
+        of directoryURL: URL,
+        keys: [URLResourceKey]?,
+        options: FileManager.DirectoryEnumerationOptions,
+        cancellationCheck: @Sendable () throws -> Void
+    ) throws -> ScanEngine.DirectoryEnumerationResult {
+        var heldListingCount: Int?
+        defer {
+            if let heldListingCount {
+                ended.continuation.yield(heldListingCount)
+            }
+        }
+        // The held enumerator lives only for this call.
+        return try withoutActuallyEscaping(cancellationCheck) { cancellationCheck in
+            var heldEnumerator: HeldEnumerator?
+            defer { heldListingCount = heldEnumerator?.producedCount }
+            return try ScanEngine.enumeratedDirectoryContents(
+                url: directoryURL,
+                keys: keys,
+                options: options,
+                cancellationCheck: cancellationCheck,
+                makeEnumerator: { directoryURL, keys, options in
+                    guard let enumerator = FileManager.default.enumerator(
+                        at: directoryURL,
+                        includingPropertiesForKeys: keys,
+                        options: options
+                    ) else { return nil }
+                    guard directoryURL.resolvingSymlinksInPath().path == path else { return enumerator }
+                    let held = HeldEnumerator(
+                        base: enumerator,
+                        holdAfter: afterEntries,
+                        cancellationCheck: cancellationCheck,
+                        onHold: { self.takeCancelScan()?() }
+                    )
+                    heldEnumerator = held
+                    return held
+                }
+            )
+        }
+    }
+
+    /// The task the held listing cancels; set right after starting it.
+    func cancelOnceHeld(_ scanTask: Task<Bool, any Error>) {
+        lock.lock()
+        cancelScan = { scanTask.cancel() }
+        lock.unlock()
+    }
+
+    private func takeCancelScan() -> (@Sendable () -> Void)? {
+        lock.lock()
+        defer { lock.unlock() }
+        let cancel = cancelScan
+        cancelScan = nil
+        return cancel
+    }
+
+    /// Returns how many entries the held listing produced, once the scan's
+    /// cancel has released it and the engine abandoned it.
+    func listedEntriesOnceEnded() async -> Int? {
+        for await count in ended.stream {
+            return count
+        }
+        return nil
+    }
+
+    private final class HeldEnumerator: ScanEngine.DirectoryObjectEnumerating {
+        private let base: FileManager.DirectoryEnumerator
+        private let holdAfter: Int
+        private let cancellationCheck: () throws -> Void
+        private let onHold: () -> Void
+        private(set) var producedCount = 0
+
+        init(
+            base: FileManager.DirectoryEnumerator,
+            holdAfter: Int,
+            cancellationCheck: @escaping () throws -> Void,
+            onHold: @escaping () -> Void
+        ) {
+            self.base = base
+            self.holdAfter = holdAfter
+            self.cancellationCheck = cancellationCheck
+            self.onHold = onHold
+        }
+
+        func nextObject() -> Any? {
+            if producedCount == holdAfter {
+                // Polls until the cancel reaches the scan's work (the task
+                // may not be handed over yet). The engine's next check, after
+                // this entry or after the loop for an empty folder, throws.
+                while (try? cancellationCheck()) != nil {
+                    onHold()
+                    Thread.sleep(forTimeInterval: 0.001)
+                }
+            }
+            guard let object = base.nextObject() else { return nil }
+            producedCount += 1
+            return object
+        }
+    }
 }
 
 private enum AsyncTestTimeout: Error {

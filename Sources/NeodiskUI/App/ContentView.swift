@@ -57,7 +57,6 @@ public struct ContentView: View {
             // This window can host the unobtrusive update indicator; while
             // any host window is up, the update driver stays out of dialogs.
             updates.viewModel.hostDidAppear()
-            model.preferences = preferences
             if !preferences.hasSeenWelcome {
                 model.showWelcomeSheet = true
             }

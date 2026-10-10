@@ -111,108 +111,12 @@ jobs:
   linux:
     needs: check
     if: needs.check.outputs.build == 'true'
-    strategy:
-      matrix:
-        include:
-          - runner: ubuntu-24.04
-            arch: x86_64
-          - runner: ubuntu-24.04-arm
-            arch: aarch64
-    runs-on: ${{ matrix.runner }}
-    container: swift:6.4-noble
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install GTK, libadwaita, and zstd development packages
-        run: |
-          apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            libgtk-4-dev libadwaita-1-dev libzstd-dev pkg-config \
-          curl ca-certificates dpkg-dev file librsvg2-common adwaita-icon-theme
-
-      # Unpacks into /usr/local: sudo tar -xzf <file> -C /usr/local
-      - name: Build and pack
-        run: |
-          version=$(sed -n 's/.*static let string = "\(.*\)".*/\1/p' Sources/NeodiskAppModel/AppVersion.swift)
-          name="neodisk-nightly-$version-$(date -u +%Y%m%d)-${GITHUB_SHA::7}-linux-${{ matrix.arch }}.tar.gz"
-          DESTDIR="$PWD/stage" Packaging/linux/install.sh --nightly /usr/local
-          tar -C stage/usr/local -czf "$name" .
-          echo "NAME=$name" >> "$GITHUB_ENV"
-
-      # A self-contained AppImage: GTK, libadwaita and the Adwaita icons bundled.
-      - name: AppImage
-        env:
-          ARCH: ${{ matrix.arch }}
-          LINUXDEPLOY: 1-alpha-20251107-1
-          GTK_PLUGIN: 7a3fbc31a9e5075073ff8790f26effbac5f84453
-          APPIMAGE_EXTRACT_AND_RUN: "1"
-          DEPLOY_GTK_VERSION: "4"
-          LDAI_OUTPUT: Neodisk-Nightly-${{ matrix.arch }}.AppImage
-        run: |
-          mkdir tools
-          curl -fsSLo tools/linuxdeploy "https://github.com/linuxdeploy/linuxdeploy/releases/download/$LINUXDEPLOY/linuxdeploy-$ARCH.AppImage"
-          curl -fsSLo tools/linuxdeploy-plugin-gtk.sh "https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/$GTK_PLUGIN/linuxdeploy-plugin-gtk.sh"
-          chmod +x tools/*
-          DESTDIR="$PWD/AppDir" Packaging/linux/install.sh --nightly /usr
-          id=com.lucastakayasu.Neodisk.Nightly
-          sed -i 's|^Exec=/usr/bin/|Exec=|' "AppDir/usr/share/applications/$id.desktop"
-          mkdir -p AppDir/usr/share/icons
-          cp -R /usr/share/icons/Adwaita AppDir/usr/share/icons/
-          PATH="$PWD/tools:$PATH" linuxdeploy --appdir AppDir --plugin gtk \
-            --executable AppDir/usr/bin/neodisk-nightly \
-            --desktop-file "AppDir/usr/share/applications/$id.desktop" \
-            --icon-file "AppDir/usr/share/icons/hicolor/256x256/apps/$id.png"
-          # libadwaita draws its own style; a forced GTK_THEME overrides it.
-          sed -i '/GTK_THEME/d' AppDir/apprun-hooks/linuxdeploy-plugin-gtk.sh
-          PATH="$PWD/tools:$PATH" linuxdeploy --appdir AppDir --output appimage
-          ls -l "$LDAI_OUTPUT"
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: linux-${{ matrix.arch }}
-          path: |
-            ${{ env.NAME }}
-            Neodisk-Nightly-${{ matrix.arch }}.AppImage
-
-  appimage:
-    needs: linux
-    strategy:
-      matrix:
-        include:
-          - runner: ubuntu-24.04
-            arch: x86_64
-          - runner: ubuntu-24.04-arm
-            arch: aarch64
-    runs-on: ${{ matrix.runner }}
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: linux-${{ matrix.arch }}
-      # On the bare runner (no GTK installed): scan /usr and capture the window.
-      - name: Launch the AppImage headless
-        env:
-          APPIMAGE_EXTRACT_AND_RUN: "1"
-          NEODISK_AUTOSCAN: /usr
-          NEODISK_UI_SNAPSHOT: ${{ github.workspace }}/appimage-${{ matrix.arch }}.png
-        run: |
-          command -v xvfb-run || { sudo apt-get update && sudo apt-get install -y xvfb; }
-          app="Neodisk-Nightly-${{ matrix.arch }}.AppImage"
-          chmod +x "$app"
-          export XDG_CONFIG_HOME="$RUNNER_TEMP/config" NEODISK_SNAPSHOT_DIR="$RUNNER_TEMP/snapshots"
-          timeout 180 xvfb-run -a -s "-screen 0 1600x1000x24" "./$app"
-          test -s "$NEODISK_UI_SNAPSHOT"
-      - if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: appimage-${{ matrix.arch }}-screenshot
-          path: appimage-${{ matrix.arch }}.png
-          if-no-files-found: ignore
+    uses: ./.github/workflows/linux-package.yml
+    with:
+      channel: nightly
 
   publish:
-    needs: [mac, intel, linux, appimage]
+    needs: [mac, intel, linux]
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4

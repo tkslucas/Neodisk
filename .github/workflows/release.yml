@@ -1,0 +1,39 @@
+name: Release
+
+# Builds the stable Linux tarballs and AppImages when a release is published
+# and attaches them to it, with unversioned copies for the site's
+# latest-download links. The Mac app is packaged and released by hand.
+# Dispatched from a branch it only builds, as a dry run; from a tag it
+# attaches to that tag's release.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    if: ${{ !github.event.release.prerelease }}
+    uses: ./.github/workflows/linux-package.yml
+    with:
+      channel: stable
+
+  attach:
+    needs: linux
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: linux-*
+          merge-multiple: true
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for f in neodisk-*-linux-*.tar.gz; do cp "$f" "neodisk-linux-${f##*-linux-}"; done
+          for f in Neodisk-*-*.AppImage; do cp "$f" "Neodisk-${f##*-}"; done
+          gh release upload "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --clobber *.tar.gz *.AppImage

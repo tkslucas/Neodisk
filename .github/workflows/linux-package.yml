@@ -1,0 +1,131 @@
+name: Linux packages
+
+# Builds the Linux tarballs and self-contained AppImages for one channel and
+# launch-checks each AppImage headless on a bare runner. Called by Nightly and
+# Release; the files come out as the linux-<arch> artifacts.
+
+on:
+  workflow_call:
+    inputs:
+      channel:
+        description: "stable or nightly"
+        type: string
+        required: true
+
+jobs:
+  linux:
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    container: swift:6.4-noble
+    defaults:
+      run:
+        shell: bash
+    env:
+      ARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install GTK, libadwaita, and zstd development packages
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            libgtk-4-dev libadwaita-1-dev libzstd-dev pkg-config \
+          curl ca-certificates dpkg-dev file librsvg2-common adwaita-icon-theme
+
+      - name: Name the files
+        run: |
+          version=$(sed -n 's/.*static let string = "\(.*\)".*/\1/p' Sources/NeodiskAppModel/AppVersion.swift)
+          {
+            if [[ "${{ inputs.channel }}" == nightly ]]; then
+              echo "FLAG=--nightly"
+              echo "ID=com.lucastakayasu.Neodisk.Nightly"
+              echo "BIN=neodisk-nightly"
+              echo "TARBALL=neodisk-nightly-$version-$(date -u +%Y%m%d)-${GITHUB_SHA::7}-linux-$ARCH.tar.gz"
+              echo "APPIMAGE=Neodisk-Nightly-$ARCH.AppImage"
+            else
+              echo "FLAG="
+              echo "ID=com.lucastakayasu.Neodisk"
+              echo "BIN=neodisk"
+              echo "TARBALL=neodisk-$version-linux-$ARCH.tar.gz"
+              echo "APPIMAGE=Neodisk-$version-$ARCH.AppImage"
+            fi
+          } >> "$GITHUB_ENV"
+
+      # Unpacks into /usr/local: sudo tar -xzf <file> -C /usr/local
+      - name: Build and pack
+        run: |
+          DESTDIR="$PWD/stage" Packaging/linux/install.sh $FLAG /usr/local
+          tar -C stage/usr/local -czf "$TARBALL" .
+
+      # A self-contained AppImage: GTK, libadwaita and the Adwaita icons bundled.
+      - name: AppImage
+        env:
+          LINUXDEPLOY: 1-alpha-20251107-1
+          GTK_PLUGIN: 7a3fbc31a9e5075073ff8790f26effbac5f84453
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+          DEPLOY_GTK_VERSION: "4"
+        run: |
+          export LDAI_OUTPUT="$APPIMAGE"
+          mkdir tools
+          curl -fsSLo tools/linuxdeploy "https://github.com/linuxdeploy/linuxdeploy/releases/download/$LINUXDEPLOY/linuxdeploy-$ARCH.AppImage"
+          curl -fsSLo tools/linuxdeploy-plugin-gtk.sh "https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/$GTK_PLUGIN/linuxdeploy-plugin-gtk.sh"
+          chmod +x tools/*
+          DESTDIR="$PWD/AppDir" Packaging/linux/install.sh $FLAG /usr
+          sed -i 's|^Exec=/usr/bin/|Exec=|' "AppDir/usr/share/applications/$ID.desktop"
+          mkdir -p AppDir/usr/share/icons
+          cp -R /usr/share/icons/Adwaita AppDir/usr/share/icons/
+          PATH="$PWD/tools:$PATH" linuxdeploy --appdir AppDir --plugin gtk \
+            --executable "AppDir/usr/bin/$BIN" \
+            --desktop-file "AppDir/usr/share/applications/$ID.desktop" \
+            --icon-file "AppDir/usr/share/icons/hicolor/256x256/apps/$ID.png"
+          # libadwaita draws its own style; a forced GTK_THEME overrides it.
+          sed -i '/GTK_THEME/d' AppDir/apprun-hooks/linuxdeploy-plugin-gtk.sh
+          PATH="$PWD/tools:$PATH" linuxdeploy --appdir AppDir --output appimage
+          ls -l "$LDAI_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}
+          path: |
+            ${{ env.TARBALL }}
+            ${{ env.APPIMAGE }}
+
+  appimage:
+    needs: linux
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}
+      # On the bare runner (no GTK installed): scan /usr and capture the window.
+      - name: Launch the AppImage headless
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+          NEODISK_AUTOSCAN: /usr
+          NEODISK_UI_SNAPSHOT: ${{ github.workspace }}/appimage-${{ matrix.arch }}.png
+        run: |
+          command -v xvfb-run || { sudo apt-get update && sudo apt-get install -y xvfb; }
+          app=$(ls *.AppImage)
+          chmod +x "$app"
+          export XDG_CONFIG_HOME="$RUNNER_TEMP/config" NEODISK_SNAPSHOT_DIR="$RUNNER_TEMP/snapshots"
+          timeout 180 xvfb-run -a -s "-screen 0 1600x1000x24" "./$app"
+          test -s "$NEODISK_UI_SNAPSHOT"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: appimage-${{ matrix.arch }}-screenshot
+          path: appimage-${{ matrix.arch }}.png
+          if-no-files-found: ignore

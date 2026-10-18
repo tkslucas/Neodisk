@@ -128,8 +128,8 @@ final class StatisticsView {
                 return
             }
             let root = store.root
-            gtk_label_set_text(ptr(self.summaryLabel), L(
-                "%@ in %@ files",
+            gtk_label_set_text(ptr(self.summaryLabel), AppStrings.plural(
+                root.descendantFileCount, one: "%@ in %@ file", other: "%@ in %@ files",
                 NeodiskFormatters.size(root.allocatedSize),
                 root.descendantFileCount.formatted()
             ))
@@ -176,7 +176,7 @@ final class StatisticsView {
             let row = legendRow(
                 rgb: stat.rgb,
                 title: L(stat.kind.displayName),
-                detail: L("%@ files", stat.fileCount.formatted()),
+                detail: AppStrings.plural(stat.fileCount, one: "%@ file", other: "%@ files", stat.fileCount.formatted()),
                 size: stat.totalAllocatedSize,
                 fraction: Double(stat.totalAllocatedSize) / Double(total)
             )
@@ -317,7 +317,7 @@ final class StatisticsView {
             let row = legendRow(
                 rgb: palette.ageRGB(stat.bucket),
                 title: L(stat.bucket.displayName),
-                detail: L("%@ files", stat.fileCount.formatted()),
+                detail: AppStrings.plural(stat.fileCount, one: "%@ file", other: "%@ files", stat.fileCount.formatted()),
                 size: stat.totalAllocatedSize,
                 fraction: Double(stat.totalAllocatedSize) / Double(total)
             )

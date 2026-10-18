@@ -13,9 +13,8 @@ import UniformTypeIdentifiers
 @MainActor
 enum DiagnosticsExport {
     static func run() {
-        let stamp = Date.now.formatted(.iso8601.year().month().day())
         let panel = NSSavePanel()
-        panel.nameFieldStringValue = "\(AppChannel.current.appName) Diagnostics \(stamp).zip"
+        panel.nameFieldStringValue = archiveName(at: .now)
         panel.allowedContentTypes = [.zip]
         panel.message = String(localized: "The diagnostics include folder paths from your scans. Review them before sharing.")
         guard panel.runModal() == .OK, let destination = panel.url else { return }
@@ -27,6 +26,12 @@ enum DiagnosticsExport {
             DiagnosticLog.app.error("diagnostics export failed: \(error)")
             NSAlert(error: error).runModal()
         }
+    }
+
+    /// "Neodisk Diagnostics 2026-10-17.zip", dated in the user's time zone.
+    nonisolated static func archiveName(at date: Date, timeZone: TimeZone = .current) -> String {
+        let day = date.formatted(Date.ISO8601FormatStyle(timeZone: timeZone).year().month().day())
+        return "\(AppChannel.current.appName) Diagnostics \(day).zip"
     }
 
     static func export(to destination: URL) throws {
@@ -74,7 +79,7 @@ enum DiagnosticsExport {
         \(SystemInfo.model), \(process.activeProcessorCount) cores, \
         \(MemoryFootprint.megabytes(process.physicalMemory) / 1024) GB RAM
         Now: \(MemoryFootprint.summary())
-        Exported: \(Date.now.formatted(.iso8601))
+        Exported: \(Date.now.formatted(Date.ISO8601FormatStyle(timeZone: .current)))
 
         """
     }

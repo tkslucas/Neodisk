@@ -10,6 +10,7 @@
 
 import SwiftUI
 import NeodiskKit
+import NeodiskAppModel
 
 /// Content of a sidebar row's background-scan hover bubble, independent of any
 /// view so its detail line can be unit-tested. The first line is a static
@@ -21,11 +22,8 @@ struct SidebarScanTooltipData: Equatable {
     /// Second line: "<percent> · <count> items", matching the capacity bar
     /// tooltip's number formatting.
     var detailText: String {
-        String(
-            format: NSLocalizedString(
-                "%@ · %@ items",
-                comment: "Sidebar background-scan tooltip detail: scan percent and item count"
-            ),
+        AppStrings.plural(
+            itemCount, one: "%@ · %@ item", other: "%@ · %@ items",
             progressFraction.formatted(.percent.precision(.fractionLength(0))),
             itemCount.formatted()
         )

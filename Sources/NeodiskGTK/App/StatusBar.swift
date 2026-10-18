@@ -48,14 +48,14 @@ final class StatusBar {
                 parts.append(L("%@ of scan", share))
             }
             if node.isDirectory {
-                parts.append(L("%@ files", node.descendantFileCount.formatted()))
+                parts.append(AppStrings.plural(node.descendantFileCount, one: "%@ file", other: "%@ files", node.descendantFileCount.formatted()))
             }
             parts.append(DisplayFormatters.displayPath(node.path))
             gtk_label_set_text(ptr(detailLabel), parts.joined(separator: " · "))
             swatch.rgb = model.catalog.rgb(for: node)
         } else {
             let root = store.root
-            gtk_label_set_text(ptr(nameLabel), L("%@ items", root.descendantFileCount.formatted()))
+            gtk_label_set_text(ptr(nameLabel), AppStrings.plural(root.descendantFileCount, one: "%@ item", other: "%@ items", root.descendantFileCount.formatted()))
             var parts = [NeodiskFormatters.size(root.allocatedSize)]
             if let hidden = model.hiddenSpaceBytes {
                 parts.append(L("%@ hidden", NeodiskFormatters.size(hidden)))
@@ -64,7 +64,7 @@ final class StatusBar {
             swatch.rgb = nil
         }
         let warnings = model.warnings.count
-        gtk_label_set_text(ptr(warningLabel), warnings == 0 ? "" : L("%@ files couldn't be read", warnings.formatted()))
+        gtk_label_set_text(ptr(warningLabel), warnings == 0 ? "" : AppStrings.plural(warnings, one: "%@ file couldn\'t be read", other: "%@ files couldn\'t be read", warnings.formatted()))
         Widgets.setVisible(warningLabel, warnings > 0)
         if warnings > 0 {
             let paths = model.warnings.prefix(12).map { DisplayFormatters.displayPath($0.path) }

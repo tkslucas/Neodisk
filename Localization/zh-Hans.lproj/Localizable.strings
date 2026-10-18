@@ -32,8 +32,10 @@
 "Changes too extensive — running a full scan…" = "更改过多 — 正在执行完整扫描…";
 "Scanning %@…" = "正在扫描 %@…";
 "%@ files · %@" = "%@ 个文件 · %@";
+"%@ file · %@" = "%@ 个文件 · %@";
 "Stop Scan" = "停止扫描";
 "%@ · %@ items" = "%@ · %@ 个项目";
+"%@ · %@ item" = "%@ · %@ 个项目";
 "Opening last scan of %@…" = "正在打开 %@ 的上次扫描…";
 
 /* MARK: - 扫描失败 */
@@ -42,6 +44,7 @@
 
 /* MARK: - 权限提示 */
 "%@ locations couldn't be read — sizes may be underreported." = "%@ 个位置无法读取，显示大小可能偏低。";
+"%@ location couldn't be read — sizes may be underreported." = "%@ 个位置无法读取，显示大小可能偏低。";
 "Grant Full Disk Access…" = "授予完全磁盘访问权限…";
 
 /* MARK: - 实时扫描状态条 */
@@ -150,6 +153,7 @@
 "Loading…" = "正在加载…";
 "Filter by name" = "按名称过滤";
 "%@ files" = "%@ 个文件";
+"%@ file" = "%@ 个文件";
 "Largest %@ of %@ — search to narrow" = "%2$@ 个文件中最大的 %1$@ 个，可搜索以缩小范围";
 
 /* MARK: - Statistics panel tabs & age buckets */
@@ -177,6 +181,7 @@
 "Searching for duplicates… %@" = "正在搜索重复项… %@";
 "Cancel" = "取消";
 "%@ groups · %@ wasted" = "%@ 组 · 浪费 %@";
+"%@ group · %@ wasted" = "%@ 组 · 浪费 %@";
 "Search for duplicates again" = "重新搜索重复项";
 "No duplicates found" = "未找到重复项";
 "No duplicates found yet" = "尚未找到重复项";
@@ -186,6 +191,7 @@
 "APFS clones" = "APFS 克隆";
 "Back to duplicates" = "返回重复项";
 "%@ files couldn't be read" = "%@ 个文件无法读取";
+"%@ file couldn't be read" = "%@ 个文件无法读取";
 "Duplicates computed %@" = "%@计算的重复项";
 
 /* MARK: - Changes tab */
@@ -415,7 +421,9 @@
 "%@ free" = "可用 %@";
 "%@ hidden" = "隐藏 %@";
 "%@ items" = "%@ 个项目";
+"%@ item" = "%@ 个项目";
 "%@ matches" = "%@ 个匹配项";
+"%@ match" = "%@ 个匹配项";
 "%@ of scan" = "占扫描的 %@";
 "%lld smaller items · %@" = "%lld 个较小的项目 · %@";
 "Cached Scans" = "已缓存的扫描";
@@ -457,3 +465,4 @@
 "Visualization" = "可视化";
 "%@ free of %@" = "%2$@ 中可用 %1$@";
 "%@ in %@ files" = "%2$@ 个文件，共 %1$@";
+"%@ in %@ file" = "%2$@ 个文件，共 %1$@";

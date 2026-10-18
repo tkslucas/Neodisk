@@ -132,11 +132,8 @@ struct DuplicatesPane: View {
     }
 
     private var liveSummaryText: String {
-        String(
-            format: NSLocalizedString(
-                "%@ groups · %@ wasted",
-                comment: "Duplicates results header: group count, reclaimable size"
-            ),
+        AppStrings.plural(
+            model.duplicates.liveGroups.count, one: "%@ group · %@ wasted", other: "%@ groups · %@ wasted",
             model.duplicates.liveGroups.count.formatted(),
             NeodiskFormatters.size(model.duplicates.liveGroups.reduce(0) { $0 + $1.reclaimableBytes })
         )
@@ -225,11 +222,8 @@ private struct DuplicateResultsView: View {
     }
 
     private var summaryText: String {
-        String(
-            format: NSLocalizedString(
-                "%@ groups · %@ wasted",
-                comment: "Duplicates results header: group count, reclaimable size"
-            ),
+        AppStrings.plural(
+            results.groups.count, one: "%@ group · %@ wasted", other: "%@ groups · %@ wasted",
             results.groups.count.formatted(),
             NeodiskFormatters.size(results.totalWastedBytes)
         )
@@ -250,11 +244,8 @@ private struct DuplicateResultsView: View {
     }
 
     private var unreadableText: String {
-        String(
-            format: NSLocalizedString(
-                "%@ files couldn't be read",
-                comment: "Duplicates results footer"
-            ),
+        AppStrings.plural(
+            results.unreadableCount, one: "%@ file couldn't be read", other: "%@ files couldn't be read",
             results.unreadableCount.formatted()
         )
     }

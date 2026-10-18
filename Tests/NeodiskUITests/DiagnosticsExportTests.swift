@@ -27,4 +27,11 @@ import NeodiskKit
         #expect(unzip.terminationStatus == 0)
         #expect(listing.contains("Diagnostics/system.txt"))
     }
+
+    @Test func archiveNameUsesTheLocalDate() throws {
+        // 03:00 UTC on the 18th is still the evening of the 17th in California.
+        let date = try Date("2026-10-18T03:00:00Z", strategy: .iso8601)
+        let pacific = try #require(TimeZone(identifier: "America/Los_Angeles"))
+        #expect(DiagnosticsExport.archiveName(at: date, timeZone: pacific).hasSuffix("Diagnostics 2026-10-17.zip"))
+    }
 }

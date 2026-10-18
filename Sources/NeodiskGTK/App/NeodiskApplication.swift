@@ -1,12 +1,5 @@
-//
-//  NeodiskApplication.swift
-//  NeodiskGTK
-//
-//  The AdwApplication: single instance (a second launch raises the existing
-//  window), application-wide actions and keyboard accelerators, the style
-//  sheet, and the platform seams the shared model needs filled in (file
-//  type descriptions from GIO's shared-mime-info).
-//
+// Single instance, app-wide actions and accelerators, the style sheet, and the platform seams the shared model
+// needs (file type descriptions from shared-mime-info).
 
 import CGtk
 import Foundation
@@ -47,9 +40,7 @@ final class NeodiskApplication {
             return takeString(g_content_type_get_description(type))
         }
         Styles.install()
-        // Symbolic icons come from Adwaita, the set libadwaita's widgets are
-        // drawn for. Third-party themes are often incomplete for GTK 4
-        // (elementary-xfce's render blank), which left rows and tabs bare.
+        // Third-party themes are often incomplete for GTK 4 (some render blank), so icons come from Adwaita.
         var themeName = GValue()
         g_value_init(&themeName, neodisk_string_type())
         g_value_set_string(&themeName, "Adwaita")

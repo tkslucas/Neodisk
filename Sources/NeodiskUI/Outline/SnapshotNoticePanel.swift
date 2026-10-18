@@ -1,15 +1,8 @@
-//
-//  SnapshotNoticePanel.swift
-//  Neodisk
-//
-
 import SwiftUI
 import NeodiskKit
 import NeodiskAppModel
 
-/// Floating bottom-right notice shown when a location opened from its
-/// snapshot instead of auto-rescanning (the last scan took long enough that
-/// an unsolicited rescan would hurt). Offers the rescan the app skipped.
+/// Shown when a location opened from its snapshot because the last scan was too slow to rescan unasked.
 struct SnapshotNoticePanel: View {
     let model: NeodiskViewModel
 

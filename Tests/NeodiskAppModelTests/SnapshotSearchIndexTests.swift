@@ -1,13 +1,5 @@
-//
-//  SnapshotSearchIndexTests.swift
-//  NeodiskAppModelTests
-//
-//  The compact search index reads IDs, names, and dates from the scan's
-//  node array instead of copying them: entries must still answer exactly
-//  what the node holds, sort by size, classify kinds, and match names case-
-//  insensitively — ASCII by folding in place, anything else through the
-//  lowercased copies the index keeps for those names only.
-//
+// The index reads from the node array instead of copying: entries must still match exactly, and match names
+// case-insensitively (ASCII folded in place, others through lowercased copies).
 
 import Foundation
 import Testing

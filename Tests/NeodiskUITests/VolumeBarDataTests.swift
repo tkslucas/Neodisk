@@ -1,12 +1,4 @@
-//
-//  VolumeBarDataTests.swift
-//  Neodisk
-//
-//  The sidebar capacity bar's data model: category segments plus the
-//  uncategorized remainder tile the scanned tree, the hidden tail uses the
-//  same used-minus-scanned formula as the sunburst legend, and the free
-//  track states the Finder-style available figure.
-//
+// The hidden tail uses the same used-minus-scanned formula as the sunburst legend.
 
 import Foundation
 import Testing

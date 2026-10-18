@@ -1,15 +1,5 @@
-//
-//  IncrementalScanService.swift
-//  Neodisk
-//
-//  Full-scan wrapper that captures an FSEvents checkpoint per scan and, on
-//  rescan, replays the journal since the baseline's checkpoint to re-scan
-//  only the changed subtrees, splicing them atomically into the baseline
-//  tree. Deliberately conservative: any ambiguity — provider failure,
-//  planner doubt, a vanished subtree, a splice conflict — silently degrades
-//  to the full scan the caller would have run anyway, and no partial
-//  subtree result is ever published before the whole batch splice succeeds.
-//
+// Rescans replay the FSEvents journal since the baseline's checkpoint and splice only changed subtrees.
+// Any doubt degrades to a full scan, and nothing partial is published before the whole splice succeeds.
 
 import Foundation
 
@@ -51,10 +41,7 @@ public final class IncrementalScanService: Sendable {
 
     // MARK: - Full scan (checkpoint capture)
 
-    /// A plain full scan whose finished snapshot carries the FSEvents
-    /// checkpoint captured before enumeration began — at scan START, so
-    /// anything that changes mid-scan is replayed by the next rescan
-    /// (over-scans slightly, never misses).
+    /// The checkpoint is captured at scan start, so mid-scan changes replay next time (over-scan, never miss).
     public nonisolated func scan(
         target: ScanTarget,
         options: ScanOptions
@@ -86,21 +73,15 @@ public final class IncrementalScanService: Sendable {
 
     // MARK: - Incremental rescan
 
-    /// Rescans `target`, using the baseline (the previous complete snapshot
-    /// of the same target, with its persisted checkpoint) to re-enumerate
-    /// only the directories the FSEvents journal names. The provider closure
-    /// lets the caller share one snapshot decode between display and this
-    /// scan. Emits the same event stream a full scan would; callers cannot
-    /// tell which path ran except by speed.
+    /// The provider lets the caller share one snapshot decode between display and this scan. Emits the same
+    /// events as a full scan; only the speed differs.
     public nonisolated func rescan(
         target: ScanTarget,
         options: ScanOptions,
         baselineProvider: @escaping @Sendable () async -> ScanSnapshot?
     ) -> AsyncThrowingStream<ScanProgressEvent, Error> {
         AsyncThrowingStream(bufferingPolicy: .bufferingNewest(256)) { continuation in
-            // Tracks the highest progress fraction the strip has shown this
-            // session so any fallback full scan resumes forward from there —
-            // the bar must never step backward within one scan strip.
+            // The bar must never step backward: a fallback full scan resumes forward from this.
             let floor = RescanProgressFloor()
             let task = Task(priority: .userInitiated) {
                 do {
@@ -253,12 +234,8 @@ public final class IncrementalScanService: Sendable {
         }
     }
 
-    /// The core of the incremental rescan: shallow-relist each directory the
-    /// journal named (one readdir + diff against the baseline's direct
-    /// children), deep re-walk only the subtrees FSEvents semantics force, and
-    /// splice every edit in a single pass. Scattered churn across N directories
-    /// costs N directory reads instead of a recursive re-walk of the coalesced
-    /// high-mass ancestors that dominated the old subtree rescan.
+    /// Shallow-relists each directory the journal named and deep re-walks only what FSEvents forces: N
+    /// scattered changes cost N readdirs instead of re-walking their high-mass ancestors.
     private nonisolated func relistDirectoriesAndSplice(
         dirIDs: [String],
         deepRescanRootIDs: [String],
@@ -274,19 +251,8 @@ public final class IncrementalScanService: Sendable {
     ) async throws {
         let store = baseline.treeStore
 
-        // Phase 1 — read each named directory once, concurrently. The live
-        // filesystem decides membership; events only pointed us here.
-        //
-        // A named directory that no longer exists (or is no longer a directory)
-        // is NOT simply dropped: the FSEvents stream that lost its own delete
-        // event may have lost sibling events too, so instead of trusting "the
-        // parent was surely named", we PROMOTE its parent into the relist set
-        // and re-read it. The parent's diff then removes the vanished child and
-        // re-checks every other child a dropped event might have changed.
-        // Promotion recurses up a cascaded deletion, bounded by the scan root;
-        // if the scan root itself vanished, only a full scan is trustworthy. Any
-        // other enumeration failure, or a child that cannot be classified, is
-        // ambiguous to diff, so the whole rescan escalates to a full scan.
+        // Phase 1: read each named directory once. A vanished one promotes its parent (sibling events may be
+        // lost too), up to the scan root; any other ambiguity escalates to a full scan.
         struct DirRelist: Sendable {
             let dirID: String
             let node: FileNodeRecord
@@ -302,16 +268,8 @@ public final class IncrementalScanService: Sendable {
             case skip
             /// The scan root itself vanished — only a full scan is trustworthy.
             case rootVanished
-            /// The directory could not be shallow-relisted — its own readdir
-            /// failed, or a child could not be classified (permission-denied,
-            /// missing metadata). A deep re-walk of just this directory
-            /// reproduces exactly what a full scan does there (inaccessible node
-            /// + warning, and cheap when the directory itself is unreadable),
-            /// instead of aborting the entire rescan to a full scan. This is the
-            /// tolerance a whole-volume scan without Full Disk Access needs:
-            /// ambient churn constantly names directories with unreadable
-            /// children, and bailing on every one of them degraded every rescan
-            /// to a full traversal.
+            /// Deep re-walk just this directory, as a full scan would: without Full Disk Access, churn constantly
+            /// names directories with unreadable children, and bailing degraded every rescan to a full traversal.
             case deepRewalk(String)
         }
         let scanEngineRef = self.engine
@@ -397,12 +355,8 @@ public final class IncrementalScanService: Sendable {
 
         var edits = DirectoryRelistEdits()
 
-        // Phase 2a — classify each successfully-relisted directory. A membership
-        // change can flip whether a full scan would auto-summarize the directory
-        // (crossing the file-count threshold, or dropping below it): such a
-        // directory must be deep re-walked so the summarize/expand decision is
-        // reproduced exactly, not shallow-spliced. Everything else is a shallow
-        // relist.
+        // Phase 2a: a membership change can flip the auto-summarize decision, so such a directory is deep
+        // re-walked instead of shallow-spliced.
         struct ShallowRelist { let relist: DirRelist }
         var shallowRelists: [ShallowRelist] = []
         var runtimeDeepRootIDs: [String] = []
@@ -423,11 +377,8 @@ public final class IncrementalScanService: Sendable {
             }
         }
 
-        // Phase 2b — the deep re-walk set: what FSEvents forced, the directories
-        // the relist found summary-eligible, and the directories a shallow relist
-        // couldn't read (permission/enumeration) — all collapsed to disjoint
-        // roots. Shallow relists at or under a deep root are redundant (the
-        // re-walk rebuilds them) and are dropped.
+        // Phase 2b: deep roots (FSEvents-forced, summary-eligible, unreadable) collapse to disjoint roots;
+        // shallow relists under them are redundant.
         var deepRootIDs = deepRescanRootIDs
         deepRootIDs.append(contentsOf: runtimeDeepRootIDs)
         deepRootIDs.append(contentsOf: forcedDeepRewalkIDs)
@@ -443,23 +394,13 @@ public final class IncrementalScanService: Sendable {
             }
             edits.subtreeScans.append(SubtreeScanRequest(role: .replace(baselineID: id), baselineID: id))
         }
-        // A directory that vanished under a deep root is already accounted for by
-        // that root's re-walk; drop the standalone removal so it can't overlap
-        // the replace.
+        // A vanished directory under a deep root is covered by its re-walk; drop it so it can't overlap the replace.
         if !deepRootSet.isEmpty {
             edits.removals.removeAll { store.isNodeOrDescendant($0, of: deepRootSet) }
         }
 
-        // Phase 2c — diff each shallow-relisted directory against its baseline
-        // children (in memory, cheap). Vanished child → remove its subtree; new
-        // child → deep-scan if directory-like, else a prebuilt leaf; changed
-        // leaf → record replacement; a type flip (file↔dir) removes then re-adds;
-        // an existing directory-like child is left untouched (its own interior
-        // changes are separately named by FSEvents and relisted on their own).
-        // Directories re-read successfully are now known readable, so a stale
-        // permission/error warning at exactly that path is pruned (warnings
-        // deeper inside, which this relist did not re-walk, are left to their
-        // own relist when FSEvents names them).
+        // Phase 2c: diff each relisted directory against its baseline children. Existing child directories are
+        // left alone (FSEvents names their own changes); a re-read clears a stale warning at exactly that path.
         var relistedDirectoryPaths: [String] = []
         // Warnings a full scan would emit for unreadable children encountered
         // during the shallow relists, folded into the finished snapshot.
@@ -482,10 +423,7 @@ public final class IncrementalScanService: Sendable {
                     edits.removals.append(id)
                     continue
                 }
-                // An unreadable child collapses to its inaccessible node inline
-                // (no subtree walk), exactly what a full scan produces: the whole
-                // baseline subtree it may have had is replaced by the childless
-                // node, and the full scan's warning rides along.
+                // An unreadable child collapses to its childless inaccessible node and warning, as in a full scan.
                 if live.isUnavailable {
                     if let node = live.leafRecord {
                         let changed = store.containsChildren(id: id)
@@ -521,14 +459,8 @@ public final class IncrementalScanService: Sendable {
                 appendInsertion(for: live, parentID: dirID, into: &edits)
             }
 
-            // Refresh the directory's own record from the fresh own-metadata the
-            // relist already read, so the spliced tree matches what a full scan
-            // would read for every own-field — not just mtime. A directory that
-            // became accessible between scans (FSEvents names it, the relist
-            // reads its children) must lose its stale inaccessible flag and take
-            // the fresh fileIdentity/linkCount/isPackage too; keeping only mtime
-            // left it displaying children while still marked inaccessible.
-            // Totals are re-derived by the splice.
+            // Refresh every own-field from the relist's metadata, not just mtime: a directory that became
+            // accessible must lose its stale inaccessible flag. Totals are re-derived by the splice.
             if let meta = relist.ownMetadata,
                meta.lastModified != relist.node.lastModified
                 || meta.fileIdentity != relist.node.fileIdentity
@@ -539,10 +471,7 @@ public final class IncrementalScanService: Sendable {
             }
         }
 
-        // Phase 4 — reconcile against removals. Collapse the discovered removals
-        // to disjoint roots, then drop any edit at or under a removed subtree:
-        // the ancestor's removal already accounts for it, and keeping it would
-        // splice an edit onto a node that no longer exists.
+        // Phase 4: drop edits at or under a removed subtree; they'd splice onto a node that no longer exists.
         if !edits.removals.isEmpty {
             let collapsedRemovals = store.topLevelNodeIDs(from: edits.removals)
             let removedSet = Set(collapsedRemovals)
@@ -562,10 +491,7 @@ public final class IncrementalScanService: Sendable {
             }
         }
 
-        // Nothing actually moved (the events were spurious churn): advance the
-        // checkpoint over the retained baseline, like `.noChanges` — unless a
-        // relisted directory just cleared a stale warning of its own, which
-        // still needs the pruning pass below.
+        // Spurious churn: advance the checkpoint like `.noChanges`, unless a stale warning still needs pruning.
         let relistedPathSet = Set(relistedDirectoryPaths)
         let hasStaleWarningToPrune = baseline.scanWarnings.contains { relistedPathSet.contains($0.path) }
         if edits.isEmpty && !hasStaleWarningToPrune {
@@ -589,9 +515,7 @@ public final class IncrementalScanService: Sendable {
             return
         }
 
-        // The subtrees leaving the baseline (replaced deep re-walks, removed
-        // children, replaced leaf files): their old totals are subtracted from
-        // the progress seed and their stale warnings pruned.
+        // Subtrees leaving the baseline: subtract their old totals from the progress seed, prune their warnings.
         let replacedRootPaths = edits.subtreeScans.compactMap { request -> String? in
             if case .replace(let baselineID) = request.role { return baselineID }
             return nil
@@ -612,9 +536,7 @@ public final class IncrementalScanService: Sendable {
         )
     }
 
-    /// Records a new child of the relisted directory `parentID`: a scan request
-    /// for a directory-like child (deep-enumerated at the right depth), or a
-    /// prebuilt one-node store for a leaf.
+    /// A scan request for a directory-like child, or a prebuilt one-node store for a leaf.
     private nonisolated func appendInsertion(
         for live: ScanEngine.ShallowChild,
         parentID: String,
@@ -630,9 +552,6 @@ public final class IncrementalScanService: Sendable {
         }
     }
 
-    /// Scans every requested subtree (forced deep re-walks and new child
-    /// directories), seeds the strip from the retained baseline totals, splices
-    /// the whole batch of edits in one pass, and emits the finished snapshot.
     private nonisolated func applyRelistEdits(
         _ edits: DirectoryRelistEdits,
         replacedRootPaths: [String],
@@ -662,11 +581,7 @@ public final class IncrementalScanService: Sendable {
             )
         }
 
-        // Counters seeded with the baseline totals minus everything leaving the
-        // tree (rescanned subtrees, removed children, replaced files), so the
-        // strip opens at what the previous scan already knows and grows as
-        // sub-scans add their portions back — starting from zero would read as
-        // a scan of almost nothing.
+        // Seeded with the baseline minus what leaves the tree; starting from zero would read as a scan of nothing.
         var completedCounters = Self.metrics(from: baseline.aggregateStats)
         for id in replacedRootPaths {
             guard let node = baseline.treeStore.node(id: id) else { continue }
@@ -811,11 +726,7 @@ public final class IncrementalScanService: Sendable {
             }
         }
 
-        // Publish the merge phase so the strip isn't frozen at its rescan
-        // ceiling while topology rebuilds and shared sizes rebalance. The
-        // splice reports its own sub-phase boundaries into the band between the
-        // ceiling and completion, so a multi-second merge on a huge baseline
-        // shows honest forward motion instead of a static hold.
+        // The splice reports sub-phases between the ceiling and completion, so a long merge keeps moving.
         var spliceMetrics = completedCounters
         spliceMetrics.currentPath = target.url.path
         spliceMetrics.isFinalizing = true
@@ -895,10 +806,7 @@ public final class IncrementalScanService: Sendable {
         )))
     }
 
-    /// Whether a baseline leaf record and a freshly-read one describe the same
-    /// file, on the raw (pre-dedup) fields a fresh scan would compare. The
-    /// splice's rebalance re-applies shared-size dedup, so `allocatedSize`
-    /// (post-dedup on the baseline) is deliberately excluded.
+    /// Raw (pre-dedup) fields only: the splice re-applies shared-size dedup, so `allocatedSize` is excluded.
     private nonisolated static func leafRecordsMatch(_ baseline: FileNodeRecord, _ live: FileNodeRecord) -> Bool {
         baseline.isDirectory == live.isDirectory
             && baseline.isSymbolicLink == live.isSymbolicLink
@@ -914,10 +822,7 @@ public final class IncrementalScanService: Sendable {
 
     // MARK: - Fallback
 
-    /// Streams a full scan into the rescan's event stream, remapping its
-    /// progress fraction into the band above `floor` so the bar resumes forward
-    /// from where the rescan left it instead of resetting to zero, and flags
-    /// the metrics so the strip can say a full scan is running.
+    /// Remaps the full scan's fraction above `floor` so the bar resumes forward instead of resetting.
     private nonisolated func forwardFullScan(
         target: ScanTarget,
         options: ScanOptions,
@@ -930,9 +835,7 @@ public final class IncrementalScanService: Sendable {
         for try await event in scan(target: target, options: options) {
             switch event {
             case .progress(var metrics):
-                // The engine's fraction spans [0, 1]; project it into the
-                // remaining [floor, 1] band. Monotone because the engine's own
-                // fraction is monotone and reaches 1 only at completion.
+                // Project [0, 1] onto [floor, 1]; monotone because the engine's fraction is.
                 metrics.progressFraction = resumeFrom + (1 - resumeFrom) * metrics.progressFraction
                 metrics.isFullScanFallback = true
                 floor.record(metrics.progressFraction)
@@ -960,9 +863,7 @@ public final class IncrementalScanService: Sendable {
             return .scanOptionsChanged
         }
         guard baseline.incrementalCheckpoint != nil else { return .missingCheckpoint }
-        // Baselines cached by older versions can still carry the retired
-        // synthetic "System & Unattributed" reconcile node, which would go
-        // stale across a splice; one full scan replaces them for good.
+        // Old cached baselines may carry the retired "System & Unattributed" node; one full scan replaces them.
         guard !baseline.treeStore.children(of: baseline.treeStore.rootID)
             .contains(where: \.isSynthetic) else {
             return .unattributedVolumeNode
@@ -995,9 +896,7 @@ public final class IncrementalScanService: Sendable {
 
     // MARK: - Progress
 
-    /// Snapshot totals projected onto the strip's counters, so incremental
-    /// progress speaks in whole-scan numbers rather than only the rescanned
-    /// slice.
+    /// So incremental progress speaks in whole-scan numbers, not only the rescanned slice.
     private nonisolated static func metrics(from stats: ScanAggregateStats) -> ScanMetrics {
         var metrics = ScanMetrics()
         metrics.filesVisited = stats.fileCount
@@ -1006,9 +905,7 @@ public final class IncrementalScanService: Sendable {
         return metrics
     }
 
-    /// Cap of the bar's rescan band; the last stretch is reserved for the
-    /// splice, and completion snaps it to 1. Must not exceed the finalization
-    /// band's floor, or the bar steps backward when assembly progress starts.
+    /// Must not exceed the finalization band's floor, or the bar steps backward when assembly starts.
     private nonisolated static let rescanProgressCeiling = ScanMetrics.traversalSpan
 
     private nonisolated func log(_ message: String) {
@@ -1018,9 +915,7 @@ public final class IncrementalScanService: Sendable {
 
 /// How a scanned subtree's finished store folds into the splice.
 enum SubtreeScanRole: Sendable {
-    /// Replace the existing baseline subtree with this id — a deep re-walk of a
-    /// coalesced/summarized subtree, or the rescan of a directory whose type
-    /// flipped in place.
+    /// A deep re-walk of a summarized subtree, or a directory whose type flipped in place.
     case replace(baselineID: String)
     /// Graft as a brand-new child of the surviving directory `parentID`.
     case insertUnder(parentID: String)
@@ -1033,12 +928,7 @@ struct SubtreeScanRequest {
     let baselineID: String
 }
 
-/// The full set of topology edits one directory-relist batch applies in a
-/// single splice: subtrees to scan (deep re-walks and new child directories),
-/// subtrees to drop, prebuilt leaf inserts, changed direct-child leaf
-/// replacements, and the refreshed own-records of relisted directories.
-/// Insertions and record refreshes are keyed by the parent/target directory,
-/// so the batch spans any depth, not just the scan root.
+/// Every topology edit one relist batch applies in a single splice; keyed by parent, so any depth.
 struct DirectoryRelistEdits {
     var subtreeScans: [SubtreeScanRequest] = []
     var removals: [String] = []
@@ -1052,10 +942,7 @@ struct DirectoryRelistEdits {
     }
 }
 
-/// The highest progress fraction the strip has shown this rescan session.
-/// A fallback full scan reads it to resume forward from where the incremental
-/// path left the bar, so the fraction never steps backward. Thread-safe: the
-/// subtree scans update it concurrently.
+/// Thread-safe: the subtree scans update it concurrently.
 final class RescanProgressFloor: @unchecked Sendable {
     private let lock = NSLock()
     private var value = 0.0

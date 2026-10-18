@@ -1,8 +1,3 @@
-//
-//  ScanTraversal.swift
-//  Neodisk
-//
-
 #if canImport(Darwin)
 import Darwin
 #elseif canImport(Glibc)
@@ -11,15 +6,8 @@ import Glibc
 import Dispatch
 import Foundation
 
-/// One scan's traversal + assembly state, extracted from what used to be a
-/// ~640-line `ScanEngine.scanDirectory` that threaded metrics, warnings and
-/// emission state as `inout` parameters through six-plus call levels.
-///
-/// Deliberately a non-`Sendable` final class confined to the scan task: the
-/// mutable state is only ever touched from that task. Task-group child tasks
-/// capture nothing but immutable `Sendable` configuration (copied into
-/// locals) and hand their results back through the group, exactly as the
-/// pre-extraction code did.
+/// One scan's traversal and assembly state. Non-`Sendable` and confined to the scan task; task-group
+/// children capture only immutable `Sendable` copies and return results through the group.
 nonisolated final class ScanTraversal {
     private typealias CompletedDirScan = ScanEngine.CompletedDirScan
 
@@ -43,10 +31,8 @@ nonisolated final class ScanTraversal {
     private let bulkEnumerationEnabled: Bool
     private let cancellationCheck: CancellationCheck = { try Task.checkCancellation() }
     private let atomicSummaryWorkerLimit: Int
-    /// The scan root's depth in the tree this scan is a part of. Non-zero
-    /// only for incremental subtree rescans, where depth-gated behavior
-    /// (auto-summarize thresholds) must fire exactly as it would have in
-    /// the full scan that produced the baseline.
+    /// Non-zero only for incremental subtree rescans, so depth-gated behavior (auto-summarize thresholds)
+    /// fires exactly as in the full scan that produced the baseline.
     private let baseDepth: Int
 
     // MARK: - Mutable traversal state (scan-task confined)
@@ -63,11 +49,8 @@ nonisolated final class ScanTraversal {
     /// Directories inside other apps' containers, read at most
     /// `ProtectedContainers.concurrentReadLimit` at a time beside `workStack`.
     private var protectedWorkStack: [ScanWorkItem] = []
-    /// Maps a key to its completed result (leaf or assembled directory).
-    /// Keys are dense (0..<nextKey), allocated in the coordinator loop, so a
-    /// flat array indexed by key beats a hash map: a nil slot is a key
-    /// allocated but not yet completed (only observable during partial
-    /// emission — every slot is filled by the time assembly runs).
+    /// Indexed by dense key (0..<nextKey), cheaper than a hash map. A nil slot is allocated but not yet
+    /// completed, only observable during partial emission.
     private var completedByKey: [CompletedDirScan?] = []
     /// Maps parent key → child keys, built during phase 1. Same dense-key
     /// array shape as `completedByKey`; a key with no children keeps `[]`.
@@ -76,9 +59,8 @@ nonisolated final class ScanTraversal {
     private var partialTotals = ScanEngine.PartialTreeTotals()
     private var seenScannedNodeIDs = Set<String>()
     private var nextKey = 0
-    // Live partial-tree emission: the first partial goes out as soon as
-    // the root listing is in; afterwards the interval adapts to assembly
-    // cost so partial builds never consume more than ~10% of scan time.
+    // The first partial goes out once the root listing is in; afterwards the interval adapts so partial
+    // builds stay under ~10% of scan time.
     private var lastPartialEmission = ContinuousClock.now - .milliseconds(300)
     private var partialEmissionInterval: Duration = .milliseconds(300)
     /// Scan start reference for the time-to-first-partial timing; nilled
@@ -124,10 +106,8 @@ nonisolated final class ScanTraversal {
             sourceProfile: ScanSourceProfile.detect(for: target.url)
         )
         self.concurrency = concurrency
-        // Sized to the nominal ceiling, not the current sample: the executor
-        // pool is fixed for the scan's life, and a scan started under
-        // thermal/low-power pressure must be able to speed back up when the
-        // pressure clears. The adaptive in-flight limit does the throttling.
+        // Sized to the nominal ceiling: the pool is fixed for the scan's life, and a scan started under thermal
+        // pressure must be able to speed back up. The adaptive in-flight limit does the throttling.
         self.directoryIOExecutor = DirectoryIOExecutor(
             workerCount: concurrency.undegradedTraversalWorkerLimit + ProtectedContainers.concurrentReadLimit
         )
@@ -141,9 +121,8 @@ nonisolated final class ScanTraversal {
     /// Scans the target's directory iteratively (no recursion) and returns a
     /// fully assembled flat tree.
     func run() async throws -> FileTreeStore {
-        // One shared worker pool per run owns every package/atomic summary, so a
-        // giant bundle fans across all workers instead of stalling the loop while
-        // siblings wait. Torn down on both the success and error paths.
+        // One shared pool owns every package/atomic summary, so a giant bundle fans across all workers instead
+        // of stalling the loop. Torn down on both success and error paths.
         let pool = AtomicDirectorySummaryPool(
             workerLimit: atomicSummaryWorkerLimit,
             continuation: continuation
@@ -171,9 +150,8 @@ nonisolated final class ScanTraversal {
             metrics.estimatedTotalBytes = estimatedTotalBytes(for: target, metadata: rootMetadata)
             metrics.currentPath = target.url.path
             metrics.recalculateProgress()
-            // Seeds the pool heartbeat's base metrics before any pooled work:
-            // a root-leaf scan (package root) otherwise runs its whole summary
-            // with the heartbeat dropping every emission.
+            // Seeds the pool heartbeat's base metrics; otherwise a root-leaf scan (package root) runs its whole
+            // summary with the heartbeat dropping every emission.
             maybeEmitProgress()
 
             ScanTiming.note(
@@ -279,9 +257,7 @@ nonisolated final class ScanTraversal {
             )
         ]
 
-        // Local, Sendable copies for the task-group child tasks: capturing
-        // these (instead of `self`) keeps the non-Sendable traversal state
-        // confined to the scan task.
+        // Sendable copies for child tasks, so they never capture the non-Sendable `self`.
         let options = self.options
         let behavior = self.behavior
         let exclusionMatcher = self.exclusionMatcher
@@ -293,16 +269,14 @@ nonisolated final class ScanTraversal {
         let directoryIOExecutor = self.directoryIOExecutor
         let listings = summaryPool?.listings
         let continuation = self.continuation
-        // Set once in `run()` before this task group starts and never mutated
-        // during traversal, so the workers capture an immutable Sendable copy
-        // to resolve each child's mount-boundary flag off the coordinator.
+        // Set once in `run()` before the group starts, so workers can resolve mount-boundary flags off the
+        // coordinator from an immutable copy.
         let ownedDeviceIDs = self.ownedDeviceIDs
 
         let summarizer = self.atomicDirectorySummarizer
         let summaryWorkerLimit = self.atomicSummaryWorkerLimit
-        // Request cap for concurrent summary tasks. The shared pool bounds the
-        // actual CPU (its worker count); this only limits how many summaries are
-        // in flight so their probes and result plumbing don't pile up.
+        // The pool bounds actual CPU; this only caps summaries in flight so probes and result plumbing don't
+        // pile up.
         let summaryRequestLimit = max(1, summaryWorkerLimit * 2)
         let autoSummarizeMinFileCount = options.tuning.autoSummarizeMinFileCount ?? AtomicDirectoryThresholds.minFileCount
         let autoSummarizeMaxAverageFileSize = options.tuning.autoSummarizeMaxAverageFileSize ?? AtomicDirectoryThresholds.maxAverageFileSize
@@ -312,10 +286,8 @@ nonisolated final class ScanTraversal {
             var activeProtectedDirectoryTasks = 0
             // One counter for both package and atomic-directory summary tasks.
             var activeSummaryTasks = 0
-            // Packages and atomic-summary candidates waiting for a request slot.
-            // They must not be summarized inline in the scheduling loop: awaiting a
-            // pool job there stops the group from draining, freezing progress
-            // bookkeeping until the stack unwinds.
+            // Never summarized inline in the scheduling loop: awaiting a pool job there stops the group from
+            // draining and freezes progress bookkeeping.
             var pendingPackageScans: [(item: ScanWorkItem, itemKey: Int, metadata: NodeMetadata)] = []
             var pendingAtomicScans: [AtomicDirectoryCandidate] = []
 
@@ -573,9 +545,8 @@ nonisolated final class ScanTraversal {
         }
     }
 
-    /// Builds ordinary leaf records on the directory worker that already owns
-    /// the enumerated child metadata. Iterating in reverse preserves the old
-    /// work-stack duplicate rule (the last enumerated path wins).
+    /// Builds leaf records on the directory worker that already owns the child metadata. Iterating in
+    /// reverse keeps the duplicate rule: the last enumerated path wins.
     private static func makeDirectoryLeafBatch(
         from entries: [DirectoryEntry],
         ownedDeviceIDs: Set<UInt64>,
@@ -592,10 +563,8 @@ nonisolated final class ScanTraversal {
                 try cancellationCheck()
             }
 
-            // Frontier + weight bookkeeping the coordinator used to redo
-            // serially, folded into the pass that already visits every entry.
-            // Accumulated across the whole listing (duplicates included) to
-            // match the coordinator's former loops over `childEntries`.
+            // Frontier and weight bookkeeping folded into this pass, accumulated over the whole listing
+            // (duplicates included) to match the coordinator's former loops.
             let entryIsDirectory = isLikelyTraversableDirectory(entry: entry)
             let weightUnits = entryIsDirectory ? directoryChildWeightUnits : 1
             batch.totalWeightUnits += weightUnits
@@ -649,18 +618,13 @@ nonisolated final class ScanTraversal {
             }
         }
 
-        // Restore enumeration order for deterministic fixtures. Final display
-        // order is size/name sorted during assembly. Push order is behavioral:
-        // the coordinator's global `seenScannedNodeIDs` is first-seen-wins, so
-        // `pendingChildWorkItems` must reach the work stack in the same order
-        // the old `remainingEntries` did.
+        // Push order is behavioral: `seenScannedNodeIDs` is first-seen-wins, so children must reach the work
+        // stack in enumeration order.
         batch.nodes.reverse()
         batch.pendingChildWorkItems.reverse()
         batch.duplicateWarnings.reverse()
-        // Pre-sort into display order (size, then name) here, in parallel on
-        // the directory workers: assembly's per-folder sort uses the same
-        // comparator and is stable, so presorted runs make it near-linear and
-        // leave its result unchanged.
+        // Presorted in parallel here: assembly's stable sort uses the same comparator, so presorted runs make it
+        // near-linear without changing its result.
         batch.nodes.sort { lhs, rhs in
             lhs.allocatedSize == rhs.allocatedSize
                 ? DisplayNameOrder.precedes(lhs.name, rhs.name)
@@ -763,10 +727,8 @@ nonisolated final class ScanTraversal {
         }
     }
 
-    /// Loop-side handling of an enumerated directory: frontier bookkeeping, then
-    /// either deferring the auto-summary probe to a pooled task (`pendingAtomicScans`)
-    /// or expanding the directory's children onto the work stack. The actual
-    /// summary decision lands later in `completeAtomicDirectory`.
+    /// Frontier bookkeeping, then either defers the auto-summary probe to a pooled task or expands the
+    /// children onto the work stack. The summary decision lands in `completeAtomicDirectory`.
     private func handleTraversalSuccess(
         _ success: DirectoryTraversalSuccess,
         pendingAtomicScans: inout [AtomicDirectoryCandidate]
@@ -797,9 +759,7 @@ nonisolated final class ScanTraversal {
         metrics.discoveredItems += childEntries.count
         metrics.enumeratedDirectoryCount += 1
         releasePendingDirectoryIfNeeded(for: item)
-        // Counted on the worker during `makeDirectoryLeafBatch`; the
-        // coordinator no longer re-walks the listing (which rebuilt each
-        // child `URL` just to classify it).
+        // Counted on the worker, so the coordinator doesn't re-walk the listing rebuilding each child `URL`.
         let childDirectoryCount = leafBatch.childDirectoryCount
         metrics.discoveredDirectoryCount += childDirectoryCount
         metrics.pendingDirectoryCount += childDirectoryCount
@@ -846,9 +806,7 @@ nonisolated final class ScanTraversal {
         )
     }
 
-    /// Fans a directory's children onto the work stack and registers the
-    /// directory for phase 2 assembly. Used both when auto-summary does not apply
-    /// and when a deferred probe declines to summarize.
+    /// Used both when auto-summary does not apply and when a deferred probe declines to summarize.
     private func expandDirectory(
         item: ScanWorkItem,
         itemKey: Int,
@@ -871,12 +829,8 @@ nonisolated final class ScanTraversal {
             : 0
         foldDirectoryLeafBatch(leafBatch, weightPerEntry: directLeafWeight)
 
-        // Enqueue only directories, packages, and unavailable entries. Plain
-        // files and symlinks were already completed by the directory worker,
-        // which also resolved each child's URL, mount-boundary flag, and weight
-        // units — the coordinator only stamps the parent-relative fields. The
-        // `item.weight * weightUnits / totalWeightUnits` association is
-        // unchanged, so pushed weights stay bit-identical.
+        // Only directories, packages and unavailable entries are enqueued; the worker already completed files
+        // and symlinks. The weight formula is unchanged so pushed weights stay bit-identical.
         let childrenAreInProtectedContainer = ProtectedContainers.containsChildren(ofDirectory: item.path)
         for (offset, pending) in leafBatch.pendingChildWorkItems.enumerated() {
             if offset.isMultiple(of: 256) {
@@ -894,11 +848,8 @@ nonisolated final class ScanTraversal {
                 weight: item.weight * pending.weightUnits / totalWeightUnits,
                 isInProtectedContainer: childrenAreInProtectedContainer
             )
-            // A container folder itself (…/Library/Group Containers) goes on
-            // the container lane too: that lane is served first, so container
-            // reads start as soon as the folder is found instead of whenever
-            // depth-first order reaches it — late in a home folder scan, where
-            // one container read stalling five seconds became the scan's tail.
+            // A container folder goes on the container lane too, which is served first: otherwise its reads start
+            // late in depth-first order and one five-second stall becomes the scan's tail.
             if childrenAreInProtectedContainer
                 || ProtectedContainers.containsChildren(ofDirectory: pending.path) {
                 protectedWorkStack.append(child)
@@ -1088,9 +1039,8 @@ nonisolated final class ScanTraversal {
 
     // MARK: - Phase 2: Assembly
 
-    /// Phase 2: hand the completed phase-1 state to `ScanTreeAssembler`, which
-    /// builds the contiguous store. Metrics, warnings, and progress emission
-    /// stay here (scan-task confined) and are threaded in through callbacks.
+    /// Phase 2: `ScanTreeAssembler` builds the store; metrics, warnings and progress stay scan-task
+    /// confined and are passed in through callbacks.
     private func assembleTree() throws -> FileTreeStore {
         metrics.currentPath = "Summarizing results…"
         metrics.isFinalizing = true
@@ -1156,9 +1106,7 @@ nonisolated final class ScanTraversal {
         metrics.recalculateProgress()
     }
 
-    /// Relative progress weight of a traversable directory child versus a single file.
-    /// A subdirectory hides an unscanned subtree of unknown size, so it gets a larger
-    /// share of its parent's weight than a file does.
+    /// A subdirectory hides an unscanned subtree of unknown size, so it gets more progress weight than a file.
     private static let directoryChildWeightUnits = 8.0
 
     /// Classifies an item the same way at discovery time and at pop time so the
@@ -1175,11 +1123,8 @@ nonisolated final class ScanTraversal {
     }
 
     private static func isLikelyTraversableDirectory(entry: DirectoryEntry) -> Bool {
-        // Same classification as the `metadata:url:isDirectoryHint:` overload,
-        // but only builds `entry.url` (a lazy RFC3986 parse) in the rare
-        // metadata-and-hint-absent fallback. Passing `entry.url` as an eager
-        // argument rebuilt that URL for every child on the coordinator's hot
-        // count/weight loops even though the metadata branch never reads it.
+        // Builds `entry.url` (a lazy RFC3986 parse) only in the rare fallback; passing it eagerly rebuilt the
+        // URL for every child on the coordinator's hot loops.
         if let metadata = entry.metadata {
             return metadata.isDirectory && !metadata.isSymbolicLink
         }
@@ -1189,9 +1134,7 @@ nonisolated final class ScanTraversal {
         return entry.url.hasDirectoryPath
     }
 
-    /// Removes an item's frontier claim once its fate is known (enumerated, leaf,
-    /// duplicate, or unavailable). Uses the same classifier as discovery so the
-    /// pending count stays balanced.
+    /// Uses the same classifier as discovery so the pending count stays balanced.
     private func releasePendingDirectoryIfNeeded(for item: ScanWorkItem) {
         guard Self.isLikelyTraversableDirectory(
             metadata: item.metadata,
@@ -1285,11 +1228,8 @@ nonisolated final class ScanTraversal {
             || (isRoot && options.treatRootPackageAsDirectory)
     }
 
-    /// A progress-only byte ceiling for volume scans (never a display
-    /// figure): useful on non-APFS volumes where the used-capacity delta
-    /// approximates what the traversal will visit. APFS container capacity
-    /// is shared, so its free-space delta can overstate the scanned volume —
-    /// those scans pace on traversal weight alone.
+    /// Progress-only byte ceiling, never displayed. APFS container capacity is shared and can overstate the
+    /// volume, so those scans pace on traversal weight alone.
     private func estimatedTotalBytes(for target: ScanTarget, metadata: NodeMetadata) -> Int64 {
         guard target.kind == .volume,
               let volumeUsedCapacity = metadata.volumeUsedCapacity,

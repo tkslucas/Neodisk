@@ -1,29 +1,9 @@
-//
-//  PaneSplitter.swift
-//  Neodisk
-//
-//  A draggable hairline divider between workspace panes, implemented in
-//  AppKit so it gets OS-managed resize-cursor behavior and smooth drag deltas
-//  that a SwiftUI onHover/NSCursor version cannot match.
-//
 
 import AppKit
 import SwiftUI
 
-/// A draggable hairline divider between workspace panes. `paneEdge` names the
-/// side the resizable pane sits on and implies the divider's orientation:
-/// `.leading`/`.trailing` divide side-by-side panes, `.top`/`.bottom` divide
-/// stacked ones.
-///
-/// Implemented in AppKit: `resetCursorRects` gives OS-managed resize-cursor
-/// behavior that SwiftUI's onHover + NSCursor cannot match (the neighboring
-/// table views keep resetting the cursor through their own cursor rects), and
-/// `mouseDragged` deltas resize smoothly without coordinate-space fights.
-///
-/// Drags accumulate into an unclamped session value and only the published
-/// size is clamped, so after the pane pins at a bound the divider stays put
-/// until the pointer travels back — matching native splitters. Double-click
-/// restores `defaultSize`; arrow keys resize when the divider has focus.
+/// AppKit because SwiftUI onHover + NSCursor loses to neighboring tables' cursor rects. Only the published size
+/// is clamped, so after pinning at a bound the divider stays put until the pointer travels back.
 struct PaneSplitter: NSViewRepresentable {
     @Binding var size: Double
     let range: ClosedRange<Double>
@@ -291,9 +271,7 @@ final class SplitterNSView: NSView {
         drawHighlight()
     }
 
-    /// The colored line stays visually quiet at its ends, then eases toward
-    /// the accent at center. The full `thickness` view remains the hit
-    /// target; only this two-point strip becomes visible on hover or drag.
+    /// The whole `thickness` view stays the hit target; only this two-point strip shows on hover or drag.
     private func drawHighlight() {
         let accent = NSColor.controlAccentColor
         let strength = isDragging ? 0.85 : 0.55

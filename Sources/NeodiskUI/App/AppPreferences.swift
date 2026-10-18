@@ -1,11 +1,4 @@
-//
-//  AppPreferences.swift
-//  Neodisk
-//
-//  User-facing settings, persisted in UserDefaults. Kept deliberately small:
-//  the app follows system appearance unless overridden, and scan options map
-//  straight onto the engine's ScanOptions.
-//
+// User-facing settings, persisted in UserDefaults; scan options map straight onto the engine's ScanOptions.
 
 import AppKit
 import SwiftUI
@@ -37,10 +30,7 @@ enum ThemePreference: String, CaseIterable, Identifiable {
     }
 }
 
-/// What happens when a location with a cached snapshot is opened from the
-/// sidebar: refresh it right away, decide from the last scan's duration,
-/// or always wait for an explicit rescan (the default — opening a location
-/// should never start work the user didn't ask for).
+/// Defaults to waiting for an explicit rescan: opening a location should never start work the user didn't ask for.
 enum AutoRescanPolicy: String, CaseIterable, Identifiable {
     case automatic
     case smart
@@ -65,9 +55,7 @@ final class AppPreferences: ObservableObject {
     @AppStorage("includeHiddenFiles") var includeHiddenFiles = true
     @AppStorage("autoSummarizeDirectories") var autoSummarizeDirectories = true
     @AppStorage("includeCloudStorage") var includeCloudStorage = true
-    /// Weight cloud files that are not downloaded (dataless) by their cloud
-    /// size in the visualizations, instead of their ~0 on-disk size. Display
-    /// only — a no-op for scans without cloud items.
+    /// Display only: weights dataless files by cloud size instead of their ~0 on-disk size.
     @AppStorage("showCloudOnlyFiles") var showCloudOnlyFiles = true
     @AppStorage("showFreeSpace") var showFreeSpace = false
     /// The visualization color palette, by VizPalette id. Applies
@@ -90,36 +78,26 @@ final class AppPreferences: ObservableObject {
     /// Where the file outline docks (bottom table — the default — or the
     /// compact left column). See OutlinePosition.
     @AppStorage("outlinePosition") var outlinePositionRaw = OutlinePosition.bottom.rawValue
-    /// Sunburst keeps its chart wide by default. Users who want the file
-    /// list there can opt into the existing bottom table; it is never shown
-    /// to the left of the chart.
+    /// Opts into the bottom table under the sunburst; it is never shown to the chart's left.
     @AppStorage("showFileListBelowSunburst") var showFileListBelowSunburst = false
     /// The bottom outline table's header sort (column + direction). The
     /// left column has no headers and ignores these.
     @AppStorage("outlineSortField") var outlineSortFieldRaw = OutlineSortField.size.rawValue
     @AppStorage("outlineSortAscending") var outlineSortAscending = false
-    /// Decode the previous snapshot whenever a complete tree lands on screen
-    /// — a scan finishing, or a saved snapshot opening without a rescan — so
-    /// the Changes toggle shows instantly instead of loading on click. The
-    /// storage key predates the restore trigger.
+    /// Decodes the previous snapshot whenever a complete tree lands, so Changes opens instantly. The key
+    /// predates the restore trigger.
     @AppStorage("prepareChangesAfterScan") var prepareChangesAfterScan = true
-    /// Start the duplicate content scan whenever a complete tree lands on
-    /// screen (scan finish or snapshot restore). Off by default: hashing
-    /// reads file contents, which costs real I/O and energy.
+    /// Off by default: hashing reads file contents, which costs real I/O and energy.
     @AppStorage("autoScanDuplicates") var autoScanDuplicates = false
     @AppStorage("hasSeenWelcome") var hasSeenWelcome = false
-    /// Workspace text size, as a multiplier of the standard sizes. Written
-    /// by the Settings picker and by View ▸ Zoom In/Out; read through
-    /// `textScale`, which snaps it to the ladder. See TextScale.
+    /// A multiplier of the standard sizes; read through `textScale`, which snaps it to the ladder.
     @AppStorage("textScale") var textScaleRaw = TextScale.standard
     /// The user's changes to the Categories grouping, as
     /// FileCategoryCustomization JSON; "" for none.
     @AppStorage("fileCategories") var fileCategoriesJSON = ""
 
-    /// Backing store defaults to UserDefaults.standard; tests pass their
-    /// own suite so preference writes never leak into real settings.
-    /// Creation is launch: the default-view preference is applied on the
-    /// way out (before the model binds and before dev hooks override).
+    /// Tests pass their own suite so writes never leak into real settings. Creation is launch, so the
+    /// default-view preference is applied here, before the model binds and dev hooks override.
     init(defaults: UserDefaults? = nil) {
         defer {
             migrateColorblindToggle(in: defaults ?? .standard)
@@ -201,9 +179,7 @@ final class AppPreferences: ObservableObject {
         set { vizPaletteID = newValue.id }
     }
 
-    /// The palette picker replaced the colorblind toggle (2.53): carry a
-    /// previously enabled toggle over to the colorblind palette, once —
-    /// after that the new key alone decides.
+    /// Carries an enabled colorblind toggle (pre-2.53) over to the palette once; then the new key decides.
     private func migrateColorblindToggle(in defaults: UserDefaults) {
         guard defaults.object(forKey: "vizPalette") == nil,
               defaults.bool(forKey: "useColorblindPalette") else { return }
@@ -225,9 +201,7 @@ final class AppPreferences: ObservableObject {
         set { vizViewModeRaw = newValue.rawValue }
     }
 
-    /// Launch: unless the default is "last viewed", override the persisted
-    /// current-view pair with the chosen default. Picking Sunburst leaves
-    /// the treemap style alone, same as the toolbar picker.
+    /// Picking Sunburst leaves the treemap style alone, same as the toolbar picker.
     func applyDefaultVizView() {
         switch defaultVizView {
         case .lastViewed:

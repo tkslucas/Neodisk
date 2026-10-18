@@ -1,12 +1,4 @@
-//
-//  Accent.swift
-//  NeodiskGTK
-//
-//  The desktop's accent color. libadwaita 1.6 follows the system accent
-//  (Ubuntu's orange, a GNOME user's pick); the treemap's selection ring
-//  should match the rest of the selection chrome. Looked up at run time so
-//  the app still builds and runs against libadwaita 1.5.
-//
+// libadwaita 1.6 follows the system accent; looked up at run time so the app still runs on 1.5.
 
 import CGtk
 import Glibc

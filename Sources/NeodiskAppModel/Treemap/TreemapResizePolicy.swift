@@ -1,11 +1,4 @@
-//
-//  TreemapResizePolicy.swift
-//  Neodisk
-//
-//  Presentation math used while a pane resize temporarily stretches the last
-//  crisp treemap scene. Exact layout/raster work happens after resizing
-//  settles; this transform keeps the existing pixels filling the live view.
-//
+// Exact layout and raster work happen after resizing settles; meanwhile this stretches the last crisp scene.
 
 #if canImport(CoreGraphics)
 import CoreGraphics
@@ -17,10 +10,8 @@ package enum TreemapResizePolicy {
     /// Quiet period before an exact scene is built for the latest pane size.
     package static let settleDelay: Duration = .milliseconds(100)
 
-    /// Maps rendered-scene coordinates into the live view while its size or
-    /// viewport differs. Canvas positions are normalized by each view size,
-    /// so a resize fills the pane and the existing viewport-only transform is
-    /// unchanged when both sizes match.
+    /// Positions are normalized by each view size, so the viewport-only transform is unchanged when sizes
+    /// match.
     package static func displayMapping(
         liveViewport: TreemapViewport,
         liveSize: CGSize,
@@ -66,9 +57,7 @@ package enum TreemapResizePolicy {
     #endif
 }
 
-/// A scale-then-translate map from rendered-scene coordinates to live view
-/// coordinates — what a shell applies to the last crisp render while a
-/// resize or zoom gesture outruns re-rendering.
+/// Applied to the last crisp render while a resize or zoom gesture outruns re-rendering.
 package struct TreemapDisplayMapping: Equatable, Sendable {
     package var scaleX: CGFloat
     package var scaleY: CGFloat

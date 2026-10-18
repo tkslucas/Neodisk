@@ -1,12 +1,5 @@
-//
-//  FileKindClassifier.swift
-//  Neodisk
-//
-//  Maps nodes to kind IDs and kind IDs to displayable kinds, for both
-//  grouping modes. The built-in category table and Launch Services
-//  display-name cache live here; the user's changes to the table are
-//  FileCategoryRules', palette colors FileKindCatalog's business.
-//
+// Built-in category table and Launch Services name cache; user overrides live in FileCategoryRules,
+// palette colors in FileKindCatalog.
 
 import Foundation
 #if canImport(UniformTypeIdentifiers)
@@ -16,20 +9,14 @@ import NeodiskKit
 
 
 package enum FileKindClassifier {
-    /// Nodes that read as a single item rather than a container: regular
-    /// files, plus directories that behave as one (packages such as .app
-    /// bundles, and auto-summarized folders). This is the display-side
-    /// notion used for kind naming and coloring — an expanded package still
+    /// Display-side notion: packages and summarized folders read as one item, so an expanded package still
     /// looks like one app.
     package nonisolated static func isLeafLike(_ node: FileNodeRecord) -> Bool {
         !node.isDirectory || node.isPackage || node.isAutoSummarized
     }
 
-    /// Nodes that participate in kind/age/largest statistics: leaf-like
-    /// nodes whose contents are NOT in the store — an opaque package or
-    /// summarized folder counts as one item, but once "Show Package
-    /// Contents" splices its children in, those are counted individually
-    /// instead (counting both would double the size).
+    /// Once "Show Package Contents" splices children in, they count instead of the package (both would double
+    /// it).
     package nonisolated static func isKindCountable(_ node: FileNodeRecord, in store: FileTreeStore) -> Bool {
         guard node.isDirectory else { return true }
         guard isLeafLike(node) else { return false }
@@ -40,11 +27,8 @@ package enum FileKindClassifier {
         kind(forID: kindID(for: node, mode: mode), mode: mode)
     }
 
-    /// A node's kind as a bare ID string — the hot-path form used per node
-    /// in catalog builds and treemap coloring. Constructs no display names
-    /// (type descriptions come from Launch Services and cost real time).
-    /// Reads the installed category rules; loops over a whole tree take
-    /// them once and pass them to `kindID(for:mode:rules:)`.
+    /// Builds no display names (Launch Services lookups cost real time). Whole-tree loops should take the rules
+    /// once and pass them to `kindID(for:mode:rules:)`.
     package nonisolated static func kindID(for node: FileNodeRecord, mode: FileKindDisplayMode) -> String {
         kindID(for: node, mode: mode, rules: mode == .categories ? FileCategoryRules.current : .builtIn)
     }
@@ -72,9 +56,8 @@ package enum FileKindClassifier {
             if node.isAutoSummarized { return "cat-summarized" }
             var path = node.path
             let categoryID = path.withUTF8 { path -> String? in
-                // A folder that holds one kind of thing (a game library,
-                // phone backups, a model cache) claims everything inside,
-                // whatever the extensions say: a game's .png is game data.
+                // A one-kind folder (game library, backups) claims everything inside: a game's .png is game
+                // data.
                 if let categoryID = folderRules.categoryID(inPath: path) {
                     return categoryID
                 }
@@ -92,11 +75,7 @@ package enum FileKindClassifier {
         }
     }
 
-    /// `NSString.pathExtension`, lowercased, read straight off the path's
-    /// UTF-8: bridging to NSString per node was the bulk of a catalog
-    /// build. Same rules: the last component (trailing slashes dropped),
-    /// after its last dot unless that dot starts the name; Apple's version
-    /// also refuses extensions with a space.
+    /// Same rules as `NSString.pathExtension`, read off the UTF-8: bridging per node dominated catalog builds.
     package nonisolated static func lowercasedExtension(ofPath path: String) -> String {
         var path = path
         return path.withUTF8 { lowercasedExtension(inPath: $0) }
@@ -176,19 +155,15 @@ package enum FileKindClassifier {
         appCategory, otherCategory,
     ]
 
-    /// "libc.so.6", "libfoo.so.1.2.3": ELF shared libraries carry their
-    /// version after ".so", so the extension is a number — they belong
-    /// with the .so/.dylib files, not in Other.
+    /// ELF libraries carry their version after ".so", so they'd land in Other by extension alone.
     nonisolated static func isVersionedSharedLibrary(_ name: String) -> Bool {
         guard let range = name.range(of: ".so.", options: .backwards) else { return false }
         let version = name[range.upperBound...]
         return !version.isEmpty && version.allSatisfy { $0.isASCII && ($0.isNumber || $0 == ".") }
     }
 
-    /// Folders whose contents all belong to one category. Mostly stores
-    /// with no extensions to go by — Git objects, phone backups, model
-    /// caches named by hash — or with every extension under the sun
-    /// (game installs). A pattern matches as whole path components.
+    /// Mostly stores with no usable extensions (Git objects, hashed caches) or every extension (game installs).
+    /// Patterns match whole path components.
     package nonisolated static let folderRules = FolderCategoryRules([
         ("/.git/", codeCategory.id),
         ("/steamapps/", gameCategory.id),
@@ -286,10 +261,7 @@ package enum FileKindClassifier {
         return table
     }()
 
-    /// SF Symbol per category, for the tinted type icons in the file lists.
-    /// Keyed by category ID plus the pseudo-IDs kindID can produce
-    /// ("folder"); symbols reuse the app's existing metaphors (Applications
-    /// matches the sidebar, folders match the outline).
+    /// Also keyed by the pseudo-IDs kindID produces ("folder").
     package nonisolated static func categorySymbol(forID id: String) -> String {
         switch id {
         case "cat-video": return "film.fill"
@@ -332,10 +304,7 @@ package enum FileKindClassifier {
     }
 }
 
-/// Human descriptions of file types ("PNG image") for the Types grouping.
-/// Launch Services answers on Apple platforms; other shells install their
-/// platform's lookup once at launch (the GTK app asks GIO, which reads
-/// shared-mime-info).
+/// Launch Services on Apple platforms; other shells install their lookup at launch (GTK asks GIO).
 package enum FileTypeDescriptions {
     private static let lock = NSLock()
     nonisolated(unsafe) private static var provider: (@Sendable (String) -> String?)?
@@ -375,9 +344,7 @@ private final class DisplayNameCache: @unchecked Sendable {
         }
         lock.unlock()
 
-        // Resolve outside the lock: Launch Services lookups are slow and
-        // concurrent builds (mode switch mid-build) must not serialize on
-        // them. A duplicate resolve for the same extension is harmless.
+        // Resolve outside the lock: lookups are slow and concurrent builds must not serialize on them.
         let name = resolve()
         lock.lock()
         namesByExtension[ext] = name

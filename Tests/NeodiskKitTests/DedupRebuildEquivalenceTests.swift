@@ -2,14 +2,8 @@ import Foundation
 import Testing
 @testable import NeodiskKit
 
-/// Proves the numeric `AncestorRebuilder.rebuildAffectedAncestors` is
-/// byte-identical to an independent `legacyRebuildAffectedAncestors` oracle
-/// (defined below, in the test target). Both post-assembly dedup entry points
-/// (`HardLinkDeduplicator` / `CloneDeduplicator.applyDeduplication`) rebuild
-/// through the numeric path, so a self-consistency check confirms each produces
-/// a coherent store. The splice path (`SharedSizeDeduplication.rebalancedStore`)
-/// funnels through the same rebuild; a self-consistency + idempotence check
-/// exercises it end-to-end.
+/// The numeric rebuild must be byte-identical to the legacy oracle below; the dedup and splice entry points
+/// that funnel through it get self-consistency (and idempotence) checks.
 @Suite struct DedupRebuildEquivalenceTests {
     private struct SeededGenerator: RandomNumberGenerator {
         var state: UInt64
@@ -129,9 +123,7 @@ import Testing
         }
     }
 
-    /// Reconstructs a store from post-dedup arrays (only `nodes`/`childSlots`
-    /// change; parents, child starts, id index, and hashes are preserved) so
-    /// the array-level entry points can be checked with `assertSelfConsistent`.
+    /// Only `nodes`/`childSlots` change after dedup; everything else carries over.
     private static func reconstruct(
         _ store: FileTreeStore, nodes: [FileNodeRecord], childSlots: [Int32]
     ) -> FileTreeStore {
@@ -223,9 +215,7 @@ import Testing
             hardLinkClaims: claims, minimumAllocatedSizeByNodeID: minimums
         )
 
-        // The numeric rebuild is proven byte-identical to the oracle by
-        // `numericRebuildMatchesLegacy`; here we confirm the hard-link entry
-        // point drives it into a coherent store.
+        // Byte-identity is proven by `numericRebuildMatchesLegacy`; this checks the entry point stays coherent.
         assertSelfConsistent(Self.reconstruct(store, nodes: nodes, childSlots: childSlots), seed: seed)
     }
 
@@ -296,13 +286,8 @@ import Testing
         }
     }
 
-    /// Independent reference for `AncestorRebuilder.rebuildAffectedAncestors`:
-    /// the straightforward rebuild that re-sorts each affected directory's
-    /// children by the display comparator and rebuilds its record via
-    /// `FileNodeRecord.directory` (whole-record copies, URL construction). The
-    /// numeric rebuild reproduces this field-for-field without the copies; this
-    /// lived in production as `legacyRebuildAffectedAncestors` until the numeric
-    /// path fully replaced it, and is retained here purely as the oracle.
+    /// The straightforward rebuild (record copies, URL construction) that lived in production until the
+    /// numeric path replaced it; kept only as the oracle.
     static func legacyRebuildAffectedAncestors(
         of changedIndices: Set<Int32>,
         nodes: inout [FileNodeRecord],

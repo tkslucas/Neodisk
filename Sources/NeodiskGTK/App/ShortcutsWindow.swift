@@ -1,11 +1,4 @@
-//
-//  ShortcutsWindow.swift
-//  NeodiskGTK
-//
-//  The keyboard-shortcuts overlay (Ctrl+? in GNOME apps, and the main
-//  menu's Keyboard Shortcuts). Built from GtkBuilder markup, the form GTK
-//  documents for GtkShortcutsWindow; titles go through the shared catalogs.
-//
+// Built from GtkBuilder markup, the form GTK documents for GtkShortcutsWindow.
 
 import CGtk
 import Foundation

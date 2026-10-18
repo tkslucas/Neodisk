@@ -1,12 +1,4 @@
-//
-//  VolumeCapacitySegmentsTests.swift
-//  NeodiskAppModelTests
-//
-//  The sidebar capacity bar's segments, shared by both apps: category
-//  segments plus the uncategorized remainder tile the scanned tree, and the
-//  hidden tail uses the same used-minus-scanned formula as the sunburst
-//  legend; a folder's bar is its categories alone.
-//
+// Hidden tail uses the same used-minus-scanned formula as the sunburst legend; a folder's bar is categories only.
 
 import Foundation
 import Testing

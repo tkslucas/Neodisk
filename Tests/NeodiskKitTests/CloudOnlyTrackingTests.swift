@@ -2,9 +2,7 @@ import Foundation
 import Testing
 @testable import NeodiskKit
 
-/// Cloud-only (dataless) tracking: file records derive their cloud share
-/// from the dataless flag, directories roll it up, and the snapshot codec
-/// round-trips both through the v3 format while older formats stay clean.
+/// Files derive their cloud share from the dataless flag, directories roll it up, and v3 round-trips both.
 @Suite struct CloudOnlyTrackingTests {
     private func file(
         _ name: String,

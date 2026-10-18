@@ -4,20 +4,14 @@ import NeodiskKit
 @testable import NeodiskUI
 @testable import NeodiskAppModel
 
-/// Characterization tests pinning the view model's outline flattening, its
-/// per-scan state reset, warning-dismissal reset on rescan, and the
-/// stop/resume lifecycle — the behavior a coming refactor must preserve.
+/// Characterization tests pinning outline flattening, per-scan reset and the stop/resume lifecycle.
 @MainActor
 @Suite(.serialized) struct ViewModelOutlineAndResetTests {
 
     // MARK: - Outline rows
 
-    /// root ─┬─ dirA ─┬─ file1.bin (100)
-    ///       │        └─ file2.bin (50)
-    ///       ├─ dirB ── file3.bin (30)
-    ///       └─ file4.bin (10)
-    /// Sizes chosen so the size-descending sibling order is stable and
-    /// distinct at every level.
+    /// root: dirA (file1.bin 100, file2.bin 50), dirB (file3.bin 30), file4.bin 10.
+    /// Sizes keep the size-descending order distinct at every level.
     private func makeMultiLevelSnapshot(target: ScanTarget) -> ScanSnapshot {
         let file1 = makeTestFileNode(id: target.id + "/dirA/file1.bin", name: "file1.bin", size: 100)
         let file2 = makeTestFileNode(id: target.id + "/dirA/file2.bin", name: "file2.bin", size: 50)
@@ -45,9 +39,7 @@ import NeodiskKit
 
         model.coordinator.replaceCurrentSnapshot(makeMultiLevelSnapshot(target: target))
 
-        // snapshotDidChange auto-expands the root row, so its children show at
-        // depth 1 (size-descending: dirA, dirB, file4). Collapsed dirs hide
-        // their own children.
+        // snapshotDidChange auto-expands the root, so its children show at depth 1.
         let collapsed = model.visibleOutlineRows()
         #expect(collapsed.map(\.id) == [
             target.id,
@@ -478,10 +470,7 @@ import NeodiskKit
         let target = makeTestTarget("/lifecycle/partial")
         let model = environment.makeModel()
 
-        // Drive the scan through the coordinator directly: at launch the cache
-        // index isn't ready, so model.startScan would take the refresh branch
-        // (which suppresses partials). The plain scan path is what streams a
-        // live partial tree, and this test is about that path.
+        // Via the coordinator: at launch model.startScan takes the refresh branch, which suppresses partials.
         attachLiveScan(model.coordinator, target: target)
         // A partial tree puts results on screen without finishing the scan.
         let file = makeTestFileNode(id: target.id + "/file.txt", name: "file.txt", size: 5)

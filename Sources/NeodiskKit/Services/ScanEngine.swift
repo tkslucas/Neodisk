@@ -1,8 +1,3 @@
-//
-//  ScanEngine.swift
-//  Neodisk
-//
-
 #if canImport(Darwin)
 import Darwin
 #elseif canImport(Glibc)
@@ -11,12 +6,8 @@ import Glibc
 import Dispatch
 import Foundation
 
-/// A `Sendable` final class on purpose: the whole scan path is
-/// `nonisolated` and every stored property is `let`, so there is no
-/// actor-mutable state to protect. The type used to be an actor, which
-/// implied isolation that wasn't there — and actor-executor serialization
-/// once let a still-cancelling scan block a freshly started one (see
-/// testNewScanCanFinishWhilePreviousEnumerationIsStillCancelling).
+/// Not an actor: every stored property is `let`, and actor serialization once let a cancelling scan
+/// block a new one (testNewScanCanFinishWhilePreviousEnumerationIsStillCancelling).
 public final class ScanEngine: Sendable {
     protocol DirectoryObjectEnumerating: AnyObject {
         func nextObject() -> Any?
@@ -73,24 +64,17 @@ public final class ScanEngine: Sendable {
     /// A completed directory scan awaiting parent assembly.
     struct CompletedDirScan {
         let node: FileNodeRecord?     // Leaves carry a node; traversable dirs are resolved in phase 2.
-        /// Ordinary files and symlinks materialized by this directory's
-        /// enumeration worker. They deliberately never receive scan keys:
-        /// keeping them batched here avoids routing millions of leaves through
-        /// the coordinator and its keyed dictionaries.
+        /// Never given scan keys: batching them here keeps millions of leaves out of the coordinator's
+        /// dictionaries.
         let directLeafNodes: [FileNodeRecord]
-        /// `directLeafNodes` are already in display order (size, then name),
-        /// as traversal's directory workers sort them; assembly then only
-        /// places the subfolders among them.
+        /// Sorted by the directory workers, so assembly only places the subfolders among them.
         let directLeafNodesAreSorted: Bool
         /// The sum of `directLeafNodes` when the worker already took it.
         let directLeafTotals: PartialSubtreeTotals?
         let metadata: NodeMetadata
         let url: URL
-        /// `url.path` and `ScanTarget.displayName(for: url)`, derived once —
-        /// for a traversed folder on its directory task, in parallel — since
-        /// assembly and every live partial read them per folder. Always the
-        /// URL's own spelling (its decomposed form), never the path string's:
-        /// node ids keep the bytes they always had.
+        /// Derived once on the directory task since assembly and every partial read them. Always the URL's own
+        /// (decomposed) spelling, never the path string's, so node ids keep their bytes.
         let path: String
         let name: String
         let isTraversable: Bool     // True if this was a directory we intended to traverse.
@@ -141,10 +125,7 @@ public final class ScanEngine: Sendable {
     private let atomicDirectorySummarizer: AtomicDirectorySummarizer
     private let volumeFileSystemTypeProvider: VolumeFileSystemTypeProvider
     private let diagnostics: ScanDiagnosticsContext?
-    /// When true, directory listing goes through getattrlistbulk(2) with the
-    /// FileManager path kept as a per-directory fallback. Only the real
-    /// filesystem engine enables this — injected test providers must stay
-    /// authoritative for the directories they fake.
+    /// Only the real filesystem engine enables this: injected test providers must stay authoritative.
     private let bulkEnumerationEnabled: Bool
 
     /// Creates a scanner with the default filesystem-backed enumeration.
@@ -293,11 +274,8 @@ public final class ScanEngine: Sendable {
         scan(target: target, options: options, behaviorOverride: nil, baseDepth: 0)
     }
 
-    /// Rescans one subtree of a previous scan so its result can be spliced
-    /// back into the baseline tree. `behavior` and `baseDepth` come from the
-    /// original scan (root behavior and the subtree root's depth in the
-    /// baseline), so depth-gated decisions — auto-summarization above all —
-    /// fire exactly as they would have in a full scan.
+    /// `behavior` and `baseDepth` come from the original scan so depth-gated decisions (auto-summarization)
+    /// fire exactly as in a full scan.
     nonisolated func scanSubtree(
         target: ScanTarget,
         options: ScanOptions,
@@ -307,35 +285,22 @@ public final class ScanEngine: Sendable {
         scan(target: target, options: options, behaviorOverride: behavior, baseDepth: baseDepth)
     }
 
-    /// One direct child of a directory as the incremental root relist sees it:
-    /// enough to diff membership against the baseline without re-scanning any
-    /// subtree. Directory-like children (real directories, packages) are
-    /// left to the plan's normal event→subtree mapping; only leaf records are
-    /// materialized here.
+    /// Enough to diff membership against the baseline without rescanning a subtree; only leaves are
+    /// materialized.
     struct ShallowChild: Sendable {
         let url: URL
-        /// A traversable directory or a package/summarized directory — anything
-        /// the tree represents with a directory node. Symlinks and unreadable
-        /// children are leaves (an unreadable child is a childless inaccessible
-        /// node, exactly what a full scan collapses it to).
+        /// An unreadable child is a leaf: a childless inaccessible node, as a full scan collapses it.
         let isDirectoryLike: Bool
-        /// The node this child splices in: the leaf record for a file/symlink,
-        /// or the inaccessible node for a permission-denied / unclassifiable
-        /// child. Nil only for a directory-like child (left to its own relist).
+        /// Nil only for a directory-like child, which is left to its own relist.
         let leafRecord: FileNodeRecord?
-        /// The child could not be read (enumeration error or missing metadata).
-        /// It still carries an inaccessible `leafRecord` and `warning` so the
-        /// relist reproduces a full scan inline instead of re-walking.
+        /// Still carries an inaccessible `leafRecord` and `warning`, so the relist matches a full scan inline.
         let isUnavailable: Bool
         /// The warning a full scan emits for an unreadable child, else nil.
         let warning: ScanWarning?
     }
 
-    /// Lists a directory's direct children with the exact inclusion gates a
-    /// full scan's enumeration of the same directory would apply (hidden
-    /// files, startup-volume internals, exclusion patterns), so a relist that
-    /// diffs against this set can never drift from a fresh scan's membership.
-    /// One readdir, no recursion.
+    /// Same inclusion gates as a full scan's enumeration, so a relist diffed against it can't drift
+    /// from a fresh scan's membership. One readdir, no recursion.
     nonisolated func directChildren(
         of url: URL,
         options: ScanOptions,
@@ -359,10 +324,8 @@ public final class ScanEngine: Sendable {
                 if let enumError = entry.localizedEnumerationError {
                     return unavailableChild(entry: entry, error: enumError)
                 }
-                // Missing metadata, no explicit error: mirror the traversal and
-                // retry once (it may be a transient bulk-enumeration gap). On
-                // success it's a normal child; on failure, unavailable with the
-                // retry's real error for the warning.
+                // Missing metadata with no error: retry once like the traversal, since it may be a transient
+                // bulk gap.
                 do {
                     return availableChild(entry: entry, metadata: try metadataLoader.metadata(for: entry.url))
                 } catch {
@@ -388,9 +351,7 @@ public final class ScanEngine: Sendable {
         )
     }
 
-    /// The inaccessible node + warning a full scan produces for an unreadable
-    /// child — a childless node marked inaccessible, so a relist splices it
-    /// inline (no subtree walk) and matches a fresh scan of the same state.
+    /// Childless and inaccessible, so a relist splices it inline and matches a fresh scan.
     private nonisolated func unavailableChild(
         entry: DirectoryEntry, error: Error
     ) -> ShallowChild {
@@ -415,13 +376,8 @@ public final class ScanEngine: Sendable {
         try? metadataLoader.metadata(for: url, captureDirectoryIdentity: true)
     }
 
-    /// Whether a relisted directory, given its freshly-read direct children,
-    /// would be a candidate for auto-summarization — the exact gate the
-    /// traversal applies before probing (`ScanTraversal`'s `canProbeForAutoSummary`
-    /// plus `isSummaryProbeWorthwhile`). The incremental relist re-walks a
-    /// directory whose membership change trips this so its summarize/expand
-    /// outcome matches a full scan, instead of splicing children into a
-    /// directory the traversal would have collapsed.
+    /// The traversal's exact summary gate. A relist re-walks a directory that trips it so the outcome matches
+    /// a full scan, instead of splicing children into a directory the traversal would have collapsed.
     nonisolated func isRelistSummaryCandidate(
         directoryURL: URL,
         depth: Int,
@@ -455,11 +411,8 @@ public final class ScanEngine: Sendable {
         behaviorOverride: ScanBehavior?,
         baseDepth: Int
     ) -> AsyncThrowingStream<ScanProgressEvent, Error> {
-        // Bounded, newest-wins: a stalled consumer must not queue an
-        // unbounded backlog of `.partial` trees (each one a full copy of the
-        // tree so far — an effective memory bomb on large scans). Progress
-        // and partial events are cumulative, so dropping the oldest is safe;
-        // `.finished` is always the newest event and is never dropped.
+        // Bounded, newest-wins: each `.partial` is a full tree copy, so a stalled consumer would blow up
+        // memory. Events are cumulative so dropping the oldest is safe; `.finished` is always newest.
         AsyncThrowingStream(bufferingPolicy: .bufferingNewest(256)) { continuation in
             let task = Task(priority: .userInitiated) {
                 do {
@@ -556,10 +509,6 @@ public final class ScanEngine: Sendable {
 
     // MARK: - Iterative Directory Scanning
 
-    /// Scans a directory iteratively (no recursion) and returns a fully
-    /// assembled flat tree. The traversal's mutable state (metrics, warnings,
-    /// emission throttling, work stack, assembly maps) lives in a
-    /// `ScanTraversal` confined to this scan's task.
     private nonisolated func scanDirectory(
         target: ScanTarget,
         includeVolumeDetails: Bool,
@@ -600,12 +549,8 @@ public final class ScanEngine: Sendable {
 
     // MARK: - Helpers
 
-    /// Partial trees materialize only this many levels below the scan root;
-    /// deeper content is rolled up into its depth-limit ancestor, which
-    /// appears as a childless directory with correct running totals. This
-    /// keeps each emission's cost proportional to the (small) top of the
-    /// tree instead of everything scanned so far. `NEODISK_SCAN_PARTIAL_DEPTH`
-    /// overrides it; values below 1 disable the limit.
+    /// Deeper content rolls up into its depth-limit ancestor, keeping each emission's cost small.
+    /// `NEODISK_SCAN_PARTIAL_DEPTH` overrides it; below 1 disables the limit.
     static let defaultPartialTreeMaxDepth = 6
 
     nonisolated static let partialTreeMaxDepth: Int = {
@@ -616,9 +561,7 @@ public final class ScanEngine: Sendable {
         return value < 1 ? Int.max : value
     }()
 
-    /// Volume snapshots carry only what the scan itself accounted for; the
-    /// gap up to the volume's used capacity is presented uniformly by the
-    /// UI as hidden space (VolumeSpaceInfo), never as a synthetic node.
+    /// The gap up to used capacity is shown by the UI as hidden space, never as a synthetic node.
     private nonisolated func makeSnapshot(
         target: ScanTarget,
         treeStore: FileTreeStore,

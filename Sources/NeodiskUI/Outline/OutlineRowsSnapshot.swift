@@ -1,11 +1,4 @@
-//
-//  OutlineRowsSnapshot.swift
-//  Neodisk
-//
-//  Cached structural input for both AppKit outline tables. Selection and
-//  hover never enter the cache key, so moving through an already-expanded
-//  tree reuses the flattened rows and their ID index verbatim.
-//
+// Selection and hover never enter the cache key, so moving through an expanded tree reuses the rows verbatim.
 
 import Foundation
 import NeodiskKit
@@ -21,10 +14,7 @@ extension NeodiskViewModel {
         let contentWidth: CGFloat
     }
 
-    /// Returns the cached structural rows for one outline layout. The two
-    /// layouts keep independent one-entry caches because the bottom table's
-    /// header sort changes sibling order while the leading outline keeps the
-    /// store's size order.
+    /// Separate one-entry caches per layout: the bottom table's header sort changes sibling order.
     func outlineRowsSnapshot(sortedBy sort: OutlineSort? = nil) -> OutlineRowsSnapshot {
         let key = OutlineRowsCache.Key(
             snapshotID: coordinator.snapshot?.id,

@@ -1,8 +1,3 @@
-//
-//  AppVersion+Channel.swift
-//  Neodisk
-//
-
 import NeodiskKit
 
 extension AppVersion {

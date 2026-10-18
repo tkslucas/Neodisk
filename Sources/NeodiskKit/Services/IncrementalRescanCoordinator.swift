@@ -1,8 +1,3 @@
-//
-//  IncrementalRescanCoordinator.swift
-//  Neodisk
-//
-
 import Foundation
 
 /// Order-preserving bounded async map. Incremental subtree scans use this
@@ -42,9 +37,7 @@ nonisolated enum BoundedAsyncMap {
     }
 }
 
-/// Thread-safe aggregation of cumulative progress from independent subtree
-/// streams. Results are summed by stable input index, so completion order does
-/// not affect counters or the final splice ordering.
+/// Summed by stable input index, so completion order affects neither counters nor splice ordering.
 nonisolated final class IncrementalRescanProgressAggregator: @unchecked Sendable {
     private let lock = NSLock()
     private let base: ScanMetrics

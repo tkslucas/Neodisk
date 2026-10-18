@@ -1,20 +1,11 @@
-//
-//  OutlineRows.swift
-//  Neodisk
-//
-//  The SwiftUI content hosted inside the AppKit outline table's rows: the
-//  scrolling name section, the viewport-pinned trailing cluster, and the
-//  flat entire-scan search results list shown in the name section's place.
-//
+// SwiftUI content hosted in the AppKit outline table's rows, plus the flat search results list.
 
 import SwiftUI
 import NeodiskKit
 
 // MARK: - Hosted row content
 
-/// Indent, chevron, icon, and the full name — the part of a row that pans.
-/// The name never truncates; when it outgrows the pane it slides under the
-/// pinned trailing cluster and the tree becomes horizontally scrollable.
+/// The name never truncates: it slides under the pinned trailing cluster and the tree scrolls horizontally.
 struct OutlineNameSection: View {
     let model: NeodiskViewModel
     let row: NeodiskViewModel.OutlineRow
@@ -22,11 +13,8 @@ struct OutlineNameSection: View {
     /// The bottom table's name column truncates in place (middle ellipsis)
     /// instead of panning; the left pane keeps the full-width pan behavior.
     var truncatesName = false
-    /// The text scale this row was built for. Never read directly — the body
-    /// reads the static OutlineRowMetrics — but as a stored property it makes
-    /// a text-size change a change to the view's value. Without it a reused
-    /// cell handed an otherwise identical row skips re-rendering, keeping the
-    /// old font and slot widths inside the new row geometry (issue #10).
+    /// Never read, but makes a text-size change a change to the view's value; otherwise a reused cell keeps
+    /// the old font and widths (issue #10).
     var scale = OutlineRowMetrics.scale
 
     var body: some View {
@@ -131,9 +119,7 @@ struct OutlineTrailingSection: View {
 
 // MARK: - Search results
 
-/// Flat, score-ranked results of the entire-scan search. Selecting a row is
-/// a normal outline selection: treemap highlight via the existing sync, and
-/// ancestors expand so clearing the search shows the node in context.
+/// Selecting a row is a normal outline selection, and ancestors expand so clearing search shows context.
 struct OutlineSearchResultsList: View {
     let model: NeodiskViewModel
     let results: SearchModel.Results

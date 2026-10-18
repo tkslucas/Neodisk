@@ -1,13 +1,5 @@
-//
-//  LinuxMountTable.swift
-//  Neodisk
-//
-//  /proc/self/mountinfo, parsed. Linux's statfs reports a filesystem magic
-//  number and no type name or MNT_LOCAL flag, and FUSE hides the real
-//  filesystem behind one magic — the mount table's type strings
-//  ("ext4", "nfs4", "fuse.sshfs", "fuseblk") say what the Darwin code gets
-//  from f_fstypename. The same table backs the Linux app's volume list.
-//
+// Linux's statfs gives only a magic number (and FUSE hides the real filesystem), so type names come from
+// /proc/self/mountinfo. The same table backs the Linux app's volume list.
 
 #if os(Linux)
 import Foundation
@@ -71,9 +63,7 @@ public enum LinuxFileSystemClass: Sendable, Equatable {
         case "tmpfs", "ramfs", "overlay":
             self = .memory
         default:
-            // FUSE filesystems announce themselves as fuse.<name>; sshfs,
-            // rclone, s3fs, gvfs and friends are remote. Block-backed FUSE
-            // (ntfs-3g, exfat-fuse) reports "fuseblk", handled above.
+            // fuse.<name> (sshfs, rclone, s3fs, gvfs) is remote; block-backed FUSE reports "fuseblk", handled above.
             self = type.hasPrefix("fuse") ? .network : .virtual
         }
     }
@@ -93,10 +83,7 @@ public enum LinuxMountTable {
         text.split(separator: "\n").compactMap(parseLine)
     }
 
-    /// The mount whose mount point is the longest path-component prefix of
-    /// `path` — the filesystem that path lives on, assuming `path` is already
-    /// free of symlinks. Later entries win ties: a mount stacked on the same
-    /// point hides the earlier one.
+    /// Assumes `path` is free of symlinks. Later entries win ties: a mount stacked on the same point hides it.
     public static func mount(containing path: String, in mounts: [LinuxMount]) -> LinuxMount? {
         var best: LinuxMount?
         for mount in mounts where isPath(path, under: mount.mountPoint) {

@@ -2,18 +2,8 @@ import Foundation
 import Testing
 @testable import NeodiskKit
 
-/// Proves the numeric splice (`numericReplacingSubtrees`) produces a store
-/// semantically identical to the dictionary oracle
-/// (`legacyReplacingSubtrees`) across randomized trees, targets, and
-/// replacement stores — including hard links and clone families crossing the
-/// splice boundary, which exercise the shared-size rebalance both paths
-/// finish with.
-///
-/// Equality is semantic (per-id records, per-parent ordered child lists,
-/// parent links, aggregate stats), not raw-array: the legacy path rebuilds
-/// its arrays in freshly-sorted preorder while the numeric path preserves
-/// positions and fixes child slots, so layouts legitimately differ while the
-/// store contract (`children(of:)` order, lookups, totals) must not.
+/// The numeric splice must match the dictionary oracle on randomized trees, including cross-boundary hard
+/// links and clones. Equality is semantic, not raw-array: the two paths legitimately lay arrays out differently.
 @Suite struct FileTreeStoreSpliceEquivalenceTests {
     /// Deterministic SplitMix64 so failures reproduce from the seed.
     private struct SeededGenerator: RandomNumberGenerator {
@@ -102,9 +92,7 @@ import Testing
             )
         }
 
-        /// Builds a random directory subtree, filling `childrenByID`, and
-        /// returns the directory record (totals derived via
-        /// `FileNodeRecord.directory`, same as production builders).
+        /// Totals are derived via `FileNodeRecord.directory`, like production builders.
         func directory(
             path: String,
             depth: Int,
@@ -141,9 +129,7 @@ import Testing
         func store(rootPath: String, depth: Int) -> FileTreeStore {
             var childrenByID: [String: [FileNodeRecord]] = [:]
             let root = directory(path: rootPath, depth: depth, childrenByID: &childrenByID)
-            // Balanced like every store the app splices: a scan deduplicates
-            // shared blocks as it assembles, and each splice rebalances the
-            // families it touched, so untouched families are already settled.
+            // Balanced like every store the app splices, so untouched families are already settled.
             let store = FileTreeStore(root: root, childrenByID: childrenByID)
             return (try? SharedSizeDeduplication.rebalancedStore(store)) ?? store
         }
@@ -243,9 +229,8 @@ import Testing
             guard !targets.isEmpty else { continue }
 
             let replacements: [(id: String, store: FileTreeStore)] = targets.map { targetID in
-                // Rebuild the same path with fresh random content, so ids
-                // inside the replaced subtree are reused (allowed) while the
-                // subtree's shape and sizes change.
+                // Same path with fresh content: ids inside the replaced subtree are reused (allowed) while
+                // shape changes.
                 (id: targetID, store: builder.store(rootPath: targetID, depth: 2))
             }
 
@@ -266,9 +251,7 @@ import Testing
     }
 
     @Test func repeatedSplicesStayEquivalent() throws {
-        // Splice output feeds the next rescan's baseline; run three
-        // generations through both paths to prove the numeric result is a
-        // valid baseline for itself.
+        // Splice output is the next rescan's baseline, so three generations prove it's valid for itself.
         let builder = TreeBuilder(seed: 99)
         var numericStore = builder.store(rootPath: "/root", depth: 4)
         var legacyStore = numericStore

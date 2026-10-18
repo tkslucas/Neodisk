@@ -1,8 +1,3 @@
-//
-//  AboutView.swift
-//  Neodisk
-//
-
 import AppKit
 import SwiftUI
 import NeodiskAppModel

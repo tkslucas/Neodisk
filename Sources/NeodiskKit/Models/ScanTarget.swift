@@ -1,8 +1,3 @@
-//
-//  ScanTarget.swift
-//  Neodisk
-//
-
 import Foundation
 
 public enum ScanTargetKind: String, Hashable, Codable, Sendable {
@@ -99,9 +94,7 @@ public struct ScanTarget: Identifiable, Hashable, Sendable {
 }
 
 public nonisolated struct ScanOptions: Hashable, Codable, Sendable {
-    /// Engine tuning knobs, grouped so the everyday options stay readable.
-    /// Every knob is an override; nil picks the engine's hardware-aware
-    /// default.
+    /// Every knob is an override; nil picks the engine's hardware-aware default.
     public nonisolated struct Tuning: Hashable, Codable, Sendable {
         /// Minimum file count to trigger auto-summarization (default 5,000).
         public var autoSummarizeMinFileCount: Int?
@@ -135,10 +128,7 @@ public nonisolated struct ScanOptions: Hashable, Codable, Sendable {
 
     public var includeHiddenFiles = false
     public var treatPackagesAsDirectories = false
-    /// Traverses the scan root even when it is a package, while packages
-    /// below it stay opaque leaves. This is how "Show Package Contents"
-    /// expands one package in place without also opening every bundle
-    /// nested inside it.
+    /// How "Show Package Contents" expands one package without also opening every bundle nested inside.
     public var treatRootPackageAsDirectory = false
     public var autoSummarizeDirectories = true
     public var includeCloudStorage = false

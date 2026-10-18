@@ -1,8 +1,3 @@
-//
-//  ScanCoordinator.swift
-//  Neodisk
-//
-
 import Combine
 import Foundation
 import Observation
@@ -21,10 +16,8 @@ enum AppModelPhase: Equatable, Sendable {
 protocol ScanEventStreaming: Sendable {
     func scan(target: ScanTarget, options: ScanOptions) -> AsyncThrowingStream<ScanProgressEvent, Error>
 
-    /// A refresh of a previously scanned target. The baseline provider hands
-    /// over the target's last complete snapshot (typically a cache decode
-    /// shared with the display path) so an incremental-capable service can
-    /// re-enumerate only what changed; nil means scan from scratch.
+    /// The baseline is the target's last complete snapshot, so an incremental service can re-enumerate only
+    /// what changed; nil means scan from scratch.
     func rescan(
         target: ScanTarget,
         options: ScanOptions,
@@ -46,20 +39,15 @@ extension ScanEventStreaming {
 extension ScanEngine: ScanEventStreaming {}
 extension IncrementalScanService: ScanEventStreaming {}
 
-/// Where the displayed tree comes from and how live scan events treat it —
-/// the one place that owns the cached-snapshot/refresh choreography, which
-/// used to be re-derived from five fields across two objects.
+/// Where the displayed tree comes from and how live scan events treat it.
 enum DisplaySource: Equatable, Sendable {
     /// Nothing on screen.
     case none
     /// Live scan results stream to the screen (partials while scanning,
     /// then the finished snapshot).
     case liveStreaming
-    /// A previous complete snapshot stands in while a refresh scan runs:
-    /// partials are suppressed (a complete stale map beats an incomplete
-    /// fresh one) and `.finished` swaps the fresh snapshot in. `scanDate`
-    /// is the stand-in's finish date for "Last scanned … — refreshing…",
-    /// nil until the cached snapshot has actually decoded and displayed.
+    /// A complete stale map stands in while a refresh runs: partials are suppressed and `.finished` swaps in.
+    /// `scanDate` is the stand-in's finish date, nil until it has decoded and displayed.
     case cachedWhileRefreshing(scanDate: Date?)
     /// A cached snapshot was restored for display with no scan running.
     case restoredWithoutScan
@@ -87,10 +75,7 @@ final class ScanCoordinator {
     var phase: AppModelPhase = .idle
     var snapshot: ScanSnapshot? {
         didSet {
-            // Every complete snapshot that reaches the screen — scan finish,
-            // cached display, restore, node removal — is the freshest truth
-            // for its target and becomes the instant-display copy. Partials
-            // (isComplete == false) never land here.
+            // Every complete snapshot that reaches the screen becomes the instant-display copy.
             if let snapshot, snapshot.isComplete {
                 rememberRecentSnapshot(snapshot)
             }
@@ -103,12 +88,8 @@ final class ScanCoordinator {
     /// See DisplaySource — all transitions live in this class.
     private(set) var displaySource: DisplaySource = .none
 
-    /// The scan whose stream and progress currently drive the display. Each
-    /// session owns a distinct `ScanProgressState`, so `progress` changes
-    /// identity when the displayed session does — this is tracked (not
-    /// `@ObservationIgnored`) precisely so `progress` readers re-bind when the
-    /// displayed session swaps (a demoted background scan, a new foreground
-    /// scan). `idleProgress` stands in between scans.
+    /// Tracked (not `@ObservationIgnored`) so `progress` readers re-bind when the displayed session swaps;
+    /// each session owns its own `ScanProgressState`.
     private(set) var displayedSession: ScanSession?
     @ObservationIgnored private let idleProgress: ScanProgressState
 
@@ -118,9 +99,7 @@ final class ScanCoordinator {
         displayedSession?.progress ?? idleProgress
     }
 
-    /// The scan service and throttle back both node expansion here and the
-    /// scan sessions ScanSessionModel constructs — the single scan-session
-    /// factory reads them so all sessions share this coordinator's service.
+    /// Shared with the sessions ScanSessionModel constructs, so every session uses this coordinator's service.
     @ObservationIgnored let scanService: any ScanEventStreaming
     @ObservationIgnored let progressThrottleDuration: Duration
     @ObservationIgnored private let snapshotTransformService: any ScanSnapshotTransforming
@@ -142,11 +121,8 @@ final class ScanCoordinator {
         return nil
     }
 
-    /// The last few complete snapshots displayed this session, by target ID —
-    /// switching back to one of them shows its map instantly with no cache
-    /// decode, then refreshes behind it. The map holds plain references (the
-    /// currently displayed snapshot is usually one of them), so the memory
-    /// cost is only the non-displayed tail, bounded by a total node budget.
+    /// Recently displayed complete snapshots, so switching back skips the cache decode. Bounded by a total
+    /// node budget; the displayed one is usually among them, so only the tail costs memory.
     @ObservationIgnored private var recentSnapshotsByTargetID: [String: ScanSnapshot] = [:]
     /// Least-recently-displayed first.
     @ObservationIgnored private var recentSnapshotTargetIDs: [String] = []
@@ -155,9 +131,7 @@ final class ScanCoordinator {
 
     @ObservationIgnored private var expandTask: Task<ScanExpansionResult, Never>?
     @ObservationIgnored private var activeExpansionID: UUID?
-    /// Fires after every displayed-snapshot change (partials included) with
-    /// the new value — the @Observable replacement for the old `$snapshot`
-    /// publisher the view model subscribed to.
+    /// Fires after every displayed-snapshot change, partials included.
     @ObservationIgnored var onSnapshotChange: ((ScanSnapshot?) -> Void)?
 
     init(
@@ -189,26 +163,16 @@ final class ScanCoordinator {
         snapshot?.source ?? .live
     }
 
-    /// How live events treat the display of a newly attached session — the
-    /// two shapes `beginScan` used to fork on, now named so a re-attached
-    /// background scan resumes in the same shape it left the screen.
+    /// How live events treat a newly attached session, so a re-attached background scan resumes as it left.
     enum AttachMode: Equatable {
         /// A cold scan streaming to the screen: partials display as they grow.
         case live
-        /// A refresh runs behind a complete stand-in: partials are suppressed
-        /// until the fresh finish. `scanDate` is the stand-in's finish date for
-        /// "Last scanned … — refreshing…", nil until a stand-in has displayed.
+        /// A refresh behind a complete stand-in: partials are suppressed until the fresh finish.
         case refreshBehindCache(scanDate: Date?)
     }
 
-    /// Makes `session` the displayed scan and sets the display up for `mode`,
-    /// standing `displaying` in on screen (a live partial for a re-attached
-    /// cold scan, a complete stand-in for a refresh, or nil for a scan that
-    /// has nothing to show yet). The single path that puts a scan on screen,
-    /// for both freshly created and re-attached background sessions. The
-    /// caller (ScanSessionModel) has already reset per-scan UI state and wired
-    /// the session's hooks; whatever was displayed is cancelled unless a
-    /// demote detached it first.
+    /// The single path that puts a scan on screen, fresh or re-attached. The caller has already reset per-scan
+    /// UI state and wired hooks; whatever was displayed is cancelled unless a demote detached it first.
     func attach(_ session: ScanSession, mode: AttachMode, displaying standIn: ScanSnapshot?) {
         stopScan(resetState: false)
 
@@ -224,17 +188,11 @@ final class ScanCoordinator {
             displaySource = .cachedWhileRefreshing(scanDate: scanDate)
         }
 
-        // Each session owns its progress, so binding the displayed session
-        // rebinds `progress` to its accumulated metrics — a re-attached
-        // background scan keeps its bar where it left off (monotonic across
-        // detach/re-attach), a fresh session starts from zero.
+        // Rebinding `progress` keeps a re-attached background scan's bar where it left off.
         displayedSession = session
     }
 
-    /// Shows a refresh session's decoded stand-in — but only while that very
-    /// session is the one on screen and still suppressing partials with
-    /// nothing complete yet shown. A decode that lands after the session was
-    /// demoted (or the display moved on) is ignored here; the snapshot stays on
+    /// Ignored once the session was demoted or the display moved on; the snapshot stays on
     /// `session.refreshBaseline` so a re-attach can still show it.
     func showRefreshBaselineIfAttached(_ session: ScanSession) {
         guard session === displayedSession,
@@ -249,10 +207,7 @@ final class ScanCoordinator {
         displaySource = .cachedWhileRefreshing(scanDate: cached.finishedAt ?? cached.startedAt)
     }
 
-    /// Enters the restore phase: a cached snapshot is decoding for display
-    /// and no scan will run until the user asks for one. The detail view
-    /// shows a lightweight loading state until `completeSnapshotRestore`
-    /// swaps the decoded snapshot in.
+    /// A cached snapshot decodes for display and no scan runs until the user asks for one.
     func beginSnapshotRestore(_ target: ScanTarget, prepare: () -> Void = {}) {
         stopScan(resetState: false)
         prepare()
@@ -267,9 +222,7 @@ final class ScanCoordinator {
         displaySource = .none
     }
 
-    /// Displays the decoded snapshot of a restore begun with
-    /// `beginSnapshotRestore`. Ignored when the user has moved on (another
-    /// target selected, or a scan started) while the decode ran.
+    /// Ignored when the user moved on (another target, or a scan started) while the decode ran.
     func completeSnapshotRestore(_ snapshot: ScanSnapshot) {
         guard phase == .restoring,
               snapshot.isComplete,
@@ -279,9 +232,7 @@ final class ScanCoordinator {
         restoreCompletedSnapshot(snapshot)
     }
 
-    /// Reverts a refresh session to normal live streaming when the stand-in it
-    /// was waiting for turned out to be unreadable — but only while that
-    /// session is still the one on screen.
+    /// For when the awaited stand-in turned out unreadable; only while that session is still on screen.
     func abandonRefreshBaselineIfAttached(_ session: ScanSession) {
         guard session === displayedSession,
               isScanning,
@@ -292,9 +243,7 @@ final class ScanCoordinator {
         displaySource = .liveStreaming
     }
 
-    /// The displayed session recorded a new partial tree — show it unless a
-    /// stand-in snapshot is holding the screen for a refresh. Self-gates on the
-    /// displayed session so a background scan's partials reach nothing.
+    /// Self-gates on the displayed session so a background scan's partials reach nothing.
     func showDisplayedPartial(from session: ScanSession) {
         guard session === displayedSession, !suppressesPartialEvents else { return }
         guard let partial = session.latestSnapshot, !partial.isComplete else { return }
@@ -303,10 +252,7 @@ final class ScanCoordinator {
         ScanProfile.addNamed("app.applyPartial", since: since)
     }
 
-    /// The displayed session reached a terminal state — settle the display and
-    /// phase from it. Self-gates on the displayed session; a background scan's
-    /// completion (persistence, LRU) is the session model's concern. The finish
-    /// case updates the display only; the model persists off the same event.
+    /// Self-gates on the displayed session; a background scan's completion is the session model's concern.
     func settleDisplayedCompletion(from session: ScanSession) {
         guard session === displayedSession else { return }
 
@@ -332,12 +278,8 @@ final class ScanCoordinator {
         displayedSession = nil
     }
 
-    /// Releases the displayed session WITHOUT cancelling it: the scan keeps
-    /// running, and the caller (the session model) keeps it in the
-    /// active-session registry as a background scan (its hooks already route
-    /// through the model, which gates them on the displayed session). The
-    /// display state (snapshot, phase, source) is left as-is for the caller's
-    /// next foreground scan or restore to reset.
+    /// Releases the displayed session without cancelling it, so it keeps running as a background scan.
+    /// The display state is left for the next foreground scan or restore to reset.
     @discardableResult
     func detach() -> ScanSession? {
         guard let session = displayedSession else { return nil }
@@ -345,9 +287,7 @@ final class ScanCoordinator {
         return session
     }
 
-    /// Records a complete snapshot into the recent-snapshot LRU without
-    /// putting it on screen — a background scan's finished tree, so switching
-    /// to that target returns it instantly. Partials are rejected.
+    /// For a background scan's finished tree, so switching to that target returns it instantly.
     func insertRecentSnapshot(_ snapshot: ScanSnapshot) {
         guard snapshot.isComplete else { return }
         rememberRecentSnapshot(snapshot)
@@ -392,16 +332,11 @@ final class ScanCoordinator {
 
     // MARK: - In-memory recent snapshots
 
-    /// The remembered snapshot for a target, if it was displayed recently
-    /// enough to still be retained. Callers use it to skip the disk decode
-    /// entirely when switching back to a location.
     func recentSnapshot(forTargetID targetID: String) -> ScanSnapshot? {
         recentSnapshotsByTargetID[targetID]
     }
 
-    /// Drops a target's remembered snapshot. Must be called when the
-    /// target's persisted scans are deleted — session memory must never
-    /// resurrect a scan the user removed.
+    /// Must be called when the target's persisted scans are deleted, so memory never resurrects them.
     func forgetRecentSnapshot(forTargetID targetID: String) {
         recentSnapshotsByTargetID.removeValue(forKey: targetID)
         recentSnapshotTargetIDs.removeAll { $0 == targetID }
@@ -418,9 +353,7 @@ final class ScanCoordinator {
         recentSnapshotTargetIDs.removeAll { $0 == targetID }
         recentSnapshotTargetIDs.append(targetID)
 
-        // Evict least-recently-displayed entries beyond the count cap or the
-        // node budget, but always keep the newest — a single giant volume
-        // must still be remembered.
+        // Always keep the newest: a single giant volume must still be remembered.
         var totalNodes = recentSnapshotTargetIDs
             .compactMap { recentSnapshotsByTargetID[$0]?.treeStore.nodeCount }
             .reduce(0, +)
@@ -454,10 +387,8 @@ final class ScanCoordinator {
         phase = .displaying
     }
 
-    /// Scans an auto-summarized folder's or a package's real contents and
-    /// splices them into the displayed tree, returning how the expansion
-    /// ended. A newer expansion, a snapshot removal, or stopScan cancels the
-    /// awaited work (the call then returns `.cancelled`).
+    /// Scans a summarized folder's or package's real contents and splices them in. A newer expansion,
+    /// a snapshot removal or stopScan cancels it (returns `.cancelled`).
     func expandNodeContents(
         _ node: FileNodeRecord,
         options: ScanOptions

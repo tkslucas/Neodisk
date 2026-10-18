@@ -2,10 +2,7 @@ import Foundation
 import Testing
 @testable import NeodiskKit
 
-/// The concurrent-scan ruling matrix: when a new scan is selected while
-/// another is running, may they share the machine, must the new one defer, or
-/// must it take the disk? Pure over `ScanSourceIdentity`, so every branch is
-/// pinned without touching a real filesystem.
+/// The concurrent-scan ruling matrix, pure over `ScanSourceIdentity` so no real filesystem is touched.
 @Suite struct ScanSourceIdentityTests {
     private func identity(_ profile: ScanSourceProfile, device: UInt64?) -> ScanSourceIdentity {
         ScanSourceIdentity(profile: profile, deviceID: device)
@@ -62,9 +59,7 @@ import Testing
     }
 
     @Test func testLocalTargetDetectsADevice() {
-        // A real temp dir resolves to some local mount, so detection yields a
-        // device id and a local profile (the exact profile depends on the
-        // volume, but it is never nil).
+        // The exact profile depends on the volume, but it's never nil.
         let dir = FileManager.default.temporaryDirectory
         let identity = ScanSourceIdentity.detect(for: ScanTarget(url: dir))
         #expect(identity.deviceID != nil)

@@ -1,15 +1,4 @@
-//
-//  ChangesPane.swift
-//  Neodisk
-//
-//  The statistics panel's Changes tab: what this scan added, deleted,
-//  renamed, grew, or shrank against the previous scan of the same location,
-//  biggest disk movement first. Rows are the shared read-only navigation —
-//  clicking selects the node in the outline and treemap; deleted entries
-//  (whose node no longer exists) select the nearest surviving ancestor
-//  instead. Availability mirrors the outline diff: no list
-//  without a previous snapshot to compare against.
-//
+// Deleted entries select their nearest surviving ancestor, since their node no longer exists.
 
 import SwiftUI
 import NeodiskKit
@@ -28,11 +17,7 @@ struct ChangesPane: View {
                 emptyView
             }
         }
-        // Covers every way the list goes stale while the tab is on screen:
-        // switching to the tab (appear), a new snapshot landing (id), the
-        // previous snapshot rotating under the same tree (reloadToken), and
-        // the comparison becoming possible (canCompare flips after the
-        // first save of a previously unscanned location).
+        // Covers every staleness path: appear, a new snapshot, the predecessor rotating, and canCompare flipping.
         .task(id: loadTaskID) {
             model.changes.loadIfNeeded()
         }
@@ -113,11 +98,8 @@ private struct ChangeResultsView: View {
                     .multilineTextAlignment(.center)
                 Spacer()
             } else {
-                // Selection by entry ID: for live entries that is the node ID
-                // (context menu and Quick Look work through the node lookup);
-                // a deleted entry's ID is its old path — absent from the
-                // store, so those helpers no-op and the click handler routes
-                // to the nearest surviving ancestor.
+                // A deleted entry's ID is its old path, absent from the store, so node helpers no-op and the click
+                // routes to the nearest surviving ancestor.
                 StatsListTable(
                     model: model,
                     rows: entries,

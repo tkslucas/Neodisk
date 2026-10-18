@@ -1,28 +1,5 @@
-//
-//  DuplicateFinder.swift
-//  Neodisk
-//
-//  Finds files with identical content in a scanned tree: group by size,
-//  then confirm candidates through a cheap-first hashing ladder — a 4 KB
-//  head hash, then a 256 KB head+tail hash, then a full content hash only
-//  where the coarser tiers still collide — so the disk reads stay
-//  proportional to plausible duplicates, not to the scan. Each tier only
-//  sub-partitions the previous one; the full-content hash remains the sole
-//  confirmation that two files are actually byte-identical. Hard links are
-//  one file, not duplicates, and are collapsed by file identity up front.
-//
-//  Confirmed groups stream out through `onPartial` as each tier (and, in
-//  the full pass, each collision group) resolves, so the UI can show
-//  results while hashing continues; the returned results stay the single
-//  sorted source of truth.
-//
-//  An optional DuplicateHashCache carries per-file tier digests across
-//  runs, keyed by size + mtime + inode, so a re-scan only reads files that
-//  actually changed.
-//
-//  Read-only like everything else in the engine: files are opened for
-//  reading, nothing is modified.
-//
+// Content duplicates: group by size, then hash in cheap-first tiers (4 KB head, 256 KB head+tail, full);
+// only the full hash confirms. Hard links are one file and are collapsed up front.
 
 #if canImport(CryptoKit)
 import CryptoKit
@@ -45,12 +22,8 @@ public struct DuplicateGroup: Sendable, Equatable, Identifiable, Codable {
     /// Node IDs (absolute paths) of the copies, sorted, one per distinct
     /// on-disk file — hard-linked aliases are already collapsed.
     public let nodeIDs: [String]
-    /// Bytes actually freed by keeping one copy and deleting the rest — read
-    /// off the store's clone/hardlink-deduplicated allocated sizes, not
-    /// `fileSize * (count - 1)`. APFS clones share their on-disk blocks, so a
-    /// removed clone frees only its private bytes; charging the group by the
-    /// naive logical figure over-reports those groups. See
-    /// `DuplicateFinder.reclaimableBytes`.
+    /// Clone/hardlink-deduplicated, not `fileSize * (count - 1)`: removing an APFS clone frees only its
+    /// private bytes.
     public let reclaimableBytes: Int64
 
     /// The copies are byte-identical but free essentially nothing on removal:
@@ -115,22 +88,8 @@ public enum DuplicateFinder {
     /// starving the rest of the app of I/O.
     private static let maxConcurrentReads = 6
 
-    /// Scans a tree store for content-identical files. Runs entirely off
-    /// the snapshot plus fresh reads of the candidate files; cancellation
-    /// (via the surrounding task) throws `CancellationError`. `onProgress`
-    /// is called on an arbitrary executor with a monotonic fraction.
-    ///
-    /// `onPartial` streams confirmed groups as they land — a batch per
-    /// hashing tier for the small files it fully covers, then one batch per
-    /// resolved collision group during the full-content pass — so callers
-    /// can render results while hashing continues. Batches are disjoint and
-    /// their union equals the returned `groups` (which alone are sorted);
-    /// like `onProgress` it runs on an arbitrary executor.
-    ///
-    /// `hashCache` (optional) supplies per-file digests from previous runs:
-    /// a file whose size + mtime + inode still match its cached stamp skips
-    /// the read for any tier it was hashed at before, and fresh digests are
-    /// recorded back. The caller owns loading and persisting the cache.
+    /// `onPartial` batches are disjoint and their union equals the returned (sorted) `groups`.
+    /// Both callbacks run on an arbitrary executor; the caller owns loading and persisting `hashCache`.
     public static func findDuplicates(
         in store: FileTreeStore,
         minimumFileSize: Int64 = defaultMinimumFileSize,
@@ -138,9 +97,7 @@ public enum DuplicateFinder {
         onProgress: (@Sendable (DuplicateScanProgress) -> Void)? = nil,
         onPartial: (@Sendable ([DuplicateGroup]) -> Void)? = nil
     ) async throws -> DuplicateScanResults {
-        // 1. Same-size grouping over the snapshot — no I/O yet. Only real,
-        // readable files count: directories (incl. packages), symlinks, and
-        // synthetic nodes never join a group.
+        // 1. Same-size grouping over the snapshot, no I/O yet.
         var bySize: [Int64: [FileNodeRecord]] = [:]
         for node in store.allNodes {
             guard !node.isDirectory, !node.isSymbolicLink, !node.isSynthetic,
@@ -148,9 +105,7 @@ public enum DuplicateFinder {
             bySize[node.logicalSize, default: []].append(node)
         }
 
-        // 2. Collapse hard links: aliases of one on-disk file share a
-        // FileIdentity and are one copy, not duplicates. Groups need two
-        // distinct files to stay interesting.
+        // 2. Collapse hard links: aliases of one on-disk file share a FileIdentity.
         var candidates: [(size: Int64, nodes: [FileNodeRecord])] = []
         for (size, nodes) in bySize where nodes.count >= 2 {
             var seenIdentities = Set<FileIdentity>()
@@ -166,19 +121,8 @@ public enum DuplicateFinder {
             }
         }
 
-        // 2b. Drop candidates whose bytes we must not, or cannot, read before
-        // any file is opened. Cloud placeholders (SF_DATALESS: iCloud, Google
-        // Drive, OneDrive and other File Providers) block on read while the
-        // provider materializes them from the network — slowly, or forever
-        // when offline or throttled — and that read has no cancellation
-        // escape, so a handful of them wedge every hashing worker and the
-        // scan stops progressing. Non-regular files (fifo/socket/device) and
-        // files that vanished since the scan can't be hashed either. A
-        // metadata-only stat decides all three without opening the file, so a
-        // stalled provider can never wedge a worker. A group needs two
-        // distinct readable files left to stay interesting.
-        // The same stat also yields each candidate's freshness stamp (size +
-        // mtime + inode), which keys the hash-cache lookups below.
+        // 2b. Cloud placeholders block on read with no cancellation escape and would wedge every worker,
+        // so a metadata-only stat filters them (and non-regular or vanished files) before any open.
         var skippedUnhashable = 0
         var stampByPath: [String: DuplicateHashCache.FileStamp] = [:]
         var readableCandidates: [(size: Int64, nodes: [FileNodeRecord])] = []
@@ -203,10 +147,8 @@ public enum DuplicateFinder {
 
         let candidateCount = candidates.reduce(0) { $0 + $1.nodes.count }
 
-        // Progress is bytes-based and monotonic: the planned total starts
-        // pessimistic (every candidate charged for all three tiers — 4 KB
-        // head, 256 KB head+tail, full read) and only ever shrinks as each
-        // tier rules files out, so the fraction never moves backwards.
+        // Planned total starts pessimistic (all three tiers) and only shrinks, so the fraction never moves
+        // back.
         let progress = ProgressAccounting(
             plannedBytes: candidates.reduce(Int64(0)) { total, group in
                 let perFile = headTierBytes(group.size)
@@ -275,9 +217,7 @@ public enum DuplicateFinder {
         // Regroup by (size, head+tail hash). Files fully covered by the head
         // (size <= 256 KB) confirm here; the rest advance to the full pass.
         var needFullHash: [(node: FileNodeRecord, size: Int64)] = []
-        // Pre-group key (size + head+tail hash) per needFullHash entry, so
-        // the full pass can confirm each collision group the moment its last
-        // member finishes instead of waiting for the whole pass.
+        // Pre-group key per entry, so each collision group is confirmed as soon as its last member finishes.
         var fullPreKeys: [String] = []
         var pendingByPreKey: [String: Int] = [:]
         var subgroups: [String: [(node: FileNodeRecord, size: Int64)]] = [:]
@@ -303,10 +243,7 @@ public enum DuplicateFinder {
         confirmed.append(contentsOf: prefixConfirmed)
         if !prefixConfirmed.isEmpty { onPartial?(prefixConfirmed) }
 
-        // 5. Full-content pass only where the head+tail sample still collided.
-        // Confirmation happens per pre-group as its members complete: an
-        // unreadable member still counts down, so a vanished file never
-        // holds back the rest of its group.
+        // 5. Full-content pass. An unreadable member still counts down, so it never holds back its group.
         var finishedByPreKey: [String: [(node: FileNodeRecord, size: Int64, digest: String?)]] = [:]
         let fullResults = try await hashConcurrently(needFullHash, work: { node, size in
             // Not routed through cachingDigest: a miss reports progress per
@@ -359,9 +296,6 @@ public enum DuplicateFinder {
         )
     }
 
-    /// Builds a confirmed group and its honest reclaim figure from the member
-    /// records: the node IDs sorted for a stable identity, and reclaimable
-    /// bytes read off the store's deduplicated allocated sizes.
     private static func makeGroup(
         id: String,
         members: [(node: FileNodeRecord, size: Int64)]
@@ -374,14 +308,8 @@ public enum DuplicateFinder {
         )
     }
 
-    /// Bytes actually freed by keeping one copy of a confirmed group and
-    /// deleting the rest. The store's `allocatedSize` is already clone- and
-    /// hardlink-deduplicated (`CloneDeduplicator`/`HardLinkDeduplicator`), so
-    /// a clone family's shared blocks are charged once — to its largest
-    /// member. Keeping that largest-charged member and summing the rest is the
-    /// real reclaim: a pure clone family nets ~0 (its other members hold only
-    /// private bytes), while independent byte-identical copies each contribute
-    /// their full size, exactly as before.
+    /// Sizes are already clone-deduplicated with shared blocks charged to the largest member, so keep that one
+    /// and sum the rest: a pure clone family nets ~0, independent copies count in full.
     private static func reclaimableBytes(of members: [FileNodeRecord]) -> Int64 {
         let sizes = members.map(\.allocatedSize)
         let total = sizes.reduce(Int64(0)) { $0.addingClamped($1) }
@@ -389,10 +317,7 @@ public enum DuplicateFinder {
     }
 
     // MARK: - Planned-bytes accounting
-    //
-    // Pure per-file byte costs, shared by the pessimistic plan and by the
-    // `drop` calls that shrink it as each tier rules a file out, so the two
-    // always agree and the fraction stays monotonic.
+    // Shared by the pessimistic plan and the `drop` calls so the two always agree.
 
     /// Bytes the head (4 KB) tier reads for a file of `size`.
     private static func headTierBytes(_ size: Int64) -> Int64 {
@@ -421,11 +346,8 @@ public enum DuplicateFinder {
         var unreadable: [(node: FileNodeRecord, size: Int64)] = []
     }
 
-    /// Runs `work` over the entries with bounded concurrency; a thrown
-    /// non-cancellation error marks the entry unreadable instead of failing
-    /// the scan. `onEntryFinished` (with the entry's index in `entries`, and
-    /// a nil digest for unreadable entries) is called serially from the
-    /// caller's context as each entry completes, in completion order.
+    /// A thrown non-cancellation error marks the entry unreadable instead of failing the scan.
+    /// `onEntryFinished` runs serially on the caller's context, in completion order.
     private static func hashConcurrently(
         _ entries: [(node: FileNodeRecord, size: Int64)],
         work: @escaping @Sendable (FileNodeRecord, Int64) async throws -> String,
@@ -469,12 +391,8 @@ public enum DuplicateFinder {
         return results
     }
 
-    /// Metadata-only readiness gate: a candidate is safe to hash only when
-    /// it's a regular file whose bytes are on disk right now. `stat` touches
-    /// inode metadata alone — it never opens the file, never blocks on a
-    /// provider, and never triggers a download. Dataless (cloud-only) files
-    /// are refused so a paused or offline provider can't stall the scan.
-    /// A hashable file's stamp doubles as its hash-cache freshness key.
+    /// `stat` never opens the file, so it can't block on a provider or trigger a download.
+    /// Dataless (cloud-only) files are refused.
     private static func hashableStamp(_ path: String) -> DuplicateHashCache.FileStamp? {
         var info = stat()
         guard path.withCString({ stat($0, &info) }) == 0 else { return nil }
@@ -493,10 +411,7 @@ public enum DuplicateFinder {
         )
     }
 
-    /// Cache-through wrapper for one tier's digest: a hit under a fresh
-    /// stamp skips `compute` (and its disk read) entirely; a miss computes
-    /// and records the digest for the next run. With no cache or no stamp
-    /// it degrades to plain compute.
+    /// A hit under a fresh stamp skips `compute` and its disk read; a miss records the digest.
     private static func cachingDigest(
         _ cache: DuplicateHashCache?,
         _ tier: DuplicateHashCache.Tier,
@@ -526,9 +441,7 @@ public enum DuplicateFinder {
         return hasher.finalize().hexString
     }
 
-    /// Hashes the first `prefixHashLength` bytes and, for files larger than
-    /// that, folds in the last `tailHashLength` bytes so tail divergence
-    /// splits the group without reading the middle.
+    /// Folds in the tail for larger files so tail divergence splits the group without reading the middle.
     private static func hashHeadAndTail(of path: String, size: Int64) throws -> String {
         let fd = try openUncached(path)
         defer { close(fd) }
@@ -570,13 +483,9 @@ public enum DuplicateFinder {
     }
 
     // MARK: - Raw uncached reads
-    //
-    // All three tiers read through raw descriptors opened with F_NOCACHE so a
-    // full-disk dedup scan never evicts the user's page cache. The full pass
-    // adds F_RDAHEAD for its long sequential streaming. Linux has no
-    // per-descriptor cache bypass short of O_DIRECT's aligned I/O, so it gets
-    // the advisory equivalents: NOREUSE keeps the pages off the active list
-    // (reclaimed first), SEQUENTIAL widens readahead.
+
+    // F_NOCACHE so a full-disk scan never evicts the page cache. Linux has no per-fd bypass short of
+    // O_DIRECT's aligned I/O, so it uses the advisory NOREUSE and SEQUENTIAL hints instead.
 
     /// Opens `path` read-only with caching disabled. The caller owns the
     /// returned descriptor and must `close` it.
@@ -635,9 +544,7 @@ private actor ProgressAccounting {
         report()
     }
 
-    /// Work that turned out unnecessary (prefix pass ruled the file out):
-    /// shrinking the plan keeps the fraction meaningful without ever moving
-    /// it backwards.
+    /// Shrinking the plan keeps the fraction meaningful without ever moving it backwards.
     func drop(bytes: Int64) {
         plannedBytes = max(plannedBytes - bytes, completedBytes, 1)
         report()

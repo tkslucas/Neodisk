@@ -1,12 +1,4 @@
-//
-//  CushionRasterizeRGBATests.swift
-//  TreemapKit
-//
-//  The portable `rasterizeRGBA` entry point must produce exactly the pixels the
-//  CGImage `render` path draws: both fill the same background and run the same
-//  per-cell rasterizer, so their buffers are byte-identical. This pins the
-//  wasm-consumable path to the shipping renderer.
-//
+// Pins the wasm-consumable `rasterizeRGBA` path to the shipping `render`: buffers must be byte-identical.
 
 #if canImport(CoreGraphics)
 import CoreGraphics

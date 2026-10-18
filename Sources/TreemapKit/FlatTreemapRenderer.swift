@@ -1,18 +1,5 @@
-//
-//  FlatTreemapRenderer.swift
-//  TreemapKit
-//
-//  Rasterizes treemap cells in the flat nested-box style:
-//  uniform fills with a soft darkened border per tile, folder
-//  containers drawn first so their children overdraw the content region
-//  and leave the header strip and inset frame visible. Cells overlap
-//  (ancestors under descendants), so unlike the cushion path the draw
-//  order matters and the pass is serial — plain row fills are cheap
-//  enough that it stays far off the felt-time path. Rounded corners are
-//  anti-aliased by per-pixel coverage against whatever was drawn
-//  underneath (the parent's fill or the background); everything else is
-//  straight memset runs.
-//
+// Flat nested-box style. Cells overlap (ancestors under descendants), so draw order matters and the
+// pass is serial; corners anti-alias against what was drawn underneath.
 
 #if canImport(CoreGraphics)
 import CoreGraphics
@@ -22,24 +9,15 @@ import Foundation
 #endif
 
 public enum FlatTreemapRenderer {
-    /// Border color: the cell's own fill mixed toward black by this
-    /// fraction (equivalent to a black stroke at 0.30 opacity), so the grid reads
-    /// in every color mode without introducing a new color channel.
+    /// The fill mixed toward black, so the grid reads in every color mode without a new color channel.
     private nonisolated static let borderShade: Float = 0.70
-    /// The border's outermost device-pixel ring blends over whatever lies
-    /// beneath at this coverage, and its innermost ring mixes halfway
-    /// toward the fill — the soft edges of an anti-aliased vector stroke.
-    /// A hard-edged solid band of the same color reads darker and sharper
-    /// than intended.
+    /// Feathers the border's outer and inner rings like an anti-aliased stroke; a hard solid band reads
+    /// darker and sharper than intended.
     private nonisolated static let borderEdgeFeather: Double = 0.6
     /// Border thickness in view points (scaled to device pixels).
     private nonisolated static let borderWidth: CGFloat = 1
-    /// Every tile draws inset by this much per side, so siblings get a
-    /// visible gap and the parent container's fill (drawn first) shows
-    /// through as the mat between them. Both the gap and the corner radius
-    /// scale DOWN with the tile (fractions of its short side, capped at
-    /// these maxima): a constant radius turns small
-    /// tiles into pills, and a constant gap eats them.
+    /// Gap and corner radius scale down with the tile, capped here: a constant radius turns small tiles
+    /// into pills, and a constant gap eats them.
     private nonisolated static let maxDisplayInset: CGFloat = 0.75
     private nonisolated static let displayInsetFraction: CGFloat = 0.12
     private nonisolated static let maxCornerRadius: CGFloat = 5
@@ -147,9 +125,7 @@ public enum FlatTreemapRenderer {
         #endif
     }
 
-    /// Lerp between two packed RGBA words — the anti-aliasing mix for corner
-    /// pixels straddling the border band's inner edge, where a hard cut
-    /// leaves a visible staircase inside the rounded corner.
+    /// Mixes corner pixels on the band's inner edge, where a hard cut leaves a visible staircase.
     private nonisolated static func mixWords(_ a: UInt32, _ b: UInt32, _ t: Double) -> UInt32 {
         let fraction = Float(t)
         func channel(_ shift: UInt32) -> UInt32 {
@@ -160,11 +136,7 @@ public enum FlatTreemapRenderer {
         return channel(0) | channel(8) | channel(16) | (255 << 24)
     }
 
-    /// Blends `word` over the pixel already in the buffer by `coverage` —
-    /// the anti-aliasing write for partially covered corner pixels. The
-    /// buffer is premultiplied, so the same lerp covers the alpha channel:
-    /// over a transparent background a corner pixel stays partially
-    /// transparent instead of fringing dark.
+    /// The buffer is premultiplied, so the lerp covers alpha too and corners over transparency don't fringe dark.
     private nonisolated static func blendPixel(
         _ base: UnsafeMutablePointer<UInt8>,
         byteOffset: Int,
@@ -220,9 +192,6 @@ public enum FlatTreemapRenderer {
         let radiusCap = Int((Double(shortSide) * Double(cornerRadiusFraction)).rounded(.down))
         let radius = min(Int((maxCornerRadius * scale).rounded()), radiusCap)
         let radiusD = Double(radius)
-        // Interior of the border band, measured as distance from the corner
-        // center: outside `radiusD` is out of the tile, the band down to
-        // `bandInner` is border, closer in is fill.
         let bandInner = Double(radius - border)
 
         // The interior word at a pixel: plain fill, or the hatch stripe the
@@ -232,9 +201,7 @@ public enum FlatTreemapRenderer {
             return ((px + py) / hatchStripePeriod) & 1 == 0 ? hatchBrightWord : hatchDarkWord
         }
 
-        // Border writes, feathered by ring (distance from the drawn rect's
-        // edge): ring 0 blends over what's beneath, the ring touching the
-        // interior mixes toward the fill, rings between stay solid.
+        // Ring 0 blends over what's beneath, the innermost ring mixes toward the fill, the rest stay solid.
         let innerBorderWord = mixWords(borderWord, fillWord, 0.5)
         func borderRun(row py: Int, from start: Int, to end: Int, ring: Int) {
             guard end > start else { return }
@@ -268,9 +235,7 @@ public enum FlatTreemapRenderer {
             }
         }
 
-        // A row that is border across its span: columns closer to a
-        // vertical edge than the row is to its horizontal edge take that
-        // column's (outer) ring instead.
+        // Columns closer to a vertical edge than the row is to its horizontal edge take their own outer ring.
         func borderRow(row py: Int, from start: Int, to end: Int, rowRing: Int) {
             guard end > start else { return }
             let midStart = min(max(start, x0 + rowRing), end)
@@ -320,9 +285,6 @@ public enum FlatTreemapRenderer {
                 continue
             }
 
-            // Corner row. The two corner zones get per-pixel coverage
-            // against the rounded outline (anti-aliased against whatever
-            // lies beneath); the span between them is straight.
             let pyCenter = Double(py) + 0.5
             let cornerY = edgeDistY == py - y0 ? Double(y0 + radius) : Double(y1 - radius)
             let dy = pyCenter - cornerY
@@ -331,14 +293,8 @@ public enum FlatTreemapRenderer {
                 let distance = (dx * dx + dy * dy).squareRoot()
                 let coverage = min(max(radiusD + 0.5 - distance, 0), 1)
                 guard coverage > 0 else { return }
-                // Border→fill transition anti-aliases like the outline: a
-                // pixel straddling the band's inner arc mixes the two words
-                // by its interior fraction instead of hard-cutting. The
-                // band's outermost ring feathers over what's beneath, like
-                // the straight edges. The mix window spans the band's whole
-                // innermost pixel ring — the straight edges mix that entire
-                // ring toward the fill, and a narrower window leaves a
-                // solid-dark arc sliver only the corners have.
+                // The mix window spans the band's whole innermost ring like the straight edges do; a narrower one
+                // leaves a dark arc sliver only at the corners.
                 let word: UInt32
                 let interiorFraction = bandInner <= 0
                     ? 0
@@ -371,9 +327,7 @@ public enum FlatTreemapRenderer {
                 writeCornerPixel(px, dx: (Double(px) + 0.5) - Double(x1 - radius))
             }
 
-            // Straight middle of a corner row: top/bottom border rows keep
-            // the border color; deeper rows are interior (the side borders
-            // curved away into the corner zones).
+            // Deeper rows are interior here: the side borders curved away into the corner zones.
             let mid0 = x0 + zoneWidth
             let mid1 = x1 - zoneWidth
             guard mid1 > mid0 else { continue }

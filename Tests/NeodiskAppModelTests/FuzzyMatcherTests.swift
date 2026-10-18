@@ -86,10 +86,7 @@ import Testing
         #expect(ids == ["/big", "/small"])
     }
 
-    /// The bounded heap must reproduce the full sort exactly — same IDs,
-    /// same order, same total — including across heavy ties on score, name
-    /// length, and size, and for limits of 0, 1, below, at, and above the
-    /// match count.
+    /// Including heavy ties and limits of 0, 1, below, at and above the match count.
     @Test func testTopMatchesHeapEqualsFullSort() {
         var rng = SeededTestGenerator(seed: 0x5EA2C4)
         // A tiny alphabet and few sizes force every tie-break level.
@@ -126,9 +123,7 @@ import Testing
         }
     }
 
-    /// A cancelled search stops within one poll interval instead of
-    /// scoring the rest of the index: the scan cancels its own task at a
-    /// known entry and must not visit more than one interval past it.
+    /// The scan cancels its own task at a known entry and must not visit more than one interval past it.
     @Test func testTopMatchesStopsSoonAfterCancellation() async {
         let interval = FuzzyMatcher.cancellationCheckInterval
         let entries = (0..<(interval * 10)).map {
@@ -167,9 +162,7 @@ import Testing
     }
 }
 
-/// The pre-heap ranking: collect every match, full-sort, take the
-/// prefix. The reference the bounded top-k selection must reproduce, and
-/// the "before" side of the search bench.
+/// The pre-heap reference the bounded top-k must reproduce, and the "before" side of the search bench.
 func referenceTopMatches(
     query: String,
     entries: [FileSearchEntry],

@@ -186,11 +186,7 @@ extension ScanTimingSuites {
     @MainActor
     @Test func testProgressEventsAreThrottledToLatestPendingMetrics() async throws {
         let service = ControlledScanService()
-        // A wide throttle window: the burst events are consumed off the async
-        // stream, so under a loaded machine the gap between consuming them can
-        // stretch past a tight window and defeat coalescing. A window that
-        // dwarfs scheduler jitter keeps the coalescing (not the assertion)
-        // deterministic.
+        // A window that dwarfs scheduler jitter keeps coalescing deterministic on a loaded machine.
         let coordinator = ScanCoordinator(scanService: service, progressThrottleDuration: .milliseconds(500))
         var publishedPaths: [String] = []
 
@@ -208,9 +204,7 @@ extension ScanTimingSuites {
         service.yield(.progress(makeCoordinatorMetrics(path: "second", filesVisited: 2)), scanIndex: 0)
         service.yield(.progress(makeCoordinatorMetrics(path: "third", filesVisited: 3)), scanIndex: 0)
 
-        // "first" publishes immediately; "second" is superseded by "third" within the
-        // throttle window, so the single trailing publish is "third". Assert on the
-        // eventual state rather than a fixed-delay snapshot to avoid timing races.
+        // "second" is superseded by "third" within the window; wait on eventual state to avoid timing races.
         try await waitUntil("throttled trailing progress publish", timeout: 4) {
             publishedPaths == ["first", "third"]
         }
@@ -286,9 +280,7 @@ extension ScanTimingSuites {
         nonisolated(unsafe) var coordinatorChangeCount = 0
         var progressChangeCount = 0
 
-        // Observe every stored observable property on the coordinator the
-        // way a SwiftUI view body would; a metrics update must not
-        // invalidate any of them.
+        // Observes every stored property like a view body would; a metrics update must invalidate none.
         withObservationTracking {
             _ = coordinator.phase
             _ = coordinator.snapshot

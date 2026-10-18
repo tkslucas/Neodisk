@@ -1,10 +1,5 @@
-//
-//  WindowTitleTests.swift
-//  Neodisk
-//
-//  The window title's total: volume scans state the Finder/Disk Utility
-//  "used" figure; folder and cloud scans state what the scan accounted for.
-//
+// The window title's total: volume scans state the Finder/Disk Utility
+// "used" figure; folder and cloud scans state what the scan accounted for.
 
 import Foundation
 import Testing

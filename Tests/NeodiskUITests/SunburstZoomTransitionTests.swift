@@ -1,12 +1,3 @@
-//
-//  SunburstZoomTransitionTests.swift
-//  Neodisk
-//
-//  The drill zoom: polar remapping of segments toward the
-//  focused arc (focus → center disk, descendants re-banded, outsiders
-//  collapsed) and the per-frame presentation state machine.
-//
-
 import SunburstCore
 import CoreGraphics
 import Foundation

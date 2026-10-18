@@ -3,10 +3,7 @@ import Testing
 import NeodiskKit
 @testable import NeodiskUI
 
-/// The Duplicates tab's model loading a persisted result from the `.nddup`
-/// cache: a cache hit must enter `.finished` without re-hashing, and it must
-/// rebuild the map-wide highlight index so treemap highlighting and
-/// click-to-open-group keep working for restored results.
+/// A `.nddup` cache hit must finish without re-hashing and rebuild the highlight index for restored results.
 @MainActor
 @Suite(.serialized) struct DuplicatesModelTests {
     @Test func testLoadsCachedResultsWithoutHashing() async throws {
@@ -15,10 +12,7 @@ import NeodiskKit
         let target = makeTestTarget("/dupes-vm/cached")
         environment.sidebarFolderStore.add(target)
 
-        // One snapshot on disk, plus a persisted duplicate result whose group
-        // holds node IDs that are not backed by real files — so if the hasher
-        // ran it would find nothing, and a non-empty result can only come from
-        // the cache.
+        // The group's node IDs aren't backed by real files, so a non-empty result can only come from the cache.
         try await environment.cache.save(makeSnapshot(
             target: target, files: [("a.bin", 2_000_000), ("b.bin", 2_000_000)]
         ))

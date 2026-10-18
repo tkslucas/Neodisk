@@ -2,12 +2,8 @@ import Darwin
 import Foundation
 import NeodiskKit
 
-/// With `NEODISK_SCAN_PROFILE=1`, pings the main queue every 16 ms and records
-/// how long each ping waited (`profile.app.mainLatency`), plus every wait over
-/// 50 ms (`profile.app.mainStall`): how responsive the window stays while a
-/// scan streams partial maps into it. While a ping is late, it also samples
-/// the main thread's stack every 5 ms; `emitStallStacks` prints the stacks
-/// seen most often, so a stall names the code that caused it.
+/// With `NEODISK_SCAN_PROFILE=1`, pings the main queue every 16 ms and records waits and stalls over 50 ms.
+/// While a ping is late it samples the main stack every 5 ms, so a stall names the code that caused it.
 enum MainThreadMonitor {
     nonisolated(unsafe) private static var started = false
     nonisolated(unsafe) private static var mainThread: thread_act_t = 0
@@ -89,9 +85,8 @@ enum MainThreadMonitor {
         let counts = stackCounts
         stackCounts = [:]
         lock.unlock()
-        // Inclusive counts per frame, as in a call tree: a frame counts once
-        // per sample it appears in. Frames in nearly every sample are the
-        // run loop around everything and say nothing.
+        // Inclusive counts per frame, as in a call tree. Frames in nearly every sample are the run loop and
+        // say nothing.
         var inclusive: [String: Int] = [:]
         var total = 0
         for (frames, count) in counts {

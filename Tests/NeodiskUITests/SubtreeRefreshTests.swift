@@ -3,10 +3,7 @@ import Testing
 import NeodiskKit
 @testable import NeodiskUI
 
-/// The context-menu subtree actions on the view model: "Expand Contents" /
-/// "Show Package Contents" splice a fresh scan of an auto-summarized folder
-/// or an opaque package into the displayed tree and persist the spliced
-/// snapshot back to the cache.
+/// "Expand Contents" and "Show Package Contents" splice a fresh scan into the tree and persist the result.
 @MainActor
 @Suite(.serialized) struct SubtreeRefreshTests {
     @Test func testExpandSkipsPlainDirectoriesWithoutScanning() async throws {
@@ -16,9 +13,7 @@ import NeodiskKit
         let fixture = makeSubtreeFixture(rootPath: "/subtree/skips")
         model.coordinator.replaceCurrentSnapshot(fixture.snapshot)
 
-        // Neither a plain directory nor a file is auto-summarized or a
-        // package, so no context menu offers expansion and the model never
-        // starts a scan.
+        // Neither is summarized or a package, so the model never starts a scan.
         #expect(model.contentsExpansion(for: fixture.directory) == nil)
         #expect(model.contentsExpansion(for: fixture.file) == nil)
         model.expandNodeContents(fixture.directory)
@@ -149,10 +144,8 @@ import NeodiskKit
         environment.sidebarFolderStore.add(target)
         let model = environment.makeModel()
 
-        // Full scan first: it persists and records the honest full-scan
-        // date/duration in the cache index. Await the persist pipeline
-        // itself: the cache serves a save still encoding from memory, so
-        // polling `loadSnapshot` returns before anything is on disk.
+        // Await the persist pipeline itself: the cache serves an encoding save from memory, so polling
+        // `loadSnapshot` returns before anything is on disk.
         model.startScan(target)
         let fixture = makeSummarizedFixture(rootPath: target.id, target: target)
         await awaitSnapshotPersist(on: model, of: target) {
@@ -175,10 +168,7 @@ import NeodiskKit
         let cached = await environment.cache.loadSnapshot(for: target)
         #expect(cached?.treeStore.node(id: fixture.summarized.id + "/new1.bin") != nil)
 
-        // The cache index keeps the full scan's date and duration (a subtree
-        // refresh predicts nothing about a full rescan); only the node count
-        // reflects the splice, and the pre-splice snapshot rotated into the
-        // previous slot.
+        // A subtree refresh predicts nothing about a full rescan, so only the node count changes in the index.
         let splicedInfo = try #require(model.session.cachedScanInfo[target.id])
         #expect(splicedInfo.lastScanDate == fullScanInfo.lastScanDate)
         #expect(splicedInfo.lastScanDuration == fullScanInfo.lastScanDuration)

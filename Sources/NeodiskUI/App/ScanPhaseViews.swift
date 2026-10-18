@@ -1,12 +1,3 @@
-//
-//  ScanPhaseViews.swift
-//  Neodisk
-//
-//  The placeholder detail views for the non-workspace scan phases: the
-//  welcome prompt, the scanning progress panel, the cached-snapshot restore
-//  spinner, and the scan-failed message.
-//
-
 import SwiftUI
 import NeodiskKit
 import NeodiskAppModel
@@ -125,9 +116,7 @@ private struct ScanProgressContent: View {
 
 // MARK: - Snapshot restore
 
-/// Shown while a cached snapshot decodes with no scan running (large
-/// locations skip the automatic rescan). Decode takes around a second per
-/// million nodes, so this is a brief, quiet state.
+/// Large locations skip the automatic rescan. Decode takes about a second per million nodes.
 struct SnapshotRestoreView: View {
     let target: ScanTarget?
 

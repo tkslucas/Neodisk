@@ -1,11 +1,4 @@
-//
-//  main.swift
-//  diskscan
-//
-//  Command-line consumer of NeodiskKit: scans a directory or volume and
-//  prints the largest entries (or a JSON tree). Exists both as a usable tool
-//  and as the second consumer that keeps the core's public API honest.
-//
+// Command-line scanner; also the second consumer that keeps the core's public API honest.
 
 import Foundation
 import NeodiskKit
@@ -24,9 +17,7 @@ struct CLIOptions {
     /// Measure the incremental-rescan path: full scan, snapshot round-trip,
     /// then an FSEvents rescan of the same tree.
     var benchRescan = false
-    /// File to modify between the baseline scan and the rescan, so the
-    /// rescan has a changed subtree to replace. Only used with
-    /// --bench-rescan; this is the one deliberate write diskscan can make.
+    /// Only with --bench-rescan; the one deliberate write diskscan can make.
     var benchTouch: String?
 }
 
@@ -323,10 +314,8 @@ func benchNote(_ text: String) {
     FileHandle.standardError.write(Data(("bench: " + text + "\n").utf8))
 }
 
-/// Measures the full incremental-rescan pipeline end to end: baseline full
-/// scan (with FSEvents checkpoint), snapshot encode+decode round-trip
-/// through the real cache, optional file mutation, then the rescan itself.
-/// With NEODISK_SCAN_TIMING=1 each phase also prints its own timing line.
+/// Baseline scan, snapshot round-trip through the real cache, optional mutation, then the rescan.
+/// NEODISK_SCAN_TIMING=1 prints each phase's timing.
 func runRescanBench(target: ScanTarget, options: ScanOptions, touchPath: String?) async -> Int32 {
     let service = IncrementalScanService()
     var reporter = ProgressReporter()

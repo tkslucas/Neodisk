@@ -3,18 +3,12 @@ import Testing
 import NeodiskKit
 @testable import NeodiskUI
 
-/// Characterization tests pinning `startScan`'s branch selection and the
-/// snapshot-cache bookkeeping it drives (restore vs refresh vs live scan,
-/// notice suppression, date adoption, rotation, sidecars). These lock in the
-/// CURRENT behavior ahead of a refactor of the scan lifecycle; they are not
-/// aspirational. Scenarios already covered by
-/// NeodiskViewModelSnapshotCacheTests are intentionally not duplicated here.
+/// Characterization tests pinning `startScan`'s current branch selection and cache bookkeeping ahead of a
+/// lifecycle refactor. NeodiskViewModelSnapshotCacheTests' scenarios aren't duplicated.
 extension ScanTimingSuites {
 @MainActor
 @Suite(.serialized) struct ScanLifecycleTests {
-    /// Switching back to a location scanned earlier this session shows its map
-    /// instantly from session memory while a refresh runs behind it — no disk
-    /// decode, no notice — even when another target's scan is in flight.
+    /// No disk decode and no notice, even with another target's scan in flight.
     @Test func testRecentInMemorySnapshotReselectRefreshesFromMemory() async throws {
         let environment = try TestEnvironment()
         defer { environment.tearDown() }
@@ -77,9 +71,7 @@ extension ScanTimingSuites {
         model.stopScan()
     }
 
-    /// Under the smart policy, a location whose last scan was fast auto-rescans:
-    /// the cached snapshot shows immediately and a refresh starts behind it,
-    /// with no notice (only slow last scans go snapshot-only under smart).
+    /// Only slow last scans go snapshot-only under smart.
     @Test func testSmartPolicyFastLastScanAutoRescans() async throws {
         let environment = try TestEnvironment()
         defer { environment.tearDown() }
@@ -108,9 +100,7 @@ extension ScanTimingSuites {
         model.stopScan()
     }
 
-    /// A persisted snapshot that decodes to garbage is not a dead end: the
-    /// snapshot-only restore falls back to a live scan and forgets the cache
-    /// entry so the location is not stuck showing nothing.
+    /// Forgets the cache entry so the location isn't stuck showing nothing.
     @Test func testCorruptPersistedSnapshotFallsBackToLiveScan() async throws {
         let environment = try TestEnvironment()
         defer { environment.tearDown() }
@@ -143,11 +133,8 @@ extension ScanTimingSuites {
         model.stopScan()
     }
 
-    /// The launch race: startScan fires before the prune index is ready, so
-    /// the refresh scan starts optimistically. When the decoded snapshot
-    /// reveals the last scan was expensive (snapshot-only policy always
-    /// skips), restoreCachedSnapshot cancels the in-flight refresh and offers
-    /// a notice instead — the pre-index equivalent of the indexed skip path.
+    /// startScan fires before the prune index is ready; the decode then reveals an expensive last scan, so the
+    /// refresh is cancelled and a notice offered.
     @Test func testPreIndexRaceCancelsRefreshForSlowSnapshot() async throws {
         let environment = try TestEnvironment()
         defer { environment.tearDown() }
@@ -173,10 +160,7 @@ extension ScanTimingSuites {
         #expect(model.coordinator.snapshot?.target.id == target.id)
     }
 
-    /// When another Neodisk process wrote a newer snapshot after this one's
-    /// launch prune, the in-memory index date is stale. Restoring the decoded
-    /// snapshot adopts its finish date so the sidebar's "Scanned … ago" matches
-    /// what is actually on screen.
+    /// Another process wrote a newer snapshot after launch, so the sidebar date must follow the decoded one.
     @Test func testStaleIndexDateAdoptsDecodedSnapshotDate() async throws {
         let environment = try TestEnvironment()
         defer { environment.tearDown() }
@@ -215,11 +199,7 @@ extension ScanTimingSuites {
         }
     }
 
-    /// Rotation semantics: a content-identical rescan skips rotating the
-    /// previous slot, so a target's first rescan leaves hasPreviousSnapshot
-    /// false; only a rescan with different content produces a diffable
-    /// predecessor. The optimistic index guess is corrected by the save's
-    /// outcome.
+    /// A content-identical rescan skips rotation, so the first rescan leaves no diffable predecessor.
     @Test func testUnchangedRescanLeavesHasPreviousSnapshotFalse() async throws {
         let environment = try TestEnvironment()
         defer { environment.tearDown() }
@@ -259,9 +239,7 @@ extension ScanTimingSuites {
         }
     }
 
-    /// After a scan finishes and persists, the kind-stats sidecar is written
-    /// asynchronously and the generation counter bumps — the signal the
-    /// sidebar's volume bars key on — and the sidecar then loads back.
+    /// The generation counter is what the sidebar's volume bars key on.
     @Test func testKindStatsSidecarGenerationBumpsAndSidecarLoads() async throws {
         let environment = try TestEnvironment()
         defer { environment.tearDown() }
@@ -325,9 +303,7 @@ extension ScanTimingSuites {
         }
     }
 
-    /// A one-file snapshot with a controllable file size (drives the content
-    /// digest that governs cache rotation) and scan dates (drive the
-    /// auto-rescan duration check).
+    /// File size drives the content digest (rotation); scan dates drive the auto-rescan duration check.
     private func makeSnapshot(
         target: ScanTarget,
         fileSize: Int64 = 12,

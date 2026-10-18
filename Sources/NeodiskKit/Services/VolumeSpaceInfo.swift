@@ -1,31 +1,15 @@
-//
-//  VolumeSpaceInfo.swift
-//  Neodisk
-//
-//  The single source of truth for a volume's capacity numbers. Every
-//  user-facing total/free/used/hidden figure derives from one of these
-//  values, so all surfaces (window title, sunburst legend, sidebar bar and
-//  subtitle, status bar) agree with each other and with Finder/Disk Utility.
-//
+// Every user-facing capacity figure derives from this, so all surfaces agree with each other and Finder.
 
 import Foundation
 #if canImport(Glibc)
 import Glibc
 #endif
 
-/// A volume's capacity figures, read in one call.
-///
-/// macOS counts purgeable space (local Time Machine snapshots, caches, swap)
-/// toward the space it reports as available in Finder and Disk Utility; that
-/// figure is `volumeAvailableCapacityForImportantUsage`. The plain
-/// `volumeAvailableCapacity` is the strictly unallocated remainder. Neodisk
-/// follows Finder: "available" and "free" mean the important-usage figure,
+/// Follows Finder: "available" is `volumeAvailableCapacityForImportantUsage` (counts purgeable space),
 /// and "used" is capacity minus that.
 public struct VolumeSpaceInfo: Equatable, Sendable {
     public let totalCapacity: Int64
-    /// Finder-style available space: strictly free plus purgeable
-    /// (`volumeAvailableCapacityForImportantUsage`, falling back to the
-    /// plain figure when the volume does not report it).
+    /// Falls back to the plain figure when the volume doesn't report the important-usage one.
     public let availableCapacity: Int64
     /// Strictly unallocated space (`volumeAvailableCapacity`), when known.
     public let strictlyFreeCapacity: Int64?
@@ -36,9 +20,6 @@ public struct VolumeSpaceInfo: Equatable, Sendable {
         self.strictlyFreeCapacity = strictlyFreeCapacity
     }
 
-    /// Space macOS can reclaim on demand: the part of the available figure
-    /// that is not strictly free. Zero when the volume reports no distinct
-    /// important-usage figure.
     public var purgeableBytes: Int64 {
         max(0, availableCapacity - (strictlyFreeCapacity ?? availableCapacity))
     }
@@ -49,10 +30,7 @@ public struct VolumeSpaceInfo: Equatable, Sendable {
         max(0, totalCapacity - availableCapacity)
     }
 
-    /// Hidden space: used capacity the scan did not account
-    /// for (unreadable paths, other users' homes, snapshot-held blocks).
-    /// Nil when nothing remains — including when the scan over-counts, which
-    /// must never surface as negative hidden space.
+    /// Nil when nothing remains, including over-counting scans, which must never show negative hidden space.
     public func hiddenSpaceBytes(scannedBytes: Int64) -> Int64? {
         let hidden = usedBytes - scannedBytes
         return hidden > 0 ? hidden : nil
@@ -83,11 +61,8 @@ public struct VolumeSpaceInfo: Equatable, Sendable {
     }
 
     #if os(Linux)
-    /// Linux has no purgeable space, but ext4 and friends reserve blocks for
-    /// root that are neither used nor available to the user. Following df,
-    /// "used" is allocated blocks and the capacity is used + available, so
-    /// the reserve never reads as used or hidden space and the percentage
-    /// matches df's Use% column.
+    /// ext4 reserves root blocks that are neither used nor available. Following df, capacity is used +
+    /// available, so the reserve never reads as used or hidden and the percentage matches df's Use%.
     private static func loadStatvfs(for url: URL) -> VolumeSpaceInfo? {
         var stats = statvfs()
         let result = url.withUnsafeFileSystemRepresentation { path -> Int32 in

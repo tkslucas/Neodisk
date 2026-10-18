@@ -1,16 +1,8 @@
-//
-//  FileNodeRecord.swift
-//  Neodisk
-//
-
 import Foundation
 
 public struct FileNodeRecord: Identifiable, Sendable {
-    // Storage is compact: a large scan holds millions of these, so the
-    // common fields sit inline in their smallest faithful form, and the
-    // rarely set ones (a path that differs from the ID, a resource
-    // identifier, clone info, cloud-only sizes) share one optional side
-    // object. The public API below is unchanged.
+    // A large scan holds millions of these: common fields inline in their smallest form, rare ones in one
+    // optional side object.
 
     public let id: String
     public let name: String
@@ -65,10 +57,7 @@ public struct FileNodeRecord: Identifiable, Sendable {
         }
     }
 
-    /// Absolute filesystem path. The record stores the path string rather
-    /// than a URL: URL construction measurably dominates decoding
-    /// million-node snapshots, and most consumers only need the string.
-    /// Almost always the ID itself, which is then all that's stored.
+    /// Stored as a string: URL construction dominates decoding million-node snapshots. Usually just the ID.
     public var path: String { extras?.path ?? id }
     public var isDirectory: Bool { flags.contains(.directory) }
     public var isSymbolicLink: Bool { flags.contains(.symbolicLink) }
@@ -88,19 +77,11 @@ public struct FileNodeRecord: Identifiable, Sendable {
     public var isSelfAccessible: Bool { flags.contains(.selfAccessible) }
     public var isSynthetic: Bool { flags.contains(.synthetic) }
     public var isAutoSummarized: Bool { flags.contains(.autoSummarized) }
-    /// File exists in a cloud drive (iCloud/File Provider) but its content
-    /// is not downloaded: full logical size, ~0 bytes on disk (SF_DATALESS).
-    /// Always false for directories — a directory's cloud share is carried
-    /// by `cloudOnlyLogicalSize` instead.
+    /// Content not downloaded (SF_DATALESS). Always false for directories, which use `cloudOnlyLogicalSize`.
     public var isDataless: Bool { flags.contains(.dataless) }
-    /// Bytes that live only in the cloud below this node: for files,
-    /// `logicalSize` when dataless, else 0; for directories, the descendant
-    /// sum. Display weight = `allocatedSize + cloudOnlyLogicalSize` when the
-    /// cloud-only toggle is on.
+    /// For files, `logicalSize` when dataless; for directories, the descendant sum.
     public var cloudOnlyLogicalSize: Int64 { extras?.cloudOnlyLogicalSize ?? 0 }
-    /// APFS clone-family membership, captured only when the kernel reports
-    /// the file shares blocks with others (refCount > 1). Drives clone
-    /// deduplication so scanned totals track real disk usage.
+    /// Captured only when blocks are shared (refCount > 1); drives clone dedup so totals track real usage.
     public var cloneInfo: CloneInfo? { extras?.cloneInfo }
     /// The clone families inside a summarized directory (package or
     /// auto-summarized folder), which has no file records to carry them.
@@ -242,9 +223,7 @@ public struct FileNodeRecord: Identifiable, Sendable {
         }
     }
 
-    /// Weight used by the visualizations: on-disk bytes, plus the bytes that
-    /// live only in the cloud when the cloud-only toggle is on. One
-    /// definition shared by treemap and sunburst.
+    /// One definition shared by treemap and sunburst.
     public nonisolated func displayWeight(includingCloudOnly: Bool) -> Int64 {
         includingCloudOnly
             ? allocatedSize.addingClamped(cloudOnlyLogicalSize)
@@ -323,9 +302,7 @@ public struct FileNodeRecord: Identifiable, Sendable {
 }
 
 extension Int64 {
-    /// Saturating addition for file-size accumulation. Buggy filesystem
-    /// drivers can report pathological sizes; summing those must degrade to
-    /// a clamped number, never trap the whole app.
+    /// Buggy drivers can report pathological sizes; summing them must clamp, never trap.
     public nonisolated func addingClamped(_ other: Int64) -> Int64 {
         let (sum, overflow) = addingReportingOverflow(other)
         return overflow ? (other > 0 ? .max : .min) : sum
@@ -384,17 +361,8 @@ extension FileNodeRecord {
         )
     }
 
-    /// The same directory record with its own-metadata fields refreshed from a
-    /// fresh read — used by the fine relist so a shallow-relisted directory
-    /// carries the identity/linkCount/package/accessibility/mtime a full scan
-    /// would read, not just its baseline copy. Totals are intentionally kept
-    /// from the baseline: the splice re-derives them for any directory whose
-    /// membership moved, and a directory whose membership did not move keeps its
-    /// correct baseline totals. `isAccessible` (a self ∧ children rollup) is set
-    /// from the refreshed self-accessibility combined with the baseline's
-    /// children-accessibility; the splice recomputes it from real spliced
-    /// children for every directory whose membership moved, which is the only
-    /// case in which children-accessibility can differ from the baseline.
+    /// For the fine relist, so a shallow-relisted directory carries what a full scan would read. Totals stay
+    /// from the baseline; the splice re-derives them (and `isAccessible`) wherever membership moved.
     nonisolated func refreshingOwnMetadata(_ metadata: NodeMetadata) -> FileNodeRecord {
         let childrenAccessible = isSelfAccessible ? isAccessible : true
         return FileNodeRecord(
@@ -452,11 +420,7 @@ extension FileNodeRecord {
         )
     }
 
-    /// The childless inaccessible node a full scan produces for an unreadable
-    /// item: size 0, both accessibility flags false. Shared by the traversal
-    /// (a directory whose enumeration failed, or an unclassifiable child) and
-    /// the incremental relist (an unreadable child spliced inline without a
-    /// subtree walk), so both reproduce a fresh scan's collapse to one node.
+    /// Shared by traversal and relist so both reproduce a fresh scan's collapse to one node.
     nonisolated static func inaccessible(path: String, isDirectory: Bool) -> FileNodeRecord {
         let url = URL(filePath: path, directoryHint: isDirectory ? .isDirectory : .notDirectory)
         return FileNodeRecord(

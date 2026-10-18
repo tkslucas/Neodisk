@@ -1,17 +1,5 @@
-//
-//  SunburstHitTest.swift
-//  SunburstCore
-//
-//  Polar hit-testing over laid-out segments. Points and sizes are plain
-//  Doubles in the chart's local pixel space (origin top-left); NeodiskUI adds
-//  thin CGPoint/CGSize overloads.
-//
-//  Stdlib only apart from `atan2` (point → angle), imported from the platform
-//  math library rather than Foundation to keep the module Embedded-Swift
-//  friendly. On a wasm Embedded build `atan2` needs the toolchain's libm (or
-//  the widget can hit-test in JS from the segment list); see the extraction
-//  notes.
-//
+// Polar hit-testing in local pixel space. `atan2` comes from the platform math library, not Foundation,
+// to stay Embedded-Swift friendly (wasm needs the toolchain's libm).
 
 #if canImport(Darwin)
 import Darwin
@@ -123,10 +111,8 @@ public struct SunburstHitTestIndex: Sendable {
         }
 
         nonisolated func contains(_ normalizedDistance: Double) -> Bool {
-            // The band extends across the cosmetic ring gap so the space
-            // between an arc and its children's ring belongs to the arc —
-            // hovering it never drops the hover (the gaps are drawn, not
-            // hit-tested).
+            // The band spans the cosmetic ring gap so hovering between an arc and its children never drops the
+            // hover.
             normalizedDistance >= minInnerRadius
                 && normalizedDistance <= maxOuterRadius + SunburstLayout.ringGap
         }

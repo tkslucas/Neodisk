@@ -1,15 +1,7 @@
-//
-//  FileTreeStore+Subtrees.swift
-//  Neodisk
-//
-
 import Foundation
 
-// Subtree mutation API (remove/replace/scope) extracted from FileTreeStore.swift
-// purely to keep each file a manageable size. The private helpers
-// `subtreeNodeIDs`/`emptyRootNode`/`preflightReplacement` are used only by the
-// methods below; `StoreError` is internal because the numeric splice fast path
-// (FileTreeStore+NumericSplice.swift) throws the same errors.
+// Subtree mutation API, split from FileTreeStore.swift for size. `StoreError` is internal because the
+// numeric splice path throws it too.
 extension FileTreeStore {
     enum StoreError: LocalizedError {
         case replacementIDCollision(String)
@@ -70,9 +62,7 @@ extension FileTreeStore {
             updatedChildIDs[entry.key] = entry.value.filter { !removedIDs.contains($0) }
         }
 
-        // Ancestors of the removed subtrees still carry the old totals;
-        // rebuild them bottom-up (the pre-removal parent map still knows the
-        // removal roots' ancestor chains).
+        // Rebuild ancestors bottom-up; the pre-removal parent map still knows the removal roots' chains.
         try AncestorRebuilder.rebuildAffectedAncestorDirectories(
             for: Set(removalIDs),
             nodesByID: &updatedNodes,
@@ -303,25 +293,8 @@ extension FileTreeStore {
         try? replacingSubtrees(replacements, cancellationCheck: {})
     }
 
-    /// Replaces multiple disjoint subtrees as one all-or-nothing topology
-    /// transaction: every target is validated (existence, disjointness, ID
-    /// collisions across all replacement stores) before the store is mutated,
-    /// then the union of the targets' ancestor chains is rebuilt once, bottom
-    /// up, followed by a single scan-wide hard-link rebalance so links
-    /// crossing replacement boundaries stay correct.
-    ///
-    /// Returns nil (never a partial splice) when any target is missing or is
-    /// the store root — root replacement is a whole-tree swap, not a splice.
-    /// Throws `StoreError.overlappingReplacementTargets` when one target is an
-    /// ancestor of (or duplicates) another, and `StoreError.replacementIDCollision`
-    /// when a replacement reuses a surviving node's ID or an ID another
-    /// replacement already introduced. An empty `replacements` returns `self`.
-    ///
-    /// Work happens on the numeric fast path
-    /// (`FileTreeStore+NumericSplice.swift`), which splices the contiguous
-    /// arrays directly; the dictionary implementation below is its
-    /// correctness oracle and the fallback for layouts the numeric path
-    /// declines.
+    /// All-or-nothing: validated before mutating, then ancestors and hard links rebalance once.
+    /// Nil for a missing target or the root (a whole-tree swap).
     public nonisolated func replacingSubtrees(
         _ replacements: [(id: String, store: FileTreeStore)],
         spliceProgress: (Double) -> Void = { _ in },
@@ -341,10 +314,8 @@ extension FileTreeStore {
         }
     }
 
-    /// The dictionary-topology splice, kept verbatim as the numeric path's
-    /// byte-equivalence oracle and structural fallback (see
-    /// `FileTreeStoreSpliceEquivalenceTests`). O(baseline) in string-keyed
-    /// dictionary churn — do not put it back on the hot path.
+    /// Kept verbatim as the numeric path's oracle and fallback. O(baseline) dictionary churn: keep it off the
+    /// hot path.
     nonisolated func legacyReplacingSubtrees(
         _ replacements: [(id: String, store: FileTreeStore)],
         cancellationCheck: () throws -> Void
@@ -362,10 +333,7 @@ extension FileTreeStore {
             targetIndexByID[targetID] = targetIndex
         }
 
-        // Targets must be pairwise disjoint. An exact duplicate is a
-        // degenerate overlap (a node is trivially its own duplicate's
-        // ancestor), so the ancestor walk below is preceded by a uniqueness
-        // guard that also names the offender.
+        // An exact duplicate is a degenerate overlap, so a uniqueness guard precedes the ancestor walk.
         let targetIDSet = Set(targetIDs)
         if targetIDSet.count != targetIDs.count {
             var seen = Set<String>()
@@ -397,9 +365,8 @@ extension FileTreeStore {
             ))
         }
 
-        // ID collision preflight across ALL replacement stores: an ID may only
-        // be reused if it lies inside one of the replaced subtrees (union of
-        // removedIDs), and no two replacement stores may introduce the same ID.
+        // An ID may be reused only inside a replaced subtree, and no two replacements may introduce the same
+        // ID.
         var replacementOwnerByNodeID: [String: String] = [:]
         for (targetID, replacement) in zip(targetIDs, replacements.map(\.store)) {
             for (offset, replacementNode) in replacement.storage.nodes.enumerated() {
@@ -453,9 +420,7 @@ extension FileTreeStore {
             }
         }
 
-        // Re-point each surviving parent's child slot(s) to the new roots. A
-        // parent shared by several targets has every target child rewritten in
-        // its single original child list.
+        // A parent shared by several targets has each target child rewritten in its one original list.
         let replacementRootIDByTargetID = Dictionary(
             uniqueKeysWithValues: zip(targetIDs, replacements.map(\.store.rootID))
         )
@@ -471,9 +436,7 @@ extension FileTreeStore {
             updatedParentIDs[replacementRootID] = oldParentIDByTargetID[targetID]!
         }
 
-        // Rebuild the union of affected ancestor chains bottom-up, exactly once
-        // per ancestor. Original preorder reversed visits every node after all
-        // its descendants, so directory totals re-sum already-rebuilt children.
+        // Reversed preorder visits every node after its descendants, so totals re-sum already-rebuilt children.
         var affectedAncestorIDs = Set<String>()
         for parentID in affectedParentIDs {
             var cursor: String? = parentID
@@ -518,19 +481,8 @@ extension FileTreeStore {
         return try SharedSizeDeduplication.rebalancedStore(updatedStore, cancellationCheck: cancellationCheck)
     }
 
-    /// Applies a batch of shallow directory relists as one all-or-nothing
-    /// topology transaction: `removingSubtrees` drop vanished nodes anywhere in
-    /// the tree, `insertions` graft brand-new children under their (surviving)
-    /// parent directory, `replacements` substitute existing subtrees (changed
-    /// leaf files and the deep re-walked subtrees), and `recordOverrides`
-    /// refresh the own-records of the relisted directories whose metadata moved.
-    /// Everything folds into a single ancestor rebuild + shared-size rebalance.
-    ///
-    /// Numeric fast path only: returns nil on any target/layout the numeric
-    /// splice declines (missing target, id collision, non-contiguous subtree),
-    /// so the incremental service escalates that rescan to a full scan rather
-    /// than risk a partial or stale splice. The dictionary paths remain the
-    /// randomized-equivalence oracles for the primitives this composes.
+    /// Numeric fast path only: nil on anything it declines, so the incremental service escalates to a full scan
+    /// rather than risk a partial or stale splice.
     nonisolated func applyingDirectoryRelist(
         recordOverrides: [String: FileNodeRecord],
         removingSubtrees: [String],

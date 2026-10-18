@@ -1,12 +1,4 @@
-//
-//  TextScaleTests.swift
-//  Neodisk
-//
-//  The workspace text scale: the step ladder ⌘+/⌘− walk, the snapping every
-//  stored value passes through, and the layout consequences — panes widen
-//  with the text, the window minimum still holds both pane minimums plus a
-//  usable map, and the treemap's label gates move with the label size.
-//
+// The text scale's step ladder and snapping, and its layout effects on panes, window minimum and labels.
 
 import Foundation
 import SwiftUI
@@ -72,10 +64,7 @@ import Testing
         }
     }
 
-    /// The load-bearing invariant: at every step the window's own minimum
-    /// still fits both side panes at their minimum *and* a minimum map. The
-    /// pane minimums scale with the text; the map's floor does not, which is
-    /// exactly what buys the room.
+    /// The pane minimums scale with the text but the map floor doesn't, which is what buys the room.
     @Test func windowMinimumHoldsBothPanesAndAMap() {
         for step in TextScale.steps {
             let needed = PaneLayout.outlineMinWidth(scale: step)
@@ -97,10 +86,7 @@ import Testing
         }
     }
 
-    /// A pane width persisted at 100% is narrower than the larger size's
-    /// minimum, so it clamps up on read rather than staying cramped. The
-    /// stored value is never written back (PaneLayout's clamp-on-read
-    /// policy), so returning to 100% restores it.
+    /// Clamps up on read and is never written back, so returning to 100% restores it.
     @Test func storedWidthsClampUpAtLargerText() {
         let stored = PaneLayout.outlineDefaultWidth()
         let metrics = WorkspacePaneMetrics(
@@ -152,11 +138,7 @@ import Testing
 
     // MARK: - Control sizes
 
-    /// A control's chrome comes from its control size, not its label font, so
-    /// `neoControlSize` steps the size up. The property that keeps it safe to
-    /// apply anywhere: at 100% it must hand back exactly the base it was
-    /// given, or every deliberately `.small` control in the app silently
-    /// grows.
+    /// At 100% it must return exactly the base, or every deliberately `.small` control silently grows.
     @Test func controlSizeIsUnchangedAtTheStandardScale() {
         for base in TextScale.controlSizes {
             #expect(TextScale.controlSize(base: base, scale: 1.0) == base)
@@ -183,9 +165,7 @@ import Testing
 
     // MARK: - Treemap labels
 
-    /// The label gates are pre-filters sized for the label that will be drawn
-    /// in them: bigger text demands a bigger cell, so a cell that carried a
-    /// name at 100% may not at 200%. Area is two-dimensional, hence scale².
+    /// Bigger text demands a bigger cell; area is two-dimensional, hence scale².
     @Test func treemapLabelGatesFollowTheLabelSize() {
         #expect(TreemapScene.labelMinCellWidth(scale: 2) == 2 * TreemapScene.labelMinCellWidth())
         #expect(TreemapScene.labelMinCellArea(scale: 2) == 4 * TreemapScene.labelMinCellArea())
@@ -193,9 +173,7 @@ import Testing
             == 2 * TreemapScene.flatFolderLabelMinCellHeight())
     }
 
-    /// The flat header strip grows with its label, and the content region
-    /// below it keeps the same floor — so nesting thins out gently instead of
-    /// collapsing when the text doubles.
+    /// The content floor stays put, so nesting thins out gently instead of collapsing when text doubles.
     @Test func flatContainerHeaderGrowsWithoutStarvingItsContents() {
         let big = CGRect(x: 0, y: 0, width: 400, height: 300)
         let plain = try! #require(TreemapScene.flatContentBounds(of: big))
@@ -216,10 +194,8 @@ import Testing
 
     // MARK: - Outline rows
 
-    /// The AppKit outline table has no environment to read: the view model
-    /// pushes the scale into OutlineRowMetrics, which everything sized around
-    /// a row's text derives from. The measurement cache holds widths for one
-    /// scale, so it has to clear when the scale moves.
+    /// The AppKit table has no environment, so the model pushes the scale into OutlineRowMetrics.
+    /// Its measurement cache holds one scale's widths, so it must clear when the scale moves.
     @MainActor
     @Test func outlineRowMetricsFollowTheScale() {
         defer { OutlineRowMetrics.scale = 1 }
@@ -237,13 +213,8 @@ import Testing
         #expect(OutlineRowMetrics.rowHeight < 2 * plainRow)
     }
 
-    /// Outline cells are reused across reloads, and a text-size change hands
-    /// a cell the same row again. The hosted row views read their metrics
-    /// from OutlineRowMetrics' static scale, so the scale has to be part of
-    /// the view's value: otherwise SwiftUI sees an unchanged view, skips the
-    /// body, and the row keeps its old font inside the new row geometry
-    /// (issue #10). The skip only shows in the live table, so this pins the
-    /// invariant the fix relies on.
+    /// Reused cells get the same row after a text-size change; without the scale in the value SwiftUI skips
+    /// the body and keeps the old font (issue #10). Only the live table shows it, so this pins the invariant.
     @MainActor
     @Test func outlineRowViewsCarryTheScaleTheyWereBuiltFor() {
         defer { OutlineRowMetrics.scale = 1 }

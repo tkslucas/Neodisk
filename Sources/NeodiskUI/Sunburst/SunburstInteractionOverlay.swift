@@ -1,13 +1,5 @@
-//
-//  SunburstInteractionOverlay.swift
-//  Neodisk
-//
-//  AppKit event layer over the sunburst: tracking-area hover, click vs drag
-//  disambiguation (3 pt threshold), pinch-to-drill (spread over an arc opens
-//  that folder, squeeze goes up one level), tooltips, and
-//  the right-click context menu. No drag-to-discard support (Neodisk is
-//  read-only) and no viewport zoom/pan (drilling replaced it).
-//
+// AppKit event layer over the sunburst: hover, click vs drag (3 pt threshold), pinch-to-drill, tooltips and
+// the context menu. No drag-to-discard (read-only) and no viewport zoom (drilling replaced it).
 
 import AppKit
 import SwiftUI
@@ -124,9 +116,7 @@ struct SunburstInteractionOverlay: NSViewRepresentable {
             contextMenu(eventLocation(event))
         }
 
-        /// One drill per pinch gesture (see PinchDrillRecognizer): the first
-        /// threshold crossing commits and latches until the fingers lift, so a
-        /// long pinch cannot tunnel through several levels at once.
+        /// The first threshold crossing latches until the fingers lift, so a long pinch can't tunnel levels.
         override func magnify(with event: NSEvent) {
             if event.phase == .began {
                 pinchRecognizer.begin()

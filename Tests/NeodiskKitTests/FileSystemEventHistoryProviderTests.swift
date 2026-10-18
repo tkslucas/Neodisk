@@ -3,10 +3,8 @@ import Foundation
 import Testing
 @testable import NeodiskKit
 
-/// Exercises the real Darwin FSEvents provider against the machine's live
-/// fseventsd journal. Serialized because the journal is process-global shared
-/// state and these tests stand up transient streams; time-limited so a stalled
-/// replay fails loud instead of hanging the suite.
+/// Runs against the live fseventsd journal: serialized because it is process-global, time-limited
+/// so a stalled replay fails loud instead of hanging.
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct FileSystemEventHistoryProviderTests {
     private func makeTemporaryDirectory() throws -> URL {
@@ -16,9 +14,7 @@ struct FileSystemEventHistoryProviderTests {
         return url
     }
 
-    /// Polls `history` with fresh `through` cutpoints until the expected path
-    /// shows up or the deadline lapses. fseventsd journals asynchronously, so
-    /// a change is not immediately replayable.
+    /// fseventsd journals asynchronously, so a change is not immediately replayable.
     private func waitForHistory(
         provider: DarwinFileSystemEventHistoryProvider,
         since: FSEventsCheckpoint,
@@ -62,10 +58,8 @@ struct FileSystemEventHistoryProviderTests {
         try Data("bye".utf8).write(to: doomed)
         try FileManager.default.removeItem(at: doomed) // remove
 
-        // Event paths, after firmlink normalization, are prefixed with the
-        // target's own resolved path (the tree's namespace). Wait for the
-        // last mutation (the removal): fseventsd numbers events in order, so
-        // once it is in the window every earlier one is too.
+        // Wait for the last mutation: fseventsd numbers events in order, so every earlier one is in the
+        // window too.
         let history = try await waitForHistory(
             provider: provider,
             since: since,
@@ -85,10 +79,8 @@ struct FileSystemEventHistoryProviderTests {
     }
 
     @Test func rootVolumeHistorySurfacesPrivateQualifiedPaths() async throws {
-        // A "/" volume scan's tree stores /private/var|tmp|etc under their
-        // qualified paths (plain traversal), so root-target events must
-        // surface qualified too — the stripped form missed the baseline and
-        // degraded every Macintosh HD rescan to a full scan.
+        // A "/" scan stores /private/var|tmp|etc qualified, so events must be too; the stripped form made every
+        // Macintosh HD rescan fall back to a full scan.
         let target = ScanTarget(url: URL(filePath: "/", directoryHint: .isDirectory), kind: .volume)
         let provider = DarwinFileSystemEventHistoryProvider()
         guard let since = try? provider.currentCheckpoint(for: target) else { return }

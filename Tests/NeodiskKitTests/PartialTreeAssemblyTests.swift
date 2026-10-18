@@ -2,14 +2,8 @@ import Foundation
 import Testing
 @testable import NeodiskKit
 
-/// Drives `ScanEngine.assemblePartialTree` directly with synthetic phase-1
-/// state:
-///
-///     /root            key 0, depth 0
-///     ├── f0           key 1, depth 1, 100 bytes
-///     └── a/           key 2, depth 1
-///         └── b/       key 3, depth 2
-///             └── deep key 4, depth 3, 7 bytes
+/// Synthetic phase-1 state: /root (key 0) holds f0 (key 1, 100 bytes) and a/ (key 2), with
+/// a/b/ (key 3, depth 2) holding deep (key 4, depth 3, 7 bytes).
 @Suite struct PartialTreeAssemblyTests {
     private static func directoryMetadata(isReadable: Bool = true) -> NodeMetadata {
         NodeMetadata(
@@ -160,9 +154,7 @@ import Testing
     }
 }
 
-/// The running-totals partial build must match the full walk it replaced, on
-/// random trees with folders still in flight, unreadable folders, and every
-/// depth limit.
+/// Random trees with folders in flight, unreadable folders and every depth limit.
 @Suite struct PartialTreeRunningTotalsEquivalenceTests {
     private static func metadata(isDirectory: Bool, isReadable: Bool) -> NodeMetadata {
         NodeMetadata(

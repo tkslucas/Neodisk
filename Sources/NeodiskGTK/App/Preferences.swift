@@ -1,13 +1,5 @@
-//
-//  Preferences.swift
-//  NeodiskGTK
-//
-//  Persisted settings for the Linux app: a JSON file in the XDG config
-//  directory ($XDG_CONFIG_HOME/neodisk/settings.json), the Linux analog of
-//  the macOS app's UserDefaults domain. Defaults match the macOS app's.
-//  GSettings would need a schema compiled into the system before the app
-//  could run, which rules out `swift run` from a checkout.
-//
+// Settings as JSON in $XDG_CONFIG_HOME/neodisk/settings.json, defaults matching the Mac app. GSettings needs
+// a schema compiled into the system first, which rules out `swift run` from a checkout.
 
 import Foundation
 import NeodiskAppModel
@@ -65,9 +57,7 @@ final class Preferences {
         recentFolders = Array(folders.prefix(Self.maximumRecentFolders))
     }
 
-    /// Shows a view for this session without saving it (the dev hooks, like
-    /// the Mac's). Saves keep writing the stored choice until the user picks
-    /// one themselves.
+    /// For dev hooks: saves keep writing the stored choice until the user picks one themselves.
     func overrideForSession(vizMode: VizViewMode? = nil, treemapStyle: TreemapStyle? = nil) {
         isOverriding = true
         defer { isOverriding = false }

@@ -3,9 +3,7 @@ import Testing
 import NeodiskKit
 @testable import NeodiskUI
 
-/// Keyboard drill navigation on the view model (⌘↓ / ⌘↑). Spatial arrow
-/// movement lives in the controller and needs a rendered scene; the drill
-/// logic here is pure tree/root state and is checked directly.
+/// Spatial arrow movement needs a rendered scene and lives in the controller; drill logic is checked here.
 @MainActor
 @Suite(.serialized) struct TreemapKeyboardNavTests {
     private struct Fixture {
@@ -31,11 +29,7 @@ import NeodiskKit
         }
     }
 
-    /// root ─┬─ sub ──┬─ big.bin (100)
-    ///       │        └─ small.bin (10)
-    ///       ├─ loose.txt (5)
-    ///       └─ area ─┬─ left ── lfile.bin (50)
-    ///                └─ right ─ rfile.bin (50)
+    /// root: sub (big.bin 100, small.bin 10), loose.txt 5, area (left/lfile.bin 50, right/rfile.bin 50).
     private func makeFixture() throws -> Fixture {
         let big = makeTestFileNode(id: "/root/sub/big.bin", name: "big.bin", size: 100)
         let small = makeTestFileNode(id: "/root/sub/small.bin", name: "small.bin", size: 10)
@@ -153,9 +147,7 @@ import NeodiskKit
         defer { fixture.tearDown() }
         let model = fixture.model
 
-        // At the full map, `sub` is below the root: clicking it must NOT
-        // re-root (drilling in is keyboard-only). The current-root crumb is
-        // likewise a no-op.
+        // At the full map, clicking `sub` must not re-root (drilling in is keyboard-only).
         #expect(!model.reRoot(to: fixture.sub.id))
         #expect(model.zoomRootID == nil)
 
@@ -171,9 +163,7 @@ import NeodiskKit
         defer { fixture.tearDown() }
         let model = fixture.model
 
-        // At the full map with a file selected, clicking the `sub` crumb (an
-        // ancestor of the selection, below the root) drills IN to it and leaves
-        // the deeper selection alone — it's still inside the new root.
+        // The `sub` crumb is an ancestor of the selection, so it drills in and keeps the deeper selection.
         model.select(fixture.big.id)
         #expect(model.drillIn(to: fixture.sub.id))
         #expect(model.zoomRootID == fixture.sub.id)
@@ -185,9 +175,7 @@ import NeodiskKit
         defer { fixture.tearDown() }
         let model = fixture.model
 
-        // Clicking the crumb that IS the selection (the deepest crumb, a folder)
-        // re-roots into it; the selection would otherwise equal the root, so it
-        // lands on the largest child — matching ⌘↓.
+        // The crumb that is the selection re-roots into it, moving selection to the largest child like ⌘↓.
         model.select(fixture.sub.id)
         #expect(model.drillIn(to: fixture.sub.id))
         #expect(model.zoomRootID == fixture.sub.id)
@@ -213,9 +201,7 @@ import NeodiskKit
         defer { fixture.tearDown() }
         let model = fixture.model
 
-        // Only descendant folders are in targets. The root itself, an ancestor
-        // of the current root, a file, and the current root are all rejected so
-        // the caller falls back to selecting.
+        // Only descendant folders are targets; everything else is rejected so the caller falls back to selecting.
         #expect(!model.drillIn(to: fixture.root.id))   // the current root
         #expect(model.zoomRootID == nil)
         #expect(!model.drillIn(to: fixture.big.id))    // a file
@@ -304,9 +290,7 @@ import NeodiskKit
         defer { fixture.tearDown() }
         let model = fixture.model
 
-        // ⌘↓ on a summarized folder can't drill into a blank subtree, so it
-        // expands the folder's real contents instead. The map root is left
-        // alone; the folder populates in place for a follow-up drill.
+        // ⌘↓ can't drill into a blank summarized subtree, so it expands the real contents in place instead.
         model.select(fixture.summarized.id)
         #expect(model.drillIntoSelection())
         #expect(model.zoomRootID == nil)

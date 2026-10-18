@@ -1,11 +1,5 @@
-//
-//  TreemapScene.swift
-//  Neodisk
-//
-//  Builds the flat list of renderable treemap cells for a subtree: squarified
-//  layout plus accumulated cushion surface coefficients (van Wijk & van de
-//  Wetering, "Cushion Treemaps", 1999).
-//
+// Builds a subtree's renderable treemap cells: squarified layout plus cushion surface coefficients
+// (van Wijk & van de Wetering, "Cushion Treemaps", 1999).
 
 #if canImport(CoreGraphics)
 import CoreGraphics
@@ -15,20 +9,15 @@ import SunburstCore
 import TreemapKit
 import NeodiskKit
 
-/// What a treemap cell's color means: the node's file kind (the default),
-/// its modification-age bucket measured against the snapshot's scan date,
-/// or — flat style on the Largest tab / with the statistics panel hidden —
-/// the sunburst's branch hues, so the two structural views agree.
+/// What a cell's color means: file kind (default), age bucket against the scan date, or the sunburst's
+/// branch hues (flat style on Largest / panel hidden) so the two views agree.
 package enum TreemapColorMode: Equatable, Sendable {
     case kind
     case age(referenceDate: Date)
     case branch
 }
 
-/// A subset of the map lit at full color while everything else dims: one
-/// kind (the kind drill-in), one age bucket (the Age tab drill-in, valid
-/// only with the matching `.age` color mode), or an explicit set of node
-/// IDs (duplicate groups).
+/// A subset lit at full color while the rest dims; `.ageBucket` is valid only with the `.age` color mode.
 package enum TreemapHighlight: Equatable, Sendable {
     case kind(String)
     case ageBucket(AgeBucket)
@@ -36,9 +25,7 @@ package enum TreemapHighlight: Equatable, Sendable {
 }
 
 package struct TreemapScene: Sendable {
-    /// A name drawn on top of a cell large enough to carry one. Header
-    /// labels (flat style) sit left-aligned in a container's header strip;
-    /// plain labels center inside a file cell.
+    /// A name over a cell big enough for one: headers (flat) sit left in a container's strip, others center.
     package struct CellLabel: Sendable, Identifiable {
         package let id: String
         package let text: String
@@ -52,9 +39,7 @@ package struct TreemapScene: Sendable {
     package let style: TreemapStyle
     package let size: CGSize
     package let viewport: TreemapViewport
-    /// The region actually rasterized, in view coordinates. A superset of the
-    /// visible bounds when zoomed in (overscan), so panning reveals crisp
-    /// content instead of unrendered black.
+    /// The rasterized region in view coordinates; a superset of the visible bounds when zoomed (overscan).
     package let renderBounds: CGRect
     package let cells: [TreemapCell]
     package let labels: [CellLabel]
@@ -64,18 +49,11 @@ package struct TreemapScene: Sendable {
     /// Synthetic node representing volume free space, laid out as an extra
     /// child of the root; nil when the feature is off or not a volume scan.
     package var freeSpaceNode: FileNodeRecord?
-    /// Synthetic node representing volume hidden space (purgeable space,
-    /// local snapshots, files the scan could not see), laid out like the
-    /// free-space node; nil when the feature is off or nothing is hidden.
+    /// Synthetic volume hidden-space node (purgeable, local snapshots, unseen files); nil when off or empty.
     package var hiddenSpaceNode: FileNodeRecord?
-    /// Whether cloud-only (dataless) bytes count toward layout weight; mirrors
-    /// the model's `showsCloudOnlyFiles`. `rect(forNodeID:)` re-runs the layout
-    /// and must weigh children exactly as `build` did, so the scene remembers.
+    /// Remembered so `rect(forNodeID:)` re-runs the layout with exactly the weights `build` used.
     package let includingCloudOnly: Bool
-    /// The workspace text scale this scene was laid out for. The label
-    /// gates and the flat header strip depend on it, and `rect(forNodeID:)`
-    /// re-runs the layout — so the scene remembers it, exactly as it
-    /// remembers `includingCloudOnly`.
+    /// Remembered for the same reason as `includingCloudOnly`: label gates and flat headers depend on it.
     package let labelScale: CGFloat
     /// Coarse spatial buckets over `cells` so hover hit-testing doesn't
     /// linear-scan tens of thousands of cells per mouse-move.
@@ -110,37 +88,24 @@ package struct TreemapScene: Sendable {
         self.cellGrid = CellGrid(cells: cells, bounds: renderBounds)
     }
 
-    /// Cushion parameters: initial ridge height and per-level falloff.
-    /// The zoom root itself gets no ridge — a single canvas-wide cushion
-    /// darkens the whole map's edges without adding structure.
+    /// The zoom root gets no ridge: one canvas-wide cushion darkens the edges without adding structure.
     package nonisolated static let rootRidgeHeight = 0.35
     package nonisolated static let ridgeFalloff = 0.85
     /// Rects smaller than this (in layout points) are not subdivided further;
     /// the directory is drawn as a single cell so the map has no holes.
     package nonisolated static let minSubdivisionArea: CGFloat = 12
     package nonisolated static let minSubdivisionSide: CGFloat = 2
-    /// Children that would occupy less than this many square points get
-    /// merged into a single "smaller items" cell per directory. The flat
-    /// style merges more aggressively: its per-tile gap and border eat a
-    /// larger share of a small tile, so slivers the cushion can still shade
-    /// read as border-only confetti in flat.
+    /// Children smaller than this merge into one "smaller items" cell. Flat merges more: its gaps and borders
+    /// turn slivers the cushion can still shade into confetti.
     package nonisolated static let minChildCellArea: CGFloat = 64
     package nonisolated static let flatMinChildCellArea: CGFloat = 120
 
-    /// The aggregation threshold `build` lays children out with. Every
-    /// re-layout (`rect(forNodeID:)`) must use the same value, or a node
-    /// the flat map merged into "smaller items" resolves to a phantom rect.
+    /// Every re-layout must use the same threshold as `build`, or a merged node resolves to a phantom rect.
     package nonisolated static func minChildArea(for style: TreemapStyle) -> CGFloat {
         style == .flat ? flatMinChildCellArea : minChildCellArea
     }
-    /// Undivided cells — files, and cushion directories drawn as one solid
-    /// tile (packages, summarized/inaccessible folders) — get their name
-    /// drawn once their on-screen cell is big enough to carry it legibly;
-    /// zooming in reveals more names as cells grow.
-    /// Every gate below is written for 100% text and scaled by the
-    /// workspace text scale, so a bigger label still gets a cell big enough
-    /// to carry it instead of being dropped or overflowing. Area is a
-    /// two-dimensional measure, hence scale².
+    /// Undivided cells get a name once big enough. Gates are written for 100% text and scaled by the text
+    /// scale (area by scale²), so bigger labels get bigger cells instead of overflowing.
     package nonisolated static func labelMinCellWidth(scale: CGFloat = 1) -> CGFloat { 80 * scale }
     package nonisolated static func labelMinCellHeight(scale: CGFloat = 1) -> CGFloat { 22 * scale }
     package nonisolated static func labelMinCellArea(scale: CGFloat = 1) -> CGFloat {
@@ -150,32 +115,19 @@ package struct TreemapScene: Sendable {
     /// size per side) so pans show real pixels while the next render lands.
     package nonisolated static let overscanFraction: CGFloat = 0.3
 
-    /// Flat nesting: a directory large enough for a
-    /// container box draws a header strip and lays its children out in the
-    /// inset region below it; smaller directories render as plain cells,
-    /// which is the style's natural depth cutoff.
+    /// A directory big enough for a container gets a header strip and nests its children below it.
     package nonisolated static let flatContainerInset: CGFloat = 2
     package nonisolated static func flatHeaderHeight(scale: CGFloat = 1) -> CGFloat {
         (18 * scale).rounded()
     }
     package nonisolated static func flatMinContainerWidth(scale: CGFloat = 1) -> CGFloat { 52 * scale }
-    /// The header plus the smallest content region worth nesting into. Only
-    /// the header grows with the text scale — the content region does not
-    /// need more room just because the label is bigger, and scaling the
-    /// whole threshold would thin the flat map's nesting at large sizes.
+    /// Only the header grows with the text scale; scaling the whole threshold would thin nesting at large sizes.
     package nonisolated static func flatMinContainerHeight(scale: CGFloat = 1) -> CGFloat {
         flatHeaderHeight(scale: scale) + 28
     }
-    /// Directories deeper than this many levels below the scene root render
-    /// as plain cells even when large enough to nest: past a handful of
-    /// levels the boxes-in-boxes framing stops informing and only shreds the
-    /// map into tiny tiles. Drilling in re-roots the scene, so the cap never
-    /// hides anything from navigation.
+    /// Past this depth, nesting only shreds the map into tiny tiles; drilling re-roots, so nothing is hidden.
     package nonisolated static let flatMaxContainerDepth = 6
-    /// Undivided folders label far smaller than files (files share the
-    /// cushion gates above — only genuinely big tiles carry a file name).
-    /// These are a cheap pre-filter sized to where ~4 characters can fit;
-    /// the exact keep-enough-characters rule runs where text is measured
+    /// Cheap pre-filter sized for ~4 characters; the exact rule runs where text is measured
     /// (`TreemapNSView.minUsefulTruncatedCharacters`).
     package nonisolated static func flatFolderLabelMinCellWidth(scale: CGFloat = 1) -> CGFloat {
         40 * scale
@@ -184,9 +136,7 @@ package struct TreemapScene: Sendable {
         15 * scale
     }
 
-    /// The region a flat container's children occupy, or nil when the rect
-    /// is too small to nest — the caller then draws the directory as a
-    /// plain cell.
+    /// Nil when the rect is too small to nest; the caller then draws the directory as a plain cell.
     package nonisolated static func flatContentBounds(
         of rect: CGRect, scale: CGFloat = 1
     ) -> CGRect? {
@@ -204,9 +154,7 @@ package struct TreemapScene: Sendable {
     /// Suffix of the synthetic hidden-space node's id (root id + suffix).
     private nonisolated static let hiddenSpaceNodeSuffix = "/__hidden-space__"
 
-    /// Kind-highlight dimming: non-matching cells blend this far toward
-    /// their own gray (desaturation) and drop to this brightness, so the
-    /// highlighted kind's full-color cells pop against a muted map.
+    /// Kind-highlight dimming: non-matching cells desaturate and darken so the highlighted kind pops.
     package nonisolated static let highlightDesaturation: Float = 0.7
     package nonisolated static let highlightDimBrightness: Float = 0.4
 
@@ -218,11 +166,8 @@ package struct TreemapScene: Sendable {
         return desaturated * highlightDimBrightness
     }
 
-    /// Cloud-only cells: a gentler cousin of the highlight dim — nudged
-    /// toward gray and slightly darkened, so dataless content visibly
-    /// recedes next to on-disk files without going as mute as a dimmed
-    /// non-match. Applied to the resolved color, so every color mode
-    /// (kinds, age, highlights) inherits it; the raster hatch adds texture.
+    /// Cloud-only cells recede a bit, gentler than a highlight dim. Applied to the resolved color, so every
+    /// color mode inherits it.
     package nonisolated static let datalessDesaturation: Float = 0.45
     package nonisolated static let datalessDimBrightness: Float = 0.85
 
@@ -264,10 +209,8 @@ package struct TreemapScene: Sendable {
         let freeSpaceNode = makeFreeSpaceNode(rootID: rootID, root: root, bytes: freeSpaceBytes)
         let hiddenSpaceNode = makeHiddenSpaceNode(rootID: rootID, root: root, bytes: hiddenSpaceBytes)
 
-        // The virtual canvas is size × scale, positioned so that emitted
-        // geometry lands directly in view coordinates. Rasterization covers
-        // the visible window plus an overscan margin (clamped to the canvas);
-        // subtrees outside that region are pruned.
+        // The virtual canvas is size × scale, positioned so geometry lands in view coordinates; subtrees outside
+        // the visible window plus overscan are pruned.
         let visibleBounds = CGRect(origin: .zero, size: size)
         let rootRect = CGRect(
             x: -viewport.origin.x,
@@ -279,11 +222,8 @@ package struct TreemapScene: Sendable {
             .insetBy(dx: -size.width * overscanFraction, dy: -size.height * overscanFraction)
             .intersection(rootRect)
 
-        // Branch-color coordinate: the node's global size interval in
-        // scan-root coordinates, matching the sunburst layout and
-        // SunburstColorResolver.branchColor — hue is the interval midpoint,
-        // and the coordinate is anchored at the SCAN root (`rootDepth`
-        // offsets a drilled scene), so drilling never recolors a subtree.
+        // Branch hue comes from the node's size interval anchored at the scan root (as in the sunburst), so
+        // drilling never recolors a subtree.
         let rootDepth = max(store.path(to: rootID).count - 1, 0)
         let rootColor: (start: Double, span: Double)? = colorMode == .branch
             ? (rootID == store.root.id
@@ -293,12 +233,8 @@ package struct TreemapScene: Sendable {
                 ).map { (start: $0.start, span: $0.span) } ?? (start: 0, span: 1))
             : nil
 
-        // Flat fills are "translucent": each cell's color composites once at
-        // flatFillOpacity over the window background — the sunburst's
-        // translucent-arc look, baked analytically so the raster stays
-        // opaque memset runs. Nesting reads through the depth ramp instead
-        // of stacking composites, which compounded toward mud. `depth`
-        // counts levels below the scene root.
+        // Flat fills composite once at flatFillOpacity over the background, baked so the raster stays opaque;
+        // nesting reads through the depth ramp, since stacked composites turned to mud.
         var stack: [(node: FileNodeRecord, rect: CGRect, surface: CushionSurface, height: Double, isRoot: Bool, color: (start: Double, span: Double)?, depth: Int)] = [
             (root, rootRect, CushionSurface(), rootRidgeHeight, true, rootColor, 0)
         ]
@@ -315,10 +251,7 @@ package struct TreemapScene: Sendable {
                 && rect.width * rect.height >= minSubdivisionArea
                 && min(rect.width, rect.height) >= minSubdivisionSide
 
-            // Where this directory's children lay out: the rect itself, or —
-            // flat style, non-root — the container's inset content region.
-            // nil (flat, too small to nest) falls through to the plain-cell
-            // path below, which is the flat style's natural depth cutoff.
+            // nil (flat, too small to nest) falls through to the plain-cell path below.
             let childLayoutRect: CGRect?
             if !subdividable {
                 childLayoutRect = nil
@@ -337,11 +270,8 @@ package struct TreemapScene: Sendable {
                     filtered, synthetic: syntheticNodes, includingCloudOnly: includingCloudOnly
                 )
                 if !children.isEmpty {
-                    // The node's color interval divides among the data
-                    // children by weight, in laid-out order — every child
-                    // advances the cursor (files too, so a large file shifts
-                    // the hues after it); the synthetic free/hidden blocks
-                    // advance nothing, keeping data on the full hue wheel.
+                    // The color interval divides among data children by weight in layout order; the synthetic free/hidden
+                    // blocks advance nothing, keeping data on the full hue wheel.
                     var childColors: [(start: Double, span: Double)?]
                     if let color {
                         let dataTotal = children.reduce(Int64(0)) { total, child in
@@ -361,16 +291,11 @@ package struct TreemapScene: Sendable {
                         childColors = Array(repeating: nil, count: children.count)
                     }
                     if style == .flat, !isRoot {
-                        // The container cell: full rect under its children,
-                        // leaving the border frame and header strip visible.
-                        // Emitted before the children so the flat renderer's
-                        // in-order pass resolves the overdraw correctly.
+                        // Emitted before the children so the flat renderer's in-order pass resolves the overdraw.
                         let swatchRGB = resolvedRGB(
                             for: node, colorMode: colorMode, catalog: catalog,
                             palette: palette, color: color,
-                            // Status-bar branch swatches historically use
-                            // the treemap's calm structural tint in both
-                            // drawing styles.
+                            // Status-bar branch swatches use the calm structural tint in both styles.
                             globalDepth: rootDepth + depth, style: .flat, store: store
                         )
                         var rgb = resolvedRGB(
@@ -403,9 +328,7 @@ package struct TreemapScene: Sendable {
                             width: rect.width - 2 * (flatContainerInset + 4),
                             height: flatHeaderHeight(scale: labelScale) - 4
                         ).intersection(visibleBounds)
-                        // Every container whose header strip shows emits a
-                        // name candidate; the view drops it if the strip is
-                        // too narrow for a useful (≥4-character) truncation.
+                        // The view drops the name if the strip is too narrow for a useful (≥4-character) truncation.
                         if !headerRect.isEmpty {
                             labels.append(CellLabel(
                                 id: node.id, text: node.name, rect: headerRect, isHeader: true
@@ -439,19 +362,8 @@ package struct TreemapScene: Sendable {
                         let itemCount = tail.reduce(0) {
                             $0 + ($1.isDirectory ? max($1.descendantFileCount, 1) : 1)
                         }
-                        // With a highlight active, an aggregate stays lit
-                        // only when a directly merged node matches — the tail
-                        // is already in hand, so this check is cheap. Matches
-                        // hidden deeper inside merged subdirectories are not
-                        // searched for; those aggregates dim.
-                        // Branch mode: a folder's merged tail colors from
-                        // its own slice of the folder's interval (the tail
-                        // is the interval's end — the children it stands
-                        // for live there), one level deeper — a gray cell
-                        // per folder read as holes punched in the hue
-                        // field. Only the scan root's own merge stays the
-                        // sunburst's neutral aggregate gray: its tail spans
-                        // many branches.
+                        // With a highlight, an aggregate stays lit only if a directly merged node matches. Branch mode colors a
+                        // folder's tail from the end of its interval; only the scan root's merge stays neutral gray.
                         var aggregateRGB: SIMD3<Float>
                         if colorMode == .branch {
                             if let color, node.id != store.root.id {
@@ -479,9 +391,7 @@ package struct TreemapScene: Sendable {
                             }
                             if !lit { aggregateRGB = dimmedRGB(aggregateRGB) }
                         }
-                        // Hatch the merged cell only when every node folded
-                        // into it is itself cloud-only (nothing on disk); a
-                        // mix stays plain, the cheap-and-correct v1.
+                        // Hatch only when every merged node is cloud-only; a mix stays plain.
                         let aggregateDataless = includingCloudOnly
                             && tail.allSatisfy { $0.allocatedSize == 0 }
                         if aggregateDataless { aggregateRGB = datalessRGB(aggregateRGB) }
@@ -537,10 +447,7 @@ package struct TreemapScene: Sendable {
                     globalDepth: rootDepth + depth, style: style, store: store
                 )
             }
-            // Plain directories never match a highlight (they are neither a
-            // stats kind nor a countable age node), so undivided-directory
-            // cells always dim — even when they contain matching files too
-            // deep to lay out.
+            // Plain directories never match a highlight, so undivided directory cells always dim.
             if let highlight, !matches(node, highlight: highlight, colorMode: colorMode, catalog: catalog) {
                 rgb = dimmedRGB(rgb)
             }
@@ -566,16 +473,8 @@ package struct TreemapScene: Sendable {
                 isDataless: isDataless
             ))
 
-            // Position the label inside the visible part of the cell. Files
-            // share one gate across both styles: only genuinely big tiles
-            // carry a name (zooming in reveals more). Flat undivided folders
-            // label at the smaller folder gate. Cushion directories reaching
-            // this path are always undivided — packages, summarized and
-            // inaccessible folders drawn as one solid cell — so they read
-            // like files and label at the file gate; subdivided directories
-            // never get here (their area belongs to their children). Gates
-            // are pre-filters — the view still drops any label whose
-            // truncation would keep too few characters to inform.
+            // Files share one label gate in both styles; flat undivided folders use the smaller folder gate, and
+            // undivided cushion directories read like files. Gates are pre-filters; the view drops useless labels.
             let visiblePart = rect.intersection(visibleBounds)
             if style == .flat, node.isDirectory {
                 if visiblePart.width >= flatFolderLabelMinCellWidth(scale: labelScale),
@@ -601,10 +500,7 @@ package struct TreemapScene: Sendable {
         )
     }
 
-    /// Flat-style translucency, matching the sunburst's translucent-arc
-    /// look (its fills draw at ~0.78 opacity): the resolved color drawn at
-    /// this opacity over the window background — once per cell, never over
-    /// an ancestor's fill (chained composites compounded toward mud).
+    /// Matches the sunburst's translucent arcs; drawn once per cell, never over an ancestor's fill.
     package nonisolated static let flatFillOpacity: Float = 0.75
 
     package nonisolated static func flatComposite(
@@ -614,18 +510,12 @@ package struct TreemapScene: Sendable {
         rgb * flatFillOpacity + backdrop * (1 - flatFillOpacity)
     }
 
-    /// Flat branch fills pull lightly toward gray: the translucent
-    /// composite is part of the look, and raw resolver colors read loud
-    /// through it. Loose scan-root files are already gray; they dim a
-    /// touch instead so they recede rather than glow.
+    /// Raw resolver colors read loud through the translucent composite; loose root files dim instead.
     package nonisolated static let flatBranchDesaturation: Float = 0.18
     package nonisolated static let flatRootFileDim: Float = 0.9
 
-    /// Flat nesting cue for the kind/age modes: deeper cells desaturate and
-    /// darken a step per level, clamped, so containment reads without
-    /// stacked translucency. Branch colors skip this — their resolver
-    /// already carries the same ramp in its depth term. Scene-root children
-    /// (depth 1) stay at full color, like the sunburst's first ring.
+    /// Flat kind/age nesting cue: deeper cells desaturate and darken a step per level. Branch colors skip
+    /// it (their resolver already has a depth term).
     package nonisolated static let flatDepthDesaturation: Float = 0.03
     package nonisolated static let flatDepthDim: Float = 0.035
     package nonisolated static let flatDepthLimit = 6
@@ -641,12 +531,8 @@ package struct TreemapScene: Sendable {
         return desaturated * (1 - flatDepthDim * tone)
     }
 
-    /// A node's full-color cell fill under a color mode: kind palette color,
-    /// age ramp, or the sunburst's midpoint hue. Plain directories keep
-    /// their neutral fill in the kind/age modes (a folder's own mtime says
-    /// little about its contents); in branch mode folders carry the hue —
-    /// `color` is the traversal-carried global size interval and
-    /// `globalDepth` counts levels below the scan root.
+    /// Plain directories stay neutral in kind/age modes (a folder's mtime says little); in branch mode
+    /// `color` is the global size interval and `globalDepth` counts levels below the scan root.
     private nonisolated static func resolvedRGB(
         for node: FileNodeRecord,
         colorMode: TreemapColorMode,
@@ -666,14 +552,8 @@ package struct TreemapScene: Sendable {
             }
             return palette.ageRGB(AgeBucket.bucket(for: node.lastModified, reference: referenceDate))
         case .branch:
-            // Files share the folder formula (role .normal): their own
-            // interval midpoint and the depth fade. The sunburst grays its
-            // files (thin outer arcs); a treemap's area is mostly file
-            // tiles, so gray — or a heavily muted tint — washes the whole
-            // map out. A loose file at the scan root goes gray like the
-            // sunburst's files instead: it has no hue family of its own,
-            // and a root full of vividly colored loose files buries the
-            // smaller folders that actually have structure worth spotting.
+            // Files use the folder formula: gray files would wash out a treemap that is mostly file tiles. Loose
+            // scan-root files go gray, or they would bury the folders that have structure.
             let depth = max(globalDepth, 1)
             var role = SunburstColorRole.normal
             if depth <= 1, !SunburstLayout.isSunburstFolder(node, in: store) {
@@ -687,11 +567,7 @@ package struct TreemapScene: Sendable {
         }
     }
 
-    /// A branch-mode fill: the sunburst resolver's color for the global
-    /// (midpoint, depth) coordinate, adjusted per style. Flat pulls lightly
-    /// toward gray — its translucent composite is part of the look, and raw
-    /// resolver colors read loud through it; the cushion keeps the color
-    /// verbatim, its shading does the separating.
+    /// Flat pulls lightly toward gray for its translucent composite; the cushion keeps the color as is.
     private nonisolated static func midpointRGB(
         midpoint: Double,
         depth: Int,
@@ -707,11 +583,7 @@ package struct TreemapScene: Sendable {
         return rgb + (gray - rgb) * flatBranchDesaturation
     }
 
-    /// Whether a node stays at full color under an active highlight. An age
-    /// bucket highlight needs the `.age` color mode's reference date; with
-    /// any other mode it matches nothing. Shared with the sunburst
-    /// (`SunburstLayout.resolvedFillRGB`) so both visualizations dim the same
-    /// non-matching nodes, alongside `dimmedRGB`.
+    /// Shared with the sunburst so both dim the same nodes. An age bucket matches only under `.age`.
     package nonisolated static func matches(
         _ node: FileNodeRecord,
         highlight: TreemapHighlight,
@@ -787,13 +659,8 @@ package struct TreemapScene: Sendable {
         )
     }
 
-    /// Orders a directory's laid-out siblings (its filtered children plus any
-    /// synthetic root blocks). Squarify wants weights descending, and with
-    /// cloud-only weighting on the store's `allocatedSize` order is wrong —
-    /// a mostly-dataless cloud root has nearly every child at zero on-disk
-    /// bytes, so sort by `displayWeight` instead. With the flag off this stays
-    /// byte-identical to before: the store order is preserved, and synthetic
-    /// blocks fall back to the store's own `sortedChildren`.
+    /// Squarify wants weights descending; with cloud-only weighting a dataless root's store order is wrong,
+    /// so sort by `displayWeight`. With the flag off the store order is kept as is.
     package nonisolated static func layoutSiblings(
         _ children: [FileNodeRecord],
         synthetic: [FileNodeRecord],
@@ -821,9 +688,8 @@ package struct TreemapScene: Sendable {
         package let aggregateRect: CGRect?
     }
 
-    /// Lays out a directory's children inside `rect`, merging the tail of
-    /// children too small to see into a single trailing aggregate rect.
-    /// Children must be sorted by size descending (FileTreeStore order).
+    /// Merges the tail of too-small children into one trailing aggregate rect. Children must be sorted
+    /// by size descending.
     package nonisolated static func layoutChildren(
         _ children: [FileNodeRecord],
         in rect: CGRect,
@@ -865,9 +731,7 @@ package struct TreemapScene: Sendable {
         )
     }
 
-    /// Whether the rendered region still covers everything `viewport` shows
-    /// at full crispness — true only for pure pans that stay inside the
-    /// overscan margin. Such viewport changes need no re-render.
+    /// True only for pure pans that stay inside the overscan margin; those need no re-render.
     package nonisolated func covers(_ viewport: TreemapViewport, viewSize: CGSize) -> Bool {
         guard self.viewport.scale == viewport.scale, size == viewSize else { return false }
         let renderedCanvasRect = renderBounds.offsetBy(
@@ -879,12 +743,7 @@ package struct TreemapScene: Sendable {
         return renderedCanvasRect.contains(visible)
     }
 
-    /// The cell containing `point`, if any. Flat-style cells overlap
-    /// (containers under their descendants) and the scene emits parents
-    /// before children, so the highest-index match is the deepest cell —
-    /// a container wins only on its visible frame and header strip. In the
-    /// cushion style cells tile without overlap and the scan degenerates
-    /// to the single match.
+    /// Flat cells overlap (parents emitted first), so the highest-index match is the deepest cell.
     package nonisolated func cell(at point: CGPoint) -> TreemapCell? {
         guard let candidates = cellGrid.candidateIndices(at: point) else {
             // Outside the indexed bounds (or a degenerate grid): cells can
@@ -898,10 +757,7 @@ package struct TreemapScene: Sendable {
         return deepest.map { cells[Int($0)] }
     }
 
-    /// The deepest folder-backed cell at `point`: a flat container, an
-    /// undivided directory, or a "smaller items" aggregate (whose nodeID is
-    /// the owning folder). Flat-style pinch drilling targets this, so a
-    /// pinch over a file drills into the file's enclosing container.
+    /// Folder-backed: a container, undivided directory or aggregate. Flat pinch drilling targets this.
     package nonisolated func deepestDirectoryCell(at point: CGPoint) -> TreemapCell? {
         guard let candidates = cellGrid.candidateIndices(at: point) else {
             return cells.last { $0.isDirectory && $0.rect.contains(point) }
@@ -934,9 +790,7 @@ package struct TreemapScene: Sendable {
         for (depth, (parent, child)) in zip(chain, chain.dropFirst()).enumerated() {
             let filtered = store.children(of: parent.id)
                 .filter { $0.displayWeight(includingCloudOnly: includingCloudOnly) > 0 }
-            // Mirror the render path exactly: the synthetic free/hidden-space
-            // nodes participate in the root layout, and cloud-only weighting
-            // reorders siblings — both shift every sibling's rect.
+            // Mirror the render path: synthetic nodes and cloud-only ordering both shift sibling rects.
             let syntheticNodes = parent.id == rootID
                 ? [freeSpaceNode, hiddenSpaceNode].compactMap { $0 } : []
             let children = Self.layoutSiblings(
@@ -947,11 +801,7 @@ package struct TreemapScene: Sendable {
             }
             var layoutRect = rect
             if style == .flat, parent.id != rootID {
-                // Mirror the flat build: children nest in the container's
-                // content region. A container too small to nest rendered no
-                // children, so the container itself is the best rect on offer
-                // (same contract as the aggregate fallback below). Past the
-                // depth cap the build draws the folder plain as well.
+                // Mirror the flat build: a container too small to nest, or past the depth cap, is the best rect on offer.
                 guard depth < Self.flatMaxContainerDepth,
                       let content = Self.flatContentBounds(of: rect, scale: labelScale) else {
                     return rect
@@ -980,10 +830,7 @@ package struct TreemapScene: Sendable {
 }
 
 
-/// Uniform-bucket spatial index over a scene's cells. Cells tile the canvas
-/// without overlap, so a bucket holds only the handful of cells that
-/// intersect it and lookup is a few rect tests instead of a scan over the
-/// whole cell list.
+/// Uniform-bucket spatial index: lookup is a few rect tests instead of a scan over every cell.
 package nonisolated struct CellGrid: Sendable {
     private let boundsOrigin: CGPoint
     private let bucketWidth: CGFloat
@@ -1034,9 +881,7 @@ package nonisolated struct CellGrid: Sendable {
         buckets = filledBuckets
     }
 
-    /// Cell indices whose rects intersect the bucket containing `point`, or
-    /// nil when the point lies outside the indexed bounds (or the grid is
-    /// degenerate) and the caller should fall back to a full scan.
+    /// Nil when the point is outside the indexed bounds; the caller falls back to a full scan.
     package nonisolated func candidateIndices(at point: CGPoint) -> [Int32]? {
         guard columns > 0, rows > 0 else { return nil }
         let column = Int((point.x - boundsOrigin.x) / bucketWidth)

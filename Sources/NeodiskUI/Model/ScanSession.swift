@@ -1,17 +1,8 @@
-//
-//  ScanSession.swift
-//  Neodisk
-//
-
 import Foundation
 import Observation
 import NeodiskKit
 
-/// Owns one scan's stream consumption and progress accounting: it runs the
-/// scan task, throttles progress metrics into its `ScanProgressState`, and
-/// keeps the latest partial (and the final) tree in `latestSnapshot`. The
-/// coordinator decides whether a session's updates reach the screen — the
-/// session always records them.
+/// The coordinator decides whether a session's updates reach the screen; the session always records them.
 @MainActor
 @Observable
 final class ScanSession: Identifiable {
@@ -33,20 +24,12 @@ final class ScanSession: Identifiable {
     let startedAt: Date
     let progress: ScanProgressState
 
-    /// Whether this session's display stands a complete snapshot in while the
-    /// scan runs and suppresses partials (a refresh), rather than streaming the
-    /// growing map (a cold scan). A display contract, independent of `kind` (a
-    /// refresh awaiting its decode streams no baseline yet still suppresses).
-    /// Starts true for a refresh but flips to false if the decode misses and
-    /// the refresh reverts to live streaming, so re-attaching a demoted
-    /// background scan resumes its display exactly as it left the screen.
+    /// A display contract independent of `kind`. Flips to false if a refresh's decode misses and it reverts
+    /// to streaming, so re-attaching a demoted scan resumes its display exactly as it left.
     var showsStandInWhileScanning: Bool
 
-    /// For a refresh, the complete stand-in shown while the scan runs — the
-    /// retained in-memory snapshot, or the cache decode once it lands. Held on
-    /// the session (not the coordinator) so a late decode lands on the scan it
-    /// belongs to, and a demote/re-attach redisplays it, even if the display
-    /// moved to another target in between.
+    /// Held on the session so a late decode lands on its own scan, and a re-attach redisplays it,
+    /// even if the display moved to another target meanwhile.
     var refreshBaseline: ScanSnapshot?
 
     private(set) var state: State = .running
@@ -56,10 +39,7 @@ final class ScanSession: Identifiable {
 
     /// Fires after `latestSnapshot` changes (each partial, and the final).
     var onSnapshotUpdate: ((ScanSession) -> Void)?
-    /// Fires once the session reaches a terminal state the coordinator acts on
-    /// (`finished`, `failed`; the display-ending `cancelled` of a stream that
-    /// closed without a final snapshot). A coordinator-driven `cancel()` does
-    /// not fire it — the coordinator already knows.
+    /// Not fired by a coordinator-driven `cancel()`; the coordinator already knows.
     var onCompletion: ((ScanSession) -> Void)?
 
     @ObservationIgnored private let scanService: any ScanEventStreaming
@@ -110,9 +90,7 @@ final class ScanSession: Identifiable {
         }
     }
 
-    /// Coordinator-initiated cancellation: stops the task and resets throttling
-    /// without firing `onCompletion`. Late stream events are ignored because
-    /// the state is no longer `.running`.
+    /// Doesn't fire `onCompletion`; late events are ignored because the state is no longer `.running`.
     func cancel() {
         guard state == .running else { return }
         state = .cancelled
@@ -159,9 +137,7 @@ final class ScanSession: Identifiable {
         }
     }
 
-    /// Records an in-progress tree so the coordinator can render a live,
-    /// growing map. Recorded even while display is suppressed — the coordinator
-    /// gates the screen, not this class.
+    /// Recorded even while display is suppressed: the coordinator gates the screen, not this class.
     private func recordPartialTree(_ store: FileTreeStore) {
         latestSnapshot = ScanSnapshot(
             target: target,
@@ -277,10 +253,8 @@ final class ScanSession: Identifiable {
         lastProgressPublishTime = progressClock.now
         var monotonicMetrics = metrics
         if state == .running {
-            // Progress comes from the traversal coordinator and pooled summary
-            // workers. Even with engine-side serialization, exact final
-            // hard-link/clone accounting may be lower than the live estimate.
-            // The strip is a discovery counter, so it must never count down.
+            // Final hard-link/clone accounting can come in below the live estimate, and the strip is a
+            // discovery counter, so it must never count down.
             monotonicMetrics.filesVisited = max(
                 monotonicMetrics.filesVisited,
                 scanMetrics.filesVisited

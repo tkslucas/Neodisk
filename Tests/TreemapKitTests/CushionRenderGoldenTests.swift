@@ -1,17 +1,5 @@
-//
-//  CushionRenderGoldenTests.swift
-//  TreemapKit
-//
-//  Golden-image regression test for the cushion render pipeline: a fixed
-//  synthetic tree goes through TreemapLayout + CushionTreemapRenderer and the
-//  result is compared per-pixel (small tolerance for float jitter) against a
-//  checked-in PNG (Fixtures/cushion-golden.png). On failure the actual output
-//  lands in the temporary directory for inspection.
-//
-//  To regenerate the golden after an intentional visual change: delete the
-//  fixture, run this test once, and copy the dumped PNG from the path in the
-//  failure message back to Tests/TreemapKitTests/Fixtures/cushion-golden.png.
-//
+// Per-pixel golden comparison against Fixtures/cushion-golden.png. To regenerate, delete the fixture, run
+// once and copy the dumped PNG from the failure message back.
 
 #if canImport(CoreGraphics) && canImport(ImageIO)
 import CoreGraphics

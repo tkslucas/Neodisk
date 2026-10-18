@@ -1,10 +1,4 @@
-//
-//  NeodiskViewModel+FileActions.swift
-//  Neodisk
-//
-//  File actions for the selected node: Quick Look, Reveal in Finder, Open,
-//  and Copy Path.
-//
+// File actions for the selected node: Quick Look, Reveal in Finder, Open and Copy Path.
 
 import AppKit
 import NeodiskKit
@@ -23,9 +17,7 @@ extension NeodiskViewModel {
         selectedNode.map(supportsFileActions) ?? false
     }
 
-    /// Spacebar Quick Look shared by the treemap and sunburst: previews the
-    /// selected node, so click-then-space works without ever focusing one of
-    /// the sidebar lists. Beeps when nothing is selected.
+    /// Previews the selection, so click-then-space works without focusing a sidebar list.
     func quickLookSelection() {
         guard let node = selectedNode else {
             NSSound.beep()

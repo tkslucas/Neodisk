@@ -1,35 +1,19 @@
-//
-//  SunburstStyling.swift
-//  Neodisk
-//
-//  App-side glue over SunburstCore's pure layout, shared by every shell: the
-//  color style (kind/age modes lean on FileKindCatalog/VizPalette) and the
-//  `styled` fill pass that resolves each segment's final RGB. Drawing the
-//  arcs is each platform's own business.
-//
+// App-side glue over SunburstCore's layout shared by every shell; drawing is each platform's business.
 
 import Foundation
 import NeodiskKit
 import SunburstCore
 
 extension FileNodeRecord {
-    /// Whether the sunburst treats this node as a drillable folder. Packages
-    /// (.app, .imovielibrary, …) are directories on disk, but the scan keeps
-    /// them opaque, so the sunburst treats them as files: gray in branch
-    /// mode, Quick Look on click, never a drill target. Once "Show Package
-    /// Contents" splices a package's children into the store it behaves like
-    /// any other folder.
+    /// Packages are directories on disk but the scan keeps them opaque, so they act as files until "Show
+    /// Package Contents" splices their children in.
     package nonisolated func isSunburstFolder(in store: FileTreeStore) -> Bool {
         SunburstLayout.isSunburstFolder(self, in: store)
     }
 }
 
-/// How sunburst segments are colored, derived from the active analysis tab:
-/// The branch-hue algorithm on Largest (folders colored, files gray,
-/// colorblind palette honored), the treemap's kind/age semantics on the
-/// other tabs. Every mode resolves its final fill (including highlight
-/// dimming) into `SunburstSegment.fillRGB` via the `styled` pass; the
-/// styler's token fallback only covers segments without a node.
+/// Branch hues on Largest, the treemap's kind/age semantics elsewhere. Every mode resolves its final fill
+/// into `fillRGB` via `styled`; the token fallback only covers nodeless segments.
 package struct SunburstColorStyle: Equatable, Sendable {
     package enum Mode: Equatable, Sendable {
         /// Branch hues — the global size-midpoint wheel, scan-root
@@ -67,9 +51,7 @@ package struct SunburstColorStyle: Equatable, Sendable {
 }
 
 extension SunburstLayout {
-    /// Layout and fills in one call — the convenience for tests and callers
-    /// that don't restyle; the chart itself lays out once and restyles via
-    /// `styled` as colors change.
+    /// For tests and callers that don't restyle; the chart lays out once and restyles via `styled`.
     package nonisolated static func segments(
         in treeStore: FileTreeStore,
         rootID: String,
@@ -97,9 +79,7 @@ extension SunburstLayout {
         return styled(unstyled, style: style, in: treeStore)
     }
 
-    /// Re-resolves every segment's fill for a color style — O(segments), so
-    /// tab, palette, highlight, and catalog changes recolor the finished
-    /// layout instead of recomputing it.
+    /// O(segments), so color changes recolor the finished layout instead of recomputing it.
     package nonisolated static func styled(
         _ segments: [SunburstSegment],
         style: SunburstColorStyle,
@@ -116,14 +96,8 @@ extension SunburstLayout {
 
     // MARK: - Fill resolution
 
-    /// A node's final fill, resolved by the `styled` pass. Kind/age modes
-    /// mirror the treemap: kind catalog colors (directories neutral), the
-    /// age ramp, and `TreemapScene.dimmedRGB` for segments a highlight
-    /// doesn't match.
-    /// Branch mode resolves the token (branch hues honoring the palette —
-    /// colorblind branches restrict to Okabe-Ito hues — and gray files).
-    /// Internal (not private) so the legend list can resolve the same fill
-    /// for nodes without a rendered segment (children of a max-depth folder).
+    /// Kind/age modes mirror the treemap; branch mode resolves the token. Not private so the legend can
+    /// resolve fills for nodes without a rendered segment.
     package nonisolated static func resolvedFillRGB(
         for node: FileNodeRecord,
         token: SunburstColorToken,
@@ -145,9 +119,7 @@ extension SunburstLayout {
         return rgb
     }
 
-    /// Undimmed semantic fill for status-bar swatches. The segment's token
-    /// already carries its branch coordinate, so this is O(1) for every
-    /// color mode and never walks ancestors or siblings during hover.
+    /// O(1) in every mode via the segment's token, so hover never walks ancestors or siblings.
     package nonisolated static func semanticFillRGB(
         for node: FileNodeRecord,
         token: SunburstColorToken,
@@ -170,10 +142,7 @@ extension SunburstLayout {
 }
 
 private extension SunburstColorStyle.Mode {
-    /// The treemap color mode this maps to, so both visualizations share one
-    /// highlight-match predicate (`TreemapScene.matches`). Only the `.age`
-    /// reference date is load-bearing there; `.branch` never reaches the
-    /// predicate, so it collapses to `.kind` like any non-age mode.
+    /// Shares the treemap's highlight predicate; only the `.age` date matters there, so `.branch` maps to `.kind`.
     var treemapColorMode: TreemapColorMode {
         switch self {
         case .age(let referenceDate): return .age(referenceDate: referenceDate)

@@ -1,11 +1,4 @@
-//
-//  SearchModel.swift
-//  Neodisk
-//
-//  Entire-scan outline search: the query, its debounced fuzzy results, and
-//  the Find-menu focus token. Owned by NeodiskViewModel as `model.search`;
-//  matches against the shared per-snapshot index (SnapshotSearchIndex).
-//
+// Owned by NeodiskViewModel as `model.search`; matches against the shared SnapshotSearchIndex.
 
 import Foundation
 import Observation
@@ -24,10 +17,7 @@ final class SearchModel {
         let totalMatches: Int
     }
 
-    /// Search field at the top of the outline: typing filters the outline
-    /// down to matching nodes anywhere in the scan. Never navigates or
-    /// zooms — the treemap stays put; selecting a result uses the normal
-    /// selection sync.
+    /// Never navigates or zooms; selecting a result uses the normal selection sync.
     var text = "" {
         didSet {
             guard text != oldValue else { return }
@@ -56,9 +46,7 @@ final class SearchModel {
         text = ""
     }
 
-    /// The displayed tree changed (the model already invalidated the shared
-    /// index): keep the user's query and re-run it against the new tree
-    /// once one is displayed.
+    /// Keeps the query and re-runs it once the new tree is displayed.
     func snapshotDidChange() {
         if !text.isEmpty {
             results = nil
@@ -88,9 +76,8 @@ final class SearchModel {
             let limit = Self.resultLimit
             let rootID = index.rootID
             let entries = index.entries
-            // A newer keystroke cancels this operation; forward that into
-            // the detached match so it stops scanning instead of finishing
-            // a whole-index pass nobody will read.
+            // Forward cancellation into the detached match so it stops instead of finishing a pass nobody
+            // reads.
             let results = await Task.detached(priority: .userInitiated) {
                 // The root row is the whole scan; it never belongs in
                 // search results.

@@ -1,33 +1,13 @@
-//
-//  TreeStorage.swift
-//  Neodisk
-//
-//  Contiguous Int32-indexed storage behind FileTreeStore. Nodes live in one
-//  array in depth-first preorder (the root is index 0, a parent always
-//  precedes its descendants, and every subtree is one contiguous run);
-//  topology is parent indices plus per-node child ranges into a shared
-//  child-slot array. The only string-keyed structure left is the id → index
-//  map that serves the public String-ID API — its keys share storage with
-//  each node's `id`, so paths are stored once.
-//
-//  The child slots, not the node array, own sibling (display) order: the
-//  in-place ancestor rebuild re-sorts a directory's slots when child sizes
-//  change (shared-size dedup, splices) without moving any records. Anything
-//  that serializes or fingerprints the tree in display order must therefore
-//  walk the slots (`forEachIndexInDisplayPreorder`), never `nodes` directly.
-//
+// Preorder Int32-indexed storage behind FileTreeStore. Child slots, not `nodes`, own display order: an
+// in-place rebuild re-sorts slots without moving records, so serializers must walk the slots.
 
 import Foundation
 
 /// Immutable storage; a class so FileTreeStore value copies are O(1).
 nonisolated final class TreeStorage: Sendable {
-    /// All nodes in depth-first preorder; `nodes[0]` is the root. Sibling
-    /// order here may lag the display order in `childSlots` (see the file
-    /// header).
+    /// Sibling order here may lag the display order in `childSlots`.
     let nodes: [FileNodeRecord]
-    /// Parent of `nodes[i]`, or -1 for the root. A parent index is always
-    /// smaller than its child's (preorder), so descending index order is
-    /// bottom-up.
+    /// -1 for the root. Parents always precede children, so descending index order is bottom-up.
     let parentIndices: [Int32]
     /// Children of node i occupy `childSlots[childStarts[i]..<childStarts[i+1]]`,
     /// in display (child-list) order. Count is `nodes.count + 1`.
@@ -36,10 +16,8 @@ nonisolated final class TreeStorage: Sendable {
     /// Node ID (absolute path) → index. Keys alias the node records' `id`
     /// strings.
     let indexByID: NodeIDIndex
-    /// FNV-1a hash of each node's ID, parallel to `nodes`. Lets cross-tree
-    /// lookups (the changes-list diff) probe another store's index with an
-    /// already-computed hash instead of rehashing a full path. Empty means
-    /// "not populated" — callers fall back to rehashing (see `nodeHash`).
+    /// FNV-1a of each ID, so cross-tree lookups can probe another store without rehashing a path. Empty
+    /// means not populated (see `nodeHash`).
     let nodeHashes: [UInt64]
 
     static let empty = TreeStorage(
@@ -76,9 +54,7 @@ nonisolated final class TreeStorage: Sendable {
         indexByID[id]
     }
 
-    /// Like `index(of:)` but probes with a caller-supplied FNV-1a hash of
-    /// `id` (typically another store's stored `nodeHash`), skipping the
-    /// rehash. String equality still decides matches, so collisions are safe.
+    /// Probes with a caller-supplied hash; string equality still decides matches, so collisions are safe.
     func index(of id: String, hash: UInt64) -> Int32? {
         indexByID.lookup(hash: hash, id: id)
     }
@@ -102,11 +78,8 @@ nonisolated final class TreeStorage: Sendable {
         return parent < 0 ? nil : parent
     }
 
-    /// Visits every node index in display preorder: a parent before its
-    /// descendants, siblings in child-slot (display) order. This — not the
-    /// `nodes` array order — is the canonical sequence for serializing or
-    /// fingerprinting a tree, since an in-place rebuild may have re-sorted
-    /// a directory's slots without moving its records.
+    /// Display preorder is the canonical sequence for serializing or fingerprinting, since a rebuild may
+    /// have re-sorted slots without moving records.
     func forEachIndexInDisplayPreorder(_ body: (Int32) throws -> Void) rethrows {
         guard !nodes.isEmpty else { return }
         var stack: [Int32] = [0]
@@ -122,17 +95,8 @@ nonisolated final class TreeStorage: Sendable {
         }
     }
 
-    /// Re-sorts every child range whose sizes are out of display order
-    /// (largest first) into full display order (ties by localized name) and
-    /// returns how many ranges were repaired. Snapshot files written before
-    /// the codec serialized in display preorder recorded siblings in stale
-    /// pre-dedup order; decode runs this so those caches display correctly.
-    ///
-    /// Detection compares sizes only: one Int64 pass per range, with no
-    /// string work on the (very common) equal-size runs, so every decode can
-    /// afford it. A stale order that differs only among equal-size siblings
-    /// is left as is — cosmetic, and gone once the directory is rebuilt or
-    /// the location rescanned. A correct tree is returned unchanged.
+    /// Repairs child ranges left in stale pre-dedup order by old snapshot files. Detection compares sizes
+    /// only so every decode can afford it; equal-size misorders are left as is.
     @discardableResult
     static func restoreChildDisplayOrder(
         nodes: [FileNodeRecord],
@@ -172,10 +136,7 @@ nonisolated final class TreeStorage: Sendable {
         return repairedCount
     }
 
-    /// Builds storage from dictionary-shaped adjacency by walking from the
-    /// root. References to missing nodes are skipped; a duplicate node ID
-    /// keeps its first occurrence and drops the repeat (with its subtree).
-    /// Nodes unreachable from the root are dropped.
+    /// Missing references are skipped, a duplicate ID keeps its first occurrence, unreachable nodes are dropped.
     static func build(
         rootID: String,
         nodesByID: [String: FileNodeRecord],
@@ -218,9 +179,8 @@ nonisolated final class TreeStorage: Sendable {
         )
     }
 
-    /// Derives the contiguous child ranges from parent links. Assigning
-    /// slots in increasing node-index order reproduces child-list order,
-    /// because preorder keeps siblings in that order.
+    /// Assigning slots in increasing index order reproduces child-list order, since preorder keeps siblings
+    /// ordered.
     static func childLayout(parentIndices: [Int32]) -> (childStarts: [Int32], childSlots: [Int32]) {
         let count = parentIndices.count
         var childStarts = [Int32](repeating: 0, count: count + 1)
@@ -243,9 +203,7 @@ nonisolated final class TreeStorage: Sendable {
         return (childStarts, childSlots)
     }
 
-    /// Materializes the dictionary topology view. Only the rare
-    /// subtree-mutation operations use this — they run once per user action
-    /// and reuse the dictionary algorithms, then rebuild trusted storage.
+    /// Only for rare subtree mutations that reuse the dictionary algorithms, once per user action.
     func dictionaryTopology() -> (
         nodesByID: [String: FileNodeRecord],
         childIDsByID: [String: [String]],

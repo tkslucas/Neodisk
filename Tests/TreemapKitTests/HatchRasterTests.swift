@@ -1,11 +1,5 @@
-//
-//  HatchRasterTests.swift
-//  TreemapKit
-//
-//  The cloud-only hatch: a dataless cell must rasterize as a two-level
-//  diagonal stripe pattern, symmetric about the plain fill, with the SIMD
-//  body and the scalar tail agreeing pixel-for-pixel (no seam).
-//
+// A dataless cell rasterizes as a two-level diagonal stripe; the SIMD body and scalar tail must agree (no
+// seam).
 
 #if canImport(CoreGraphics)
 import CoreGraphics
@@ -15,10 +9,7 @@ import Testing
 import TreemapKit
 
 @Suite struct HatchRasterTests {
-    /// Fills the whole bounds with one flat-surface cell so shading is uniform
-    /// and any per-pixel variation comes purely from the hatch. Width and
-    /// height are deliberately not multiples of the 8-wide SIMD stride, so the
-    /// scalar tail runs alongside the vector body.
+    /// Not multiples of the 8-wide SIMD stride, so the scalar tail runs alongside the vector body.
     private static let width = 13
     private static let height = 11
     private static let stripePeriod = 4

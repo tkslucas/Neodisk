@@ -1,13 +1,5 @@
-//
-//  PaneLayoutTests.swift
-//  Neodisk
-//
-//  WorkspacePaneMetrics keeps the map pane usable: side-pane widths and drag
-//  ranges are capped against the actual window, the analysis pane floats
-//  over the map when there's no room to dock it, ranges stay valid at
-//  pathological sizes, and stored sizes pass through untouched when there
-//  is room.
-//
+// WorkspacePaneMetrics keeps the map pane usable: widths capped to the window, the analysis pane floating when
+// it can't dock, and valid ranges at pathological sizes.
 
 import Foundation
 import SwiftUI
@@ -181,9 +173,7 @@ import Testing
     }
 
     @Test func windowMinimumsAccommodateAllPaneMinimums() {
-        // The guarantee behind "the minimum always wins": at the window's
-        // minimum size (900×560, ContentView) even every pane at its minimum
-        // plus the map minimum still fits.
+        // At the window's minimum size (900x560) every pane at its minimum plus the map minimum still fits.
         let widthFloor = PaneLayout.outlineMinWidth() + PaneLayout.analysisMinWidth()
             + 2 * PaneLayout.splitterThickness + PaneLayout.mapMinWidth
         let heightFloor = PaneLayout.bottomOutlineMinHeight() + PaneLayout.splitterThickness

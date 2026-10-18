@@ -1,19 +1,6 @@
-//
-//  ScanTraversalModels.swift
-//  Neodisk
-//
-
 import Foundation
 
-/// Value types threaded through `ScanTraversal`. Declared in an
-/// `extension ScanTraversal` so call sites keep their `ScanTraversal`-nested
-/// names; moved out of the main file purely to keep it a manageable size.
-///
-/// These were `private` when nested in the class body. Splitting them into a
-/// separate file promotes them to `internal` (Swift `private` is file-scoped),
-/// which is the minimum access that lets `ScanTraversal`'s methods in the core
-/// file still reference them. They remain namespaced under `ScanTraversal` and
-/// are not part of NeodiskKit's public API.
+/// Moved out of the main file for size; `internal` because Swift `private` is file-scoped. Not public API.
 extension ScanTraversal {
     struct AggregateStatsAccumulator {
         private(set) var fileCount = 0
@@ -53,16 +40,10 @@ extension ScanTraversal {
         }
     }
 
-    /// A work item for the iterative scanner.
-    /// `parentKey` links this item back to its parent for bottom-up assembly.
-    /// `depth` tracks how deep we are in the directory tree.
-    /// `weight` is this subtree's share of the scan's total progress (the root is 1);
-    /// a directory's weight is split among its children when it is enumerated.
+    /// `weight` is this subtree's share of total progress (root is 1), split among children on enumeration.
     struct ScanWorkItem: Sendable {
         let url: URL
-        /// The item's absolute path (node id), materialized once at enumeration
-        /// time and carried here so the coordinator loop dedupes and stamps
-        /// current-path without re-deriving `url.path` per popped item.
+        /// Materialized once so the loop doesn't re-derive `url.path` per popped item.
         let path: String
         let metadata: NodeMetadata?
         let localizedEnumerationError: Error?
@@ -84,12 +65,8 @@ extension ScanTraversal {
         let leafBatch: DirectoryLeafBatch
     }
 
-    /// A directory/package/unavailable child the coordinator still has to push
-    /// onto the work stack, with every per-entry value the worker could compute
-    /// already resolved. The coordinator only stamps the parent-relative fields
-    /// (`parentKey`, `depth`, and the weight scaled by `parent.weight`), turning
-    /// its former O(children) expansion pass — which rebuilt each child `URL`
-    /// and re-classified every entry — into O(1)-per-child field copies.
+    /// Resolved on the worker, so the coordinator only stamps parent-relative fields: O(1) per child instead of
+    /// rebuilding each URL and re-classifying.
     struct PendingChildWorkItem: Sendable {
         let url: URL
         let path: String
@@ -97,17 +74,11 @@ extension ScanTraversal {
         let localizedEnumerationError: Error?
         let isDirectoryHint: Bool?
         let blocksTraversalAtMountBoundary: Bool
-        /// This child's raw share of its parent's traversal weight (1 for a
-        /// leaf-shaped entry, `directoryChildWeightUnits` for a directory).
-        /// The coordinator divides by `totalWeightUnits` and scales by the
-        /// parent's own weight.
+        /// 1 for a leaf, `directoryChildWeightUnits` for a directory; scaled by the parent's weight.
         let weightUnits: Double
     }
 
-    /// Ordinary files and symlinks built by a directory worker, plus the
-    /// per-child expansion math the coordinator used to recompute serially.
-    /// Directories, packages, and entries whose metadata could not be read
-    /// become `pendingChildWorkItems` and keep the coordinator's existing path.
+    /// Directories, packages and unreadable entries become `pendingChildWorkItems` instead.
     struct DirectoryLeafBatch: Sendable {
         var nodes: [FileNodeRecord] = []
         var pendingChildWorkItems: [PendingChildWorkItem] = []
@@ -120,16 +91,9 @@ extension ScanTraversal {
         var urlPathAndName: (path: String, name: String)?
         /// The leaves' totals for live partial trees, summed on the worker.
         var leafTotals = ScanEngine.PartialSubtreeTotals()
-        /// Count of likely-traversable directory entries across the whole
-        /// directory listing (duplicates included), computed on the worker so
-        /// the coordinator's frontier bookkeeping is O(1). Matches the old
-        /// `childDirectoryCount` loop in `handleTraversalSuccess`.
+        /// Duplicates included; computed on the worker so frontier bookkeeping is O(1).
         var childDirectoryCount = 0
-        /// Sum of every child entry's traversal weight units (duplicates
-        /// included), the denominator the coordinator splits `item.weight` by.
-        /// Values are 1 or `directoryChildWeightUnits` (both exactly
-        /// representable), so the sum is order-independent and bit-identical to
-        /// the coordinator's former forward-order loop.
+        /// Values are exactly representable (1 or `directoryChildWeightUnits`), so the sum is order-independent.
         var totalWeightUnits = 0.0
 
         var completedEntryCount: Int {

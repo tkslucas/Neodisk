@@ -1,11 +1,4 @@
-//
-//  BreadcrumbBar.swift
-//  NeodiskGTK
-//
-//  The path from the scan root down to the folder the visualizations are
-//  drilled into; each crumb drills back out to its folder. Hidden at the
-//  root, like the Mac's.
-//
+// Each crumb drills back out to its folder. Hidden at the root, like the Mac's.
 
 import CGtk
 import Foundation

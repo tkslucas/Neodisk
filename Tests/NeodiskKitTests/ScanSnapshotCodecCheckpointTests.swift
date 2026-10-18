@@ -2,14 +2,9 @@ import Foundation
 import Testing
 @testable import NeodiskKit
 
-/// The incremental FSEvents checkpoint and effective scan options ride in the
-/// snapshot's metadata JSON, which is additive: files written before either
-/// field existed must still decode (as nil), and new files must round-trip
-/// both exactly through every supported format version.
+/// The metadata JSON is additive: files written before either field existed must decode as nil.
 @Suite struct ScanSnapshotCodecCheckpointTests {
-    // A checkpoint with deliberately awkward values: a lowercased UUID (the
-    // live-volume comparison is case-insensitive, so persistence must not
-    // silently normalize it) and a large event ID.
+    // The live comparison is case-insensitive, so persistence must not silently normalize the UUID.
     private static let checkpoint = FSEventsCheckpoint(
         volumeUUID: "abcdef01-2345-6789-abcd-ef0123456789",
         eventID: 9_876_543_210,
@@ -17,9 +12,6 @@ import Testing
         osBuild: "23G93"
     )
 
-    // Non-default options across the axes that matter for a rescan: a shape
-    // change (hidden files, cloud off), an exclusion list, an exclusion root,
-    // and tuning overrides.
     private static let options = ScanOptions(
         includeHiddenFiles: true,
         includeCloudStorage: false,
@@ -76,10 +68,7 @@ import Testing
     }
 
     @Test func testOlderFileWithoutKeysDecodes() throws {
-        // Prove a genuinely older file — metadata JSON physically missing the
-        // keys — decodes, even when its payload came from a checkpoint-carrying
-        // tree. Encode with the fields, then strip the keys and repair the
-        // length header as a pre-field writer's file would have looked.
+        // Strip the keys and repair the length header, as a file from before these fields would look.
         let blob = try ScanSnapshotCodec.encode(makeSnapshot())
         let stripped = try strippingMetadataKeys(["incrementalCheckpoint", "scanOptions"], from: blob)
 
@@ -167,10 +156,7 @@ import Testing
         }
     }
 
-    /// Rebuilds a snapshot blob with the named top-level metadata keys removed
-    /// and the length header corrected, mimicking a file from a writer that
-    /// predates those keys. Layout: magic(4) · version(4) · metadataLength(4)
-    /// · metadata JSON · payload (all little-endian).
+    /// Layout: magic(4) · version(4) · metadataLength(4) · metadata JSON · payload, all little-endian.
     private func strippingMetadataKeys(_ keys: Set<String>, from blob: Data) throws -> Data {
         let metadataLength = Int(blob.withUnsafeBytes {
             $0.loadUnaligned(fromByteOffset: 8, as: UInt32.self).littleEndian

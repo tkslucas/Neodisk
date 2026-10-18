@@ -1,15 +1,5 @@
-//
-//  VizHoverTooltip.swift
-//  Neodisk
-//
-//  The floating hover tooltip shared by the treemap and the sunburst: a small
-//  material card that appears near the cursor and names the hovered item, its
-//  size, and its share of the current drill root (free/hidden-space blocks get
-//  a one-line explanation instead). The content model (VizHoverTooltipData) is
-//  view-model-free so the formatting can be unit-tested; each pane builds one
-//  from its own hover state and hands it to `VizHoverTooltipLayer`, which
-//  positions and clamps the card within the pane.
-//
+// Hover tooltip shared by the treemap and sunburst. The content model is view-model-free for unit tests;
+// `VizHoverTooltipLayer` positions and clamps the card.
 
 import SwiftUI
 import NeodiskKit
@@ -88,9 +78,7 @@ struct VizHoverTooltipData: Equatable {
 }
 
 extension VizHoverTooltipData {
-    /// Builds the metadata for a real node. Category symbols are shared with
-    /// file-result lists, but the hover card renders them without their
-    /// category colors.
+    /// Category symbols are shared with file lists, but the card renders them without category colors.
     init(item node: FileNodeRecord, sizeBytes: Int64, basisBytes: Int64, basisName: String) {
         self.init(
             kind: .item(name: node.name),
@@ -104,9 +92,7 @@ extension VizHoverTooltipData {
         )
     }
 
-    /// Builds the tooltip content from the shared hover state (treemap), or
-    /// nil when nothing informative is hovered. Reads the model but never
-    /// mutates it, so NeodiskViewModel's hover semantics stay untouched.
+    /// Nil when nothing informative is hovered. Never mutates the model.
     @MainActor
     static func current(in model: NeodiskViewModel) -> VizHoverTooltipData? {
         let basis = model.store?.node(id: model.effectiveRootID)
@@ -133,9 +119,7 @@ extension VizHoverTooltipData {
         return nil
     }
 
-    /// Builds the tooltip content from a hovered sunburst segment against the
-    /// chart's drill root. Uses the segment's own weight/label so the size
-    /// matches what the arc draws.
+    /// Uses the segment's own weight and label so the size matches what the arc draws.
     init(
         segment: SunburstSegment,
         node: FileNodeRecord?,
@@ -165,9 +149,7 @@ struct VizHoverTooltip: View {
 
     let data: VizHoverTooltipData
 
-    /// Names middle-truncate past this; the card shrinks to fit shorter text.
-    /// Grows with the text scale so a larger name still gets its ~30
-    /// characters before the ellipsis.
+    /// Grows with the text scale so a larger name still gets ~30 characters before the ellipsis.
     static func maxWidth(scale: CGFloat) -> CGFloat { 280 * scale }
 
     var body: some View {
@@ -231,11 +213,7 @@ struct VizHoverTooltip: View {
     }
 }
 
-/// Places a `VizHoverTooltip` near the cursor and clamps it inside the pane so
-/// it never clips at an edge. Meant to sit in a pane-filling
-/// `.overlay(alignment: .topLeading)`. Hidden until its size is measured so it
-/// never flashes at an unclamped position (same approach as the sidebar
-/// capacity bar's bubble).
+/// Clamped inside the pane, and hidden until measured so it never flashes at an unclamped position.
 struct VizHoverTooltipLayer: View {
     let data: VizHoverTooltipData
     /// Cursor position in the pane's (top-left origin) coordinate space.
@@ -243,11 +221,8 @@ struct VizHoverTooltipLayer: View {
     let paneSize: CGSize
 
     @State private var cardSize: CGSize = .zero
-    /// The card reveals only after the cursor has rested on the visualization
-    /// briefly, so sweeping across it stays quiet. The pane creates this layer
-    /// when a hover starts and drops it when the hover ends, so moving between
-    /// cells keeps the card up (state survives), while re-entering restarts
-    /// the delay.
+    /// Reveals after a brief rest so sweeping stays quiet. The layer lives for the whole hover, so moving
+    /// between cells keeps the card up while re-entering restarts the delay.
     @State private var revealed = false
 
     private static let cursorGap: CGFloat = 14

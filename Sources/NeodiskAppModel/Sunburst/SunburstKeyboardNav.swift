@@ -1,14 +1,5 @@
-//
-//  SunburstKeyboardNav.swift
-//  Neodisk
-//
-//  Pure keyboard-navigation resolution for the sunburst: maps an arrow
-//  press to the node the selection should move to. Sibling order is the
-//  tree's display order (largest first), which is also the chart's angular
-//  order, and every move is restricted to nodes the chart actually rendered
-//  — pooled "smaller items" and beyond-depth nodes are skipped so the
-//  selection never goes invisible.
-//
+// Maps an arrow press to the next selection. Moves are restricted to rendered nodes (pooled and beyond-depth
+// ones are skipped) so the selection never goes invisible.
 
 import NeodiskKit
 
@@ -24,11 +15,8 @@ package enum SunburstKeyboardNav {
         case largestChild
     }
 
-    /// The node an arrow press moves the selection to, or nil when there is
-    /// nowhere to go (caller beeps). Without a usable selection — nothing
-    /// selected, or the selected node has no rendered segment in the current
-    /// chart — any direction anchors on the root's largest rendered child,
-    /// mirroring the treemap's "no selection selects the largest tile".
+    /// Nil means nowhere to go (caller beeps). Without a rendered selection, any direction lands on the root's
+    /// largest rendered child.
     package static func target(
         from selectedNodeID: String?,
         direction: Direction,

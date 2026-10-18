@@ -1,13 +1,4 @@
-//
-//  UpdateController.swift
-//  Neodisk
-//
-//  Owns the Sparkle updater for the packaged app. Unbundled `swift run`
-//  builds (no bundle identifier) and bundles without a configured SUFeedURL
-//  never create an updater — the menu item stays disabled and Settings shows
-//  a note instead. See UpdateSupport for the gate; the release-side
-//  requirements (EdDSA keys, appcast) live in the release docs.
-//
+// Unbundled builds and bundles without SUFeedURL never create an updater (see UpdateSupport for the gate).
 
 import AppKit
 import Combine
@@ -22,9 +13,7 @@ final class UpdateController: ObservableObject {
     /// Mirrors SPUUpdater.canCheckForUpdates (KVO) for menu validation.
     @Published private(set) var canCheckForUpdates = false
 
-    /// Mirrors SPUUpdater.automaticallyChecksForUpdates (KVO), which itself
-    /// persists to user defaults under Sparkle's SUEnableAutomaticChecks key
-    /// (falling back to the Info.plist value until the user decides).
+    /// Mirrors SPUUpdater.automaticallyChecksForUpdates via KVO; Sparkle persists it as SUEnableAutomaticChecks.
     @Published private(set) var automaticallyChecksForUpdates = false
 
     /// True when this build can update itself at all (packaged app with an

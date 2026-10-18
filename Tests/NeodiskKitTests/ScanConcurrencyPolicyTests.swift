@@ -52,11 +52,8 @@ private final class ConditionsBox: @unchecked Sendable {
             conditions: .nominal
         )
 
-        // getattrlistbulk self-contends past ~8 concurrent readers, so the
-        // local-SSD bulk ceiling is capped at physical cores but no more than
-        // that knee (PERFORMANCE.md 2026-07-17); it never runs narrower than
-        // the conservative/external profile, which in turn never runs narrower
-        // than network.
+        // getattrlistbulk self-contends past ~8 readers, so the local-SSD ceiling is cores capped at that knee
+        // (PERFORMANCE.md 2026-07-17), never narrower than conservative, which is never narrower than network.
         let cores = max(1, ProcessInfo.processInfo.activeProcessorCount)
         #expect(parallel == min(max(4, cores), 8))
         #expect(parallel >= conservative)
@@ -197,9 +194,7 @@ private final class ConditionsBox: @unchecked Sendable {
         #expect(concurrency.classificationWorkerLimit >= 1)
     }
 
-    /// Summary workers block on the cooperative pool (one thread per core).
-    /// Filling it starves the traversal loop that dispatches packages and
-    /// publishes progress, so the default must leave a thread free.
+    /// Filling the cooperative pool starves the loop that dispatches packages and publishes progress.
     @Test func atomicSummaryWorkersLeaveACooperativeThreadFree() throws {
         try #require(ProcessInfo.processInfo.environment["NEODISK_SCAN_ATOMIC_SUMMARY_WORKERS"] == nil)
         let cores = ProcessInfo.processInfo.activeProcessorCount

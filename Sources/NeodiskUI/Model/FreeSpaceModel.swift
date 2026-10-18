@@ -1,12 +1,5 @@
-//
-//  FreeSpaceModel.swift
-//  Neodisk
-//
-//  The synthetic space next to the scanned tree: free space of the scanned
-//  volume and hidden space. The
-//  sunburst always renders both for volume scans; the treemap adds them only
-//  behind the Settings toggle. Owned by NeodiskViewModel as `model.freeSpace`.
-//
+// Synthetic space beside the tree (free and hidden): the sunburst always draws it for volume scans, the
+// treemap only behind the Settings toggle.
 
 import AppKit
 import Combine
@@ -17,28 +10,17 @@ import NeodiskKit
 @MainActor
 @Observable
 final class FreeSpaceModel {
-    /// Free space of the scanned volume, when the scan target is a volume.
-    /// The sunburst always renders it; the treemap keeps the Settings toggle
-    /// (default off) — see `treemapFreeSpaceBytes`.
+    /// The treemap reads it through `treemapFreeSpaceBytes`, behind the Settings toggle.
     private(set) var freeSpaceBytes: Int64?
-    /// "Hidden space" of the scanned volume: capacity that is
-    /// neither free nor accounted for by the finished scan (purgeable space,
-    /// local snapshots, files the scan could not read). Same gates as
-    /// `freeSpaceBytes`, plus a complete snapshot — mid-scan the unscanned
-    /// remainder is unknown, not hidden. Drawn as a synthetic cell/arc.
+    /// Capacity neither free nor scanned (purgeable, local snapshots, unreadable files). Needs a complete
+    /// snapshot: mid-scan the remainder is unknown, not hidden.
     private(set) var hiddenSpaceBytes: Int64?
-    /// Used space the way Finder and Disk Utility report it (capacity minus
-    /// available): the total the window title and sunburst legend header
-    /// show for volume scans. Equals scanned + hidden once a scan finishes.
+    /// Capacity minus available, as Finder reports it; equals scanned + hidden once a scan finishes.
     private(set) var finderUsedBytes: Int64?
-    /// The reclaimable part of the free space (nil when none) — surfaced as
-    /// detail alongside free space, never as its own segment, matching how
-    /// Finder folds purgeable into available.
+    /// Detail beside free space, never its own segment, as Finder folds purgeable into available.
     private(set) var purgeableBytes: Int64?
 
-    /// Settings backing the free-space cell; assigned by the view model's
-    /// bindPreferences. Toggle reactivity rides on that binding's sink →
-    /// update() reassigning the stored bytes, which fires observation.
+    /// Toggle reactivity rides on bindPreferences' sink calling update(), which reassigns the bytes.
     @ObservationIgnored var preferences: AppPreferences?
 
     @ObservationIgnored private let coordinator: ScanCoordinator
@@ -79,9 +61,6 @@ final class FreeSpaceModel {
         update()
     }
 
-    /// The treemap's preference-gated view of the synthetic space: unlike
-    /// the sunburst (which always shows free and hidden space for volume
-    /// scans), the treemap adds them only when the Settings toggle is on.
     var treemapFreeSpaceBytes: Int64? {
         preferences?.showFreeSpace == true ? freeSpaceBytes : nil
     }

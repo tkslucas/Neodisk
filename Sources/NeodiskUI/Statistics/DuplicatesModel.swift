@@ -1,23 +1,5 @@
-//
-//  DuplicatesModel.swift
-//  Neodisk
-//
-//  Duplicate-finder state for the statistics panel's Duplicates tab: a
-//  content scan of the displayed snapshot, the groups it streams in while
-//  hashing (rendered live in the pane and on the map), its results, and the
-//  drill-in into one duplicate group. Owned by NeodiskViewModel as
-//  `model.duplicates`. Hashing costs real I/O, so it only runs asked-for:
-//  via the Find Duplicates button, or right after a scan when the opt-in
-//  "find duplicates automatically" preference is on.
-//
-//  A finished run is persisted through the snapshot cache's `.nddup` slot so
-//  reopening the tab (this launch or after relaunch) shows the previous
-//  result without re-hashing. Loading is snapshot-scoped like everything
-//  else and never triggers hashing on its own.
-//
-//  Read-only, like the app promises: the finder only reads file contents;
-//  cleaning up happens in Finder.
-//
+// Duplicates tab state. Hashing costs real I/O, so it runs only when asked (or with the auto preference on);
+// finished runs persist in the cache's `.nddup` slot so reopening never re-hashes.
 
 import Foundation
 import Observation
@@ -36,17 +18,11 @@ final class DuplicatesModel {
     private(set) var phase: Phase = .idle
     /// Hashing progress, 0...1, while `phase == .scanning`.
     private(set) var progress = 0.0
-    /// Groups confirmed so far while `phase == .scanning`, biggest waste
-    /// first — the live results the pane and the map highlight render as
-    /// hashing progresses. Superseded by the final results on finish.
+    /// Biggest waste first; superseded by the final results on finish.
     private(set) var liveGroups: [DuplicateGroup] = []
-    /// Union of every live group's copies, for the map-wide highlight while
-    /// scanning: empty at start (the whole map dims), growing as confirmed
-    /// copies light back up.
+    /// Empty at start, so the whole map dims and confirmed copies light back up.
     private(set) var liveDuplicateIDs: Set<String> = []
-    /// When the finished result was computed (a live scan this session, or the
-    /// cached run's timestamp), for the "Duplicates computed …" banner. Nil
-    /// outside `.finished`.
+    /// For the "Duplicates computed" banner; nil outside `.finished`.
     private(set) var computedAt: Date?
     /// The group the user drilled into, if any.
     private(set) var openGroup: DuplicateGroup?
@@ -54,9 +30,7 @@ final class DuplicatesModel {
     /// Minimum file size the finder uses; part of the result cache key.
     nonisolated static let minimumFileSize = DuplicateFinder.defaultMinimumFileSize
 
-    /// Every confirmed duplicate, for the map-wide highlight while the
-    /// results list is showing. Cached because the union set is derived
-    /// per render otherwise.
+    /// Cached because the union would otherwise be rebuilt every render.
     @ObservationIgnored private var allDuplicateIDs: Set<String> = []
     /// Which group each duplicate belongs to, so clicking a copy on the
     /// treemap can open its group.
@@ -64,10 +38,7 @@ final class DuplicatesModel {
     @ObservationIgnored private let coordinator: ScanCoordinator
     @ObservationIgnored private let snapshotCache: ScanSnapshotCache
     @ObservationIgnored private var scanTask: Task<Void, Never>?
-    /// Confirmed groups the finder has reported but the UI hasn't published
-    /// yet. Publishing re-renders the treemap highlight, so batches coalesce
-    /// on a fixed cadence (like the scan's partial trees) instead of landing
-    /// per confirmation.
+    /// Publishing re-renders the treemap highlight, so batches coalesce on a fixed cadence.
     @ObservationIgnored private var pendingLiveGroups: [DuplicateGroup] = []
     @ObservationIgnored private var liveFlushTask: Task<Void, Never>?
     private static let liveFlushInterval: Duration = .milliseconds(300)
@@ -93,17 +64,12 @@ final class DuplicatesModel {
         return nil
     }
 
-    /// Scanning hashes file contents against the displayed tree, so it needs
-    /// a complete snapshot and no scan already running.
+    /// Hashing needs a complete snapshot and no scan already running.
     var canScan: Bool {
         coordinator.snapshot?.isComplete == true
             && !isScanning
     }
 
-    /// Nodes lit on the treemap: the open group's copies, every duplicate
-    /// while the results list is showing, or — while scanning — the groups
-    /// confirmed so far (empty at first, so hashing starts by dimming the
-    /// whole map and confirmed copies light back up as they land).
     var highlightedNodeIDs: Set<String>? {
         if let openGroup { return Set(openGroup.nodeIDs) }
         switch phase {
@@ -150,9 +116,7 @@ final class DuplicatesModel {
             }
         }
         scanTask = Task { [weak self, snapshotCache] in
-            // Per-file hashes from previous runs; unchanged files skip their
-            // reads. Saved on every exit — completed hashes are valid work
-            // whether the run finished, failed, or was superseded.
+            // Saved on every exit: completed hashes are valid whether the run finished, failed or was superseded.
             let hashCache = await snapshotCache.loadDuplicateHashCache()
             do {
                 let results = try await Task.detached(priority: .userInitiated) {
@@ -191,11 +155,7 @@ final class DuplicatesModel {
         }
     }
 
-    /// Builds the map-wide highlight index (`allDuplicateIDs` plus the
-    /// per-node group lookup) and publishes the results as `.finished`. Shared
-    /// by the live-scan finish and the cache-load path so treemap highlighting
-    /// and click-to-open-group behave identically whether results were just
-    /// hashed or loaded from disk.
+    /// Shared by the live finish and the cache load so highlighting and click-to-open behave the same.
     private func apply(results: DuplicateScanResults) {
         allDuplicateIDs = Set(results.groups.flatMap(\.nodeIDs))
         var indexByNodeID: [String: Int] = [:]
@@ -209,9 +169,7 @@ final class DuplicatesModel {
         phase = .finished(results)
     }
 
-    /// Buffers finder-confirmed groups and publishes them on a fixed cadence.
-    /// The first batch publishes immediately so the sidebar reacts the moment
-    /// anything confirms; later batches wait out the interval together.
+    /// The first batch publishes immediately so the sidebar reacts the moment anything confirms.
     private func enqueueLiveGroups(_ groups: [DuplicateGroup]) {
         pendingLiveGroups.append(contentsOf: groups)
         guard liveFlushTask == nil else { return }
@@ -250,19 +208,12 @@ final class DuplicatesModel {
         liveDuplicateIDs = []
     }
 
-    /// Fill an idle tab from a persisted result for the displayed snapshot, if
-    /// one is cached; never hashes. Called from the pane when it is on screen,
-    /// mirroring ChangesModel.loadIfNeeded — a hit enters `.finished`
-    /// immediately, a miss leaves the idle prompt so the scan stays opt-in.
+    /// Never hashes: a miss leaves the idle prompt so the scan stays opt-in.
     func loadIfNeeded() {
         loadCachedResults(orScanIfMissing: false)
     }
 
-    /// Load path with an opt-in fallback: tries the persisted result first and,
-    /// only on a miss when `scanIfMissing` is set (the "find duplicates
-    /// automatically" preference on a restored snapshot), starts a hashing
-    /// scan. A running or finished scan already owns the phase, so this is a
-    /// no-op unless the tab is idle and the snapshot has not been handled yet.
+    /// Hashes on a miss only when `scanIfMissing` is set; a no-op unless the tab is idle and unhandled.
     func loadCachedResults(orScanIfMissing scanIfMissing: Bool) {
         guard let snapshot = coordinator.snapshot, snapshot.isComplete else { return }
         guard case .idle = phase, scannedSnapshotID != snapshot.id else { return }
@@ -303,13 +254,8 @@ final class DuplicatesModel {
         openGroup = group
     }
 
-    /// Routes a selection (treemap or outline click) into the drill-in:
-    /// selecting a duplicate opens its group — same as clicking the group
-    /// row; selecting anything else while a group is open steps back out to
-    /// the all-duplicates view, so clicking a dimmed cell is the intuitive
-    /// "back". With no group open, non-duplicate selections change nothing.
-    /// Live groups behave the same while the scan is still running — a
-    /// confirmed group's membership is already final.
+    /// Selecting a duplicate opens its group; anything else while a group is open steps back out, so
+    /// clicking a dimmed cell is the intuitive "back".
     func handleSelection(of nodeID: String) {
         switch phase {
         case .finished(let results):
@@ -333,9 +279,7 @@ final class DuplicatesModel {
         openGroup = nil
     }
 
-    /// The displayed tree changed: results and the drill-in hold node IDs of
-    /// the replaced tree, and a scan in flight is hashing files that may no
-    /// longer exist.
+    /// Results hold the replaced tree's node IDs, and an in-flight scan may hash files that no longer exist.
     func snapshotDidChange() {
         scanTask?.cancel()
         scanTask = nil

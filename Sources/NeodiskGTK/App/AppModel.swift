@@ -1,13 +1,5 @@
-//
-//  AppModel.swift
-//  NeodiskGTK
-//
-//  The Linux shell's central state: what is scanned and on screen, the scan
-//  lifecycle around the snapshot cache, selection, focus, and the kind/age
-//  catalogs that color the map. The GTK views observe it (see
-//  Observation.swift); the heavy lifting — scanning, snapshot codecs,
-//  catalogs, scene building — is the shared core's.
-//
+// The Linux shell's central state; the GTK views observe it (Observation.swift) and the shared core does the heavy
+// lifting.
 
 import CGtk
 import Foundation
@@ -45,9 +37,7 @@ final class AppModel {
     private(set) var snapshot: ScanSnapshot?
     /// Live progress of the running scan.
     private(set) var metrics = ScanMetrics()
-    /// True while a rescan runs behind a displayed complete snapshot: the
-    /// map keeps the old tree (a complete stale map beats an incomplete
-    /// fresh one) until the new one finishes.
+    /// The map keeps the old tree until the rescan finishes: a complete stale map beats an incomplete fresh one.
     private(set) var isRefreshing = false
     private(set) var warnings: [ScanWarning] = []
     private(set) var volumeSpace: VolumeSpaceInfo?
@@ -55,17 +45,12 @@ final class AppModel {
     private(set) var ageCatalog: AgeCatalog = .empty
     /// What the snapshot cache holds per target path (sidebar subtitles).
     private(set) var cachedScans: [String: CachedScanInfo] = [:]
-    /// Bumps whenever a kind-stats sidecar lands on disk. The sidecar is
-    /// written after the snapshot save updates `cachedScans` (it's an
-    /// O(nodes) classification pass), so the sidebar's capacity bars key
-    /// on this, not on the scan date, or they'd reload before it exists.
+    /// The sidecar lands after `cachedScans` updates, so the capacity bars key on this, not the scan date.
     private(set) var kindStatsSidecarGeneration = 0
     /// Ticks once a minute, so "Scanned 5 minutes ago" labels that read it
     /// stay current.
     private(set) var minuteTick = 0
-    /// The whole-scan name index behind search: one per displayed snapshot,
-    /// built in the background as soon as the snapshot lands, as the Mac's
-    /// Largest panel does, so the first search doesn't wait on it.
+    /// Built in the background as soon as a snapshot lands, so the first search doesn't wait on it.
     @ObservationIgnored let searchIndex = SearchIndexService()
     @ObservationIgnored private var minuteTimer: Task<Void, Never>?
     @ObservationIgnored private var memoryReleaseTask: Task<Void, Never>?
@@ -321,10 +306,7 @@ final class AppModel {
 
     // MARK: - Memory
 
-    /// Returns freed heap to the system shortly after a tree is replaced or
-    /// dropped (once the views have let go of the old one). Without this,
-    /// glibc keeps it: each reopen of a large location grew the process by
-    /// the size of the tree.
+    /// Without this, glibc keeps freed heap and each reopen of a large location grew the process by the tree.
     func scheduleMemoryRelease() {
         memoryReleaseTask?.cancel()
         memoryReleaseTask = Task {
@@ -362,9 +344,7 @@ final class AppModel {
         await saveKindStatsSidecar(for: snapshot)
     }
 
-    /// Persisted kind aggregates for a target's cached scan: the sidebar's
-    /// capacity bars color themselves from these without decoding the
-    /// snapshot. nil when the target was never scanned.
+    /// Lets the sidebar's capacity bars color themselves without decoding the snapshot.
     func loadKindStatsSidecar(forTargetID targetID: String) async -> KindStatsSidecar? {
         await snapshotCache.loadAuxiliaryData(forTargetID: targetID)
             .flatMap(KindStatsSidecar.decoding)
@@ -462,9 +442,7 @@ final class AppModel {
         rebuildKindCatalog(for: store)
     }
 
-    /// Changes the category customization (the Kinds list's menu, Settings)
-    /// and reclassifies when that changes what files are filed under:
-    /// categories built or persisted under the old rules no longer hold.
+    /// Reclassifies when the change affects how files are filed.
     func updateFileCategories(_ change: (inout FileCategoryCustomization) -> Void) {
         var customization = preferences.fileCategories
         change(&customization)
@@ -516,11 +494,8 @@ final class AppModel {
         focusID = nodeID
     }
 
-    /// Drills into a folder: `nodeID` itself, or the folder containing it
-    /// when it's a file — the Mac's ⌘↓, so "zoom into where I am" always
-    /// makes progress. An explicitly drilled folder lands the selection on
-    /// its largest child, keeping the arrow keys and the outline oriented.
-    /// Returns false (caller beeps) when there is nowhere deeper to go.
+    /// A file drills into its containing folder, so it always makes progress. Lands the selection on the
+    /// largest child; false (caller beeps) when there is nowhere deeper.
     @discardableResult
     func drillIn(to nodeID: String?) -> Bool {
         guard let store, let nodeID, let node = store.node(id: nodeID) else { return false }

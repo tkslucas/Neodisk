@@ -1,21 +1,5 @@
-//
-//  DuplicateResultsCache.swift
-//  Neodisk
-//
-//  The persisted form of a computed DuplicateScanResults, stored through the
-//  snapshot cache's `.nddup` slot. Duplicate hashing reads real bytes off
-//  disk (battery and I/O), so a finished run is worth keeping: reopening the
-//  Duplicates tab after a scan, or relaunching, otherwise re-hashes the whole
-//  candidate set. Persisting the finished result turns that into a small read.
-//
-//  The cache is keyed on the identity (size + mtime) of the current
-//  `.ndscan` file it was derived from plus the minimum file size the scan
-//  used. That key is content-stable across process launches (unlike
-//  ScanSnapshot.id, a fresh UUID per decode), so a rescan (which rewrites the
-//  file) changes the key and the stale result is discarded. A separate
-//  duplicate-format version invalidates every blob at once if the finder's
-//  semantics ever change.
-//
+// Persisted duplicate results, since hashing costs real I/O. Keyed on the `.ndscan` file's size and mtime (stable
+// across launches, unlike ScanSnapshot.id) plus the minimum size, so a rescan discards the stale result.
 
 import Foundation
 
@@ -35,10 +19,7 @@ public nonisolated struct DuplicateResultsCacheKey: Codable, Equatable, Sendable
 
 /// A computed duplicate result plus the key it is valid for, as stored on disk.
 public nonisolated struct DuplicateResultsCacheEntry: Codable, Sendable {
-    /// Finder semantics version. Bump when `DuplicateFinder.findDuplicates`
-    /// changes what it emits so previously cached blobs are treated as misses.
-    /// v2: groups carry `reclaimableBytes` (clone-aware reclaim accounting);
-    /// v1 blobs lack the field and no longer decode.
+    /// Bump when `findDuplicates` changes its output. v2 added `reclaimableBytes`, so v1 blobs no longer decode.
     public static let currentDuplicateFormatVersion = 2
 
     public let dupFormatVersion: Int

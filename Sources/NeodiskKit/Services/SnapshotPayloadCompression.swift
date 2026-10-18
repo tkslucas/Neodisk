@@ -1,14 +1,5 @@
-//
-//  SnapshotPayloadCompression.swift
-//  Neodisk
-//
-//  The node-payload codec behind snapshot format v2+. Each platform uses its
-//  native fast streaming codec: LZFSE through the Compression framework on
-//  Apple platforms, zstd through libzstd on Linux. Snapshots are a
-//  machine-local cache, never exchanged between machines, so the two never
-//  need to read each other's files; a foreign payload fails decoding as
-//  corrupt data, which the cache treats as a miss.
-//
+// Node-payload codec: LZFSE on Apple platforms, zstd on Linux. Snapshots are a machine-local cache, so a
+// foreign payload just fails as corrupt, which the cache treats as a miss.
 
 import Foundation
 #if canImport(Compression)
@@ -19,12 +10,8 @@ import CZstd
 
 extension ScanSnapshotCodec {
     #if canImport(Compression)
-    /// LZFSE-compresses `payload` onto the end of `output` through
-    /// `compression_stream`, in 1 MB output chunks. The bytes are identical
-    /// to `NSData.compressed(using: .lzfse)` (the same raw LZFSE stream the
-    /// decoder reads), but that API is several times slower on large
-    /// payloads — ~8 s against ~1.6 s for a 109 MB, 1.67M-node payload —
-    /// and it offers no cancellation point; this checks between chunks.
+    /// Same bytes as `NSData.compressed(using: .lzfse)`, which is ~5x slower on large payloads and can't be
+    /// cancelled; this checks between 1 MB chunks.
     static func appendCompressedPayload(_ payload: Data, to output: inout Data) throws {
         let chunkSize = 1 << 20
         let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: chunkSize)
@@ -53,15 +40,10 @@ extension ScanSnapshotCodec {
 
 
     #elseif canImport(CZstd)
-    /// zstd level the Linux cache writes at: libzstd's own default, which
-    /// compresses a 100 MB payload in a fraction of a second while matching
-    /// LZFSE's ratio.
+    /// libzstd's default: a fraction of a second for 100 MB at LZFSE's ratio.
     private static let zstdCompressionLevel: Int32 = 3
 
-    /// zstd-compresses `payload` onto the end of `output` as a single frame,
-    /// in 1 MB output chunks with a cancellation check between them. The
-    /// whole input is handed over on the first call, so the frame header
-    /// records the content size the decoder uses to preallocate.
+    /// The whole input goes in on the first call so the frame header records the size the decoder preallocates.
     static func appendCompressedPayload(_ payload: Data, to output: inout Data) throws {
         guard let context = ZSTD_createCCtx() else {
             throw ScanSnapshotCacheError.corruptData("payload compression failed")

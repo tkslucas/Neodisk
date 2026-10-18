@@ -1,13 +1,5 @@
-//
-//  Localization.swift
-//  NeodiskGTK
-//
-//  The Linux app reads the same Localization/<lang>.lproj/Localizable.strings
-//  catalogs the macOS app bundles — keys are the English source strings, so
-//  a string already translated for the Mac is translated here too. The
-//  language comes from the POSIX locale environment (LANGUAGE, LC_ALL,
-//  LC_MESSAGES, LANG), like any GTK app.
-//
+// Reads the macOS app's Localizable.strings catalogs (keys are English source strings), with the
+// language from the POSIX locale environment.
 
 import Foundation
 

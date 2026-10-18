@@ -1,12 +1,5 @@
-//
-//  StreamingPayloadReaderTests.swift
-//  NeodiskKitTests
-//
-//  The snapshot decoder parses payloads as they decompress, through a
-//  refilling window. Reads must come out identical whatever the window
-//  size — values straddling a refill, strings longer than the window — and
-//  a truncated payload must fail rather than read short.
-//
+// Reads must be identical at any window size (values straddling a refill, strings longer than the window),
+// and a truncated payload must fail rather than read short.
 
 import Foundation
 import Testing

@@ -3,17 +3,12 @@ import Testing
 import NeodiskKit
 @testable import NeodiskUI
 
-/// Stage 4 of parallel scanning: attaching a running background scan back to
-/// the display on return — a cold scan's live partial map keeps streaming, a
-/// refresh's stand-in holds with partials suppressed until the fresh finish, an
-/// explicit rescan cancels and restarts, and a scan that finished while
-/// detached shows its final tree instantly through the restore path.
+/// Re-attaching a background scan on return: cold scans keep streaming, refreshes hold their stand-in,
+/// explicit rescans restart, and a scan finished while detached restores instantly.
 extension ScanTimingSuites {
 @MainActor
 @Suite(.serialized) struct ParallelScanStage4Tests {
-    /// Navigating back to a target whose cold scan was demoted attaches that
-    /// live scan: its latest partial is on screen immediately and subsequent
-    /// partials keep flowing to the display, on the same progress instance.
+    /// Partials keep flowing to the display on the same progress instance.
     @Test func testAttachToLiveColdScanResumesStreaming() async throws {
         let environment = try TestEnvironment()
         defer { environment.tearDown() }
@@ -63,9 +58,6 @@ extension ScanTimingSuites {
         model.stopScan()
     }
 
-    /// Navigating back to a target whose refresh was demoted attaches it behind
-    /// its stand-in: the complete baseline holds the screen with partials
-    /// suppressed, and the fresh finish swaps the final tree in.
     @Test func testAttachToRefreshHoldsStandInThenSwapsFinal() async throws {
         let environment = try TestEnvironment()
         defer { environment.tearDown() }
@@ -118,9 +110,7 @@ extension ScanTimingSuites {
         model.stopScan()
     }
 
-    /// An explicit rescan of a target whose scan is running in the background
-    /// cancels that scan and starts a fresh one (one running session per
-    /// target), rather than attaching the background scan.
+    /// One running session per target, so an explicit rescan cancels rather than attaches.
     @Test func testForcesRescanCancelsBackgroundAndRestarts() async throws {
         let environment = try TestEnvironment()
         defer { environment.tearDown() }
@@ -147,9 +137,6 @@ extension ScanTimingSuites {
         model.stopScan()
     }
 
-    /// A background scan that finishes while detached persists and is
-    /// remembered; clicking its target then shows the final tree instantly
-    /// through the restore path, with no attach.
     @Test func testFinishWhileDetachedThenClickRestoresInstantly() async throws {
         let environment = try TestEnvironment()
         defer { environment.tearDown() }
@@ -226,9 +213,8 @@ extension ScanTimingSuites {
             return model
         }
 
-        /// A model whose launch cache index is ready, so a target with no
-        /// cache scans cold (streams live partials) instead of taking the
-        /// pre-index refresh branch. Gated on a seed target's indexing.
+        /// The cache index is ready, so a target with no cache scans cold instead of taking the pre-index
+        /// refresh branch.
         @MainActor
         func makeIndexedModel(policy: AutoRescanPolicy) async throws -> NeodiskViewModel {
             let seed = makeTestTarget("/stage4/seed")
@@ -248,9 +234,7 @@ extension ScanTimingSuites {
             return makeTestSnapshot(target: target, root: root, store: store)
         }
 
-        /// A partial (incomplete) tree of `target` with `count` files under the
-        /// root, so a node count of `count + 1` distinguishes successive
-        /// partials.
+        /// A node count of `count + 1` tells successive partials apart.
         func partialStore(for target: ScanTarget, count: Int) -> FileTreeStore {
             let files = (0..<count).map {
                 makeTestFileNode(id: "\(target.id)/f\($0).txt", name: "f\($0).txt", size: 1)

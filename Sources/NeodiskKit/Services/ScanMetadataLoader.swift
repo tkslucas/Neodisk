@@ -1,8 +1,3 @@
-//
-//  ScanMetadataLoader.swift
-//  Neodisk
-//
-
 #if canImport(Darwin)
 import Darwin
 #elseif canImport(Glibc)
@@ -169,13 +164,8 @@ nonisolated struct ScanMetadataLoader: Sendable {
         ScanDiagnosticsContext?
     ) -> (identity: FileIdentity?, linkCount: UInt64)
 
-    // Per-child key sets deliberately omit two keys that were measured as
-    // hot-path taxes: `.isReadableKey` costs an access(2) per item for a flag
-    // that matters only on rare unreadable entries (those surface through
-    // enumeration failures anyway), and `.fileResourceIdentifierKey`
-    // allocates a Data per file when hard-link identity is only needed for
-    // linkCount > 1 — the lstat fallback covers exactly that case and yields
-    // the same FileIdentity form the bulk reader produces.
+    // Omits two measured hot-path taxes: `.isReadableKey` (an access(2) per item) and
+    // `.fileResourceIdentifierKey` (a Data per file); lstat covers identity for linkCount > 1.
     static let scanResourceKeys: Set<URLResourceKey> = [
         .isDirectoryKey,
         .isPackageKey,
@@ -239,9 +229,7 @@ nonisolated struct ScanMetadataLoader: Sendable {
         captureDirectoryIdentity: Bool = false
     ) throws -> NodeMetadata {
         #if os(Linux)
-        // swift-corelibs-foundation's resource values disagree with lstat
-        // (directory link counts, allocated sizes), so every Linux path
-        // reads the same lstat the bulk reader does.
+        // corelibs-foundation's resource values disagree with lstat (link counts, allocated sizes).
         ScanSyscallTally.recordMetadataLoad()
         return try LinuxStat.metadata(for: url, includeVolumeDetails: includeVolumeDetails)
         #else
@@ -346,9 +334,7 @@ nonisolated struct ScanMetadataLoader: Sendable {
         // must not poison directory totals (or trap conversions) upstream.
         let logicalSize = Int64(max(values.fileSize ?? 0, 0))
         let allocatedSize = Int64(max(values.totalFileAllocatedSize ?? values.fileAllocatedSize ?? values.fileSize ?? 0, 0))
-        // Optimistic default: per-child key sets no longer fetch
-        // `.isReadableKey`, and unreadable items reveal themselves through
-        // enumeration failures. The root keys still fetch it explicitly.
+        // Per-child keys don't fetch `.isReadableKey`; unreadable items show up as enumeration failures.
         let isReadable = values.isReadable ?? true
         var fileIdentity = Self.fileIdentity(from: values.fileResourceIdentifier)
         var linkCount = values.linkCount.map { UInt64(max($0, 1)) } ?? 1
@@ -369,11 +355,8 @@ nonisolated struct ScanMetadataLoader: Sendable {
             fileIdentity = fileIdentity ?? fileSystemInfo.identity
             linkCount = values.linkCount.map(UInt64.init) ?? fileSystemInfo.linkCount
         } else if captureDirectoryIdentity, isDirectory, fileIdentity == nil {
-            // Scan roots ask for directory identity so a rescanned subtree's
-            // root matches the identity the bulk reader records when the same
-            // directory is enumerated as a child, and so the incremental
-            // replaced-root check has something to compare. lstat yields the
-            // same device+inode FileIdentity form as the bulk path.
+            // Matches the identity the bulk reader records for the same directory as a child, and gives the
+            // incremental replaced-root check something to compare.
             fileIdentity = fileSystemInfoProvider(url, diagnostics).identity
         }
         let volumeUsedCapacity: Int64?
@@ -473,14 +456,9 @@ nonisolated struct NodeMetadata: Sendable {
     let volumeUsedCapacity: Int64?
     let fileIdentity: FileIdentity?
     let linkCount: UInt64
-    /// Cloud file whose content is not downloaded (SF_DATALESS). Detected on
-    /// the getattrlistbulk path; the URLResourceValues fallback reports false
-    /// (no key exposes it, and cloud volumes are APFS so they take the bulk
-    /// path anyway).
+    /// Only the bulk path detects it; no resource key exposes it, and cloud volumes take the bulk path anyway.
     var isDataless: Bool = false
-    /// APFS clone-family membership (refCount > 1 only). Captured on the
-    /// getattrlistbulk path; the URLResourceValues fallback has no clone
-    /// keys, and non-APFS volumes have no clones to report.
+    /// Only the bulk path captures it; non-APFS volumes have no clones.
     var cloneInfo: CloneInfo? = nil
 }
 

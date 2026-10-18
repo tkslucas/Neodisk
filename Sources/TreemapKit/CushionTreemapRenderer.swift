@@ -1,12 +1,5 @@
-//
-//  CushionTreemapRenderer.swift
-//  TreemapKit
-//
-//  Rasterizes treemap cells into RGBA8 pixels with per-pixel cushion shading.
-//  The pixel loop (`rasterize`) is portable stdlib SIMD; the CGImage assembly,
-//  the `memset_pattern4` background fill, and the Dispatch parallelization are
-//  gated so the core is consumable off-platform (e.g. a WebAssembly demo).
-//
+// Per-pixel cushion shading into RGBA8. The pixel loop is portable SIMD; CGImage, memset_pattern4 and
+// Dispatch are gated so the core builds off-platform (e.g. WebAssembly).
 
 #if canImport(CoreGraphics)
 import CoreGraphics
@@ -22,32 +15,18 @@ public enum CushionTreemapRenderer {
     /// Directional light, image coordinates (y down), pointing from the
     /// surface toward the light: above and to the top-left of the map.
     private nonisolated static let light = normalized(SIMD3<Double>(-0.3, -0.3, 0.906))
-    /// Lambert terms in linear light. The buffer holds sRGB-encoded
-    /// channels, so the shade is applied as `channel · √shade` — under the
-    /// gamma-2 approximation of sRGB that is exactly a linear-light multiply
-    /// (encode(decode(c) · s) = c · √s). Multiplying the encoded channels by
-    /// the raw shade instead darkened roughly twice as hard perceptually and
-    /// dragged every mid-tone hue toward mud. The ambient floor is tuned for
-    /// the encoded result: √0.14 ≈ 0.37 of full brightness at the darkest
-    /// cushion edge.
+    /// Lambert terms in linear light, applied to sRGB channels as `channel * sqrt(shade)` (gamma-2 approx).
+    /// Multiplying by the raw shade darkened twice as hard and muddied mid-tones.
     private nonisolated static let ambient = 0.14
     private nonisolated static let diffuse = 0.86
 
-    /// Diagonal hatch baked into cloud-only (`isDataless`) cells: alternating
-    /// bands `hatchStripePeriod` device pixels wide along the x+y diagonal,
-    /// each band nudged one way or the other by `hatchContrast`. Modulating
-    /// symmetrically about the cell's own brightness keeps the stripes visible
-    /// on both light and dark fills without shifting hue. The hatch lives in
-    /// pixel space, so it tracks gesture zoom through the layer transform and
-    /// re-crisps on the next render, exactly like the rest of the raster.
+    /// Diagonal hatch for cloud-only cells, modulated symmetrically about the fill so stripes show on light
+    /// and dark fills without shifting hue.
     private nonisolated static let hatchStripePeriod = 4
     private nonisolated static let hatchContrast = 0.14
 
-    /// Portable rasterization: RGBA8 premultipliedLast, one byte-quadruple per
-    /// pixel packed little-endian (`R | G<<8 | B<<16 | 0xFF000000`), row stride
-    /// `width * 4`, alpha always 255. Cell rects are in view points; the output
-    /// covers `bounds` at `scale` (2 for Retina). Callers on a canvas blit the
-    /// buffer straight into ImageData; `render` wraps it into a CGImage.
+    /// RGBA8 premultipliedLast packed little-endian, alpha always 255, row stride `width * 4`, covering
+    /// `bounds` at `scale`. Canvas callers blit it straight into ImageData.
     public nonisolated static func rasterizeRGBA(
         cells: [TreemapCell],
         bounds: CGRect,
@@ -96,9 +75,7 @@ public enum CushionTreemapRenderer {
     }
     #endif
 
-    /// Rasterizes every cell into the buffer. Cells never overlap, so
-    /// concurrent chunks write disjoint pixels; without Dispatch this falls
-    /// back to a serial pass.
+    /// Cells never overlap, so concurrent chunks write disjoint pixels.
     private nonisolated static func renderCells(
         _ cells: [TreemapCell],
         origin: CGPoint,
@@ -114,9 +91,7 @@ public enum CushionTreemapRenderer {
         let chunkSize = (cells.count + chunkCount - 1) / max(1, chunkCount)
 
         DispatchQueue.concurrentPerform(iterations: chunkCount) { chunkIndex in
-            // With ceil-divided chunks, trailing chunks can start past the
-            // end (e.g. 10 cells / 8 cores → chunkSize 2 → chunk 7 starts
-            // at 14); start..<end would trap with end < start.
+            // Ceil-divided chunks can start past the end (10 cells / 8 cores), and start..<end would trap.
             let start = min(chunkIndex * chunkSize, cells.count)
             let end = min(start + chunkSize, cells.count)
             for index in start..<end {
@@ -169,14 +144,11 @@ public enum CushionTreemapRenderer {
         let r = Double(cell.rgb.x)
         let g = Double(cell.rgb.y)
         let b = Double(cell.rgb.z)
-        // Cloud-only cells get a diagonal hatch folded into the shade term; a
-        // per-cell branch keeps the stripe math off the hot path for the vast
-        // majority of cells, which are on-disk.
+        // A per-cell branch keeps the stripe math off the hot path for on-disk cells.
         let hatch = cell.isDataless
 
-        // SIMD lane constants, hoisted out of the pixel loops. Every vector
-        // expression below mirrors the scalar tail's operation tree exactly
-        // (same operations, same order), so the two paths agree bit-for-bit.
+        // Every vector expression mirrors the scalar tail's operation tree exactly, so both paths agree
+        // bit-for-bit.
         let laneCount = 8
         let laneIndices = SIMD8<Double>(0, 1, 2, 3, 4, 5, 6, 7)
         let originXV = SIMD8<Double>(repeating: originX)
@@ -221,16 +193,12 @@ public enum CushionTreemapRenderer {
                 // Surface normal is (-gx, -gy, 1) (unnormalized).
                 let normalLength = (gx * gx + gySquaredV + oneV).squareRoot()
                 let dot = (-gx * lightXV - gyLightYV + lightZV) / normalLength
-                // √ encodes the linear-light Lambert shade for the sRGB
-                // buffer (see the ambient/diffuse comment). The hatch then
-                // modulates the encoded value, keeping its stripe contrast
-                // independent of the gamma handling.
+                // sqrt encodes the linear-light shade for the sRGB buffer; the hatch modulates the encoded
+                // value so its contrast is independent of gamma.
                 var shade = (ambientV + diffuseV * pointwiseMax(zeroV, dot)).squareRoot()
                 if hatch {
-                    // stripe = floor((px + py) / period); parity 0/1 = stripe
-                    // mod 2. Pixel indices are exact integers well within
-                    // double range, so this matches the scalar-tail integer
-                    // math bit-for-bit and leaves no seam at the body boundary.
+                    // Pixel indices are exact in double range, so this matches the scalar tail's integer math
+                    // and leaves no seam at the body boundary.
                     let stripe = floorV((pxV + hatchRowV) / hatchPeriodV)
                     let parity = stripe - twoV * floorV(stripe * halfV)
                     shade = shade * (hatchHighV - hatchSpanV * parity)
@@ -274,17 +242,8 @@ public enum CushionTreemapRenderer {
         }
     }
 
-    /// Truncates non-negative doubles in [0, 2^31) toward zero, per lane —
-    /// identical to `UInt32(d)` but branch-free so it compiles to vector
-    /// instructions. `UInt32.init(_: Double)` carries trap checks per lane and
-    /// `SIMD8<UInt32>.init(_:rounding:)` goes through an unspecialized generic
-    /// path; both measured an order of magnitude slower.
-    ///
-    /// Adding 2^52 pushes the integer part into the low mantissa bits
-    /// (round-to-nearest-even); subtracting it back yields round(d), then one
-    /// is subtracted from lanes that rounded up to recover floor(d). Re-adding
-    /// 2^52 to the now-integral value leaves the integer in the low 32 bits of
-    /// the bit pattern.
+    /// Branch-free `UInt32(d)` for [0, 2^31) via the 2^52 mantissa trick; the stdlib conversions carry
+    /// per-lane trap checks or generic paths and measured 10x slower.
     private nonisolated static func truncateToU32(_ d: SIMD8<Double>) -> SIMD8<UInt32> {
         let magic = SIMD8<Double>(repeating: 0x1.0p52)
         let rounded = (d + magic) - magic
@@ -293,9 +252,7 @@ public enum CushionTreemapRenderer {
         return SIMD8<UInt32>(truncatingIfNeeded: bits)
     }
 
-    /// Per-lane `floor` for magnitudes below 2^52, via the same round-trip the
-    /// truncation helper uses: adding then subtracting 2^52 snaps to the
-    /// nearest integer, and lanes that rounded up are stepped back down.
+    /// Per-lane `floor` below 2^52 via the same 2^52 round-trip as `truncateToU32`.
     private nonisolated static func floorV(_ d: SIMD8<Double>) -> SIMD8<Double> {
         let magic = SIMD8<Double>(repeating: 0x1.0p52)
         let rounded = (d + magic) - magic

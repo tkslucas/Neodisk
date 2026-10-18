@@ -19,9 +19,7 @@ import Testing
         return data
     }
 
-    /// A block of `seed` bytes with a distinct `patchSeed` run written at
-    /// `offset`, used to make files that share a prefix (and sometimes a
-    /// tail) but diverge at a chosen point.
+    /// Files that share a prefix but diverge at `offset`.
     private func patched(seed: UInt8, count: Int, offset: Int, patchSeed: UInt8, length: Int = 64) -> Data {
         var data = Data(repeating: seed, count: count)
         data.replaceSubrange(offset..<(offset + length), with: Data(repeating: patchSeed, count: length))
@@ -69,11 +67,8 @@ import Testing
         )
     }
 
-    /// Store variant that pins each file's charged `allocatedSize` and
-    /// `cloneInfo`, mirroring what the clone/hardlink deduplicators leave on
-    /// the records the finder reads — the keeper carries the family's shared
-    /// blocks, charged clone members carry ~0. The bytes on disk are written
-    /// verbatim so the hashing ladder still confirms the group.
+    /// Pins each file's charged size and clone info as the deduplicators leave them; the bytes are real so the
+    /// hashing ladder still confirms the group.
     private func makeStore(
         directory: URL,
         detailedFiles: [(name: String, data: Data, allocatedSize: Int64, cloneInfo: CloneInfo?)]
@@ -170,9 +165,7 @@ import Testing
 
     @Test func identicalHeadDifferentInsidePrefixIsNotADuplicate() async throws {
         try await withTempDirectory { directory in
-            // Same first 4 KB (head tier collides) but they diverge at 100 KB,
-            // still inside the 256 KB prefix, so the prefix tier separates them
-            // without any full read.
+            // Same first 4 KB but diverging at 100 KB, inside the 256 KB prefix, so no full read is needed.
             let store = try makeStore(directory: directory, files: [
                 ("head-twin-1.bin", patched(seed: 0x11, count: 2 * Self.megabyte, offset: 100_000, patchSeed: 0x22)),
                 ("head-twin-2.bin", patched(seed: 0x11, count: 2 * Self.megabyte, offset: 100_000, patchSeed: 0x33)),
@@ -204,9 +197,8 @@ import Testing
 
     @Test func differingOnlyInMiddleIsSeparatedByFullPass() async throws {
         try await withTempDirectory { directory in
-            // Identical head and identical tail, diverging only in the middle
-            // (past 256 KB from the start, before the last 256 KB): only the
-            // full-content pass can tell them apart, and it must.
+            // Identical head and tail, diverging only in the middle: only the full-content pass can tell them
+            // apart.
             let count = 2 * Self.megabyte
             let identicalCopy = bytes(seed: 0x77, count: count)
             let store = try makeStore(directory: directory, files: [
@@ -314,10 +306,8 @@ import Testing
                 children.append(try fileNode(url: url, size: Int64(identical.count)))
             }
 
-            // A named pipe reporting the SAME logical size, so it lands in the
-            // twins' same-size group. Opening and reading it would block
-            // forever with no writer; the finder must skip it on the metadata
-            // check and never open it. (This test hangs if the guard regresses.)
+            // A same-size named pipe would block forever if opened; the finder must skip it on metadata.
+            // This test hangs if the guard regresses.
             let fifoURL = directory.appending(path: "pipe.bin")
             #expect(mkfifo(fifoURL.path, 0o644) == 0)
             children.append(try fileNode(url: fifoURL, size: Int64(2 * Self.megabyte)))
@@ -446,9 +436,7 @@ import Testing
 
     @Test func streamsPartialGroupsMatchingFinalResults() async throws {
         try await withTempDirectory { directory in
-            // One pair per confirming tier: tiny (head hash covers the file),
-            // medium (prefix pass covers it), large (full-content pass), plus
-            // a same-size non-duplicate that must never stream.
+            // One pair per confirming tier plus a same-size non-duplicate that must never stream.
             let tiny = bytes(seed: 0x01, count: 2 * 1024)
             let medium = bytes(seed: 0x02, count: 100 * 1024)
             let large = bytes(seed: 0x03, count: 2 * Self.megabyte)
@@ -491,9 +479,7 @@ import Testing
         }
     }
 
-    /// Replaces a file's bytes without touching its size or inode, then
-    /// restores the given mtime — the one change the mtime+size+inode stamp
-    /// is documented not to catch.
+    /// Keeps size and inode and restores mtime: the one change the freshness stamp is documented to miss.
     private func swapContentsInPlace(_ url: URL, with data: Data, restoringMtime seconds: Int) throws {
         let handle = try FileHandle(forWritingTo: url)
         try handle.write(contentsOf: data)
@@ -518,9 +504,7 @@ import Testing
             #expect(first.groups.count == 1)
             #expect(cache.entryCount == 2)
 
-            // Swap b's bytes under an unchanged stamp: a cached run must
-            // trust the stored digests and skip the reads entirely — stale
-            // results are the proof the files weren't re-read.
+            // A cached run must trust the stored digests; stale results prove the files weren't re-read.
             try swapContentsInPlace(
                 bURL,
                 with: bytes(seed: 0xB2, count: 2 * Self.megabyte),
@@ -576,9 +560,7 @@ import Testing
         #expect(decoded.groups.first?.reclaimableBytes == 2048)
     }
 
-    /// A pre-clone-aware cache blob: its groups had no `reclaimableBytes`
-    /// field. It must not decode as a valid entry, so a stale result can't
-    /// resurface with an inflated reclaim figure after the schema change.
+    /// A pre-clone-aware blob must not decode, so a stale result can't resurface with an inflated reclaim figure.
     @Test func staleCacheWithoutReclaimableBytesFailsToDecode() {
         let legacyJSON = """
         {"dupFormatVersion":1,"key":{"snapshotSize":1,"snapshotModified":2,"minimumFileSize":1048576},\
@@ -593,9 +575,8 @@ import Testing
         try await withTempDirectory { directory in
             let identical = bytes(seed: 0x5C, count: 2 * Self.megabyte)
             let size = Int64(identical.count)
-            // Two byte-identical APFS clones: the store already charged the
-            // path-second member ~0 (its private bytes), the keeper the full
-            // shared blocks. Reclaim must come out near zero.
+            // The store already charged the second clone ~0 and the keeper the shared blocks, so reclaim is
+            // near zero.
             let family = CloneInfo(device: 1, cloneID: 100, refCount: 2, privateSize: 0)
             let store = try makeStore(directory: directory, detailedFiles: [
                 (name: "clone-a.bin", data: identical, allocatedSize: size, cloneInfo: family),

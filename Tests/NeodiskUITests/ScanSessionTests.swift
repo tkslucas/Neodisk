@@ -27,9 +27,7 @@ extension ScanTimingSuites {
         #expect(lifetime == nil)
     }
 
-    /// A partial tree is recorded on the session even while the coordinator
-    /// suppresses it from the screen (the refresh-behind-cached path): the
-    /// session always keeps the latest tree, the coordinator decides display.
+    /// The session always keeps the latest tree; the coordinator decides what displays.
     @MainActor
     @Test func testLatestPartialRetainedWhileDisplaySuppressed() async throws {
         let service = ControlledScanService()
@@ -81,14 +79,7 @@ extension ScanTimingSuites {
         session.cancel()
     }
 
-    /// Progress is throttled to the latest pending metrics: the first publishes
-    /// immediately, an intermediate is superseded within the window, and only
-    /// the trailing value follows.
-    ///
-    /// The throttle window is deliberately wide: the burst events are consumed
-    /// off the async stream, so under a loaded machine the gap between
-    /// consuming them can stretch — a window that dwarfs scheduler jitter is
-    /// what keeps the coalescing (not the assertion) deterministic.
+    /// The window is wide on purpose: one that dwarfs scheduler jitter keeps coalescing deterministic under load.
     @MainActor
     @Test func testThrottlePublishesLatestPending() async throws {
         let service = ControlledScanService()

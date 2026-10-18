@@ -1,12 +1,3 @@
-//
-//  VolumeCapacityBar.swift
-//  Neodisk
-//
-//  The macOS-storage-style capacity bar shown under a sidebar row: its
-//  data model (VolumeBarData), the bar view, and the hover tooltip
-//  (bubble shape + size preference). Used by SidebarTargetRow.
-//
-
 import AppKit
 import SwiftUI
 import NeodiskKit
@@ -14,17 +5,11 @@ import NeodiskAppModel
 
 // MARK: - Volume capacity bar
 
-/// The macOS-storage-style bar under a volume row: one segment per file
-/// kind category (same colors as the Kinds tab, palette-aware), a neutral
-/// segment for used-but-unscanned capacity (hidden space / other users),
-/// and the empty track standing for free space. Under a scanned folder, its
-/// categories alone fill the bar. `.empty` before any scan.
+/// One segment per kind category, a neutral one for used-but-unscanned capacity, and the empty track for
+/// free space. Under a scanned folder its categories alone fill the bar.
 nonisolated struct VolumeBarData: Equatable, Sendable {
     struct Segment: Equatable, Sendable, Identifiable {
         let id: String
-        /// Localization key for the hover tooltip: a kind category display
-        /// name, "Hidden Space" for the unscanned tail, or the cloud bar's
-        /// "On this Mac" / "Cloud-only".
         let label: String
         let size: Int64
         let rgb: SIMD3<Float>
@@ -48,10 +33,7 @@ nonisolated struct VolumeBarData: Equatable, Sendable {
 
     static let empty = VolumeBarData(segments: [], availableSize: nil)
 
-    /// The two-segment on-this-Mac / cloud-only proportion bar for scanned
-    /// cloud locations — the sidebar-sized sibling of CloudSummaryStrip's
-    /// bar, sharing its colors and the dataless hatch. Nil without any
-    /// cloud-only bytes (nothing worth a bar).
+    /// Sidebar-sized sibling of CloudSummaryStrip's bar; nil without any cloud-only bytes.
     static func cloudProportions(onThisMac: Int64, cloudOnly: Int64) -> VolumeBarData? {
         guard cloudOnly > 0 else { return nil }
         let total = Double(onThisMac) + Double(cloudOnly)
@@ -179,10 +161,8 @@ struct VolumeCapacityBar: View {
             .background(Color.primary.opacity(0.12))
             .clipShape(Capsule())
             .overlay(alignment: .topLeading) {
-                // Mounted while `shownSegmentID` is set (through the whole
-                // contract animation); only scale and opacity animate, so
-                // the bubble always plays the same expand/contract in the
-                // same segment-anchored place.
+                // Mounted through the whole contract animation; only scale and opacity animate, so it always
+                // plays in place.
                 if let info = shownInfo(barWidth: geometry.size.width) {
                     tooltip(
                         info: info,
@@ -198,11 +178,8 @@ struct VolumeCapacityBar: View {
         .onPreferenceChange(VolumeBarTooltipSizeKey.self) { tooltipSize = $0 }
     }
 
-    /// Entering expands the bubble; leaving contracts it after a short
-    /// grace period, so hopping to the next segment (whose enter event may
-    /// arrive after this one's exit) repositions the bubble instead of
-    /// replaying the contract/expand cycle. Only the expanded/contracted
-    /// flip is animated — content and position swap instantly.
+    /// Leaving contracts after a grace period, so hopping segments (enter may arrive after exit) repositions
+    /// the bubble instead of replaying the cycle. Only the expanded flip animates.
     private func hover(_ id: String, isHovering: Bool) {
         if isHovering {
             unhoverTask?.cancel()
@@ -254,13 +231,8 @@ struct VolumeCapacityBar: View {
         return nil
     }
 
-    /// The bubble above the hovered stretch, macOS-storage-bar style. The
-    /// bubble centers on the stretch but clamps to the bar's width; the
-    /// tail keeps pointing at the stretch even when the bubble clamps.
-    /// Offsets need the bubble's size, so it reports it via preference and
-    /// hides until measured. Position is never animated: expand/contract is
-    /// a scale out of the tail tip plus a fade, identical every time for a
-    /// given segment.
+    /// Clamps to the bar's width while the tail keeps pointing at the stretch. Hidden until its size is
+    /// measured; position never animates.
     private func tooltip(info: HoverInfo, barWidth: CGFloat, isExpanded: Bool) -> some View {
         let width = tooltipSize.width
         let offsetX = min(max(info.midX - (width / 2), 0), max(barWidth - width, 0))
@@ -286,9 +258,7 @@ struct VolumeCapacityBar: View {
     }
 }
 
-/// Reports a measured tooltip bubble size; shared by the capacity bar and the
-/// sidebar's background-scan bar so each can offset its bubble clear of the
-/// bar (and stay hidden until the first measurement lands).
+/// Each bar offsets its bubble by this and keeps it hidden until the first measurement lands.
 struct VolumeBarTooltipSizeKey: PreferenceKey {
     nonisolated static let defaultValue: CGSize = .zero
 
@@ -300,10 +270,7 @@ struct VolumeBarTooltipSizeKey: PreferenceKey {
     }
 }
 
-/// The shared hover-bubble chrome: content in a rounded card with a downward
-/// tail at `tailX`, drawn as one path so fill, stroke, and shadow stay
-/// continuous across the tail joint. Worn by the capacity bar's segment
-/// tooltip and the sidebar's background-scan bar.
+/// Drawn as one path so fill, stroke and shadow stay continuous across the tail joint.
 struct TooltipBubble<Content: View>: View {
     static var tailHeight: CGFloat { 5 }
 

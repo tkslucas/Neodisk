@@ -2,10 +2,8 @@ import Foundation
 import Testing
 @testable import NeodiskKit
 
-/// Proves the two concurrency assumptions Stage 2's parallel scanning rests
-/// on: two scans of different targets driven through ONE shared
-/// `IncrementalScanService` don't corrupt each other's trees, and two targets
-/// saving/loading through one `ScanSnapshotCache` at once stay isolated.
+/// Two scans through one shared `IncrementalScanService` don't corrupt each other, and two targets using one
+/// `ScanSnapshotCache` at once stay isolated.
 @Suite("ConcurrentScanSafety", .serialized)
 struct ConcurrentScanSafetyTests {
     private func makeTree(_ name: String, files: [(String, Int)]) throws -> URL {

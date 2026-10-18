@@ -1,8 +1,3 @@
-//
-//  ScanSnapshotTransformService.swift
-//  Neodisk
-//
-
 import Foundation
 
 public protocol ScanSnapshotTransforming: Sendable {

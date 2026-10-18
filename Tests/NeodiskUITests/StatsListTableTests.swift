@@ -3,9 +3,7 @@ import SwiftUI
 import Testing
 @testable import NeodiskUI
 
-/// The AppKit list behind the statistics panel's long lists: it has to
-/// follow the model's selection without echoing it back as a click, report
-/// real clicks, and keep drill-in rows from holding a selection.
+/// Must follow the model's selection without echoing it back as a click, and keep drill-in rows unselected.
 @MainActor
 struct StatsListTableTests {
     private func makeTable(_ coordinator: StatsListCoordinator) -> OutlineNSTableView {

@@ -1,35 +1,18 @@
-//
-//  ScanIncrementalModels.swift
-//  Neodisk
-//
-//  Shared value types for incremental FSEvents rescans: the persisted
-//  journal checkpoint, filesystem-independent change events, and the
-//  planner's verdict. The FSEvents C API never leaks past the Darwin
-//  history provider — everything here is plain Swift so the planner and
-//  scan service stay unit-testable without a real filesystem.
-//
+// Plain Swift types for incremental FSEvents rescans; the C API never leaks past the Darwin provider,
+// so the planner and scan service stay unit-testable.
 
 import Foundation
 
-/// A point in a volume's FSEvents journal, captured at scan start and
-/// persisted with the snapshot. A later rescan replays the journaled events
-/// after `eventID` to learn which directories changed; everything about the
-/// replay is a hint — re-enumeration of the named directories is the only
-/// source of truth, and any doubt about the checkpoint's validity falls back
-/// to a full scan.
+/// The replayed events are only a hint: re-enumeration is the source of truth, and any doubt about the
+/// checkpoint falls back to a full scan.
 public struct FSEventsCheckpoint: Hashable, Codable, Sendable {
-    /// `FSEventsCopyUUIDForDevice` of the volume backing the scan target,
-    /// lowercased. The journal gets a fresh UUID whenever fseventsd discards
-    /// or rebuilds it, so a mismatch means every stored event ID is
-    /// meaningless.
+    /// Lowercased. The journal gets a fresh UUID whenever fseventsd rebuilds it, so a mismatch voids every
+    /// event ID.
     public let volumeUUID: String
     /// The most recent journal event ID at capture time (device-relative
     /// stream semantics — IDs are only comparable on the same device).
     public let eventID: UInt64
-    /// Wall-clock capture time. The journal is a rolling, size-bounded
-    /// record with no API signal for "your checkpoint aged out", so
-    /// checkpoints older than `FSEventsCheckpoint.maxTrustedAge` are
-    /// refused outright.
+    /// The journal is rolling with no "aged out" signal, so checkpoints older than `maxTrustedAge` are refused.
     public let capturedAt: Date
     /// `kern.osversion` at capture. Major macOS updates flush the journal
     /// without changing its UUID; a build change invalidates the checkpoint.
@@ -42,17 +25,12 @@ public struct FSEventsCheckpoint: Hashable, Codable, Sendable {
         self.osBuild = osBuild
     }
 
-    /// How long a persisted checkpoint stays trusted. The fseventsd journal
-    /// realistically retains days-to-weeks of history on an active system
-    /// and silently replays an incomplete window once it has rotated past a
-    /// stored ID — age is the only guard against that gap.
+    /// The journal silently replays an incomplete window once it rotates past a stored ID; age is the only
+    /// guard.
     public static let maxTrustedAge: TimeInterval = 14 * 24 * 60 * 60
 }
 
-/// Filesystem-independent projection of the FSEvents per-event flags the
-/// incremental pipeline cares about. The Darwin provider translates
-/// `kFSEventStreamEventFlag*` bits into these; nothing downstream imports
-/// CoreServices.
+/// Translated from `kFSEventStreamEventFlag*` bits so nothing downstream imports CoreServices.
 struct FileSystemEventFlags: OptionSet, Sendable, Hashable {
     let rawValue: UInt32
 
@@ -83,27 +61,19 @@ struct FileSystemEventFlags: OptionSet, Sendable, Hashable {
         !isDisjoint(with: [.userDropped, .kernelDropped, .eventIDsWrapped, .rootChanged, .volumeMounted, .volumeUnmounted])
     }
 
-    /// Whether the event names an item whose parent directory's membership
-    /// may have changed (create/remove/rename) — those must re-enumerate the
-    /// parent, not just the named path.
+    /// Create/remove/rename must re-enumerate the parent, not just the named path.
     var indicatesMembershipChange: Bool {
         !isDisjoint(with: [.itemCreated, .itemRemoved, .itemRenamed])
     }
 
-    /// Whether the event touched a multiply-linked file. Hard-link dedup
-    /// charges a shared file's bytes to exactly one of its links across the
-    /// whole tree, and the journal names only the link that changed — a new
-    /// link, a removed one, or a write through either — never its siblings.
-    /// A shallow relist of that one directory therefore cannot reproduce a
-    /// full scan's ownership.
+    /// Dedup charges a shared file to one link tree-wide, and the journal names only the link that changed,
+    /// so a shallow relist of that directory can't reproduce a full scan's ownership.
     var touchesHardLink: Bool {
         !isDisjoint(with: [.itemIsHardLink, .itemIsLastHardLink])
     }
 }
 
-/// One journaled change, with `path` already absolute and firmlink-normalized
-/// into the same namespace the scan tree uses (`/System/Volumes/Data/...`
-/// forms are translated back to their firmlinked `/...` equivalents).
+/// `/System/Volumes/Data/...` paths are translated back to their firmlinked `/...` forms.
 struct FileSystemChangeEvent: Sendable, Hashable {
     let path: String
     let eventID: UInt64
@@ -152,19 +122,13 @@ enum FileSystemEventHistoryError: Error, Equatable {
     case eventBudgetExceeded
 }
 
-/// Reads the FSEvents journal for incremental rescans. One transient stream
-/// per `history` call, drained to the HistoryDone sentinel and torn down —
-/// never a persistent watcher.
+/// One transient stream per `history` call, drained to HistoryDone and torn down; never a persistent watcher.
 protocol FileSystemEventHistoryProviding: Sendable {
-    /// The journal position for the volume containing `target`, captured
-    /// before a scan starts so the next rescan replays everything that
-    /// changed during and after this scan.
+    /// Captured before a scan starts so the next rescan also replays changes made during this scan.
     func currentCheckpoint(for target: ScanTarget) throws -> FSEventsCheckpoint
 
-    /// Replays journaled events in `(since.eventID, through.eventID]` for
-    /// paths under `target`. Validates the checkpoint pair (UUID match, no
-    /// rollback, age, OS build) and throws `FileSystemEventHistoryError` on
-    /// any doubt.
+    /// Replays `(since.eventID, through.eventID]` under `target`; throws `FileSystemEventHistoryError` on any
+    /// doubt about the checkpoint pair (UUID, rollback, age, OS build).
     func history(
         since: FSEventsCheckpoint,
         through: FSEventsCheckpoint,
@@ -207,33 +171,15 @@ enum IncrementalFullScanReason: String, Sendable, Equatable {
 /// The planner's verdict for one replayed history.
 enum IncrementalRescanPlan: Sendable, Equatable {
     case noChanges
-    /// Re-enumerate the named directories at the finest grain FSEvents allows.
-    ///
-    /// `dirIDs` are existing, materialized directory node IDs the journal named
-    /// as changed: each is shallow-relisted (one readdir, its direct children
-    /// diffed against the baseline) so scattered churn costs one directory read
-    /// per changed directory instead of a recursive re-walk of a coalesced
-    /// high-mass ancestor. They need not be disjoint — a directory and its
-    /// changed subdirectory are both relisted independently. The scan root
-    /// appears here when its own membership moved.
-    ///
-    /// `deepRescanRootIDs` are the disjoint subtree roots that FSEvents
-    /// semantics force a full recursive re-walk for: hierarchical coalesces
-    /// (`kFSEventStreamEventFlagMustScanSubDirs`) and auto-summarized / package
-    /// directories whose interior the baseline never materialized (a shallow
-    /// diff there would treat every live child as new). This is the preserved
-    /// coarse subtree path and the MustScanSubDirs fallback.
-    ///
-    /// At least one of the two arrays is non-empty; both empty is `.noChanges`.
+    /// `dirIDs` are shallow-relisted, one readdir each. `deepRescanRootIDs` need a full re-walk:
+    /// MustScanSubDirs coalesces, and summarized dirs whose interior the baseline never had.
     case relistDirectories(dirIDs: [String], deepRescanRootIDs: [String])
     case fullScan(IncrementalFullScanReason)
 }
 
 extension ScanOptions {
-    /// The projection of the options that changes what a scan's tree looks
-    /// like. Two scans whose signatures differ cannot be spliced into each
-    /// other; worker-limit tuning deliberately excluded (parallelism never
-    /// changes shape).
+    /// Signatures that differ can't be spliced; worker limits are excluded since parallelism never changes
+    /// shape.
     struct ShapeSignature: Hashable, Sendable {
         let includeHiddenFiles: Bool
         let treatPackagesAsDirectories: Bool

@@ -1,13 +1,4 @@
-//
-//  SunburstCore+Neodisk.swift
-//  Neodisk
-//
-//  Bridges SunburstCore to Neodisk's model and coordinate types: FileTreeStore
-//  and FileNodeRecord conform to the core tree protocols (their signatures
-//  already match, so the conformances are declarations only), and the
-//  Double-based hit-testers get thin CGPoint/CGSize overloads for the AppKit
-//  call sites.
-//
+// The tree conformances are declarations only (signatures already match); hit-testers get CGPoint overloads.
 
 #if canImport(CoreGraphics)
 import CoreGraphics

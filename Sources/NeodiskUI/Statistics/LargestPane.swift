@@ -1,12 +1,4 @@
-//
-//  LargestPane.swift
-//  Neodisk
-//
-//  The statistics panel's Largest tab: the whole scan's biggest files,
-//  largest first — the flat-list answer to "what's eating my disk" the
-//  treemap answers spatially. Rows are the shared read-only navigation:
-//  clicking selects the node in the outline and treemap.
-//
+// The flat-list answer to what the treemap shows spatially; rows select the node in outline and treemap.
 
 import SwiftUI
 import NeodiskKit
@@ -26,9 +18,7 @@ struct LargestPane: View {
             totalMatches: model.largest.totalMatches,
             filterText: $largest.filterText
         )
-        // Covers the ways the list goes stale while the tab is on screen:
-        // switching to the tab (appear), a new snapshot landing, and the
-        // cloud-only toggle flipping (it changes the ranking).
+        // Reload on appear, a new snapshot, or the cloud-only toggle (it changes the ranking).
         .task(id: "\(model.coordinator.snapshot?.id.uuidString ?? "")|\(model.showsCloudOnlyFiles)") {
             model.largest.loadIfNeeded(includeCloudOnly: model.showsCloudOnlyFiles)
         }

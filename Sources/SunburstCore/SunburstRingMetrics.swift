@@ -1,29 +1,10 @@
-//
-//  SunburstRingMetrics.swift
-//  SunburstCore
-//
-//  The single source of truth for sunburst ring radii. The chart renders the
-//  deepest levels as THINNER arcs so the outer detail takes less radial space
-//  and the chart reads better; this computes that taper once and everything —
-//  the layout, the drill/zoom remap, and (transitively, via the segment radii
-//  it stamps) hit-testing — bands its rings through here, so the drawn arcs
-//  and the hovered arcs can never disagree.
-//
-//  Pure stdlib: no Foundation, so it stays Embedded-Swift-compatible for the
-//  wasm build alongside the rest of SunburstCore.
-//
+// Single source of truth for ring radii: layout, zoom remap and hit-testing all band through here, so drawn and
+// hovered arcs never disagree. Pure stdlib (no Foundation) for the Embedded Swift wasm build.
 
-/// Maps a ring depth to its radial band. The body rings share one full
-/// thickness except the body's outermost two, which step down (2/3, then 4/9
-/// of a full ring); depth layers past the body render as fixed thin slivers
-/// at the edge. Everything is floored so deep arcs stay clickable, and the
-/// whole stack is normalized to fill exactly the same outer radius regardless
-/// of how many rings there are.
+/// Body rings share one thickness except the outer two, which step down; deeper layers are fixed thin slivers.
+/// Floored so deep arcs stay clickable, and normalized to the same outer radius at any ring count.
 public struct SunburstRingMetrics: Sendable, Equatable {
-    /// The ring budget the body composition is tuned for: within it, only the
-    /// outermost rings thin and everything inside them keeps one full, equal
-    /// thickness (owner-tuned 2026-07-13: an all-depths geometric taper read
-    /// as goofy).
+    /// Owner-tuned 2026-07-13: only the outermost rings thin, since an all-depths taper read as goofy.
     public static let bodyRingCount = 6
     /// The body's next-to-last ring's fraction of a full ring, and its last
     /// ring's — one step smaller, then one smaller again.
@@ -32,29 +13,19 @@ public struct SunburstRingMetrics: Sendable, Equatable {
     /// Depth layers past the body render as fixed thin detail rings at the
     /// very edge (the outer slivers), at most this many.
     public static let fixedThinRingCount = 2
-    /// Each fixed thin ring's band as a fraction of the chart radius. The
-    /// cosmetic `ringGap` comes out of the band, so the drawn sliver is
-    /// `0.038 - 0.015 = 0.023` — thin, but still hoverable.
+    /// `ringGap` comes out of the band, so the drawn sliver is 0.023: thin, but still hoverable.
     public static let fixedThinThickness: Double = 0.038
-    /// A ring's band never gets thinner than this fraction of the chart
-    /// radius, so deep arcs stay clickable. At a typical ~250pt chart radius
-    /// that is ~9pt. When the floor binds (many rings), the radius it claims
-    /// is taken from the still-tapering rings by water-filling — never added
-    /// to the total, which always fills exactly `centerRadius … outerRadius`.
+    /// About 9pt at a typical chart radius. When it binds, the space is water-filled from the other rings,
+    /// never added to the total.
     public static let minThicknessFraction: Double = 0.036
     /// The chart's outer edge as a fraction of the chart radius — a hair shy
     /// of the full radius, matching the pre-taper layout's outer bound.
     public static let outerRadius: Double = 0.98
 
     public let depthLimit: Int
-    /// Ring boundary radii: `boundaries[d]` is the inner edge of ring `d`,
-    /// `boundaries[d + 1]` its outer band edge (the drawn arc sits `ringGap`
-    /// short of it). `count == depthLimit + 1`, spanning the center hole edge
-    /// to `outerRadius`.
+    /// `boundaries[d]` is ring d's inner edge; `count == depthLimit + 1`.
     private let boundaries: [Double]
-    /// Edge-ring thicknesses, used to extrapolate boundary radii for the
-    /// out-of-range ring indices the zoom remap asks about (a collapsing
-    /// ancestor shell sits at negative relative depth).
+    /// For extrapolating out-of-range indices the zoom remap asks about (a collapsing shell sits below 0).
     private let firstThickness: Double
     private let lastThickness: Double
 
@@ -87,25 +58,17 @@ public struct SunburstRingMetrics: Sendable, Equatable {
         boundaryRadius(ringIndex: depth)
     }
 
-    /// The drawn outer radius of ring `depth`: the band's outer edge less the
-    /// cosmetic `ringGap`. Hit-testing glues the gap back on (see
-    /// `SunburstHitTestIndex`), so the gap is a seam, never a dead zone.
+    /// Hit-testing glues `ringGap` back on (see `SunburstHitTestIndex`), so the gap is a seam, not a dead zone.
     public func drawnOuterRadius(depth: Int) -> Double {
         boundaryRadius(ringIndex: depth + 1) - SunburstLayout.ringGap
     }
 
-    /// The full band thickness of ring `depth` (gap included). Exposed for the
-    /// taper's invariants — monotonic non-increasing, floored, summing to the
-    /// available span.
+    /// Gap included; exposed for the taper's invariant tests.
     public func thickness(depth: Int) -> Double {
         boundaryRadius(ringIndex: depth + 1) - boundaryRadius(ringIndex: depth)
     }
 
-    /// The radius at a ring boundary. Inside `0...depthLimit` it reads the
-    /// precomputed table; outside it (the zoom remap's re-banded descendants
-    /// and collapsing shell can land at negative or beyond-limit indices) it
-    /// extrapolates linearly by the nearest edge ring's thickness so the
-    /// morph stays continuous instead of snapping.
+    /// Out-of-range indices extrapolate by the nearest edge ring's thickness so the zoom morph doesn't snap.
     public func boundaryRadius(ringIndex: Int) -> Double {
         if ringIndex < 0 {
             return boundaries[0] + (Double(ringIndex) * firstThickness)
@@ -116,11 +79,7 @@ public struct SunburstRingMetrics: Sendable, Equatable {
         return boundaries[ringIndex]
     }
 
-    /// Ring thicknesses, normalized to fill exactly `available`: the body
-    /// rings split the span left over by the fixed thin edge rings, which
-    /// claim `fixedThinThickness` apiece. Degenerate spans (where the special
-    /// casing would leave a body ring thinner than the thin edge, inverting
-    /// the taper) fall back to an equal split.
+    /// Degenerate spans, where a body ring would end up thinner than the thin edge, fall back to an equal split.
     static func ringThicknesses(count: Int, available: Double) -> [Double] {
         guard count > 0, available > 0 else { return [] }
 
@@ -139,20 +98,12 @@ public struct SunburstRingMetrics: Sendable, Equatable {
         return thicknesses
     }
 
-    /// The body rings' thicknesses, floored and normalized to fill exactly
-    /// `available`. All rings weigh 1 except the outermost two, which get the
-    /// taper ratios; the weights are scaled to the available span. Rings that
-    /// would fall below the floor are water-filled: pinned at the floor, with
-    /// the remaining span redivided among the rest by their weights, iterating
-    /// until stable — so the floor is honored without ever overrunning the
-    /// total.
+    /// Rings below the floor are pinned there and the rest redivide the remainder by weight until stable.
     private static func bodyThicknesses(count: Int, available: Double) -> [Double] {
         guard count > 0, available > 0 else { return [] }
 
         let floor = Self.minThicknessFraction
-        // Floor infeasible (so many rings that even all-floor overruns the
-        // span): fall back to an equal split so the total still fits — the
-        // best the geometry can do when there is no room to taper.
+        // Floor infeasible: an equal split is the best the geometry can do.
         if Double(count) * floor >= available {
             return Array(repeating: available / Double(count), count: count)
         }

@@ -1,12 +1,4 @@
-//
-//  SunburstChartView.swift
-//  Neodisk
-//
-//  The composed sunburst chart: canvases under an interaction overlay,
-//  pinch-to-drill navigation, the center "go up"
-//  affordance, and a delayed loading indicator. Click
-//  semantics (single-click drill) and model wiring live in SunburstPane.
-//
+// Click semantics and model wiring live in SunburstPane.
 
 import SunburstCore
 import AppKit
@@ -26,9 +18,7 @@ struct SunburstChartView: View {
     let selectedNodeID: String?
     let selectedAncestorIDs: Set<String>
     let depthLimit: Int
-    /// Identity of the layout's geometry inputs (snapshot, root, depth,
-    /// free space, hidden space); changes reload the layout. Color changes
-    /// restyle the rendered segments instead (see the `style` onChange).
+    /// Changes reload the layout; color changes only restyle segments (see the `style` onChange).
     let layoutID: String
     let style: SunburstColorStyle
     let freeSpaceBytes: Int64?
@@ -122,9 +112,7 @@ struct SunburstChartView: View {
         }
     }
 
-    /// The floating hover tooltip over the chart. Suppressed during layout
-    /// loads and zoom transitions (the hovered segment is stale then); the
-    /// center "go up" affordance keeps the hole to itself.
+    /// Suppressed during loads and zoom transitions, when the hovered segment is stale.
     @ViewBuilder
     private func hoverTooltip(paneSize: CGSize) -> some View {
         if zoomTransition == nil, !chartModel.isLayoutPending,
@@ -148,12 +136,8 @@ struct SunburstChartView: View {
             .accessibilityLabel("Disk usage chart")
             .accessibilityValue(Text(verbatim: accessibilityValue))
             .accessibilityHint(accessibilityHint)
-            // One stable identity with the action built conditionally
-            // INSIDE: an if/else around the chart itself gave the two
-            // branches different SwiftUI identities, so drilling away from
-            // the scan root (parentNode nil → non-nil) recreated the whole
-            // subtree — including the interaction overlay's NSView, which
-            // silently dropped key focus mid-keyboard-navigation.
+            // One stable identity with the action built inside: an if/else around the chart recreated the
+            // overlay's NSView on drill, dropping key focus mid-navigation.
             .accessibilityActions {
                 if let parentNode {
                     Button(goUpText(to: parentNode)) {
@@ -191,10 +175,7 @@ struct SunburstChartView: View {
                 chartFrame: chartFrame
             )
             .id(chartModel.renderedLayoutVersion)
-            // During a zoom the transition canvas replaces the base layer
-            // outright (the identity swap must not add its own fade on
-            // top). Every takeover and teardown boundary lands on
-            // pixel-identical content, so the swaps are invisible cuts.
+            // The transition canvas replaces the base layer outright; every swap lands on pixel-identical content.
             .transition(zoomTransition == nil ? chartTransition : .identity)
             .opacity(zoomTransition == nil ? 1 : 0)
             .allowsHitTesting(false)
@@ -248,9 +229,8 @@ struct SunburstChartView: View {
                 }
             }
 
-            // The zoom transition already shows meaningful motion while the
-            // layout loads; dimming it would read as a glitch. The timeout
-            // in the transition state brings this back for slow loads.
+            // Dimming a zoom that already shows motion would read as a glitch; the transition timeout covers
+            // slow loads.
             if chartModel.isLayoutPending, zoomPresentation == nil {
                 Color(nsColor: .windowBackgroundColor)
                     .opacity(0.28)
@@ -333,11 +313,8 @@ struct SunburstChartView: View {
 
     // MARK: - Zoom transition
 
-    /// Starts the drill zoom when the layout identity moves
-    /// to a different root within the same snapshot. Drilling in animates
-    /// immediately on the outgoing layout; zooming out waits for the parent
-    /// layout to land and plays the reverse. Everything else (rescans,
-    /// unrendered targets, Reduce Motion) keeps the plain fade.
+    /// Drilling in animates on the outgoing layout; zooming out waits for the parent layout. Rescans,
+    /// unrendered targets and Reduce Motion keep the plain fade.
     private func prepareZoomTransition(fromLayoutID: String, toLayoutID: String) {
         // The drill moves to a new root; the last hover is stale until the
         // pointer moves over the new layout.
@@ -348,9 +325,7 @@ struct SunburstChartView: View {
             return
         }
 
-        // layoutID is "snapshot|root|depth|freeSpace|hiddenSpace|aggregates|
-        // cloudOnly" (see SunburstPane); only the snapshot [0] and root [1]
-        // fields drive the zoom.
+        // Fields are pipe-separated (see SunburstPane); only snapshot [0] and root [1] drive the zoom.
         let previousParts = fromLayoutID.split(separator: "|", omittingEmptySubsequences: false)
         let nextParts = toLayoutID.split(separator: "|", omittingEmptySubsequences: false)
         guard previousParts.count == 7, nextParts.count == 7,
@@ -380,10 +355,7 @@ struct SunburstChartView: View {
         }
     }
 
-    /// The drilled layout landed: zoom-in can start its end crossfade;
-    /// zoom-out resolves its focus in the new layout and starts the reverse
-    /// animation (or falls back to the plain swap if the outgoing root has
-    /// no segment there — pooled away or beyond the depth limit).
+    /// Zoom-out falls back to the plain swap if the outgoing root has no segment in the new layout.
     private func zoomTransitionLayoutDidLand() {
         guard var transition = zoomTransition, transition.layoutReadyDate == nil else { return }
 
@@ -418,9 +390,7 @@ struct SunburstChartView: View {
         zoomTransition = transition
     }
 
-    /// Clears the transition state once its presentation reports finished
-    /// (the TimelineView pauses again and the base layer takes over at full
-    /// opacity, pixel-identical to the last transition frame).
+    /// The base layer then takes over, pixel-identical to the last transition frame.
     private func finalizeZoomTransition() async {
         while let transition = zoomTransition {
             if SunburstZoomPresentation(state: transition, now: Date()).isFinished {
@@ -481,9 +451,7 @@ struct SunburstChartView: View {
         onClickSegment(hitTest(at: location, in: frame))
     }
 
-    /// Pinch-to-drill: a spread over an arc opens that
-    /// folder, a squeeze anywhere goes up one level. The center hole is not
-    /// a drill target — spreading there would re-open the current root.
+    /// The center hole is not a drill target: spreading there would re-open the current root.
     private func handlePinchDrill(
         at location: CGPoint,
         in frame: CGRect,

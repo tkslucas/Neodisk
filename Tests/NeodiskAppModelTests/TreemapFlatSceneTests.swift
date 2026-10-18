@@ -1,12 +1,3 @@
-//
-//  TreemapFlatSceneTests.swift
-//  Neodisk
-//
-//  Flat scene layout: folder container cells with
-//  nested children, deepest-cell hit-testing over the overlapping cells,
-//  and the selection-rect math mirroring the nested insets.
-//
-
 #if canImport(CoreGraphics)
 import CoreGraphics
 #endif
@@ -117,10 +108,7 @@ import NeodiskKit
     }
 
     @Test func flatHeaderLabelSurvivesViewportClipping() throws {
-        // Pan the container almost fully off the left edge: the sliver of
-        // header strip still visible emits its name candidate, clamped into
-        // the visible bounds. (The view may still drop it if no useful
-        // truncation fits — the scene's contract is just the candidate.)
+        // The visible header sliver still emits its name candidate, clamped into bounds; the view may drop it.
         let identity = buildFlat()
         let container = try #require(identity.cells.first { $0.nodeID == "/scan/sub" })
 
@@ -179,16 +167,12 @@ import NeodiskKit
         let sub = try #require(scene.cells.first { $0.nodeID == "/scan/sub" })
         #expect(!sub.isContainer)
         #expect(!scene.cells.contains { $0.nodeID == "/scan/sub/c.txt" })
-        // The tiny undivided folder emits no label candidate: its ~32pt
-        // tile sits under the folder pre-filter, where no useful
-        // (≥4-character) name could fit anyway.
+        // Its ~32pt tile is under the folder pre-filter, where no 4-character name could fit anyway.
         #expect(!scene.labels.contains { $0.id == "/scan/sub" })
     }
 
     @Test func flatDepthCapStopsNestingPastLimit() throws {
-        // A chain of single-child directories deeper than the cap, in a map
-        // large enough that every rect clears the minimum container size:
-        // nesting must stop at flatMaxContainerDepth anyway.
+        // Every rect clears the minimum container size, so nesting must stop at flatMaxContainerDepth anyway.
         let rootURL = URL(filePath: "/scan", directoryHint: .isDirectory)
         let levels = TreemapScene.flatMaxContainerDepth + 2
         let ids = (1...levels).map { level in
@@ -239,19 +223,14 @@ import NeodiskKit
         #expect(lastContainer.isContainer)
         #expect(!scene.cells.contains { $0.nodeID == ids[TreemapScene.flatMaxContainerDepth] })
 
-        // The selection ring follows the build: anything below the capped
-        // folder resolves to the capped folder's plain cell, not to a
-        // nested rect the map never drew.
+        // Anything below the capped folder resolves to its plain cell, not a nested rect the map never drew.
         for id in ids[(TreemapScene.flatMaxContainerDepth - 1)...] + [leaf.id] {
             #expect(scene.rect(forNodeID: id, in: store) == capped.rect)
         }
     }
 
-    /// Children sized between the cushion and flat aggregation thresholds:
-    /// the flat build merges them into "smaller items", so `rect(forNodeID:)`
-    /// (the selection ring and the drill morph) must resolve them to that
-    /// aggregate — laying them out at the cushion threshold instead put the
-    /// ring on a phantom tile and shifted every kept sibling's rect.
+    /// The flat build merges these into "smaller items", so `rect(forNodeID:)` must resolve them to that
+    /// aggregate; using the cushion threshold put the ring on a phantom tile.
     @Test func flatRectForNodeMatchesAggregationBetweenThresholds() throws {
         func file(_ id: String, _ size: Int64) -> FileNodeRecord {
             makeTestFileNode(id: id, name: String(id.split(separator: "/").last!), size: size)
@@ -312,10 +291,7 @@ import NeodiskKit
             catalog: .empty, colorMode: .branch
         )
 
-        // The /scan/sub container: its global interval midpoint (sub spans
-        // [0.9, 1.0] after a.mov's 0.6 and b.jpg's 0.3) at depth 1, folder
-        // role — drawn "translucently" (composited over the raster
-        // background) with the flat gray pull.
+        // sub spans [0.9, 1.0] after a.mov's 0.6 and b.jpg's 0.3, at depth 1, drawn translucently.
         let container = try #require(scene.cells.first { $0.nodeID == "/scan/sub" })
         let palette = VizPalette.standard.sunburst
         let subStart = 600.0 / 1000.0 + 300.0 / 1000.0
@@ -329,10 +305,8 @@ import NeodiskKit
         )
         #expect(container.rgb == expectedContainer)
 
-        // The nested file: it fills sub's interval (same midpoint), one
-        // level deeper — the full folder formula (not the sunburst's file
-        // gray), composited over the same background as every other cell
-        // (never over the container's fill).
+        // Same midpoint one level deeper, using the folder formula, composited over the background (never the
+        // container's fill).
         let child = try #require(scene.cells.first { $0.nodeID == "/scan/sub/c.txt" })
         let fileToken = SunburstColorToken(
             midpoint: subStart + subSpan / 2, depth: 2, role: .normal
@@ -343,10 +317,8 @@ import NeodiskKit
         )
         #expect(child.rgb == expectedChild)
 
-        // A loose file at the scan root goes gray (the sunburst's file
-        // treatment): no hue family of its own, and graying it keeps the
-        // root's colored folders identifiable. The midpoint still feeds the
-        // gray's brightness jitter.
+        // A loose root file goes gray so the root's colored folders stay identifiable; the midpoint still
+        // feeds brightness jitter.
         let rootFile = try #require(scene.cells.first { $0.nodeID == "/scan/a.mov" })
         let rootFileToken = SunburstColorToken(
             midpoint: (600.0 / 1000.0) / 2, depth: 1, role: .file
@@ -359,10 +331,7 @@ import NeodiskKit
     }
 
     @Test func drilledBranchColorsKeepScanRootCoordinate() throws {
-        // Rooted at /scan/sub: the color coordinate is still the global
-        // scan-root interval (via SunburstLayout.colorCoordinate), and depth
-        // is still measured from the SCAN root — drilling in must not
-        // recolor or re-brighten the subtree.
+        // Color coordinate and depth stay anchored to the scan root, so drilling in must not recolor the subtree.
         let store = makeStore()
         let scene = TreemapScene.build(
             store: store, rootID: "/scan/sub", style: .flat,

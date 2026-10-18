@@ -1,23 +1,10 @@
-//
-//  CloneInfo.swift
-//  Neodisk
-//
-//  APFS clone identity for a scanned file. Files cloned from one another
-//  (Finder duplicate, cp -c, clonefile(2)) share on-disk blocks; counting
-//  each at its full allocated size over-counts real disk usage, which lets
-//  the map's items sum past the volume's Finder-reported used space and
-//  swallows the hidden-space figure. Captured only for files the kernel
-//  reports as members of a clone family (refCount > 1), so the reference
-//  costs nothing on the vast non-cloned majority of nodes.
-//
+// APFS clones share blocks, so counting each at full size sums past the volume's used space. Captured only
+// for clone-family members (refCount > 1), costing nothing on other nodes.
 
 import Foundation
 
-/// Immutable clone-family membership of one file, from the getattrlistbulk
-/// extended attributes (ATTR_CMNEXT_CLONEID / ATTR_CMNEXT_CLONE_REFCNT).
-/// A class on purpose: an optional reference adds 8 bytes to every
-/// FileNodeRecord instead of the ~40 an inline optional struct would, and
-/// only clone-family members allocate one.
+/// A class on purpose: an optional reference adds 8 bytes per FileNodeRecord instead of ~40 for an
+/// inline optional struct.
 public final class CloneInfo: Sendable, Equatable, Hashable {
     /// Device the clone ID is scoped to (clone IDs are per-volume).
     public let device: UInt64
@@ -26,10 +13,7 @@ public final class CloneInfo: Sendable, Equatable, Hashable {
     public let cloneID: UInt64
     /// Number of files sharing the family's blocks at capture time.
     public let refCount: UInt32
-    /// Bytes unique to this file — not shared with the rest of the family
-    /// (ATTR_CMNEXT_PRIVATESIZE). Read during traversal for every member;
-    /// nil when it wasn't (single-item metadata, older snapshots), and then
-    /// deduplication fetches it for the members it charges.
+    /// ATTR_CMNEXT_PRIVATESIZE. Nil when not read (single-item metadata, older snapshots); dedup then fetches it.
     public let privateSize: Int64?
 
     public init(device: UInt64, cloneID: UInt64, refCount: UInt32, privateSize: Int64? = nil) {
@@ -115,13 +99,8 @@ public struct SummarizedCloneFamily: Sendable, Equatable {
     }
 }
 
-/// The clone families inside a summarized directory (a package or an
-/// auto-summarized folder). Those keep no record per file, so without this
-/// every clone in them counted at full size: dozens of cloned copies of an
-/// app read as dozens of apps. Clone deduplication charges the directory for
-/// each member it doesn't keep, as it charges file records; members' private
-/// size is 0 (see BulkDirectoryReader), so a charged member costs its whole
-/// allocated size. A class for the same reason as `CloneInfo`.
+/// Summarized directories keep no per-file records, so without this cloned copies counted at full size.
+/// Members' private size is 0, so a charged member costs its whole allocated size.
 public final class SummarizedClones: Sendable, Equatable {
     /// Sorted by family key.
     public let families: [SummarizedCloneFamily]

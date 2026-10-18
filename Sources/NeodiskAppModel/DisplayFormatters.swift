@@ -1,19 +1,12 @@
-//
-//  DisplayFormatters.swift
-//  Neodisk
-//
-//  Display-only formatting (dates, rough durations) — moved up from
-//  NeodiskKit, which keeps only what the core and CLI consume.
-//
+// Display-only formatting (dates, rough durations) — moved up from
+// NeodiskKit, which keeps only what the core and CLI consume.
 
 import Foundation
 
 package enum DisplayFormatters {
     private static let formatterCache = FormatterCache()
 
-    /// "3 minutes ago", "yesterday" — for last-scan labels. Views driven by
-    /// a TimelineView pass the timeline date as `relativeTo` so the string
-    /// is a pure function of its inputs and re-renders on schedule.
+    /// TimelineView callers pass the timeline date as `relativeTo` so the string re-renders on schedule.
     package static func relativeDate(_ date: Date, relativeTo now: Date = Date()) -> String {
         formatterCache.relativeDate(date, relativeTo: now)
     }
@@ -60,9 +53,8 @@ private final class FormatterCache: @unchecked Sendable {
     }
 }
 #else
-/// swift-corelibs-foundation has neither RelativeDateTimeFormatter nor
-/// DateComponentsFormatter; the FormatStyle equivalents produce the same
-/// strings from the same ICU data.
+/// swift-corelibs-foundation lacks RelativeDateTimeFormatter and DateComponentsFormatter; FormatStyle
+/// gives the same strings.
 private final class FormatterCache: Sendable {
     func relativeDate(_ date: Date, relativeTo now: Date) -> String {
         if abs(date.timeIntervalSince(now)) < 60 {

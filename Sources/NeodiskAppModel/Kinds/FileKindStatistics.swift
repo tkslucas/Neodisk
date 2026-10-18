@@ -1,12 +1,3 @@
-//
-//  FileKindStatistics.swift
-//  Neodisk
-//
-//  Groups scanned files by kind and assigns each kind a stable display color:
-//  the biggest kinds get distinct palette colors, the long tail shares a
-//  neutral gray.
-//
-
 import Foundation
 import NeodiskKit
 
@@ -53,9 +44,7 @@ package struct FileKindCatalog: Sendable {
     /// Distinguishes catalog builds cheaply; every rebuild may reassign
     /// palette colors even when the kind count is unchanged.
     package let buildID = UUID()
-    /// The category rules the catalog was built under; coloring a node
-    /// classifies it with these, so the map matches the legend even while
-    /// a rules change is still rebuilding.
+    /// Coloring uses these, so the map matches the legend while a rules change is still rebuilding.
     package let rules: FileCategoryRules
     private let rgbByKindID: [String: SIMD3<Float>]
 
@@ -88,14 +77,8 @@ package struct FileKindCatalog: Sendable {
         return rgb(forKindID: FileKindClassifier.kindID(for: node, mode: mode, rules: rules))
     }
 
-    /// Builds kind statistics for every countable node in the tree — files
-    /// plus leaf-like directories (packages such as .app bundles, and
-    /// auto-summarized folders) — sorted by total size, with palette colors
-    /// assigned to the largest kinds.
-    ///
-    /// The per-node loop deals only in cheap kind-ID strings; display names
-    /// (which can hit Launch Services for type descriptions) resolve once
-    /// per unique kind afterwards, through a cache shared across builds.
+    /// Counts files plus leaf-like directories. The loop handles only kind IDs; display names (which can hit
+    /// Launch Services) resolve once per kind through a shared cache.
     package nonisolated static func build(
         from store: FileTreeStore,
         mode: FileKindDisplayMode = .types,
@@ -122,10 +105,7 @@ package struct FileKindCatalog: Sendable {
         )
     }
 
-    /// Ranking, palette assignment, and display-name resolution from
-    /// per-kind aggregates — the tail of `build(from:)`, split out so a
-    /// catalog can also rebuild from persisted aggregates (snapshot restore,
-    /// palette or grouping-mode switches) without an O(nodes) pass.
+    /// Split out so a catalog can rebuild from persisted aggregates without an O(nodes) pass.
     package nonisolated static func build(
         fromAggregated aggregated: [PersistedKindStat],
         mode: FileKindDisplayMode,

@@ -1,14 +1,5 @@
-//
-//  OutlineView.swift
-//  NeodiskGTK
-//
-//  The file outline: GtkColumnView over a GtkTreeListModel, rooted at the
-//  folder the visualizations show. Child rows are created only when a folder
-//  is expanded (a million-node scan never materializes a million list
-//  items), in the tree store's size order, like the Mac's outline.
-//  Selection syncs both ways with the treemap: picking a cell expands the
-//  outline down to it and scrolls it into view.
-//
+// Child rows are created only on expand, so a million-node scan never materializes a million items.
+// Selection syncs both ways with the treemap.
 
 import CGtk
 import Foundation

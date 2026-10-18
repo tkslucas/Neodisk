@@ -1,14 +1,5 @@
-//
-//  GObject.swift
-//  NeodiskGTK
-//
-//  The thin layer between Swift and GObject pointers. Swift imports a GTK
-//  type whose struct is public (GtkWidget, GtkWindow) as a typed pointer and
-//  one whose struct is private (GtkBox, AdwHeaderBar) as OpaquePointer; the
-//  app stores every object as a raw pointer and `ptr(_:)` converts at the
-//  call site to whichever form the function expects — type inference picks
-//  the overload, so GTK calls read like their C originals.
-//
+// GTK types with public structs import as typed pointers, private ones as OpaquePointer. Objects are stored
+// raw and `ptr(_:)` converts at the call site, so GTK calls read like their C originals.
 
 import CGtk
 
@@ -33,10 +24,7 @@ typealias GPtr = UnsafeMutableRawPointer
 /// GLib's boolean.
 @inline(__always) func gbool(_ value: Bool) -> gboolean { value ? 1 : 0 }
 
-/// An owned reference to a GObject: sinks a floating reference on adoption
-/// and drops it on deinit. Widgets inside a container are owned by the
-/// widget tree and are held as plain `GPtr`s; this is for objects the app
-/// keeps on its own (list models, textures, detached popovers).
+/// For objects the app keeps itself (list models, textures, detached popovers); the widget tree owns the rest.
 final class GObjectRef {
     let pointer: GPtr
 
@@ -60,10 +48,7 @@ final class GObjectRef {
     }
 }
 
-/// Attaches a Swift object to a GObject for the GObject's lifetime: the
-/// GObject holds one retain on `value`, released when it is finalized.
-/// This is how widgets own their Swift controllers without a retain cycle
-/// (the controller keeps only an unowned `GPtr` back).
+/// How widgets own their Swift controllers without a retain cycle (the controller keeps an unowned `GPtr`).
 func attach(_ value: AnyObject, to object: GPtr, key: String) {
     g_object_set_data_full(
         ptr(object),

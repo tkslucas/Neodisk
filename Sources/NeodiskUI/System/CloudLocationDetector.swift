@@ -1,10 +1,5 @@
-//
-//  CloudLocationDetector.swift
-//  Neodisk
-//
-//  Detects cloud storage folders (iCloud Drive plus the File Provider roots
-//  under ~/Library/CloudStorage) so they can appear as smart locations.
-//
+// Detects cloud storage folders (iCloud Drive plus the File Provider roots
+// under ~/Library/CloudStorage) so they can appear as smart locations.
 
 import Foundation
 import NeodiskKit
@@ -47,11 +42,8 @@ enum CloudLocationDetector {
         )
     }
 
-    /// Pure core: builds the sidebar targets from what exists on disk.
-    /// iCloud Drive comes first, then the File Provider folders sorted by
-    /// display name. When several folders belong to the same provider (two
-    /// Google accounts, say), each keeps its account suffix to stay
-    /// distinguishable.
+    /// iCloud Drive first, then File Provider folders by name. Several folders of one provider keep
+    /// their account suffix to stay distinguishable.
     nonisolated static func targets(
         iCloudDriveDocumentsURL: URL?,
         cloudStorageRootURL: URL,
@@ -84,9 +76,8 @@ enum CloudLocationDetector {
         })
 
         if let legacyDropboxURL {
-            // A real pre-File-Provider Dropbox folder; when it is only a
-            // symlink into ~/Library/CloudStorage, target normalization
-            // resolves it and the caller's dedup drops the duplicate.
+            // A real pre-File-Provider folder; a symlink into ~/Library/CloudStorage resolves and the caller
+            // dedups it.
             targets.append(namedTarget(url: legacyDropboxURL, displayName: "Dropbox"))
         }
 

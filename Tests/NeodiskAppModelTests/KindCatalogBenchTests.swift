@@ -63,10 +63,8 @@ private func benchTarget() -> ScanTarget? {
         }
     }
 
-    /// Synthetic whole-scan index (`NEODISK_SEARCH_BENCH=<entries>`, e.g.
-    /// 1000000): the bounded top-k heap against the old collect-and-sort
-    /// ranking, same queries, same results. Broad queries are where the
-    /// full sort hurt — every match was sorted to keep 100.
+    /// `NEODISK_SEARCH_BENCH=<entries>`. Broad queries are where the full sort hurt: every match sorted to
+    /// keep 100.
     @Test(.enabled(if: syntheticSearchBenchCount() != nil))
     func benchSyntheticTopMatches() throws {
         let count = try #require(syntheticSearchBenchCount())

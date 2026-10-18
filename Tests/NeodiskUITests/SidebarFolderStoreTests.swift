@@ -3,9 +3,8 @@ import Testing
 import NeodiskKit
 @testable import NeodiskUI
 
-/// The Folders section's persistence: first-launch seeding with the common
-/// folders, the key's presence acting as the seed flag (removing everything
-/// sticks), and the one-time fold-in of pre-2.11 pinned folders.
+/// The key's presence is the seed flag (so removing everything sticks), plus the one-time fold-in of
+/// pre-2.11 pinned folders.
 struct SidebarFolderStoreTests {
     private func makeDefaults() throws -> (UserDefaults, String) {
         let suiteName = "SidebarFolderStoreTests-\(UUID().uuidString)"

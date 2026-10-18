@@ -1,22 +1,7 @@
-//
-//  StripedProgressBar.swift
-//  Neodisk
-//
-
 import SwiftUI
 
-/// The scan progress bar: a determinate capsule fill with a continuously
-/// drifting diagonal-stripe sheen over the filled portion. The fill level is
-/// the only progress signal (determinate, monotone, full means done — see the
-/// product constraints in AGENTS.md); the stripes carry exactly one bit of
-/// information: the app is alive, not frozen. They drift while `isActive`,
-/// freeze when the scan is stopped, and are static from the start when the
-/// user has Reduce Motion enabled.
-///
-/// The drift phase is derived from the wall clock via `TimelineView`, not an
-/// animated `@State`: scan metrics re-render this view many times a second,
-/// and a `repeatForever` animation restarted on re-render freezes or
-/// stutters. A clock-derived phase is immune to re-renders.
+/// The fill is the only progress signal; the drifting stripes only say the app is alive. The phase comes
+/// from the clock via `TimelineView` because a `repeatForever` animation stutters on frequent re-renders.
 struct StripedProgressBar: View {
     @Environment(\.neoTextScale) private var textScale
 
@@ -59,9 +44,7 @@ struct StripedProgressBar: View {
     }
 }
 
-/// Parallel 45° stripe bands covering `rect` with one extra period of
-/// overdraw on each side, so a horizontal offset of up to one period never
-/// exposes a gap.
+/// One extra period of overdraw per side, so an offset of up to one period never exposes a gap.
 private struct DiagonalStripes: Shape {
     var period: CGFloat
     var thickness: CGFloat

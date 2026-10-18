@@ -3,9 +3,7 @@ import Testing
 import NeodiskKit
 @testable import NeodiskAppModel
 
-/// The built-in categories added for 3D, games and backups, the folder
-/// rules, and the user's customization of the table. Rules are passed
-/// explicitly: installing them would reclassify for tests running alongside.
+/// Rules are passed explicitly: installing them would reclassify for tests running alongside.
 @Suite struct FileCategoryRulesTests {
     private func category(_ path: String, rules: FileCategoryRules = .builtIn) -> String {
         let node = makeTestFileNode(id: path, name: (path as NSString).lastPathComponent)

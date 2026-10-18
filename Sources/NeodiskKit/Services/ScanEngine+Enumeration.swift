@@ -1,8 +1,3 @@
-//
-//  ScanEngine+Enumeration.swift
-//  Neodisk
-//
-
 #if canImport(Darwin)
 import Darwin
 #elseif canImport(Glibc)
@@ -11,24 +6,14 @@ import Glibc
 import Dispatch
 import Foundation
 
-// Static directory-enumeration and partial/final tree-assembly helpers
-// extracted from ScanEngine.swift purely to keep each file a manageable size.
-// Every helper here is `static`, so none touches ScanEngine's instance state.
-//
-// `PartialSubtreeTotals` and the private helpers `uniqueNodesAfterDuplicateFound`,
-// `contentsOfLocalizedEnumerationFailures`, and `shouldFilterStartupVolumeInternals`
-// are used only by the methods moved here, so they move too and stay `private`
-// (file-scoped to this file) without any access-level change.
+// Static enumeration and tree-assembly helpers, split from ScanEngine.swift for size;
+// none touches instance state.
 extension ScanEngine {
-    /// Rolled-up subtree numbers for partial-tree nodes below the emission
-    /// depth — enough to aggregate sizes upward without materializing
-    /// records, URLs, or display names for the deep majority of the tree.
+    /// Enough to aggregate sizes upward without materializing records for the deep majority of the tree.
     struct PartialSubtreeTotals: Sendable {
         var allocatedSize: Int64 = 0
         var logicalSize: Int64 = 0
-        /// Contribution to the parent's descendant file count (1 for a
-        /// regular file, 0 for symlinks/synthetic nodes, the rolled-up
-        /// count for directories).
+        /// 1 for a regular file, 0 for symlinks and synthetic nodes, the rolled-up count for directories.
         var descendantFileCount = 0
         var isAccessible = true
         var cloudOnlyLogicalSize: Int64 = 0
@@ -56,11 +41,8 @@ extension ScanEngine {
         }
     }
 
-    /// Every key's subtree totals so far, kept up to date as results land
-    /// (each completion adds to its key and that key's ancestors, O(depth)),
-    /// so a partial build reads a depth-limit folder's running totals instead
-    /// of re-summing everything below it, and visits only the keys at the
-    /// display depth or above.
+    /// Each completion adds to its key and ancestors (O(depth)), so a partial build reads running totals
+    /// and visits only keys at the display depth or above.
     struct PartialTreeTotals {
         let maxDepth: Int
         private(set) var parentByKey: [Int32] = []
@@ -91,15 +73,8 @@ extension ScanEngine {
         }
     }
 
-    /// Assembles a best-effort tree from phase-1 state without consuming it.
-    /// Mirrors phase-2 assembly, but tolerates missing children (not yet
-    /// scanned), skips hard-link deduplication, and never throws. Directory
-    /// sizes therefore reflect only what has been visited so far.
-    ///
-    /// Only nodes at `maxDepth` or above are materialized as records; the
-    /// deep remainder contributes rolled-up totals to its ancestor at the
-    /// depth limit, so emission cost no longer grows with the whole scanned
-    /// tree.
+    /// Tolerates missing children, skips hard-link dedup and never throws. Below `maxDepth` nodes roll up into
+    /// their depth-limit ancestor, so emission cost doesn't grow with the whole scanned tree.
     nonisolated static func assemblePartialTree(
         completedByKey: [CompletedDirScan?],
         childrenKeysByKey: [[Int]],
@@ -117,9 +92,7 @@ extension ScanEngine {
             )
         }
 
-        // Children always have higher keys than their parents, so a reverse
-        // pass resolves every child before its parent needs it. Dense
-        // key-indexed arrays mirror the coordinator's phase-1 state.
+        // Children have higher keys than parents, so a reverse pass resolves each child before its parent.
         var resolvedNodeByKey = [FileNodeRecord?](repeating: nil, count: nextKey)
         var totalsByKey = [PartialSubtreeTotals?](repeating: nil, count: nextKey)
         var childrenByID: [String: [FileNodeRecord]] = [:]
@@ -213,11 +186,8 @@ extension ScanEngine {
         return FileTreeStore(root: root, childrenByID: childrenByID)
     }
 
-    /// `assemblePartialTree` over running totals: identical output, but it
-    /// visits only `runningTotals.shallowKeys`, reads each depth-limit
-    /// folder's totals instead of summing its subtree, and lays the records
-    /// straight into contiguous storage instead of the validating
-    /// dictionary-built store.
+    /// Same output as `assemblePartialTree`, but visits only the shallow keys and writes straight into
+    /// contiguous storage instead of the validating dictionary-built store.
     private nonisolated static func assemblePartialTree(
         completedByKey: [CompletedDirScan?],
         childrenKeysByKey: [[Int]],
@@ -438,9 +408,8 @@ extension ScanEngine {
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
-                // Fall through: the FileManager path owns error semantics
-                // (root enumeration failures become warnings upstream) and
-                // covers volumes where getattrlistbulk is unsupported.
+                // Fall through: the FileManager path owns error semantics and covers volumes without
+                // getattrlistbulk.
             }
         }
         var options: FileManager.DirectoryEnumerationOptions = [.skipsPackageDescendants, .skipsSubdirectoryDescendants]
@@ -501,9 +470,7 @@ extension ScanEngine {
         #endif
     }
 
-    /// Fast-path listing: one getattrlistbulk stream provides names and
-    /// metadata together, so no per-child resourceValues (classification)
-    /// stage is needed at all.
+    /// One getattrlistbulk stream gives names and metadata together, so no per-child resourceValues stage.
     nonisolated static func bulkDirectoryEntries(
         of url: URL,
         includeHiddenFiles: Bool,
@@ -517,14 +484,10 @@ extension ScanEngine {
         let enumerationStart = DispatchTime.now().uptimeNanoseconds
         #endif
         var entries: [DirectoryEntry] = []
-        // Normalize the parent path once per directory. The per-child exclusion
-        // and name gates then work on strings — `parent + "/" + name` — instead
-        // of rebuilding and re-standardizing a URL for every entry, and the URL
-        // itself is only constructed for entries that survive filtering.
+        // Per-child gates work on `parent + "/" + name` strings; a URL is built only for entries that survive.
         let normalizedParentPath = exclusionMatcher.scanPath(of: url)
-        // Node-id base: child path is `childBasePath + "/" + name`, byte-identical
-        // to `url.appending(path: name).path` without the per-entry URL work.
-        // Uses `url.path` (not standardized) so ids match the compatibility path.
+        // Byte-identical to `url.appending(path: name).path`. Uses `url.path`, not standardized, so ids match
+        // the compatibility path.
         let childBasePath = url.path
         func add(_ child: BulkDirectoryChild) {
             if !includeHiddenFiles && child.isHidden { return }
@@ -736,13 +699,8 @@ extension ScanEngine {
         behavior.excludesStartupVolumeInternals && ["/", "/System"].contains(parentURL.path)
     }
 
-    /// The absolute node-id path of a child given its parent's node-id base
-    /// path. One definition for every bulk enumerator (traversal, atomic
-    /// summary, and probe walks) so child ids stay byte-identical across them —
-    /// a drift would split one node into two. Root's children are `/name`,
-    /// everyone else's `parent/name`. Callers pass whichever base their id
-    /// scheme uses (`url.path` for the traversal, the standardized path for the
-    /// probe); the join is what must not vary.
+    /// Shared by every bulk enumerator so child ids stay byte-identical; a drift would split one node in two.
+    /// Callers pass their own id scheme's base; only the join must not vary.
     nonisolated static func nodeChildPath(parentPath: String, childName: String) -> String {
         parentPath == "/" ? "/" + childName : parentPath + "/" + childName
     }

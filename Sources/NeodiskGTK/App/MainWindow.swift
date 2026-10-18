@@ -1,14 +1,5 @@
-//
-//  MainWindow.swift
-//  NeodiskGTK
-//
-//  The window, in libadwaita's idiom: an overlay split view with the
-//  locations sidebar on the left and the workspace on the right. The
-//  workspace mirrors the Mac layout — visualization over the file outline,
-//  statistics on the right, status bar along the bottom — and so does its
-//  header bar: the scan title on the left, the three-way view switcher in
-//  the middle, scan controls and the statistics toggle on the right.
-//
+// libadwaita overlay split view: locations sidebar on the left, workspace on the right,
+// mirroring the Mac layout and header bar.
 
 import CGtk
 import Foundation
@@ -134,9 +125,7 @@ final class MainWindow {
         gtk_paned_set_shrink_end_child(ptr(vizPaned), gbool(false))
         gtk_paned_set_position(ptr(vizPaned), Int32(max(320, preferences.windowHeight - 380)))
 
-        // The statistics pane is a split-view sidebar on the trailing edge,
-        // so it slides in and out like the locations sidebar. Pinned: only
-        // the Statistics toggle shows or hides it, never a window resize.
+        // Pinned: only the Statistics toggle shows or hides it, never a window resize.
         statisticsSplit = raw(adw_overlay_split_view_new())!
         adw_overlay_split_view_set_sidebar_position(ptr(statisticsSplit), GTK_PACK_END)
         adw_overlay_split_view_set_content(ptr(statisticsSplit), ptr(vizPaned))
@@ -160,9 +149,8 @@ final class MainWindow {
         gtk_actionable_set_action_name(ptr(openButton), "win.open-folder")
         adw_status_page_set_child(ptr(emptyState), ptr(openButton))
 
-        // A saved scan decoding for display (about a second per million
-        // files): say so in the window, as the Mac does, rather than show
-        // an empty workspace.
+        // A saved scan decoding (about a second per million files) says so rather than showing an empty
+        // workspace.
         let spinner = raw(gtk_spinner_new())!
         gtk_spinner_start(ptr(spinner))
         gtk_widget_set_size_request(ptr(spinner), 32, 32)
@@ -206,9 +194,7 @@ final class MainWindow {
             g_value_unset(&value)
             adw_application_window_add_breakpoint(ptr(window), breakpoint)
         }
-        // Narrower still, the statistics pane floats over the map instead
-        // of taking room from it, and the secondary outline columns give
-        // way to the file names.
+        // Narrower still, statistics float over the map and secondary outline columns give way to names.
         if let condition = adw_breakpoint_condition_parse("max-width: 900sp") {
             let breakpoint = adw_breakpoint_new(condition)
             var collapsed = GValue()
@@ -257,9 +243,7 @@ final class MainWindow {
         return toggle
     }
 
-    /// The three center views, flattened for the switcher as on the Mac.
-    /// Picking a treemap writes both preferences; Sunburst leaves the
-    /// treemap style alone, so switching back restores it.
+    /// Sunburst leaves the treemap style alone, so switching back restores it.
     private enum ViewChoice {
         case cushion, flat, sunburst
     }

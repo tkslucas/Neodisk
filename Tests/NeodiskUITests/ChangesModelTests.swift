@@ -3,9 +3,7 @@ import Testing
 import NeodiskKit
 @testable import NeodiskUI
 
-/// The Changes tab's list model: gated on the same previous-snapshot
-/// availability as the diff toggle, computed from the cached predecessor,
-/// and invalidated when the predecessor rotates.
+/// Gated like the diff toggle, computed from the cached predecessor and invalidated when it rotates.
 @MainActor
 @Suite(.serialized) struct ChangesModelTests {
     @Test func testLoadsChangeListAgainstThePreviousSnapshot() async throws {

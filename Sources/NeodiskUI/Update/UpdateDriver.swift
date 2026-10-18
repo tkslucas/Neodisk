@@ -1,15 +1,5 @@
-//
-//  UpdateDriver.swift
-//  Neodisk
-//
-//  SPUUserDriver that routes update progress into the unobtrusive in-window
-//  indicator (UpdateViewModel) instead of Sparkle's dialog windows, in the
-//  spirit of Ghostty's UpdateDriver. When no main window can host the
-//  indicator, every step falls back to the wrapped SPUStandardUserDriver so
-//  flows are never invisible. First-launch permission prompts and the
-//  post-install acknowledgement always use the standard (Sparkle-localized)
-//  dialogs.
-//
+// Routes update progress into the in-window indicator instead of Sparkle's dialogs, falling back to the
+// standard driver when no window can host it. Permission prompts and post-install always use the standard ones.
 
 import AppKit
 import NeodiskKit
@@ -34,10 +24,8 @@ final class UpdateDriver: NSObject, SPUUserDriver {
         _ request: SPUUpdatePermissionRequest,
         reply: @escaping @Sendable (SUUpdatePermissionResponse) -> Void
     ) {
-        // Sparkle's own consent dialog (only shown when SUEnableAutomaticChecks
-        // is absent from Info.plist). Kept as a defensive fallback; Neodisk
-        // ships the key as true — checks are on by default and the Settings
-        // toggle is the opt-out. Installing always needs a user click.
+        // Shown only when SUEnableAutomaticChecks is absent from Info.plist; Neodisk ships it true, so this is
+        // a defensive fallback.
         standard.show(request, reply: reply)
     }
 

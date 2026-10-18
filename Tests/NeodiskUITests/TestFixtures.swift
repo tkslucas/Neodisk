@@ -3,20 +3,11 @@ import Testing
 import NeodiskKit
 @testable import NeodiskUI
 
-/// Serialized parent for the timing-sensitive scan suites. `.serialized` on an
-/// individual suite only serializes the tests WITHIN it — sibling suites still
-/// run concurrently, and the scan suites each spin real async scan tasks that
-/// then pile onto the main actor together and starve each other's
-/// eventual-state waits on a loaded test bundle. Nesting them here runs them
-/// serially relative to each other, which keeps those waits converging
-/// promptly. Lightweight suites stay top-level and parallel.
+/// `.serialized` only serializes tests within one suite; sibling scan suites otherwise pile onto the main actor
+/// and starve each other's waits. Lightweight suites stay top-level and parallel.
 @Suite(.serialized) enum ScanTimingSuites {}
 
-/// Tears down a per-test UserDefaults suite without leaving a plist behind.
-/// removePersistentDomain alone is not enough: cfprefsd answers it by
-/// persisting an *empty* domain, so every test run used to leave another
-/// `<SuiteName>-<UUID>.plist` in ~/Library/Preferences. Flush, then delete
-/// the backing file too.
+/// removePersistentDomain alone makes cfprefsd persist an empty domain, leaving a plist per run; delete the file.
 func removeTestDefaultsSuite(_ defaults: UserDefaults, named suiteName: String) {
     defaults.removePersistentDomain(forName: suiteName)
     defaults.synchronize()
@@ -107,9 +98,7 @@ struct ControlledScanRequest {
     let options: ScanOptions
 }
 
-/// Hand-driven ScanEventStreaming fake shared by the coordinator and view
-/// model suites: tests yield events per scan index instead of scanning disk,
-/// and can assert the requests made and stream terminations observed.
+/// Tests yield events per scan index instead of scanning disk.
 final class ControlledScanService: ScanEventStreaming, @unchecked Sendable {
     private typealias Continuation = AsyncThrowingStream<ScanProgressEvent, Error>.Continuation
 
@@ -170,10 +159,7 @@ final class ControlledScanService: ScanEventStreaming, @unchecked Sendable {
 
 // MARK: - Driving the coordinator directly
 
-/// Builds a scan session bound to a coordinator and wires its hooks exactly as
-/// ScanSessionModel does, so coordinator-only tests drive the display through
-/// the same path production does. The single construction point for the
-/// coordinator suites since `attach`/`detach` replaced the scan wrappers.
+/// Wires hooks exactly as ScanSessionModel does, so coordinator tests drive the display the production way.
 @MainActor
 private func makeCoordinatorSession(
     _ coordinator: ScanCoordinator,
@@ -250,12 +236,8 @@ func attachRefreshScan(
 
 // MARK: - Deterministic persistence await
 
-/// Runs `trigger` (which finishes a scan) and suspends until that scan's
-/// snapshot has been fully persisted, using the model's persist seam rather
-/// than a wall-clock poll. A background scan's completion is a low-urgency
-/// main-actor task that can starve arbitrarily long under the parallel test
-/// bundle; awaiting the seam has no deadline to miss, so the assertion that
-/// follows is deterministic regardless of machine load.
+/// Awaits the persist seam instead of polling: a background completion can starve arbitrarily long under the
+/// parallel bundle, and the seam has no deadline to miss.
 @MainActor
 func awaitSnapshotPersist(
     on model: NeodiskViewModel,
@@ -275,16 +257,7 @@ func awaitSnapshotPersist(
 
 // MARK: - Eventual-state assertions
 
-/// Polls until the condition holds, recording a test failure on timeout.
-/// The async-condition form; the sync overload below forwards here.
-///
-/// The default timeout has a little slack because the bundle still runs many
-/// suites in parallel: a poll that converges in milliseconds in isolation can
-/// wait longer when the main actor is momentarily congested. Waiting costs
-/// nothing on the happy path (the poll returns the instant the condition
-/// holds) — it only bounds how long a genuinely stuck condition takes to fail.
-/// The timing-sensitive scan suites additionally run serially as a group (see
-/// ScanTimingSuites) so their async scan tasks do not starve these waits.
+/// The default timeout has slack because the bundle runs suites in parallel; it costs nothing on the happy path.
 @MainActor
 func waitUntilAsync(
     _ description: String,

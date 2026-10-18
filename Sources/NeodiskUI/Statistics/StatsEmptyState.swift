@@ -1,12 +1,4 @@
-//
-//  StatsEmptyState.swift
-//  Neodisk
-//
-//  The centered empty / idle / error state shared by the stats tabs: an SF
-//  Symbol over an optional bold title and a secondary message, with an
-//  optional action button. Callers pass `Text` so each controls its own
-//  localization (literal keys vs. already-formatted strings).
-//
+// Callers pass `Text` so each controls its own localization.
 
 import SwiftUI
 

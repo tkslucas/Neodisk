@@ -1,12 +1,3 @@
-//
-//  SunburstColorResolver.swift
-//  Neodisk
-//
-//  The SwiftUI Color layer over SunburstCore's pure midpoint-hue math: turns
-//  a color token (or an arbitrary node's branch color, for the status-bar
-//  swatch) into a Color. The HSB/RGB math lives in SunburstCore.
-//
-
 import SwiftUI
 import NeodiskKit
 import SunburstCore
@@ -26,15 +17,8 @@ extension SunburstColorResolver {
         components(for: token, palette: palette.sunburst).color
     }
 
-    /// The color the sunburst's branch mode draws an arbitrary node with —
-    /// the status-bar swatch must agree with the chart. The token derives
-    /// from the node's global color coordinate (scan-root anchored, so the
-    /// swatch never changes when the view drills). `includingCloudOnly`
-    /// must match the chart's weighting — it moves every interval.
-    /// `branchTintedFiles` selects the flat treemap's file treatment (the
-    /// full folder formula — a treemap's area is mostly file tiles, gray
-    /// would wash it out); the sunburst keeps its file gray. Loose
-    /// scan-root files gray in both (no family of their own).
+    /// Scan-root anchored so the status-bar swatch agrees with the chart and never changes on drill.
+    /// `branchTintedFiles` tints files for the flat treemap, where gray would wash out the mostly-file area.
     nonisolated static func branchColor(
         forNodeID nodeID: String,
         in treeStore: FileTreeStore,

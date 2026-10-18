@@ -1,13 +1,6 @@
-//
-//  FileTreeStore+Query.swift
-//  Neodisk
-//
-
 import Foundation
 
-// Read/query API extracted from FileTreeStore.swift purely to keep each file a
-// manageable size. Every method here reads only `storage` (internal) and the
-// public `rootID`/`root`, so the split needs no access-level changes.
+// Split out of FileTreeStore.swift for size; it reads only `storage` and `root`, so no access changes.
 extension FileTreeStore {
     public nonisolated func node(id: String?) -> FileNodeRecord? {
         guard let id, let index = storage.index(of: id) else { return nil }

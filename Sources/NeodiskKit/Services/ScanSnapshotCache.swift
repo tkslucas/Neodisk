@@ -1,23 +1,5 @@
-//
-//  ScanSnapshotCache.swift
-//  Neodisk
-//
-//  Persists the latest completed scan per location so reopening it shows the
-//  previous results instantly while a background rescan refreshes them.
-//
-//  Each target keeps its latest scan (<hash>.ndscan) plus the one before it
-//  (<hash>.prev.ndscan, rotated on save — the basis for "what grew since
-//  last scan" diffs; a save whose tree content matches the latest skips the
-//  rotation, so an unchanged rescan keeps the older baseline instead of
-//  making the diff empty) in ~/Library/Application Support/Neodisk/ScanCache/,
-//  named by a hash of the target path (the app runs unbundled, so the
-//  directory is created explicitly rather than derived from a bundle
-//  identifier). The format is versioned; corrupt or old-version files are
-//  deleted on read and treated as cache misses. Heavy encode/decode work
-//  runs detached off the actor; a snapshot whose save is still encoding
-//  stays readable from memory (`savingByTargetID`), so a load can never
-//  miss a scan that already finished.
-//
+// Keeps the latest and previous scan per location; an unchanged rescan skips the rotation so diffs never go empty.
+// Heavy encode/decode runs detached so the actor stays free; slot mutations never suspend, so readers see whole states.
 
 #if canImport(CryptoKit)
 import CryptoKit
@@ -46,9 +28,7 @@ public struct CachedScanInfo: Sendable {
     public let hasPreviousSnapshot: Bool
     /// On-disk bytes of the cached scan's root, for sidebar summaries.
     public let totalAllocatedSize: Int64
-    /// Cloud-only (dataless) bytes below the cached scan's root; 0 for
-    /// scans without cloud content and for caches written before the field
-    /// existed.
+    /// Dataless bytes below the root; 0 for caches written before the field existed.
     public let cloudOnlyLogicalSize: Int64
 
     public init(
@@ -68,25 +48,12 @@ public struct CachedScanInfo: Sendable {
     }
 }
 
-/// What a save did to the cache slots: whether the prior latest rotated
-/// into the previous slot, and whether a previous snapshot exists at all
-/// afterwards (the truth behind `CachedScanInfo.hasPreviousSnapshot`).
+/// Whether a save rotated the prior latest into the previous slot, and whether a previous slot exists afterwards.
 public struct SnapshotSaveOutcome: Sendable {
     public let rotatedPrevious: Bool
     public let hasPreviousSnapshot: Bool
 }
 
-/// Concurrency contract: the actor serializes *file-slot* operations, but
-/// heavy CPU work (encode, decode, content digest — seconds for a
-/// multi-million-node volume) runs detached behind an `await`, so the actor
-/// stays free to serve other targets meanwhile. Switching to a cached
-/// location while another location's save is in flight must display in
-/// decode-time, not queue-time. Every file mutation happens inside one
-/// synchronous (suspension-free) section, so interleaved readers only ever
-/// observe complete slot states. Absence is a state too: a snapshot handed
-/// to `save` is readable from memory until its bytes land, so a load
-/// interleaving with an in-flight save gets the finished scan, never a miss
-/// (first save) or the older file's stale bytes.
 /// Compact comparison shared by persistence and both changes views. Holds no trees.
 public final class PreparedScanComparison: Sendable {
     public let baseline: ScanSizeBaseline
@@ -99,10 +66,8 @@ public final class PreparedScanComparison: Sendable {
 }
 
 public actor ScanSnapshotCache {
-    /// v3 adds the cloud-only bit (files) and cloudOnlyLogicalSize payload
-    /// (directories); older builds reject v3 files cleanly as
-    /// unsupportedVersion and rescan. v5 adds summarized directories'
-    /// clone families.
+    /// v3 adds cloud-only bits and sizes, v5 summarized directories' clone families; older builds reject
+    /// newer files as unsupportedVersion and rescan.
     static let currentFormatVersion: UInt32 = 5
     static let oldestReadableFormatVersion: UInt32 = 1
     private static let magic: UInt32 = 0x4E44_5343 // "NDSC"
@@ -115,10 +80,8 @@ public actor ScanSnapshotCache {
     private let directoryURL: URL
     private let isLoggingEnabled: Bool
 
-    /// Snapshots whose save is still encoding off the actor, readable by
-    /// `loadSnapshot` so a finished scan is never invisible mid-save. The
-    /// entry also gates the save's write: a removal or a newer save of the
-    /// same target while the encode ran means the stale bytes are dropped.
+    /// Saves still encoding off the actor, so a finished scan is never invisible mid-save. Also gates the
+    /// write: a removal or newer save while the encode ran drops the stale bytes.
     private var savingByTargetID: [String: ScanSnapshot] = [:]
     private struct ComparisonBuild {
         let id: UUID
@@ -139,9 +102,7 @@ public actor ScanSnapshotCache {
     }
 
     public nonisolated static var defaultDirectoryURL: URL {
-        // Dev/bench hook: NEODISK_SNAPSHOT_DIR isolates the on-disk snapshot
-        // cache so a bench run never reads or clobbers the developer's real
-        // cache (and a rescan bench can seed a clean baseline it controls).
+        // NEODISK_SNAPSHOT_DIR isolates benches from the developer's real cache.
         if let override = ProcessInfo.processInfo.environment["NEODISK_SNAPSHOT_DIR"] {
             return URL(filePath: override, directoryHint: .isDirectory)
         }
@@ -162,14 +123,8 @@ public actor ScanSnapshotCache {
 
     // MARK: - Public API
 
-    /// Persists a completed snapshot as the latest cached scan for its
-    /// target. The prior latest file (if any) rotates to the "previous"
-    /// slot, so the last two *different* scans per location are available
-    /// for diffing; anything older is dropped. A snapshot whose tree
-    /// content matches the current latest still becomes the latest (fresh
-    /// scan date and duration) but skips the rotation — rotating an
-    /// identical tree would make every diff empty and destroy the baseline
-    /// the rescan was meant to be compared against.
+    /// Saves a complete snapshot as the latest; the prior latest rotates to "previous" unless its tree content
+    /// matches, since rotating an identical tree would make every diff empty.
     @discardableResult
     public func save(_ snapshot: ScanSnapshot) async throws -> SnapshotSaveOutcome {
         guard snapshot.isComplete else {
@@ -187,9 +142,8 @@ public actor ScanSnapshotCache {
                 savingByTargetID.removeValue(forKey: targetID)
             }
         }
-        // Digest + encode off the actor: loads must not wait behind this —
-        // other targets decode meanwhile, and this target is served from
-        // `savingByTargetID`.
+        // Off the actor so loads of other targets don't queue behind it; this target is served from
+        // `savingByTargetID` meanwhile.
         let gate = encodeGateForTesting
         let (digest, data) = try await Task.detached {
             await gate?()
@@ -206,10 +160,8 @@ public actor ScanSnapshotCache {
         }.cancellableValue
         try Task.checkCancellation()
         guard savingByTargetID[targetID]?.id == snapshot.id else {
-            // While the encode was detached, this target's slots were
-            // removed (Settings → clear) or claimed by a newer save;
-            // writing now would resurrect stale bytes. Report the slots
-            // as they are.
+            // The slots were removed or claimed by a newer save during the encode; writing would
+            // resurrect stale bytes.
             return SnapshotSaveOutcome(
                 rotatedPrevious: false,
                 hasPreviousSnapshot: FileManager.default.fileExists(
@@ -243,10 +195,7 @@ public actor ScanSnapshotCache {
         )
     }
 
-    /// True when the latest cache file records the same change-significant
-    /// tree content (and target — filename hash collisions never match).
-    /// Header-only read; files from before the digest existed, or ones that
-    /// fail to read, never match and rotate as before.
+    /// Header-only read; files from before the digest existed never match and rotate as before.
     private func latestMatches(digest: String, targetID: String, at url: URL) -> Bool {
         guard let metadata = try? ScanSnapshotCodec.readMetadata(fromFileAt: url) else {
             return false
@@ -254,22 +203,15 @@ public actor ScanSnapshotCache {
         return metadata.targetPath == targetID && metadata.changeDigest == digest
     }
 
-    /// Returns the cached snapshot for a target, or nil when there is none.
-    /// Unreadable files (corruption, old format versions) are deleted so they
-    /// never fail twice.
+    /// Unreadable files (corruption, old versions) are deleted so they never fail twice.
     public func loadSnapshot(for target: ScanTarget) async -> ScanSnapshot? {
-        // A save still encoding holds the freshest complete scan of this
-        // target in memory; serving it beats both missing it (first save:
-        // no file on disk yet) and decoding the older file's stale bytes.
+        // An in-flight save is fresher than any file (and the only copy on a first save).
         if let saving = savingByTargetID[target.id] {
             return saving
         }
         return await loadSnapshot(for: target, at: fileURL(forTargetID: target.id))
     }
 
-    /// Returns the rotated previous snapshot for a target — the scan before
-    /// the one `loadSnapshot` returns — or nil when the target has only been
-    /// scanned once.
     public func loadPreviousSnapshot(for target: ScanTarget) async -> ScanSnapshot? {
         await loadSnapshot(for: target, at: previousFileURL(forTargetID: target.id))
     }
@@ -303,9 +245,7 @@ public actor ScanSnapshotCache {
             return nil
         } catch {
             log("discarding unreadable snapshot for \(target.id): \(error)", level: .warning)
-            // The decode ran unisolated; a save may have replaced the file
-            // meanwhile, and the corruption verdict only applies to the
-            // bytes read — never delete a newer file.
+            // The decode ran unisolated; only delete if the file is still the bytes we read.
             if let current = fileSignature(at: url),
                signatureAtRead?.size == current.size,
                signatureAtRead?.modified == current.modified {
@@ -315,11 +255,8 @@ public actor ScanSnapshotCache {
         }
     }
 
-    /// Deletes cache entries whose target is no longer in the sidebar and
-    /// returns what the cache knows about each surviving target. Called once
-    /// at launch. Metadata comes from the latest snapshot only; previous
-    /// snapshots contribute the `hasPreviousSnapshot` bit and are dropped
-    /// when orphaned (target removed, or their latest file is gone).
+    /// Called once at launch: deletes entries for targets no longer in the sidebar and orphaned previous
+    /// snapshots, and returns what the cache knows about the rest.
     public func pruneAndIndex(keepingTargetIDs validTargetIDs: Set<String>) -> [String: CachedScanInfo] {
         var latestMetadataByPath: [String: ScanSnapshotCodec.Metadata] = [:]
         var previousTargetPaths: Set<String> = []
@@ -348,9 +285,7 @@ public actor ScanSnapshotCache {
             }
         }
 
-        // A previous snapshot without its latest counterpart (the latest was
-        // corrupt and deleted, or an old app version left it behind) is
-        // unreachable for diffing — drop it.
+        // A previous snapshot without its latest can never be diffed.
         for (basename, url) in previousURLsByBasename where !latestBasenames.contains(basename) {
             log("pruning orphaned previous snapshot \(url.lastPathComponent)")
             try? FileManager.default.removeItem(at: url)
@@ -388,10 +323,8 @@ public actor ScanSnapshotCache {
 
     // MARK: - Auxiliary data
 
-    /// Opaque per-target payload stored alongside the latest snapshot (the
-    /// UI keeps derived data like kind statistics here so restoring a
-    /// snapshot doesn't recompute them). Removed and pruned with the
-    /// snapshot; content and staleness checks are the caller's business.
+    /// Opaque per-target payload (e.g. kind statistics) removed and pruned with the snapshot; staleness
+    /// checks are the caller's business.
     public func saveAuxiliaryData(_ data: Data, forTargetID targetID: String) {
         writeSlotData(data, to: auxiliaryFileURL(forTargetID: targetID))
     }
@@ -402,9 +335,7 @@ public actor ScanSnapshotCache {
 
     // MARK: - Cached change list (`.nddiff` slot)
 
-    /// The content-stable key for a target's cached diff: the identity of the
-    /// current and rotated-previous snapshot files plus the entry limit. Nil
-    /// when either snapshot file is missing (nothing to diff yet).
+    /// Identity of the latest and previous snapshot files plus the entry limit; nil when either is missing.
     public func changeListCacheKey(
         forTargetID targetID: String,
         entryLimit: Int
@@ -422,9 +353,7 @@ public actor ScanSnapshotCache {
         )
     }
 
-    /// Decode the predecessor once for sidecar persistence, outline deltas,
-    /// and the Changes tab. Concurrent callers share work, and later callers
-    /// reuse only the compact result. Slot changes cancel obsolete builds.
+    /// Decodes the predecessor once; concurrent callers share the work and slot changes cancel obsolete builds.
     public func comparison(for snapshot: ScanSnapshot, entryLimit: Int) async -> PreparedScanComparison? {
         let targetID = snapshot.target.id
         guard snapshot.isComplete, snapshot.source.isPersistable,
@@ -485,9 +414,7 @@ public actor ScanSnapshotCache {
         if preparedComparison?.targetID == targetID { preparedComparison = nil }
     }
 
-    /// Returns the persisted change list for a target only when it is still
-    /// valid for the current snapshot files (same identity, entry limit, and
-    /// diff format); otherwise nil so the caller recomputes.
+    /// Nil unless still valid for the current snapshot files, entry limit and diff format.
     public func loadChangeList(
         forTargetID targetID: String,
         entryLimit: Int
@@ -519,9 +446,7 @@ public actor ScanSnapshotCache {
 
     // MARK: - Cached duplicate results (`.nddup` slot)
 
-    /// The content-stable key for a target's cached duplicate result: the
-    /// identity of the current snapshot file plus the minimum file size the
-    /// scan used. Nil when the snapshot file is missing (nothing scanned yet).
+    /// Identity of the current snapshot file plus the scan's minimum file size; nil when it's missing.
     public func duplicateResultsCacheKey(
         forTargetID targetID: String,
         minimumFileSize: Int64
@@ -536,9 +461,7 @@ public actor ScanSnapshotCache {
         )
     }
 
-    /// Returns the persisted duplicate result for a target only when it is
-    /// still valid for the current snapshot file (same identity, minimum file
-    /// size, and duplicate format); otherwise nil so the caller can re-hash.
+    /// Nil unless still valid for the current snapshot file, minimum size and duplicate format.
     public func loadDuplicateResults(
         forTargetID targetID: String,
         minimumFileSize: Int64
@@ -570,11 +493,8 @@ public actor ScanSnapshotCache {
 
     // MARK: - Cached per-file content hashes (`.ndhash`, one shared file)
 
-    /// Loads the per-file hash cache the duplicate finder consults to skip
-    /// re-reading unchanged files. Always returns a usable cache — missing
-    /// or unreadable just starts empty. One shared file, not a per-target
-    /// slot: entries are validated per file (size + mtime + inode), so any
-    /// target's scan can reuse them.
+    /// One shared file, not a per-target slot: entries are validated per file (size, mtime, inode), so any
+    /// target's scan can reuse them. Missing or unreadable starts empty.
     public func loadDuplicateHashCache() -> DuplicateHashCache {
         guard let data = try? Data(contentsOf: duplicateHashCacheFileURL()) else {
             return DuplicateHashCache()
@@ -589,9 +509,7 @@ public actor ScanSnapshotCache {
         writeSlotData(data, to: duplicateHashCacheFileURL())
     }
 
-    /// Best-effort atomic write shared by every cache slot: ensures the
-    /// cache directory exists, then writes or silently drops the payload
-    /// (a failed slot write is a cache miss on the next read, never an error).
+    /// A failed slot write is just a cache miss on the next read, never an error.
     private func writeSlotData(_ data: Data, to url: URL) {
         do {
             try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)

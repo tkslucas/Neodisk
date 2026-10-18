@@ -1,8 +1,3 @@
-//
-//  AtomicDirectorySummaryProbe.swift
-//  Neodisk
-//
-
 import Foundation
 
 extension AtomicDirectorySummarizer {
@@ -83,10 +78,7 @@ extension AtomicDirectorySummarizer {
         return (sampleTotalSize / Int64(sampleFileCount)) <= maxAverageFileSize
     }
 
-    /// Depth-first bulk-read probe with the same sampling budget and early
-    /// exits as the FileManager variant below. Only reached when bulk
-    /// enumeration is enabled; per-directory failures skip that directory,
-    /// matching the FileManager errorHandler that always continues.
+    /// Same budget and early exits as the FileManager variant; per-directory failures skip that directory.
     private nonisolated func bulkDescendantAtomicProbeProfile(
         at url: URL,
         rootEntries: [DirectoryEntry]?,
@@ -123,9 +115,7 @@ extension AtomicDirectorySummarizer {
             : max(1_000, minFileCount)
 
         var directoryStack: [URL] = [url]
-        // The root's listing is the one traversal just read (already through
-        // the hidden and exclusion gates the loop below applies); reading the
-        // folder again cost a second full listing of every probed folder.
+        // Reuses the listing traversal just read; reading again cost a second full listing per probed folder.
         var rootChildren = rootEntries?.map { entry in
             BulkDirectoryChild(
                 name: entry.name,

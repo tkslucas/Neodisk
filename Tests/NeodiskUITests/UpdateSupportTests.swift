@@ -44,9 +44,7 @@ import Testing
     }
 
     @Test func mainBundleGateMatchesComponents() {
-        // Under `swift test` the host bundle has no SUFeedURL (and typically
-        // no meaningful identity for updating), so the live gate must agree
-        // with the component gate and, crucially, never trap.
+        // The `swift test` host bundle has no SUFeedURL, so the live gate must agree and never trap.
         let expected = UpdateSupport.isSupported(
             bundleIdentifier: Bundle.main.bundleIdentifier,
             feedURLString: Bundle.main.object(forInfoDictionaryKey: UpdateSupport.feedURLKey) as? String

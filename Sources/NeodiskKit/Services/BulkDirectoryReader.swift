@@ -1,15 +1,5 @@
-//
-//  BulkDirectoryReader.swift
-//  Neodisk
-//
-//  One getattrlistbulk(2) loop returns every child of a directory together
-//  with the metadata the scanner needs (type, sizes, mod date, link count,
-//  inode, flags, readability) — replacing the FileManager enumerator plus a
-//  per-child resourceValues() call, i.e. one syscall per ~few-hundred entries
-//  instead of several syscalls per entry. Read-only by construction: the only
-//  operations are open(O_RDONLY), getattrlistbulk, an exotic-filesystem-only
-//  fstat fallback, and close.
-//
+// One getattrlistbulk(2) loop returns every child with the metadata the scanner needs, one syscall per few
+// hundred entries. Read-only: open(O_RDONLY), getattrlistbulk, a rare fstat fallback, close.
 
 #if canImport(Darwin)
 import Darwin
@@ -31,10 +21,8 @@ nonisolated struct BulkDirectoryChild: Sendable {
     /// Hidden by dot-name, UF_HIDDEN flag, or the Finder invisible bit —
     /// mirrors FileManager's `.skipsHiddenFiles` classification.
     let isHidden: Bool
-    /// The child's device from ATTR_CMN_DEVID. This is intentionally kept
-    /// separate from the selectively persisted FileIdentity: mount-boundary
-    /// decisions need it for every directory, while small ordinary files
-    /// still avoid carrying identity in snapshots.
+    /// Kept apart from FileIdentity: mount-boundary checks need it for every directory, while small files
+    /// still avoid persisting identity.
     let deviceID: UInt64?
     /// ATTR_DIR_MOUNTSTATUS for directories; zero when the filesystem omits
     /// the attribute or for non-directories.
@@ -49,10 +37,8 @@ nonisolated enum BulkDirectoryReadError: Error {
 }
 
 nonisolated enum BulkDirectoryReader {
-    /// Mutable getattrlistbulk storage. A context must never be used by two
-    /// reads concurrently; scanner I/O workers and `ContextPool` enforce that
-    /// ownership explicitly instead of relying on Swift tasks staying on one
-    /// OS thread.
+    /// Never use from two reads at once; workers and `ContextPool` enforce ownership explicitly instead of
+    /// relying on tasks staying on one OS thread.
     final class Context: @unchecked Sendable {
         static let bufferSize = 16 * 1024
         fileprivate let buffer = UnsafeMutableRawPointer.allocate(
@@ -122,9 +108,7 @@ nonisolated enum BulkDirectoryReader {
 
     private static let compatibilityContextPool = ContextPool(maximumContextCount: 48)
 
-    /// Reads all children of `url` in getattrlistbulk batches.
-    /// Throws on any failure — callers fall back to the FileManager path so
-    /// exotic volumes and permission errors keep their existing semantics.
+    /// Throws on any failure; callers fall back to FileManager so exotic volumes keep their semantics.
     static func children(
         ofDirectory url: URL,
         category: ScanSyscallCategory = .other,
@@ -145,9 +129,7 @@ nonisolated enum BulkDirectoryReader {
     }
 
     #if canImport(Darwin)
-    /// Streams decoded records to `onChild`, avoiding the complete
-    /// `[BulkDirectoryChild]` allocation on the scan hot path. The callback is
-    /// synchronous and executes while `context` is exclusively borrowed.
+    /// Streams records to avoid the full array on the hot path; `onChild` runs while `context` is borrowed.
     @discardableResult
     static func readChildren(
         ofDirectory url: URL,
@@ -169,16 +151,8 @@ nonisolated enum BulkDirectoryReader {
         }
     }
 
-    /// Directory reads in the kernel at once, across traversal, probes and
-    /// summaries. A machine kept fully busy starves the system daemons that
-    /// vouch for app-container access until their five-second timeout (C
-    /// walks on the M4: 8 threads beside a 1-thread container walk stalled it
-    /// in 4 of 6 runs, 6 + 2 threads in 0 of 6), and past ~8 readers
-    /// getattrlistbulk only contends with itself. `~`, interleaved: on the
-    /// 10-core M4, 8 slots 13.7 s median with 2 of 6 runs stalled up to 17.4 s,
-    /// 7 slots 13.8 s with none (worst 14.2 s), 6 slots 14.4 s; on the 8-core
-    /// M1, 7 and 8 slots tie (8.2 s), 5 slots 8.7 s.
-    /// `NEODISK_SCAN_READ_SLOTS=<n>` overrides it.
+    /// Kernel directory reads at once. A saturated machine starves the daemons that vouch for app-container
+    /// access until they time out, and past ~8 readers getattrlistbulk contends with itself.
     static let readSlotCount: Int = ProcessInfo.processInfo.environment["NEODISK_SCAN_READ_SLOTS"]
         .flatMap(Int.init).map { max(1, $0) }
         ?? min(7, max(2, ProcessInfo.processInfo.activeProcessorCount - 1))
@@ -193,9 +167,7 @@ nonisolated enum BulkDirectoryReader {
     ) throws -> Int {
         try cancellationCheck()
 
-        // Never trigger downloads of dataless (cloud-evicted) files while
-        // enumerating. Thread-scoped and cheap; cooperative-pool threads are
-        // reused, so keep re-asserting rather than assuming a prior call.
+        // Never download dataless files while enumerating. Thread-scoped, and pool threads get reused.
         _ = setiopolicy_np(
             IOPOL_TYPE_VFS_MATERIALIZE_DATALESS_FILES,
             IOPOL_SCOPE_THREAD,
@@ -257,10 +229,7 @@ nonisolated enum BulkDirectoryReader {
         request.commonattr = commonAttributes
         request.dirattr = directoryAttributes
         request.fileattr = fileAttributes
-        // With FSOPT_ATTR_CMN_EXTENDED the forkattr field carries the
-        // common-extended attributes (we request no real fork attributes):
-        // clone-family identity, so shared-block files can be deduplicated.
-        // Filesystems without clone tracking simply omit them per entry.
+        // With FSOPT_ATTR_CMN_EXTENDED, forkattr carries clone-family attributes (no real fork attributes).
         request.forkattr = RequestedAttributes.cloneID | RequestedAttributes.cloneRefCount
 
         var emittedCount = 0
@@ -382,11 +351,8 @@ nonisolated enum BulkDirectoryReader {
 
     // MARK: - Entry parsing
 
-    /// Attribute buffer layout (man getattrlist): each entry starts with a
-    /// u32 total length, then the requested attributes packed in ascending
-    /// attribute-bit order on 4-byte boundaries. Two special cases:
-    /// ATTR_CMN_RETURNED_ATTRS is always first, and ATTR_CMN_ERROR — when
-    /// present — is packed immediately after it, before everything else.
+    /// Entries pack attributes in ascending bit order on 4-byte boundaries, except RETURNED_ATTRS comes
+    /// first and ERROR, when present, right after it.
     private static func parseEntry(
         at entryStart: UnsafeMutableRawPointer,
         directoryFD: Int32,
@@ -530,9 +496,7 @@ nonisolated enum BulkDirectoryReader {
                 || PackageExtensionCatalog.shared.isPackageName(name)
         )
 
-        // Match the URLResourceValues-based loader: readable unless the
-        // kernel-computed user access says otherwise; directories carry no
-        // sizes of their own (their totals come from children).
+        // Matches the URLResourceValues loader; directory sizes come from their children.
         let isReadable = userAccess.map { $0 & UInt32(R_OK) != 0 } ?? true
         let fileLogicalSize = isDirectory ? 0 : logicalSize
         let fileAllocatedSize = isDirectory ? 0 : (allocatedSize ?? logicalSize)
@@ -541,13 +505,8 @@ nonisolated enum BulkDirectoryReader {
             cachedDevice: &fallbackDirectoryDevice,
             didProbe: &didProbeFallbackDirectoryDevice
         ) ?? 0
-        // Identity feeds hard-link deduplication (multi-link files) and
-        // rename detection in scan diffs (directories and files big enough
-        // to matter — see ScanSizeBaseline.renameTrackingMinimumFileSize).
-        // The device+inode pair is already in the bulk attribute buffer, so
-        // capturing it costs no extra syscalls, only the ~17 bytes it adds
-        // to each identity-bearing node in persisted snapshots — which is
-        // why small single-link files skip it.
+        // For hard-link dedup and rename detection; free from the bulk buffer, but it adds ~17 bytes per
+        // persisted node, so small single-link files skip it.
         let capturesIdentity = !isSymbolicLink && (
             isDirectory
                 || linkCount > 1
@@ -556,17 +515,8 @@ nonisolated enum BulkDirectoryReader {
         let fileIdentity: FileIdentity? = capturesIdentity
             ? .fileSystem(device: device, inode: inode)
             : nil
-        // Clone-family membership matters only when blocks are actually
-        // shared (refCount > 1), so the non-cloned majority carries nothing.
-        // A clone family member's private (unshared) size is 0: files share a
-        // clone ID only while their data is identical, and any write to one
-        // gives it a new ID with a reference count of 1, taking it out of the
-        // family (checked: overwrite, truncate and hole punch all do; xattrs
-        // don't touch data). ATTR_CMNEXT_PRIVATESIZE agreed on every one of
-        // 511k members on two Macs' whole disks, so traversal records 0
-        // instead of one getattrlistat per member (~1.2 s of a home-folder
-        // scan). NEODISK_SCAN_VERIFY_CLONES=1 reads it anyway and counts
-        // disagreements.
+        // A clone member's private size is 0, since any write gives it a new clone ID (verified on 511k members);
+        // skipping per-member getattrlistat saves ~1.2 s. NEODISK_SCAN_VERIFY_CLONES=1 checks it.
         let cloneInfo: CloneInfo? = !isDirectory && !isSymbolicLink
             && cloneRefCount > 1
             ? cloneID.map {
@@ -604,9 +554,7 @@ nonisolated enum BulkDirectoryReader {
         )
     }
 
-    /// Most filesystems return ATTR_CMN_DEVID for every record, eliminating
-    /// the old unconditional fstat. If an exotic implementation omits it,
-    /// retain correct hard-link/clone identity with one lazy directory fstat.
+    /// Only for filesystems that omit ATTR_CMN_DEVID: one lazy directory fstat.
     private static func fallbackDevice(
         directoryFD: Int32,
         cachedDevice: inout UInt64?,
@@ -658,9 +606,7 @@ nonisolated final class PackageExtensionCatalog: @unchecked Sendable {
         lock.unlock()
 
         #if canImport(UniformTypeIdentifiers)
-        // The plain UTType(filenameExtension:) lookup resolves to *file*
-        // types (e.g. "app" → com.apple.application-file); constraining the
-        // lookup to directory types is what matches isPackageKey semantics.
+        // Plain extension lookup resolves to file types ("app" is application-file); directory types match.
         let directoryType = UTType(
             tag: filenameExtension,
             tagClass: .filenameExtension,

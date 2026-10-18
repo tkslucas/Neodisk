@@ -1,13 +1,5 @@
-//
-//  ScanSessionModel.swift
-//  Neodisk
-//
-//  The scan lifecycle around the snapshot cache: startScan's branch choice
-//  (restore / refresh-behind-the-map / live scan), the auto-rescan policy and
-//  its notice, the cache index the sidebar reads, and persisting finished
-//  scans with their kind-stats and change-list sidecars. Owned by
-//  NeodiskViewModel as `model.session`.
-//
+// The scan lifecycle around the snapshot cache: startScan's restore / refresh / live choice, auto-rescan,
+// the sidebar's cache index and persisting finished scans with their sidecars.
 
 import Foundation
 import Observation
@@ -17,9 +9,7 @@ import NeodiskAppModel
 @MainActor
 @Observable
 final class ScanSessionModel {
-    /// What the snapshot cache holds per target path: which locations open
-    /// instantly from cache, the sidebar's "Scanned … ago" subtitles, and
-    /// how long the last scan took (whether a rescan should auto-start).
+    /// Per target path: what opens instantly from cache, "Scanned … ago", and the last scan's duration.
     private(set) var cachedScanInfo: [String: CachedScanInfo] = [:]
     /// Shown while a cached snapshot stands in for a skipped auto-rescan:
     /// the floating notice offering the rescan the app didn't start.
@@ -29,21 +19,16 @@ final class ScanSessionModel {
     /// scan the app stopped for it — a passive strip mention, dismissable.
     var supersededScanNotice: SupersededScanNotice?
 
-    /// Running scans that are NOT the one on screen, keyed by target id — the
-    /// background scans a navigate-away demotion left running. The foreground
-    /// scan lives on the coordinator (`displayedSession`), not here, so this
-    /// dictionary is exactly the set Stage 3's sidebar rows observe. The
-    /// invariant is one running session per target across both.
+    /// Running scans NOT on screen (demoted on navigate-away); the foreground one lives on the coordinator.
+    /// Invariant: one running session per target across both.
     private(set) var activeSessions: [String: ScanSession] = [:]
 
     struct SupersededScanNotice: Equatable {
         let displayName: String
     }
 
-    /// Under the smart auto-rescan policy: rescans that finished faster than
-    /// this last time keep the original click-to-rescan behavior; slower ones
-    /// display their snapshot and leave rescanning to the user (via the
-    /// notice or the toolbar).
+    /// Smart policy: rescans faster than this last time auto-start; slower ones show the snapshot and leave
+    /// rescanning to the user.
     static let autoRescanMaxLastScanDuration: TimeInterval = 15
 
     struct SnapshotNotice: Equatable {
@@ -74,20 +59,12 @@ final class ScanSessionModel {
     @ObservationIgnored private let diff: DiffModel
     @ObservationIgnored private let changes: ChangesModel
     @ObservationIgnored private let duplicates: DuplicatesModel
-    /// Resolves a target's disk identity for the concurrent-scan ruling.
-    /// Injected so tests can force same/different-device, network, and cloud
-    /// verdicts without touching the filesystem.
+    /// Injected so tests can force same/different-device, network and cloud verdicts.
     @ObservationIgnored var sourceIdentityProvider: (ScanTarget) -> ScanSourceIdentity
-    /// Back-reference for the per-scan UI state reset that must run when a
-    /// new scan or snapshot takes the screen — the same idiom DiffModel and
-    /// ChangesModel use. Assigned right after init.
+    /// For the per-scan UI reset when a new scan or snapshot takes the screen. Assigned right after init.
     @ObservationIgnored weak var model: NeodiskViewModel?
 
-    /// Test seam fired once a completed snapshot's full persistence pipeline
-    /// (cache index, snapshot save, kind-stats sidecar + generation bump,
-    /// change list) has run to the end. Tests await it to observe a background
-    /// scan's persistence at a deterministic point instead of polling under
-    /// the parallel test bundle's main-actor load.
+    /// Fires once a snapshot's whole persistence pipeline has run, so tests needn't poll under main-actor load.
     @ObservationIgnored var onSnapshotPersistedForTesting: ((ScanSnapshot) -> Void)?
 
     init(
@@ -110,9 +87,7 @@ final class ScanSessionModel {
 
     // MARK: - Session registry
 
-    /// The running scan of a target, whether it is the one on screen or a
-    /// demoted background scan — the single source of truth for "is this
-    /// location scanning right now".
+    /// On screen or demoted to the background: the single source of truth for "is this scanning".
     func activeSession(forTargetID targetID: String) -> ScanSession? {
         if let displayed = coordinator.displayedSession,
            displayed.target.id == targetID, displayed.state == .running {
@@ -142,11 +117,8 @@ final class ScanSessionModel {
         existing.cancel()
     }
 
-    /// The single scan-session factory: constructs a session on the
-    /// coordinator's scan service and wires its hooks to route back here. Every
-    /// session — cold, refresh, foreground, or one that will be demoted — is
-    /// born here, so display vs. background is a routing decision (which
-    /// session the coordinator currently shows), not a wiring one.
+    /// The single session factory: every session is born here, so display vs. background is a routing
+    /// decision (which one the coordinator shows), not a wiring one.
     private func makeSession(
         _ target: ScanTarget,
         options: ScanOptions,
@@ -183,20 +155,15 @@ final class ScanSessionModel {
         session.start()
     }
 
-    /// Starts a refresh of `target` behind a complete stand-in. The displayed
-    /// or recently displayed snapshot of the same target holds the screen (and
-    /// doubles as the incremental baseline); otherwise `baselineProvider` seeds
-    /// the engine and a decode lands the stand-in on the session later.
+    /// The displayed or recently displayed snapshot holds the screen and is the incremental baseline;
+    /// otherwise `baselineProvider` seeds the engine and a decode lands the stand-in later.
     @discardableResult
     private func startRefreshScan(
         _ target: ScanTarget,
         options: ScanOptions,
         baselineProvider: (@Sendable () async -> ScanSnapshot?)? = nil
     ) -> ScanSession {
-        // Prefer what the display already holds: the on-screen snapshot, or a
-        // recently displayed one of the same target. Either keeps the map up
-        // through the refresh with no decode, and doubles as the incremental
-        // baseline (it IS the target's last complete scan).
+        // Prefer what the display already holds: no decode, and it IS the target's last complete scan.
         let retained = coordinator.snapshot?.isComplete == true
             && coordinator.snapshot?.target.id == target.id
             ? coordinator.snapshot
@@ -224,16 +191,8 @@ final class ScanSessionModel {
         return session
     }
 
-    /// A scan session reached a terminal state. One handler for both the scan
-    /// on screen and a demoted background scan — which it is is decided by
-    /// whether the coordinator currently displays it, not by how the hook was
-    /// wired. The displayed finish settles the display and runs the on-screen
-    /// conveniences (the duplicate scan); a background finish only leaves the
-    /// registry and is remembered for an instant return. Both persist through
-    /// the same path (cachedScanInfo + snapshot save + kind-stats sidecar +
-    /// generation bump → the sidebar's bars refresh). `saveSnapshotToCache`'s
-    /// diff/changes rotation hooks self-gate to the displayed target, so a
-    /// background save never disturbs a displayed diff of another target.
+    /// One handler for the scan on screen and a demoted one, told apart by what the coordinator displays.
+    /// Both persist the same way; the diff/changes rotation hooks self-gate to the displayed target.
     private func sessionDidComplete(_ session: ScanSession) {
         let isDisplayed = coordinator.displayedSession === session
         if isDisplayed {
@@ -250,9 +209,6 @@ final class ScanSessionModel {
             // scan for this one" mention has served its purpose.
             supersededScanNotice = nil
             persistCompletedSnapshot(snapshot)
-            // Opt-in convenience: kick off the duplicate content scan the
-            // moment the on-screen scan lands, so the Duplicates tab is ready
-            // (or at least underway) by the time the user opens it.
             if preferences?.autoScanDuplicates == true {
                 duplicates.startScan()
             }
@@ -262,11 +218,8 @@ final class ScanSessionModel {
         }
     }
 
-    /// Detaches the on-screen session from the display and keeps it running as
-    /// a background scan: it stays in the registry and its progress keeps
-    /// updating its own instance for a sidebar row to observe. Its hooks still
-    /// route through the model, which gates them on the displayed session, so
-    /// its partials now reach nothing and its finish takes the background path.
+    /// The session keeps running in the registry; its hooks are gated on the displayed session, so its
+    /// partials reach nothing and its finish takes the background path.
     private func demoteToBackground(_ session: ScanSession) {
         coordinator.detach()
         activeSessions[session.target.id] = session
@@ -283,9 +236,7 @@ final class ScanSessionModel {
         }
     }
 
-    /// Volume totals are wrong without hidden system metadata
-    /// (.Spotlight-V100, .fseventsd, .Trashes, …), so volume scans always
-    /// include hidden files regardless of the preference.
+    /// Volume totals are wrong without hidden system metadata (.Spotlight-V100, .fseventsd, .Trashes).
     func scanOptions(for target: ScanTarget) -> ScanOptions {
         var options = preferences?.scanOptions ?? ScanOptions()
         if target.kind == .volume {
@@ -295,16 +246,11 @@ final class ScanSessionModel {
     }
 
     func startScan(_ target: ScanTarget, forcesRescan: Bool = false) {
-        // The clicked target may already have a running scan of its own — a
-        // background scan a previous navigate-away demoted. Unless the user
-        // explicitly forces a fresh rescan, that scan IS what to show: promote
-        // it rather than starting a second (one running session per target).
+        // A background scan of this target IS what to show: promote it rather than start a second one.
         let attachable = forcesRescan ? nil : activeSessions[target.id]
 
-        // Leaving a still-running scan for a different target: the concurrent-
-        // scan ruling decides whether it keeps running in the background, is
-        // stopped for this one, or (with nothing to attach) whether this one
-        // defers to it and shows a cached map instead.
+        // Leaving a running scan for another target: the concurrent-scan ruling decides whether it keeps
+        // running, is stopped, or this target defers to it and shows its cache.
         let navigateAway = evaluateNavigateAway(
             to: target,
             forcesRescan: forcesRescan,
@@ -318,9 +264,7 @@ final class ScanSessionModel {
         if let attachable {
             attachBackgroundSession(attachable, to: target)
         } else {
-            // A forced rescan of a target with a background scan cancels it
-            // first (one running session per target); other selections have
-            // nothing to supersede here.
+            // A forced rescan cancels this target's background scan first (one running session per target).
             supersedeBackgroundSession(forTargetID: target.id)
             startScanBranch(target, forcesRescan: forcesRescan)
         }
@@ -332,13 +276,8 @@ final class ScanSessionModel {
         }
     }
 
-    /// Promotes a running background scan of `target` back to the display: it
-    /// leaves the registry (its sidebar background row disappears), per-scan UI
-    /// state resets as any navigate-back does, and the coordinator resumes its
-    /// display exactly as it left the screen — a cold scan's live partial map,
-    /// or a refresh's stand-in with partials still suppressed. Subsequent
-    /// partials and the finish flow to the display through the session's hooks,
-    /// and the per-session progress keeps the bar where it left off.
+    /// Resumes the display exactly as it left the screen (live partials, or a refresh's stand-in); the
+    /// per-session progress keeps the bar where it was.
     private func attachBackgroundSession(_ session: ScanSession, to target: ScanTarget) {
         activeSessions.removeValue(forKey: session.target.id)
         prepareForNewDisplay()
@@ -374,9 +313,6 @@ final class ScanSessionModel {
         case deferredToCache
     }
 
-    /// Applies the concurrent-scan ruling when selecting a target different
-    /// from the one currently scanning on screen. Runs before the ordinary
-    /// startScan branches.
     private func evaluateNavigateAway(
         to target: ScanTarget,
         forcesRescan: Bool,
@@ -407,25 +343,19 @@ final class ScanSessionModel {
             if !hasAttachTarget, displayTargetFromCacheDeferringRefresh(target) {
                 return .deferredToCache
             }
-            // Launch race with nothing cached to show: the deferral has no
-            // stand-in, so fall through to a normal scan with the old one
-            // still running in the background.
+            // Launch race with nothing cached: no stand-in to defer to, so scan with the old one still running.
             return .demoted
         }
     }
 
-    /// Whether a target has a cached or recently displayed snapshot to stand
-    /// in without scanning — the difference between an implicit refresh (which
-    /// may defer) and cold, explicit intent (which may not).
+    /// The difference between an implicit refresh (which may defer) and explicit intent (which may not).
     private func hasDisplayableCache(for target: ScanTarget) -> Bool {
         coordinator.recentSnapshot(forTargetID: target.id) != nil
             || cachedScanInfo[target.id] != nil
             || !hasIndexedSnapshotCache
     }
 
-    /// Shows a target from its cache without starting a refresh scan, reusing
-    /// the snapshot-only display path and its manual-rescan notice. Returns
-    /// false only in the launch race where nothing is cached yet.
+    /// False only in the launch race where nothing is cached yet.
     private func displayTargetFromCacheDeferringRefresh(_ target: ScanTarget) -> Bool {
         if let info = cachedScanInfo[target.id] {
             displaySnapshotWithoutRescan(for: target, info: info)
@@ -449,9 +379,7 @@ final class ScanSessionModel {
         let displaysTargetAlready = coordinator.snapshot?.isComplete == true
             && coordinator.snapshot?.target.id == target.id
         if displaysTargetAlready {
-            // Re-selecting a snapshot whose rescan the app deliberately
-            // skipped must not start that rescan by accident — the notice
-            // and the toolbar button are the explicit ways in.
+            // A deliberately skipped rescan must not start by accident; the notice and toolbar are the ways in.
             if !forcesRescan, snapshotNotice?.targetID == target.id {
                 return
             }
@@ -461,22 +389,14 @@ final class ScanSessionModel {
         } else if !forcesRescan,
                   let info = cachedScanInfo[target.id],
                   shouldSkipAutoRescan(lastScanDuration: info.lastScanDuration) {
-            // The policy says an unsolicited rescan would hurt (snapshot-only
-            // always; smart when the last scan of this location took long):
-            // display the snapshot and offer the rescan in a notice instead.
             displaySnapshotWithoutRescan(for: target, info: info)
         } else if coordinator.recentSnapshot(forTargetID: target.id) != nil {
-            // Displayed earlier this session: the map appears instantly from
-            // memory (startRefreshScan retains it and uses it as the
-            // incremental baseline) — no disk decode, no transition screen.
+            // Displayed earlier this session: shows instantly from memory and is the incremental baseline.
             prepareForNewDisplay()
             startRefreshScan(target, options: options)
         } else if cachedScanInfo[target.id] != nil || !hasIndexedSnapshotCache {
-            // A persisted snapshot exists (or the launch index isn't ready
-            // yet and one might): show it as soon as it decodes, refreshing
-            // behind it. A cache miss reverts to live partial streaming
-            // within milliseconds. One decode feeds both the display and the
-            // refresh scan's incremental baseline.
+            // Show the persisted snapshot once decoded and refresh behind it; a miss reverts to live partials.
+            // One decode feeds both the display and the incremental baseline.
             prepareForNewDisplay()
             let load = Task { [snapshotCache, kinds] in
                 await Self.loadSeededSnapshot(for: target, in: snapshotCache, seeding: kinds)
@@ -506,9 +426,7 @@ final class ScanSessionModel {
         model?.resetPerScanState()
     }
 
-    /// Whether the auto-rescan policy wants a cached snapshot displayed
-    /// without an unsolicited refresh scan. Explicit rescans
-    /// (forcesRescan: true) never consult this.
+    /// Explicit rescans (forcesRescan: true) never consult this.
     private func shouldSkipAutoRescan(lastScanDuration: TimeInterval?) -> Bool {
         switch preferences?.autoRescanPolicy ?? .snapshotOnly {
         case .automatic:
@@ -563,11 +481,8 @@ final class ScanSessionModel {
         }
     }
 
-    /// The one way a cached snapshot is loaded for display: the kind-stats
-    /// sidecar goes first (it is tiny next to the snapshot) and seeds the
-    /// kind model before the decoded tree can land — the ordering that makes
-    /// the first render colored instead of gray. Every restore path must
-    /// come through here or it silently ships the gray-then-colored flash.
+    /// The one way a cached snapshot loads for display: the tiny kind-stats sidecar seeds the kinds first,
+    /// or the first render flashes gray. Every restore path must come through here.
     private static func loadSeededSnapshot(
         for target: ScanTarget,
         in snapshotCache: ScanSnapshotCache,
@@ -580,24 +495,17 @@ final class ScanSessionModel {
         return (cached, sidecar)
     }
 
-    /// Persisted kind aggregates for a target's cached scan — the sidebar's
-    /// volume bars color themselves from these without decoding the
-    /// snapshot itself. nil when the target was never scanned (empty bar).
+    /// Lets the sidebar's volume bars color themselves without decoding the snapshot; nil if never scanned.
     func loadKindStatsSidecar(forTargetID targetID: String) async -> KindStatsSidecar? {
         await snapshotCache.loadAuxiliaryData(forTargetID: targetID)
             .flatMap(KindStatsSidecar.decoding)
     }
 
-    /// Bumped whenever a kind-stats sidecar lands on disk. The sidecar is
-    /// written asynchronously AFTER the snapshot save updates
-    /// `cachedScanInfo` (it is an O(nodes) classification pass), so anyone
-    /// reading sidecars reactively — the sidebar's volume bars — must key
-    /// on this, not on the scan date, or they reload too early and miss it.
+    /// The sidecar is written after `cachedScanInfo` updates, so reactive readers (the sidebar bars) must key
+    /// on this, not on the scan date, or they reload too early.
     private(set) var kindStatsSidecarGeneration = 0
 
-    /// The category rules changed: the displayed scan's persisted kind
-    /// stats file things under the old categories. Rewrite them, so its
-    /// sidebar bar and next restore show the new ones.
+    /// The displayed scan's persisted kind stats use the old categories: rewrite them.
     func categoryRulesDidChange() {
         guard let snapshot = coordinator.snapshot, snapshot.isComplete,
               cachedScanInfo[snapshot.target.id] != nil else { return }
@@ -608,10 +516,7 @@ final class ScanSessionModel {
         }
     }
 
-    /// Snapshots cached before sidecars existed (or whose sidecar went
-    /// stale) get one after display, so their next restore is seeded. Only
-    /// the no-rescan endings need this — when a refresh scan keeps running,
-    /// its finish writes a fresh sidecar through the save path.
+    /// Only the no-rescan endings need this; a refresh's finish writes a fresh sidecar anyway.
     private static func backfillKindStatsSidecarIfStale(
         _ sidecar: KindStatsSidecar?,
         for cached: ScanSnapshot,
@@ -621,9 +526,7 @@ final class ScanSessionModel {
         await saveKindStatsSidecar(for: cached, in: snapshotCache)
     }
 
-    /// Computes and persists the kind-stats sidecar for a complete snapshot.
-    /// Utility priority: this is the same O(nodes) classification pass a
-    /// restore would otherwise pay at the worst moment.
+    /// Utility priority: the same O(nodes) pass a restore would otherwise pay at the worst moment.
     private static func saveKindStatsSidecar(
         for snapshot: ScanSnapshot,
         in snapshotCache: ScanSnapshotCache
@@ -635,11 +538,8 @@ final class ScanSessionModel {
         await snapshotCache.saveAuxiliaryData(sidecarData, forTargetID: snapshot.target.id)
     }
 
-    /// Computes and persists the Changes-tab diff for a just-saved snapshot
-    /// against its now-rotated predecessor, mirroring the kind-stats sidecar.
-    /// Utility priority and off the main actor: it decodes the predecessor
-    /// and runs the O(nodes) build the tab would otherwise pay on first open.
-    /// A no-op when there is no predecessor to diff against.
+    /// Diffs a just-saved snapshot against its rotated predecessor off the main actor, so the Changes tab
+    /// opens instantly. No-op without a predecessor.
     private static func saveChangeListSidecar(
         for snapshot: ScanSnapshot,
         in snapshotCache: ScanSnapshotCache
@@ -647,23 +547,15 @@ final class ScanSessionModel {
         _ = await snapshotCache.comparison(for: snapshot, entryLimit: ChangesModel.entryLimit)
     }
 
-    /// A saved snapshot landed on screen with no refresh scan behind it, so
-    /// no scan finish will run the usual conveniences — prefetch the Changes
-    /// baseline and optionally start the duplicate scan here instead. (When
-    /// a refresh runs behind the snapshot, its finish triggers both anyway.)
+    /// No refresh runs behind this snapshot, so no finish will run the usual conveniences: run them here.
     private func snapshotWasRestoredWithoutRescan() {
         guard let snapshot = coordinator.snapshot, snapshot.isComplete else { return }
         diff.snapshotWasRestored(for: snapshot.target)
-        // Prefer a persisted duplicate result over re-hashing: load the cached
-        // run if present, and only start a fresh scan on a miss when the opt-in
-        // preference is on. Relaunch never silently recomputes.
+        // Prefer a persisted duplicate result; relaunch never silently re-hashes.
         duplicates.loadCachedResults(orScanIfMissing: preferences?.autoScanDuplicates == true)
     }
 
-    /// The decoded snapshot is the on-disk truth. If the in-memory index
-    /// disagrees (another Neodisk process wrote the cache, or the entry
-    /// predates a failed save), adopt the snapshot's date so the sidebar's
-    /// "Scanned … ago" matches what is actually displayed.
+    /// The decoded snapshot is the truth: adopt its date if the index disagrees (e.g. another process wrote it).
     private func syncCachedScanDate(with snapshot: ScanSnapshot) {
         let date = snapshot.finishedAt ?? snapshot.startedAt
         guard let info = cachedScanInfo[snapshot.target.id],
@@ -695,21 +587,12 @@ final class ScanSessionModel {
             }
             guard let self else { return }
             if let cached {
-                // The decode lands on the SESSION, not the display: if the
-                // user navigated away mid-decode the refresh is now a
-                // background scan, and the stand-in it belongs to must ride
-                // along so a return can still show it. The coordinator applies
-                // it to the screen only while this session is the one on it.
+                // The decode lands on the session, not the display: a demoted refresh must keep its stand-in for a return.
                 guard session.state == .running else { return }
                 session.refreshBaseline = cached
                 self.coordinator.showRefreshBaselineIfAttached(session)
-                // The pre-index launch race can start a refresh scan before
-                // anything reveals that the last scan of this location was
-                // expensive. The decoded snapshot itself carries the proof —
-                // when the policy would have skipped the rescan (snapshot-only
-                // always; smart for a slow last scan; never under automatic),
-                // stop the unsolicited scan and offer it as a notice, same
-                // as the indexed path would have.
+                // The pre-index launch race can start a refresh before we know the last scan was slow: the snapshot
+                // proves it, so stop the scan and offer a notice like the indexed path would.
                 let lastDuration = cached.finishedAt.map { $0.timeIntervalSince(cached.startedAt) }
                 self.syncCachedScanDate(with: cached)
                 let standingIn = self.coordinator.displayedSession === session
@@ -734,15 +617,8 @@ final class ScanSessionModel {
                     )
                 }
             } else {
-                // Corrupt or vanished: this refresh has no stand-in after all,
-                // so it streams partials like a cold scan from here — flip the
-                // session's display intent (so a re-attach streams too) and
-                // revert its display to live streaming if it is still on
-                // screen. Forget the cache entry — but not when this scan has
-                // since finished and persisted a fresh snapshot: a demoted
-                // background scan completes off screen, so the displayed
-                // snapshot is another target's; the session's own terminal
-                // state is what says its result superseded the stale cache.
+                // Corrupt or vanished: stream partials like a cold scan from here. Keep the cache entry if this scan
+                // already finished and persisted a fresh snapshot (a demoted scan finishes off screen).
                 session.showsStandInWhileScanning = false
                 self.coordinator.abandonRefreshBaselineIfAttached(session)
                 let freshlyCompleted = session.state == .finished
@@ -757,11 +633,8 @@ final class ScanSessionModel {
 
     private func persistCompletedSnapshot(_ snapshot: ScanSnapshot) {
         guard snapshot.isComplete, snapshot.source.isPersistable else { return }
-        // Saving usually rotates any existing latest snapshot into the
-        // previous slot, so this target likely has a diffable previous scan
-        // from now on if it had a cache entry before. Optimistic: an
-        // unchanged rescan skips the rotation, and the save's outcome
-        // corrects the entry (see saveSnapshotToCache).
+        // Optimistic: saving usually rotates the latest snapshot into the previous slot; the save's outcome
+        // corrects it (an unchanged rescan skips the rotation).
         let hadCachedSnapshot = cachedScanInfo[snapshot.target.id] != nil
         cachedScanInfo[snapshot.target.id] = CachedScanInfo(
             lastScanDate: snapshot.finishedAt ?? Date(),
@@ -774,17 +647,8 @@ final class ScanSessionModel {
         saveSnapshotToCache(snapshot)
     }
 
-    /// Persists the displayed snapshot after a subtree splice (rescan of a
-    /// folder or expansion of a summarized one) so reopening the location
-    /// keeps the refreshed data. Unlike `persistCompletedSnapshot`, the
-    /// cache index keeps the last full scan's date and duration: a subtree
-    /// refresh says nothing about how long a full rescan of the location
-    /// takes (the duration drives the auto-rescan decision) and the
-    /// sidebar's "Scanned … ago" keeps describing the full scan. Only the
-    /// node count is refreshed. Saving still rotates the pre-splice
-    /// snapshot into the previous slot (unless the splice changed nothing),
-    /// which keeps diffing meaningful: "what changed since before this
-    /// refresh".
+    /// After a subtree splice. The index keeps the last full scan's date and duration (they drive auto-rescan);
+    /// only the node count updates. The pre-splice snapshot still rotates into the previous slot.
     func persistSplicedSnapshot() {
         guard let snapshot = coordinator.snapshot,
               snapshot.isComplete, snapshot.source.isPersistable else { return }
@@ -807,33 +671,22 @@ final class ScanSessionModel {
             defer { self?.onSnapshotPersistedForTesting?(snapshot) }
             do {
                 let outcome = try await snapshotCache.save(snapshot)
-                // The optimistic index entry guessed hasPreviousSnapshot
-                // from "was there a cache entry"; the save knows the truth
-                // (an unchanged rescan skips the rotation, so a target's
-                // first rescan may leave the previous slot empty).
+                // The save knows the truth: an unchanged rescan skips the rotation.
                 self?.setHasPreviousSnapshot(
                     outcome.hasPreviousSnapshot, forTargetID: snapshot.target.id
                 )
                 if outcome.rotatedPrevious {
-                    // Saving rotated the displayed scan's predecessor; an
-                    // active diff of this target must rebase on it, and an
-                    // inactive one may prefetch its baseline. A loaded Changes
-                    // list compares against the replaced generation too.
+                    // The predecessor rotated: an active diff of this target must rebase on it.
                     self?.diff.snapshotWasRotated(for: snapshot.target)
                     self?.changes.snapshotWasRotated(for: snapshot.target)
                 } else {
-                    // Content-identical rescan: the previous slot (and any
-                    // loaded baseline) still describes the right generation.
-                    // Prefetch it for the fresh tree like a restore would.
+                    // Content-identical rescan: the previous slot still describes the right generation.
                     self?.diff.snapshotWasRestored(for: snapshot.target)
                 }
                 // Kind stats ride along so the next restore of this
                 // snapshot starts with a colored map.
                 await Self.saveKindStatsSidecar(for: snapshot, in: snapshotCache)
                 self?.kindStatsSidecarGeneration += 1
-                // Compute and persist the change list now, off the main
-                // actor, so the first open of the Changes tab is instant
-                // instead of paying a predecessor decode plus O(nodes) build.
                 await Self.saveChangeListSidecar(for: snapshot, in: snapshotCache)
             } catch {
                 DiagnosticLog.cache.error("failed to persist scan snapshot: \(error)")
@@ -860,8 +713,7 @@ final class ScanSessionModel {
         cachedScanInfo[targetID] = info.with(hasPreviousSnapshot: hasPrevious)
     }
 
-    /// Cache-index bookkeeping for a removed location (a removed pinned
-    /// folder or a signed-out cloud account).
+    /// Cache-index bookkeeping for a removed sidebar folder.
     func removeCachedScanInfo(forTargetID targetID: String) {
         cachedScanInfo.removeValue(forKey: targetID)
     }

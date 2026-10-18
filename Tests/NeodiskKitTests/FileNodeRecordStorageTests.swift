@@ -1,12 +1,5 @@
-//
-//  FileNodeRecordStorageTests.swift
-//  NeodiskKitTests
-//
-//  FileNodeRecord keeps its public fields while storing them compactly: a
-//  large scan holds millions of records, so the stride is a budget, and
-//  every field must read back exactly what was stored — including the
-//  rarely set ones that live in the side object.
-//
+// A large scan holds millions of records, so the stride is a budget; every field must still read back
+// exactly, including the rare ones in the side object.
 
 import Foundation
 import Testing

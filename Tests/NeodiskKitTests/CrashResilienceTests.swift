@@ -1,8 +1,3 @@
-//
-//  CrashResilienceTests.swift
-//  Neodisk
-//
-
 import Foundation
 import Testing
 @testable import NeodiskKit

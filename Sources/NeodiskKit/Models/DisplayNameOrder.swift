@@ -1,19 +1,5 @@
-//
-//  DisplayNameOrder.swift
-//  Neodisk
-//
-//  The name tie-break of the child display order (largest first, then by
-//  name), in one place so every path that sorts children — assembly,
-//  splices, rebuilds, the treemap layout — agrees on it.
-//
-//  Apple platforms use Finder's `localizedStandardCompare`. Off Darwin that
-//  call goes through ICU collation and costs microseconds each; ties are
-//  the common case on Linux (thousands of files allocate exactly 4 KB), so
-//  it dominated scan assembly — 1.8 s of a 2.3 s scan. There the tie-break
-//  is a byte-level natural order instead: ASCII case-insensitive, digit
-//  runs compared by value ("file2" < "file10"), with a deterministic final
-//  tie-break so distinct names never compare equal.
-//
+// Shared name tie-break so every child sort agrees. Off Darwin `localizedStandardCompare` goes through ICU
+// and took 1.8 s of a 2.3 s scan, so Linux uses a byte-level natural order instead.
 
 import Foundation
 
@@ -29,9 +15,7 @@ public enum DisplayNameOrder {
     }
 
     #if canImport(Darwin)
-    /// `precedes` for names already bridged: the `String` form bridges both
-    /// names to NSString on every comparison, which a sort with many
-    /// equal-sized entries repeats n log n times.
+    /// The `String` form bridges both names to NSString on every comparison, n log n times in a tie-heavy sort.
     @inline(__always)
     nonisolated static func precedes(_ lhs: NSString, _ rhs: NSString) -> Bool {
         lhs.localizedStandardCompare(rhs as String) == .orderedAscending

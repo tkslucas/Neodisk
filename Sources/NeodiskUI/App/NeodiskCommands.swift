@@ -1,10 +1,5 @@
-//
-//  NeodiskCommands.swift
-//  Neodisk
-//
-//  The menu bar commands, extracted from NeodiskApp so the scene body
-//  stays small.
-//
+// The menu bar commands, extracted from NeodiskApp so the scene body
+// stays small.
 
 import AppKit
 import SwiftUI
@@ -93,12 +88,8 @@ struct NeodiskCommands: Commands {
 
             Divider()
 
-            // Workspace text size. ⌘+/⌘− walk TextScale's steps and stop at
-            // the ends (disabled rather than silently inert). The scale
-            // reaches the sidebar, file lists, both visualizations, the
-            // statistics panel and the status bar — not this menu or the
-            // Settings window, the same way a browser's zoom leaves its own
-            // chrome alone.
+            // Disabled at the ends rather than silently inert. Like browser zoom, it leaves menus and Settings
+            // alone.
             Button {
                 model.zoomTextIn()
             } label: {
@@ -125,9 +116,7 @@ struct NeodiskCommands: Commands {
 
             Divider()
 
-            // The three center views, mirroring the toolbar picker (same
-            // two-preference write: a treemap item sets both, Sunburst keeps
-            // the treemap style for the trip back).
+            // Same two-preference write as the toolbar picker: Sunburst keeps the treemap style for the trip back.
             Button {
                 model.preferences?.vizViewMode = .treemap
                 model.preferences?.treemapStyle = .cushion
@@ -156,9 +145,7 @@ struct NeodiskCommands: Commands {
 
             Divider()
 
-            // Same preference as the Settings picker; the menu adds
-            // discoverability and a checkmark for the current state. This
-            // treemap position stays independent of Sunburst's opt-in below.
+            // Same preference as the Settings picker, independent of Sunburst's opt-in below.
             Toggle(isOn: Binding(
                 get: { model.outlinePosition == .bottom },
                 set: { model.preferences?.outlinePosition = $0 ? .bottom : .leading }
@@ -179,11 +166,8 @@ struct NeodiskCommands: Commands {
             .disabled(model.coordinator.snapshot == nil)
         }
 
-        // Finder-style Go menu for the drill and selection axes. The same
-        // shortcuts also live in the treemap/sunburst key handlers; the menu
-        // intercepts them first and calls the same model actions, so behavior
-        // matches — the menu just adds discoverability and works without the
-        // visualization focused.
+        // The visualization key handlers own these shortcuts too; the menu intercepts first and calls the same
+        // actions, and works without the visualization focused.
         CommandMenu("Go") {
             Button {
                 beepUnless(model.drillBack())
@@ -238,9 +222,7 @@ struct NeodiskCommands: Commands {
             .disabled(model.selectedNodeID == nil)
         }
 
-        // File actions for the selection — the context menus' items, made
-        // discoverable with shortcuts. No Move to Trash: Neodisk is read-only
-        // by design.
+        // No Move to Trash: Neodisk is read-only by design.
         CommandMenu("Inspect") {
             Button {
                 model.quickLookSelection()

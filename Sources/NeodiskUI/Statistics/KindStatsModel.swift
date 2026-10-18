@@ -1,12 +1,4 @@
-//
-//  KindStatsModel.swift
-//  Neodisk
-//
-//  File-kind statistics state: the kind catalog (with its adaptive rebuild
-//  throttle while partials stream in), the Categories/Types display mode,
-//  and the searchable drill-in file list for one kind. Owned by
-//  NeodiskViewModel as `model.kinds`.
-//
+// File-kind statistics: the kind catalog, its display mode and the drill-in list for one kind.
 
 import Foundation
 import Observation
@@ -17,11 +9,7 @@ import NeodiskAppModel
 @Observable
 final class KindStatsModel {
     private(set) var catalog: FileKindCatalog = .empty
-    /// Whether kind statistics (and treemap colors) group by extension or by
-    /// broad category. Switching rebuilds the catalog.
-    /// The active color palette (swapped by the colorblind Settings toggle).
-    /// Colors are baked into the catalog at build time, so changing this
-    /// drops the cache and rebuilds so the new colors take effect.
+    /// Colors are baked into the catalog at build time, so changing this drops the cache and rebuilds.
     var palette: VizPalette = .standard {
         didSet {
             guard palette != oldValue else { return }
@@ -38,9 +26,7 @@ final class KindStatsModel {
                   let store = coordinator.snapshot?.treeStore else { return }
             // The drilled-in list belongs to the previous grouping.
             closeFileList()
-            // Switching back to a mode already built for this snapshot is
-            // instant; otherwise rebuild (the pane shows a spinner while the
-            // catalog mode lags behind the selected mode).
+            // A mode already built for this snapshot is instant.
             if let cached = catalogCache[displayMode] {
                 catalog = cached
             } else {
@@ -51,25 +37,16 @@ final class KindStatsModel {
 
     // MARK: Kind file list
 
-    /// The subject of an open kind drill-in: the kind and the grouping mode it
-    /// was opened under, so a highlight left over from a stale mode is
-    /// dropped while a catalog rebuild is in flight.
+    /// Carries the mode so a highlight from a stale mode drops while a rebuild is in flight.
     struct DrillContext: Sendable {
         let kind: FileKind
         let mode: FileKindDisplayMode
     }
 
-    /// The drill-in list for one kind ("where are all my videos"): every
-    /// countable node of that kind, largest first. Read-only navigation —
-    /// clicking a row selects the node in the outline and treemap. Shares its
-    /// engine with the Age tab.
+    /// Every countable node of one kind, largest first. Shares its engine with the Age tab.
     let drill: StatsDrillInList<DrillContext>
 
-    /// Kind lit up on the treemap while a drill-in list is open: matching
-    /// cells keep their color, everything else dims. Derived from the open
-    /// list, so it clears when the list closes (mode switches, snapshot
-    /// changes). The mode guard drops a stale highlight while a catalog
-    /// rebuild is in flight.
+    /// Matching cells keep their color, the rest dim; the mode guard drops a stale one mid-rebuild.
     var highlightedKindID: String? {
         guard let context = drill.context, context.mode == catalog.mode else { return nil }
         return context.kind.id
@@ -93,25 +70,19 @@ final class KindStatsModel {
         self.drill = StatsDrillInList(indexService: indexService)
     }
 
-    /// Clears the displayed catalog before a new scan or snapshot takes the
-    /// screen (part of the model's per-scan state reset). Seeds go too —
-    /// callers restoring a snapshot hand fresh ones over after the reset.
+    /// Seeds go too; callers restoring a snapshot hand fresh ones over after the reset.
     func reset() {
         catalog = .empty
         pendingSeed = nil
         activeSeed = nil
     }
 
-    /// Hands over persisted stats loaded ahead of a snapshot restore. They
-    /// stay pending until a complete snapshot arrives: a match seeds the
-    /// catalog rebuilds, a mismatch discards them.
+    /// Pending until a complete snapshot arrives: a match seeds the rebuilds, a mismatch discards them.
     func prepareSeed(_ sidecar: KindStatsSidecar?) {
         pendingSeed = sidecar
     }
 
-    /// The displayed tree changed: drop caches keyed to the old tree, then
-    /// rebuild the catalog — throttled while partial snapshots stream in
-    /// (rebuilding is O(nodes)); the final snapshot always rebuilds.
+    /// Rebuilding is O(nodes), so it's throttled while partials stream; the final snapshot always rebuilds.
     func snapshotDidChange(_ snapshot: ScanSnapshot?) {
         // The tree changed; cached catalogs are stale either way.
         catalogCache = [:]
@@ -126,9 +97,7 @@ final class KindStatsModel {
             return
         }
 
-        // A complete snapshot settles the seeds: pending stats either prove
-        // they describe this snapshot or die here, and stats matched to a
-        // previous tree (splices change the node count) stop being used.
+        // Stats matched to a previous tree stop being used: splices change the node count.
         if snapshot.isComplete {
             if let pendingSeed, pendingSeed.matches(snapshot) {
                 activeSeed = pendingSeed
@@ -182,9 +151,7 @@ final class KindStatsModel {
 
     // MARK: - Drill-in file list
 
-    /// Opens the drill-in list for a kind row ("where are all my videos").
-    /// The list is a filter over the shared per-snapshot search index,
-    /// whose size-descending order is exactly the browse order.
+    /// A filter over the shared search index, whose size-descending order is the browse order.
     func openFileList(for stat: FileKindStat) {
         guard let snapshot = coordinator.snapshot else { return }
         let mode = displayMode

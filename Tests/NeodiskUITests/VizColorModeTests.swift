@@ -5,9 +5,7 @@ import TreemapKit
 @testable import NeodiskUI
 @testable import NeodiskAppModel
 
-/// The shared visualization color mode: branch hues whenever no kind/age
-/// legend is on screen (Largest tab or hidden statistics panel), for every
-/// visualization and treemap style alike.
+/// Branch hues whenever no kind or age legend is on screen, for every visualization and treemap style.
 @MainActor
 @Suite struct VizColorModeTests {
     @Test func branchModeIsStyleAgnostic() async throws {

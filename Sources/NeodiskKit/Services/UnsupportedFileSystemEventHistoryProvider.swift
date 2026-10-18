@@ -1,13 +1,5 @@
-//
-//  UnsupportedFileSystemEventHistoryProvider.swift
-//  Neodisk
-//
-//  `FileSystemEventHistoryProviding` for platforms without a persistent
-//  change journal. Linux has no FSEvents equivalent — inotify and fanotify
-//  only report changes while a watcher is running — so there is no
-//  checkpoint to capture, and every rescan degrades to the full scan the
-//  caller would have run anyway (`IncrementalFullScanReason.missingCheckpoint`).
-//
+// Linux has no persistent change journal (inotify only sees changes while watching), so there's no
+// checkpoint and every rescan falls back to a full scan (`missingCheckpoint`).
 
 #if !canImport(CoreServices)
 struct UnsupportedFileSystemEventHistoryProvider: FileSystemEventHistoryProviding {

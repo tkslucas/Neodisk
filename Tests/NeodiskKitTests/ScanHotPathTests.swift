@@ -79,9 +79,7 @@ import Foundation
         #expect(try await slow.value)
     }
 
-    /// Folder ids keep the URL's own spelling of the path (decomposed), which
-    /// snapshots and rescans were built on, even when the name on disk is
-    /// composed.
+    /// Ids keep the URL's decomposed spelling, which snapshots and rescans rely on, even for composed names.
     @Test func folderIDsKeepTheURLSpellingOfComposedNames() async throws {
         let root = URL(filePath: NSTemporaryDirectory(), directoryHint: .isDirectory)
             .appending(path: "nd-nfc-\(UUID().uuidString)", directoryHint: .isDirectory)
@@ -103,9 +101,7 @@ import Foundation
     }
 }
 
-/// Snapshot decode decompresses ahead on another thread; what it hands the
-/// parser must be exactly the payload, in order, and a broken payload must
-/// still fail the read.
+/// Decompression runs ahead on another thread; the parser must still get the exact payload in order.
 @Suite struct PrefetchingPayloadSourceTests {
     private static func payload(_ count: Int) -> Data {
         var generator = SystemRandomNumberGenerator()

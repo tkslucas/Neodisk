@@ -2,19 +2,8 @@ import Foundation
 import Testing
 @testable import NeodiskKit
 
-/// Proves the numeric relist splice (`numericApplyEdits`, the engine's shipping
-/// incremental path via `applyingDirectoryRelist`) produces a store semantically
-/// identical to an independent dictionary oracle (`dictionaryRelistOracle`,
-/// defined below) across randomized trees with mixed edits: direct children
-/// removed, brand-new children inserted, existing subtrees replaced, and the
-/// root's own record refreshed — all in one pass, including hard links and clone
-/// families crossing the edit boundaries, which exercise the shared-size
-/// rebalance both paths finish with.
-///
-/// Equality is semantic (per-id records, per-parent ordered child lists, parent
-/// links, aggregate stats), not raw-array: the legacy path rebuilds in
-/// freshly-sorted preorder while the numeric path preserves positions and fixes
-/// child slots, so layouts legitimately differ while the store contract must not.
+/// The numeric relist splice must match an independent dictionary oracle on random trees with mixed edits.
+/// Equality is semantic, not raw-array: the two paths legitimately lay out storage differently.
 @Suite struct FileTreeStoreRelistEquivalenceTests {
     private struct SeededGenerator: RandomNumberGenerator {
         var state: UInt64
@@ -113,9 +102,7 @@ import Testing
         func store(rootPath: String, depth: Int) -> FileTreeStore {
             var childrenByID: [String: [FileNodeRecord]] = [:]
             let root = directory(path: rootPath, depth: depth, childrenByID: &childrenByID)
-            // Balanced like every store the app splices: a scan deduplicates
-            // shared blocks as it assembles, and each splice rebalances the
-            // families it touched, so untouched families are already settled.
+            // Balanced like every store the app splices, so untouched clone families are already settled.
             let store = FileTreeStore(root: root, childrenByID: childrenByID)
             return (try? SharedSizeDeduplication.rebalancedStore(store)) ?? store
         }
@@ -337,15 +324,8 @@ import Testing
 }
 
 extension FileTreeStore {
-    /// Independent dictionary oracle for the numeric relist splice: the
-    /// straightforward O(baseline) dictionary-topology rebuild that
-    /// `numericApplyEdits` (the shipping `applyingDirectoryRelist` path) must
-    /// match. Lives in the test target only — it was the production
-    /// `legacyApplyingRootRelist` fallback until the numeric path fully
-    /// superseded it, and is retained here purely as the equivalence reference.
-    /// Root-scoped (removals/insertions are direct children of the root), which
-    /// is the shape these randomized tests generate; both paths finish with the
-    /// same shared-size rebalance.
+    /// The former production fallback, kept only as the equivalence reference. Root-scoped, the shape these
+    /// randomized tests generate.
     nonisolated func dictionaryRelistOracle(
         refreshedRootRecord: FileNodeRecord?,
         removingChildren: [String],

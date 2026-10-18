@@ -1,11 +1,4 @@
-//
-//  FlatRendererTests.swift
-//  TreemapKit
-//
-//  Pixel probes for the flat renderer: interior fill, darkened border,
-//  overdraw order (containers under children), dataless hatch bands, and
-//  rasterizeRGBA/render parity (the same contract the cushion path pins).
-//
+// Pixel probes for the flat renderer, including rasterizeRGBA/render parity like the cushion path pins.
 
 #if canImport(CoreGraphics)
 import CoreGraphics
@@ -54,9 +47,8 @@ import TreemapKit
         // background, the first drawn row is the darkened border.
         let gap = pixel(raster, x: 50, y: 0)
         #expect(gap.r == 18 && gap.g == 18 && gap.b == 22)
-        // Border shade: the darkened fill, feathered over the background
-        // on its outermost ring (so a whisper of the backdrop's green/blue
-        // channels survives the blend).
+        // Feathered over the background on its outermost ring, so a whisper of the backdrop's green/blue
+        // survives.
         let edge = pixel(raster, x: 50, y: 1)
         #expect(edge.r < 200 && edge.r > 100)
         #expect(edge.g < 10 && edge.b < 10)
@@ -74,9 +66,8 @@ import TreemapKit
             FlatTreemapRenderer.rasterizeRGBA(cells: cells, bounds: bounds, scale: 1)
         )
 
-        // The radius scales with the tile (~1px here), so this edge pixel two
-        // rows below the corner is drawn — a constant 3pt radius would cut it
-        // away and round the tile into a pill.
+        // The radius scales with the tile; a constant 3pt radius would cut this pixel and round the tile into
+        // a pill.
         let edge = pixel(raster, x: 1, y: 3)
         #expect(edge.r > 50, "small tile lost its edge to over-rounding")
     }

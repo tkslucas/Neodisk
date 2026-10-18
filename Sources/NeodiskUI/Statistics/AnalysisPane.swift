@@ -1,12 +1,4 @@
-//
-//  AnalysisPane.swift
-//  Neodisk
-//
-//  The right-hand statistics panel: a tab per analysis lens (file kinds,
-//  modification age), each pairing a legend/stats list with the treemap —
-//  the active tab decides what treemap color means (see
-//  NeodiskViewModel.vizColorMode) and drill-ins highlight the map.
-//
+// The active tab decides what treemap color means (see NeodiskViewModel.vizColorMode).
 
 import SwiftUI
 import NeodiskKit
@@ -37,10 +29,8 @@ struct AnalysisPane: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Flat text tabs instead of a segmented picker: four localized
-            // segment titles don't fit the pane's width range (the bezel
-            // padding truncates them even in English at the default width),
-            // while bare text does.
+            // Text tabs, not a segmented picker: bezel padding truncates four localized titles at the default
+            // width.
             HStack(spacing: 12) {
                 ForEach(AnalysisTab.allCases) { tab in
                     AnalysisTabButton(
@@ -72,9 +62,7 @@ struct AnalysisPane: View {
                 ChangesPane(model: model)
             }
 
-            // Cloud footer under every tab, only when the scan has cloud-only
-            // bytes — keyed off the scanned root, matching what the panes'
-            // totals key off (aggregateStats is the whole-scan root).
+            // Keyed off the scanned root, matching the panes' totals (aggregateStats is the whole-scan root).
             if model.snapshotHasCloudItems, let store = model.store {
                 Divider()
                 CloudSummaryStrip(
@@ -86,10 +74,8 @@ struct AnalysisPane: View {
     }
 }
 
-/// One flat text tab: fixed .medium weight so the active state (accent
-/// color + sliding underline) never shifts the row's layout, and a fixed
-/// font size so narrow panes truncate long titles with an ellipsis instead
-/// of rendering neighboring tabs at mismatched scales.
+/// Fixed weight so the active state never shifts layout, and fixed size so narrow panes truncate
+/// instead of rendering tabs at mismatched scales.
 private struct AnalysisTabButton: View {
     @Environment(\.neoTextScale) private var textScale
 
@@ -125,12 +111,8 @@ private struct AnalysisTabButton: View {
     }
 }
 
-/// Size-descending file list shared by the statistics tabs — the drill-ins
-/// (every file of one kind, every file modified in one period) and the
-/// Largest tab's whole-scan list: header with a color swatch, fuzzy filter
-/// field, and the file list. Drill-ins pass onClose for the back button;
-/// top-level lists omit it. Read-only navigation — clicking a row selects
-/// the node in the outline and treemap.
+/// Size-descending file list shared by the drill-ins and the Largest tab. Drill-ins pass onClose for
+/// the back button.
 struct StatsFileListView: View {
     let model: NeodiskViewModel
     /// Header title (localized key); nil while the list is still loading.

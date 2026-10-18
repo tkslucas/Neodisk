@@ -1,15 +1,4 @@
-//
-//  StatisticsView.swift
-//  NeodiskGTK
-//
-//  The statistics pane on the right: Largest (the scan's biggest files),
-//  Kinds (space by file category or type, the treemap's color legend), and
-//  Age (space by last-modified bucket). The visible tab decides what map
-//  color means, and picking a kind or age row lights just those cells —
-//  the Mac's AnalysisPane behavior on the shared catalogs. Right-clicking a
-//  type moves it to another category; right-clicking a category the user
-//  made renames or deletes it.
-//
+// The visible tab decides what map color means, and picking a row lights just those cells, as on the Mac.
 
 import CGtk
 import Foundation
@@ -376,9 +365,7 @@ final class StatisticsView {
         }
     }
 
-    /// The biggest countable items (files, packages, summarized folders),
-    /// largest first, keeping a bounded sorted buffer instead of sorting
-    /// the whole tree.
+    /// Keeps a bounded sorted buffer instead of sorting the whole tree.
     nonisolated static func largestFiles(in store: FileTreeStore, limit: Int) -> [FileNodeRecord] {
         var top: [FileNodeRecord] = []
         top.reserveCapacity(limit + 1)

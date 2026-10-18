@@ -1,11 +1,4 @@
-//
-//  SunburstChartStyler.swift
-//  Neodisk
-//
-//  Fill/stroke styles for sunburst segments: depth-faded fills, hover and
-//  selection overlays. Fills resolved at layout time
-//  (kind/age modes) take precedence over the branch color resolver.
-//
+// Fills resolved at layout time (kind and age modes) take precedence over the branch color resolver.
 
 import SunburstCore
 import SwiftUI
@@ -21,13 +14,8 @@ struct SunburstSegmentDrawingStyle {
     }
 }
 
-/// Diagonal hatch drawn over the fill of cloud-only (dataless) arcs — the
-/// sunburst counterpart of the treemap's dataless stripes. Alternating
-/// lighter and darker bands over the segment's own color, so it reads in
-/// light and dark mode, over branch and kind/age coloring, and under the
-/// colorblind palette (texture, not hue). One instance per Canvas pass:
-/// the stripe geometry is built lazily once and reused for every clipped
-/// draw that frame.
+/// Light and dark bands over the segment's own color, so it reads in any mode and palette (texture, not hue).
+/// One instance per Canvas pass: the stripes are built once and reused for every clipped draw that frame.
 final class SunburstDatalessHatch {
     /// Band thickness in points; light and dark bands alternate, so the
     /// full pattern repeats every two bands.
@@ -76,10 +64,7 @@ final class SunburstDatalessHatch {
     }
 }
 
-/// The dataless diagonal hatch as an overlay for plain SwiftUI views (the
-/// statistics strip's bar, the sidebar's cloud bar) — the same brush the
-/// sunburst draws its cloud-only arcs with, so every surface strokes the
-/// identical texture.
+/// The same brush the sunburst uses for cloud-only arcs, so every surface strokes the identical texture.
 struct DatalessHatchOverlay: View {
     var body: some View {
         Canvas { context, size in
@@ -96,9 +81,7 @@ enum SunburstChartStyler {
         baseStyle(for: segment, effectiveDepth: Double(segment.depth))
     }
 
-    /// Base style at a fractional ring depth — the zoom transition blends a
-    /// segment's depth as it shifts rings, so the depth-faded fill opacity
-    /// glides instead of popping a shade at the handoff.
+    /// Fractional depth lets the fill opacity glide during the zoom instead of popping at the handoff.
     static func baseStyle(
         for segment: SunburstSegment,
         effectiveDepth: Double

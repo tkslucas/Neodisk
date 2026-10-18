@@ -1,13 +1,5 @@
-//
-//  Observation.swift
-//  NeodiskGTK
-//
-//  Drives GTK widgets from @Observable state. `withObservationTracking`
-//  reports the first change to anything `update` read, once; `track`
-//  re-runs `update` on the next main-actor turn (after the mutation has
-//  landed, and coalescing a burst of mutations into one refresh) and
-//  re-registers — the same contract SwiftUI gives the macOS views.
-//
+// `track` re-runs `update` on the next main-actor turn (coalescing bursts) and re-registers,
+// the same contract SwiftUI gives the macOS views.
 
 import Dispatch
 import Observation
@@ -23,9 +15,7 @@ final class ObservationToken {
     }
 }
 
-/// Runs `update` now and again whenever any observable property it read
-/// changes. Keep the token for as long as the binding should live: it's
-/// weakly held, so a dropped token ends the binding after its first change.
+/// The token is weakly held: dropping it ends the binding after its first change.
 @MainActor
 func track(_ update: @escaping @MainActor () -> Void) -> ObservationToken {
     let token = ObservationToken()

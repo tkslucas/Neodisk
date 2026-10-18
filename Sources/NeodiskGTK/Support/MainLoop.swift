@@ -1,15 +1,5 @@
-//
-//  MainLoop.swift
-//  NeodiskGTK
-//
-//  Swift concurrency on GLib's main loop. On Linux the main actor's executor
-//  is the main dispatch queue, which libdispatch only drains when someone
-//  runs it — normally CoreFoundation's run loop or dispatchMain(). Here GLib
-//  owns the main thread instead, so the queue's wake-up eventfd is added to
-//  GLib's loop and drained from there: every `Task { @MainActor … }`,
-//  `await MainActor.run`, and `DispatchQueue.main.async` then runs on the
-//  GTK thread, interleaved with GTK's own events.
-//
+// On Linux the main queue drains only under a CF run loop or dispatchMain(); GLib owns the main thread
+// here, so the queue's wake-up eventfd is added to GLib's loop and drained from there.
 
 import CGtk
 import Glibc

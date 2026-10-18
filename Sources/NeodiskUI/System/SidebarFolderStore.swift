@@ -1,12 +1,4 @@
-//
-//  SidebarFolderStore.swift
-//  Neodisk
-//
-//  The sidebar's Folders section, persisted across launches. Seeded on
-//  first launch with the common folders (home, Desktop, Documents, …);
-//  after that every entry — seeded or user-added — is an ordinary,
-//  removable row. There is no separate "pinned" concept.
-//
+// Seeded on first launch with common folders; after that every entry is an ordinary removable row.
 
 import Foundation
 import NeodiskKit

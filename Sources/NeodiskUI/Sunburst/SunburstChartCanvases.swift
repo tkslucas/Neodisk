@@ -1,11 +1,4 @@
-//
-//  SunburstChartCanvases.swift
-//  Neodisk
-//
-//  The three sunburst Canvas layers: base rings (Equatable on the render
-//  version, so unrelated view updates skip redrawing), the selection
-//  overlay, and the hover overlay.
-//
+// Base rings are Equatable on the render version, so unrelated view updates skip redrawing.
 
 import SunburstCore
 import SwiftUI

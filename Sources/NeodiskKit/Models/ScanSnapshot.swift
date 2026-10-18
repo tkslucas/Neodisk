@@ -1,8 +1,3 @@
-//
-//  ScanSnapshot.swift
-//  Neodisk
-//
-
 import Foundation
 
 public enum ScanWarningCategory: String, Hashable, Sendable {
@@ -15,9 +10,7 @@ public struct ScanWarning: Identifiable, Hashable, Sendable {
     public let message: String
     public let category: ScanWarningCategory
 
-    /// Content-derived, so identical warnings are equal — they dedupe
-    /// naturally and keep their identity across a snapshot codec round
-    /// trip. (A stored UUID made two identical warnings never equal.)
+    /// Content-derived so identical warnings dedupe and keep identity across a codec round trip.
     public nonisolated var id: String {
         [category.rawValue, path, message].joined(separator: "\u{0}")
     }
@@ -118,10 +111,7 @@ public nonisolated enum ScanSnapshotSource: Sendable {
         }
     }
 
-    /// Whether the snapshot may enter the on-disk scan cache (and thereby
-    /// participate in "changes since last scan" diffing). Imported archives
-    /// are view-only: caching one would overwrite the location's real scan
-    /// history.
+    /// Imported archives are view-only: caching one would overwrite the location's real scan history.
     public nonisolated var isPersistable: Bool {
         switch self {
         case .live:
@@ -143,9 +133,7 @@ public struct ScanSnapshot: Identifiable, Sendable {
     public let isComplete: Bool
     public let scanOptions: ScanOptions?
     public let source: ScanSnapshotSource
-    /// FSEvents journal position captured when this scan started; the basis
-    /// for the next incremental rescan. Nil for partial snapshots, imported
-    /// archives, cloud targets, and volumes without a usable journal.
+    /// Nil for partial snapshots, imported archives, cloud targets and volumes without a usable journal.
     public let incrementalCheckpoint: FSEventsCheckpoint?
 
     public nonisolated init(
@@ -260,11 +248,8 @@ public struct ScanSnapshot: Identifiable, Sendable {
         )
     }
 
-    /// Merges sub-scan warnings into a baseline after an incremental splice:
-    /// baseline warnings under any replaced root are stale (that subtree was
-    /// re-scanned) and dropped, the sub-scan's own warnings are appended, and
-    /// the result is deduped by `ScanWarning.id` with surviving baseline
-    /// warnings kept ahead of the new ones.
+    /// Baseline warnings under replaced roots are stale and dropped; the sub-scan's are appended, deduped
+    /// by id with survivors first.
     nonisolated static func mergedWarningsPruningReplacedSubtrees(
         existing: [ScanWarning],
         replacedRootPaths: [String],
@@ -273,9 +258,7 @@ public struct ScanSnapshot: Identifiable, Sendable {
     ) -> [ScanWarning] {
         var seen = Set<String>()
         var result: [ScanWarning] = []
-        // Directories re-read whole (deep re-walk / removal / file replacement)
-        // prune every warning beneath them; a shallow relist only re-verified
-        // the directory itself, so it prunes the warning at exactly that path.
+        // Whole re-reads prune everything beneath; a shallow relist only re-verified the directory itself.
         let exactPaths = Set(prunedExactPaths)
 
         for warning in existing {

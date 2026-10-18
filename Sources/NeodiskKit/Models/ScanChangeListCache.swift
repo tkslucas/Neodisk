@@ -1,21 +1,5 @@
-//
-//  ScanChangeListCache.swift
-//  Neodisk
-//
-//  The persisted form of a computed ScanChangeList, stored through the
-//  snapshot cache's `.nddiff` slot. Reopening the Changes tab after a scan
-//  (or on relaunch) otherwise pays ~13s: decoding the previous snapshot plus
-//  the O(nodes) ScanChangeList.build. Persisting the finished diff turns that
-//  into a small read.
-//
-//  The cache is keyed on the identity (size + mtime) of BOTH snapshot cache
-//  files it was derived from — the current `.ndscan` and the rotated
-//  `.prev.ndscan` — plus the entry limit. That key is content-stable across
-//  process launches (unlike ScanSnapshot.id, a fresh UUID per decode), so a
-//  rescan (which rewrites and rotates the files) changes the key and the
-//  stale diff is recomputed. A separate diff-format version invalidates every
-//  blob at once if the diff's semantics ever change.
-//
+// Persisted diff (`.nddiff`), saving ~13s of decode and rebuild on reopen. Keyed on size and mtime of
+// both snapshot files (stable across launches, unlike ScanSnapshot.id) plus the entry limit.
 
 import Foundation
 
@@ -51,9 +35,7 @@ public nonisolated struct ScanChangeListCacheEntry: Codable, Sendable {
 
     public let diffFormatVersion: Int
     public let key: ScanChangeCacheKey
-    /// The compared predecessor's finish date, for the tab's "since …"
-    /// header — the cache hit path never decodes the previous snapshot, so it
-    /// must be carried here.
+    /// Carried here because the cache-hit path never decodes the previous snapshot.
     public let comparisonDate: Date?
     public let list: ScanChangeList
 

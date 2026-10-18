@@ -1,15 +1,4 @@
-//
-//  ChangesModel.swift
-//  Neodisk
-//
-//  The statistics panel's Changes tab: the explicit added / deleted /
-//  renamed / grown / shrunk list of the displayed scan against its
-//  predecessor. Owned by NeodiskViewModel as `model.changes`.
-//
-//  Availability mirrors the outline diff's baseline gating. Both views and
-//  sidecar persistence share the cache's compact comparison; the full
-//  predecessor tree is released as soon as that comparison has been built.
-//
+// Changes tab state. The full predecessor tree is released once the cache's compact comparison is built.
 
 import Foundation
 import Observation
@@ -26,14 +15,10 @@ final class ChangesModel {
     /// When the compared previous scan finished, for the "since …" header.
     private(set) var comparisonDate: Date?
     private(set) var isLoading = false
-    /// The subtab filter (All / Added / Deleted). Like the kind pane's
-    /// display mode it survives snapshot changes — the chosen lens carries
-    /// across scans.
+    /// Survives snapshot changes, so the chosen lens carries across scans.
     var filter: ScanChangeList.Filter = .all
 
-    /// Bumped whenever a loaded list goes stale for reasons the snapshot ID
-    /// can't express (the previous snapshot rotating under the same displayed
-    /// tree). The pane keys its load task on it.
+    /// For staleness the snapshot ID can't express (the predecessor rotating under the same tree).
     private(set) var reloadToken = 0
 
     @ObservationIgnored private let coordinator: ScanCoordinator
@@ -58,10 +43,7 @@ final class ChangesModel {
         model?.diff.canShow == true
     }
 
-    /// Called from the pane whenever it is on screen (tab switches, snapshot
-    /// changes, rotations); no-op when the list already matches the
-    /// displayed snapshot. Loading only from the pane keeps the hidden tab
-    /// from decoding previous snapshots nobody is looking at.
+    /// Loading only from the pane keeps a hidden tab from decoding previous snapshots.
     func loadIfNeeded() {
         guard let snapshot = coordinator.snapshot, snapshot.isComplete else { return }
         guard canCompare else {
@@ -84,9 +66,7 @@ final class ChangesModel {
         let generation = loadGeneration
         let target = snapshot.target
         loadTask = Task { [weak self, snapshotCache] in
-            // Fast path: a persisted diff keyed on exactly the current and
-            // previous snapshot files (written proactively at scan finish, or
-            // by a prior open). Skips decoding the predecessor and rebuilding.
+            // A persisted diff keyed on exactly these two snapshot files skips decoding the predecessor.
             if let cached = await snapshotCache.loadChangeList(
                 forTargetID: target.id, entryLimit: Self.entryLimit
             ) {
@@ -133,9 +113,7 @@ final class ChangesModel {
         comparisonDate = nil
     }
 
-    /// Saving the displayed snapshot rotated its predecessor: a loaded list
-    /// now compares against the wrong generation. Invalidate and let the
-    /// pane's task recompute if (and only if) the tab is on screen.
+    /// A loaded list now compares against the wrong generation; the pane recomputes only if on screen.
     func snapshotWasRotated(for target: ScanTarget) {
         guard coordinator.snapshot?.target.id == target.id,
               loadedSnapshotID != nil else { return }

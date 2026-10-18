@@ -1,10 +1,5 @@
-//
-//  DrillHistory.swift
-//  NeodiskAppModel
-//
-//  Browser-style back/forward over the drill root (never the selection).
-//  Entries are node IDs, so they outlive a rescan; vanished ones are skipped.
-//
+// Browser-style back/forward over the drill root (never the selection).
+// Entries are node IDs, so they outlive a rescan; vanished ones are skipped.
 
 import Foundation
 

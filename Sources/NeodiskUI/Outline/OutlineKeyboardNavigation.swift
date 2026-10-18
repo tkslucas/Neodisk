@@ -1,11 +1,4 @@
-//
-//  OutlineKeyboardNavigation.swift
-//  Neodisk
-//
-//  Shared left/right hierarchy navigation for both flattened outline tables.
-//  Resolution follows the displayed rows so parent/child moves honor the
-//  bottom table's active sort and the Changes tab's diff ordering.
-//
+// Follows the displayed rows so moves honor the bottom table's sort and the Changes tab's ordering.
 
 import AppKit
 
@@ -58,9 +51,7 @@ enum OutlineKeyboardNavigation {
         }
     }
 
-    /// Returns the performed action so callers can reveal a `.selectRow`
-    /// target that sits outside the viewport — unlike the built-in up/down
-    /// arrows, a programmatic selection change never scrolls on its own.
+    /// Callers reveal a `.selectRow` target themselves: a programmatic selection change never scrolls.
     @discardableResult
     static func perform(
         _ direction: OutlineHierarchyDirection,

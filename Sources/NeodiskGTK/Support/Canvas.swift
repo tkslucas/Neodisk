@@ -1,14 +1,5 @@
-//
-//  Canvas.swift
-//  NeodiskGTK
-//
-//  A GtkWidget subclass whose drawing belongs to Swift: "NeodiskCanvas"
-//  overrides the snapshot and size_allocate vfuncs and forwards them to a
-//  delegate. Drawing through GtkSnapshot (textures, color and border nodes,
-//  Pango layouts) keeps the treemap and sunburst on GTK's GPU renderer — a
-//  GtkDrawingArea would re-rasterize and re-upload a full-window cairo
-//  surface on every hover.
-//
+// A GtkWidget subclass forwarding snapshot and size_allocate to Swift. GtkSnapshot keeps drawing on the GPU
+// renderer; a GtkDrawingArea would re-upload a full-window cairo surface on every hover.
 
 import CGtk
 

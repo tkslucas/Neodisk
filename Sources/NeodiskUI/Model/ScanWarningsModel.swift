@@ -1,12 +1,5 @@
-//
-//  ScanWarningsModel.swift
-//  Neodisk
-//
-//  Scan-warning state behind the bottom notice strip and its details
-//  popover: the deduplicated warnings, their ancestor groups, and the Full
-//  Disk Access probe that decides whether permission-denied warnings are
-//  worth surfacing at all. Owned by NeodiskViewModel as `model.warnings`.
-//
+// Scan warnings behind the notice strip, plus the Full Disk Access probe that decides whether permission
+// warnings are worth surfacing.
 
 import Foundation
 import Observation
@@ -30,10 +23,7 @@ struct ScanWarningGroup: Identifiable {
 @MainActor
 @Observable
 final class ScanWarningsModel {
-    /// Latest Full Disk Access probe result. With access granted, the
-    /// permission-denied warnings that remain are dead ends the user cannot
-    /// fix (other users' home folders, SIP-protected system paths), so the
-    /// warning surfaces hide them. Refreshed on launch and app activation.
+    /// Once granted, remaining permission warnings are unfixable (other homes, SIP paths), so they're hidden.
     var fullDiskAccessStatus: FullDiskAccessStatus = .unknown
 
     @ObservationIgnored private let coordinator: ScanCoordinator
@@ -95,9 +85,7 @@ final class ScanWarningsModel {
         )
     }
 
-    /// Shallow grouping ancestor: two components below the home directory
-    /// ("~/Library/Mail"), three from the root elsewhere
-    /// ("/private/var/folders"). Deep failure clusters land on one row.
+    /// Two components below home ("~/Library/Mail"), three elsewhere ("/private/var/folders").
     static func groupAncestor(of path: String) -> String {
         let home = NSHomeDirectory()
         let base: String

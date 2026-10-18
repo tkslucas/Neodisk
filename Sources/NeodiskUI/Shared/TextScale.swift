@@ -1,32 +1,15 @@
-//
-//  TextScale.swift
-//  Neodisk
-//
-//  Workspace text size: one scale factor applied to every font the workspace
-//  draws — locations sidebar, file lists, both visualizations, statistics,
-//  status bar, tooltips. Window chrome (Settings, About, the menu bar,
-//  alerts) keeps the system size, the way a browser's zoom leaves its own
-//  chrome alone.
-//
-//  Views never write a literal `.system(size:)`; they name a `NeoFont` and
-//  let `.neoFont` resolve it against the scale in the environment. AppKit
-//  surfaces that draw their own text (the outline table, treemap labels)
-//  read the scale directly — see OutlineRowMetrics and TreemapScene.
-//
+// One scale for every workspace font; window chrome keeps the system size, like a browser's zoom.
+// Views name a `NeoFont` instead of `.system(size:)`; AppKit text reads the scale directly.
 
 import SwiftUI
 
-/// The discrete zoom steps ⌘+/⌘− walk and the Settings picker lists.
-/// Discrete rather than a slider: every step is a size someone deliberately
-/// chose, and the keyboard walks them predictably.
+/// Discrete rather than a slider: every step is a deliberate size and the keyboard walks them predictably.
 enum TextScale {
     static let steps: [Double] = [0.85, 1.0, 1.15, 1.3, 1.5, 1.75, 2.0]
     static let standard: Double = 1.0
 
-    /// `value` snapped to the nearest step — the single gate a stored or
-    /// restored scale passes through, so a hand-edited preference (or one
-    /// written by a build with a different ladder) can never leave the UI at
-    /// an unlisted size.
+    /// The single gate for stored scales, so a hand-edited or other-build preference can't leave an unlisted
+    /// size.
     static func snapped(_ value: Double) -> Double {
         steps.min(by: { abs($0 - value) < abs($1 - value) }) ?? standard
     }
@@ -57,9 +40,7 @@ private struct TextScaleKey: EnvironmentKey {
 }
 
 extension EnvironmentValues {
-    /// The workspace text scale, set once at the workspace root. Every
-    /// `neoFont` below resolves against it; views that size their own boxes
-    /// around text (icon slots, row padding) read it too.
+    /// Set once at the workspace root; views that size boxes around text read it too.
     var neoTextScale: CGFloat {
         get { self[TextScaleKey.self] }
         set { self[TextScaleKey.self] = newValue }
@@ -111,13 +92,8 @@ extension View {
         modifier(NeoFontModifier(font: NeoFont(size, weight: weight)))
     }
 
-    /// Grow a control with the text scale. AppKit sizes a control's chrome
-    /// from its control size, not from its label's font, so a scaled title
-    /// on its own would just overflow the capsule.
-    ///
-    /// `base` is the size the control had before the scale existed — pass
-    /// the `.small` a view deliberately chose, and it steps up from there.
-    /// At 100% this always returns `base` unchanged.
+    /// AppKit sizes chrome from the control size, not the label font, so a scaled title alone would overflow.
+    /// Pass the `.small` a view chose as `base`; at 100% it is returned unchanged.
     func neoControlSize(base: ControlSize = .regular) -> some View {
         modifier(NeoControlSizeModifier(base: base))
     }
@@ -128,9 +104,7 @@ extension TextScale {
     /// ladder from the caller's base, clamped at the top.
     static let controlSizes: [ControlSize] = [.mini, .small, .regular, .large, .extraLarge]
 
-    /// `base` grown for `scale`. Returns `base` unchanged at 100%, which is
-    /// what lets `neoControlSize` be applied to a deliberately `.small`
-    /// control without promoting it.
+    /// Unchanged at 100%, so a deliberately `.small` control is never promoted.
     static func controlSize(base: ControlSize, scale: CGFloat) -> ControlSize {
         let steps = switch scale {
         case ..<1.15: 0

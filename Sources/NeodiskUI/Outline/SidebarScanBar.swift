@@ -1,20 +1,10 @@
-//
-//  SidebarScanBar.swift
-//  Neodisk
-//
-//  The striped progress bar a sidebar row shows in its capacity-bar slot
-//  while that location is scanning off-screen (a background scan a
-//  navigate-away demotion left running), plus its hover bubble and the
-//  store + overlay layer that draw the bubble above the List's cells.
-//
+// The progress bar a sidebar row shows while its location scans in the background, plus its hover bubble.
 
 import SwiftUI
 import NeodiskKit
 import NeodiskAppModel
 
-/// Content of a sidebar row's background-scan hover bubble, independent of any
-/// view so its detail line can be unit-tested. The first line is a static
-/// "Scanning…"; this carries the live second line.
+/// View-free so its detail line can be unit-tested; the first line is a static "Scanning...".
 struct SidebarScanTooltipData: Equatable {
     var progressFraction: Double
     var itemCount: Int
@@ -30,11 +20,8 @@ struct SidebarScanTooltipData: Equatable {
     }
 }
 
-/// Frames and hover state for the visible background-scan bars, kept outside
-/// SidebarPane's view state on purpose: a bar's frame changes on every scroll
-/// tick, and routing that through pane `@State` would re-run the whole pane
-/// body (List included) per tick. Only `SidebarScanTooltipLayer` observes
-/// this store, so frame churn re-renders just the bubble layer.
+/// Kept out of SidebarPane's state: frames change every scroll tick, which would re-run the whole pane
+/// body. Only the tooltip layer observes this.
 @MainActor
 final class SidebarScanTooltipStore: ObservableObject {
     /// Global frames of visible background-scan bars, keyed by target ID.
@@ -70,13 +57,8 @@ final class SidebarScanTooltipStore: ObservableObject {
     }
 }
 
-/// The striped bar shown in a scanning row's capacity-bar slot. A leaf view
-/// bound to the session's `ScanProgressState`, so the ~10Hz progress churn
-/// re-renders only this bar — never the row or the List, which invalidate
-/// solely when a scan starts or stops (a registry insert/remove). Hovering
-/// shows the live percent and item count in the capacity bar's tooltip
-/// chrome; frame and hover reports flow to `SidebarScanTooltipStore`, so
-/// they never invalidate the row or the List either.
+/// Bound to the session's progress state so ~10Hz churn re-renders only this bar, never the row or List.
+/// Frame and hover reports go to `SidebarScanTooltipStore` for the same reason.
 struct SidebarScanBar: View {
     let targetID: String
     @ObservedObject var progress: ScanProgressState
@@ -111,10 +93,8 @@ struct SidebarScanBar: View {
     }
 }
 
-/// The List overlay that draws every scan bubble; the only observer of the
-/// tooltip store, so per-scroll-tick frame updates re-render this layer
-/// alone. Bar frames arrive in global coordinates because the reporting leaf
-/// is hosted inside AppKit's table; convert them back into overlay space.
+/// The only observer of the tooltip store. Bar frames arrive in global coordinates (the leaf is hosted in
+/// AppKit's table), so they're converted back into overlay space.
 struct SidebarScanTooltipLayer: View {
     @ObservedObject var store: SidebarScanTooltipStore
     /// Resolves a target's running background scan; nil once it stops.
@@ -146,9 +126,7 @@ struct SidebarScanTooltipLayer: View {
     }
 }
 
-/// The bubble itself lives in the sidebar overlay rather than this bar's List
-/// cell. Its global bar frame is converted to overlay coordinates by the
-/// parent, so the same centered anchor is preserved without row clipping.
+/// Lives in the sidebar overlay rather than the List cell so the bubble isn't clipped by the row.
 struct SidebarScanTooltipOverlay: View {
     @ObservedObject var progress: ScanProgressState
     let barFrame: CGRect

@@ -1,12 +1,5 @@
-//
-//  UpdateSupport.swift
-//  Neodisk
-//
-//  Gating for the Sparkle updater. Updates only make sense in the packaged
-//  .app: `swift run` dev builds have no bundle identifier (and no Info.plist
-//  worth updating), and a bundle without a configured appcast feed has
-//  nowhere to check. Pure functions so the gate is unit-testable.
-//
+// Sparkle gating: `swift run` builds have no bundle identifier and an unconfigured feed has nowhere to check.
+// Pure functions so the gate is unit-testable.
 
 import Foundation
 
@@ -14,10 +7,7 @@ enum UpdateSupport {
     /// Info.plist key for the Sparkle appcast feed URL.
     static let feedURLKey = "SUFeedURL"
 
-    /// Whether the Sparkle updater may run for a host with the given bundle
-    /// identity and appcast feed. Both must be present and the feed must be
-    /// a valid http(s) URL; anything else means "run without updates" —
-    /// never crash or nag.
+    /// Anything but a bundle ID and a valid http(s) feed means "run without updates", never crash or nag.
     static func isSupported(bundleIdentifier: String?, feedURLString: String?) -> Bool {
         guard let bundleIdentifier, !bundleIdentifier.isEmpty else { return false }
         guard let feedURLString else { return false }

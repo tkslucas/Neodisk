@@ -159,9 +159,7 @@ import Foundation
     }
 
     #if canImport(Darwin)
-    /// "Show Package Contents": scanning a package as the root with
-    /// `treatRootPackageAsDirectory` opens up that package only — bundles
-    /// nested inside remain opaque leaves with aggregate sizes.
+    /// Only the root package opens up; nested bundles stay opaque leaves with aggregate sizes.
     @Test func testRootPackageExpandsWhileNestedPackagesStayOpaque() async throws {
         let rootURL = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -1400,9 +1398,7 @@ import Foundation
 
         let snapshot = try #require(finalSnapshot)
 
-        // Volume snapshots carry only scanned bytes on every filesystem;
-        // the gap up to used capacity is the UI's hidden space, never a
-        // synthetic node.
+        // The gap up to used capacity is the UI's hidden space, never a synthetic node.
         let children = rootChildren(in: snapshot)
         let hasSyntheticChild = children.contains { $0.isSynthetic }
         #expect(!hasSyntheticChild)
@@ -1769,10 +1765,8 @@ import Foundation
 
     @Test func testItemCountCapAppliesWhenFrontierDrainsButFilesRemain() {
         var metrics = ScanMetrics()
-        // 1,000 sibling files completed, then one directory was enumerated and yielded
-        // 5,000 flat files (no subdirectories), draining the frontier to zero. Most of the
-        // discovered files are still unprocessed, but the weight model alone reports ~94%
-        // because the 1,000 completed files held nearly all of the root's split weight.
+        // The frontier drained to zero with most files unprocessed, yet weight alone reports ~94% because the
+        // 1,000 completed files held nearly all the root's weight.
         metrics.filesVisited = 1_000
         metrics.discoveredItems = 6_001
         metrics.completedItems = 1_000
@@ -2446,12 +2440,8 @@ private func scanFinishes(engine: ScanEngine, at url: URL) async throws -> Bool 
     return false
 }
 
-/// Real FileManager listings, except that the listing of `url` stops after
-/// `afterEntries` entries, cancels the scan's task from there and holds until
-/// the cancel reaches the engine's own cancellation check. A scan through it
-/// can never finish before its cancel lands, the cancel doesn't wait for the
-/// test task to be scheduled, and a scan whose work ignores the cancel never
-/// lets the listing end.
+/// The listing of `url` cancels the scan after `afterEntries` entries and holds until the engine sees it,
+/// so a scan can't finish first and one that ignores the cancel never ends.
 private final class ListingHeldUntilCancelled: @unchecked Sendable {
     /// Resolved: the engine lists children in the enumerator's spelling
     /// (`/private/var/…` for a `/var/…` temporary folder).
@@ -2552,9 +2542,7 @@ private final class ListingHeldUntilCancelled: @unchecked Sendable {
 
         func nextObject() -> Any? {
             if producedCount == holdAfter {
-                // Polls until the cancel reaches the scan's work (the task
-                // may not be handed over yet). The engine's next check, after
-                // this entry or after the loop for an empty folder, throws.
+                // The task may not be handed over yet; the engine's next check throws.
                 while (try? cancellationCheck()) != nil {
                     onHold()
                     Thread.sleep(forTimeInterval: 0.001)

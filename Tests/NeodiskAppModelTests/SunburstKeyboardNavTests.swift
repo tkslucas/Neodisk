@@ -3,9 +3,7 @@ import Testing
 import NeodiskKit
 @testable import NeodiskAppModel
 
-/// Sunburst arrow-key resolution: sibling order follows the tree's display
-/// order (largest first, the chart's angular order) and every move is
-/// restricted to rendered segments.
+/// Sibling order follows display order (largest first) and every move is restricted to rendered segments.
 struct SunburstKeyboardNavTests {
     private struct Fixture {
         let store: FileTreeStore
@@ -17,10 +15,7 @@ struct SunburstKeyboardNavTests {
         let smallDoc: FileNodeRecord
     }
 
-    /// root ─┬─ docs (110) ─┬─ big.pdf (100)
-    ///        │             └─ small.pdf (10)
-    ///        ├─ media (60) ── movie.mp4 (60)
-    ///        └─ tiny.txt (1)   (pooled away: not rendered)
+    /// root: docs 110 (big.pdf 100, small.pdf 10), media 60 (movie.mp4 60), tiny.txt 1 (pooled away).
     private func makeFixture() -> Fixture {
         let bigDoc = makeTestFileNode(id: "/root/docs/big.pdf", name: "big.pdf", size: 100)
         let smallDoc = makeTestFileNode(id: "/root/docs/small.pdf", name: "small.pdf", size: 10)

@@ -1,10 +1,5 @@
-//
-//  SunburstGeometryTests.swift
-//  Neodisk
-//
-//  Sunburst geometry suite, plus Neodisk-specific
-//  coverage for the free-space segment and layout-time kind/age coloring.
-//
+// Sunburst geometry suite, plus Neodisk-specific
+// coverage for the free-space segment and layout-time kind/age coloring.
 
 import SunburstCore
 import CoreGraphics
@@ -160,10 +155,7 @@ import NeodiskKit
     }
 
     @Test func ringGapBelongsToTheArcItHangsOff() throws {
-        // Real layout radii: ring 0 arc ends ringGap short of ring 1's inner
-        // edge. The gap is cosmetic — hovering it must hit the ring 0 arc,
-        // not report a dead zone (which would flicker the legend preview
-        // when sliding from a folder into its subfolder).
+        // The gap is cosmetic: hovering it must hit ring 0, or the legend preview flickers between folders.
         let nested = makeTestFileNode(id: "/root/a/child", name: "child", size: 5)
         let branch = makeTestDirectoryNode(id: "/root/a", name: "a", children: [nested])
         let root = makeTestDirectoryNode(id: "/root", name: "root", children: [branch])
@@ -186,10 +178,7 @@ import NeodiskKit
     }
 
     @Test func hitTestRoundtripsEveryTaperedRingToItsDepth() throws {
-        // A four-deep chain: rings taper outward, so their radial bands are
-        // uneven. Hitting each drawn arc at its own mid-radius must land back
-        // on a segment of that depth — the hit-test bands and the drawn bands
-        // share the one metrics source, so they can never drift apart.
+        // Rings taper, so bands are uneven; hit-test and drawn bands share one metrics source.
         let leaf = makeTestFileNode(id: "/root/a/b/c/leaf", name: "leaf", size: 5)
         let c = makeTestDirectoryNode(id: "/root/a/b/c", name: "c", children: [leaf])
         let b = makeTestDirectoryNode(id: "/root/a/b", name: "b", children: [c])
@@ -255,9 +244,7 @@ import NeodiskKit
     }
 
     @Test func resortedSiblingsMoveTheColorMidpoint() throws {
-        // Hue follows the size layout, not the node's identity: when a
-        // folder's rank among its siblings changes, its interval — and so
-        // its color — moves (the documented rescan sensitivity).
+        // Hue follows the size layout, not identity: a rank change moves the color (documented rescan sensitivity).
         let firstStore = makeGeometryStore(children: [
             makeTestDirectoryNode(id: "/root/a", name: "a", children: [
                 makeTestFileNode(id: "/root/a/f", name: "f", size: 3),
@@ -292,9 +279,7 @@ import NeodiskKit
     }
 
     @Test func childColorMidpointsNestInsideTheParentInterval() throws {
-        // Every descendant's interval nests inside its parent's, so child
-        // midpoints stay within the parent's slice of the wheel — the
-        // family-resemblance rule — while still differing per sibling.
+        // Child intervals nest inside the parent's, so children resemble it while still differing per sibling.
         let fileOne = makeTestFileNode(id: "/root/a/one/f", name: "f", size: 3)
         let fileTwo = makeTestFileNode(id: "/root/a/two/f", name: "f", size: 2)
         let fileThree = makeTestFileNode(id: "/root/a/three/f", name: "f", size: 1)
@@ -333,9 +318,7 @@ import NeodiskKit
     }
 
     @Test func focusedSubtreeKeepsScanRootColorCoordinates() throws {
-        // Drilling re-lays the chart out from the focused folder, but color
-        // tokens stay in scan-root coordinates: the focused layout's tokens
-        // are identical to the full layout's for the same nodes.
+        // Color tokens stay in scan-root coordinates after a drill.
         let nestedChildren = [
             makeTestFileNode(id: "/root/a/child-1", name: "child-1", size: 2),
             makeTestFileNode(id: "/root/a/child-2", name: "child-2", size: 1),
@@ -429,9 +412,7 @@ import NeodiskKit
         let hiddenSegment = try #require(segments.first { $0.isHiddenSpace })
         let freeSegment = try #require(segments.first { $0.isFreeSpace })
 
-        // 200 allocated + 100 hidden + 100 free: half the circle for the
-        // file, then the hidden quarter, then the trailing free quarter —
-        // both synthetic arcs on the top ring, never recursed.
+        // 200 allocated + 100 hidden + 100 free: half, then a hidden quarter, then a free quarter, never recursed.
         #expect(abs(fileSegment.endAngle - .pi) < 0.0001)
         #expect(abs(hiddenSegment.startAngle - .pi) < 0.0001)
         #expect(abs(hiddenSegment.endAngle - .pi * 1.5) < 0.0001)
@@ -513,9 +494,7 @@ import NeodiskKit
     }
 
     @Test func packagesAreFilesToTheSunburst() throws {
-        // Packages (.app, .imovielibrary, …) are directories the scan never
-        // descends into — the sunburst treats them as files: gray in branch
-        // mode, not a drill target.
+        // The scan never descends into packages, so they're gray files here, not drill targets.
         let package = FileNodeRecord(
             id: "/root/iMovie Library.imovielibrary",
             url: URL(filePath: "/root/iMovie Library.imovielibrary", directoryHint: .isDirectory),
@@ -732,9 +711,7 @@ import NeodiskKit
 
         func span(_ segment: SunburstSegment) -> Double { segment.endAngle - segment.startAngle }
 
-        // Off counts on-disk bytes only, so the dataless file is a sliver and
-        // the local file owns nearly the whole circle. On adds the cloud
-        // bytes, so the equal-logical-size arcs split the circle evenly.
+        // Off counts on-disk bytes only; on adds cloud bytes, so equal logical sizes split evenly.
         #expect(span(cloudOn) > span(cloudOff))
         #expect(span(localOn) < span(localOff))
         #expect(abs(span(cloudOn) - span(localOn)) < 0.0001)
@@ -769,9 +746,7 @@ import NeodiskKit
             in: store, rootID: "/root", depthLimit: 3, includeCloudOnly: true
         )
 
-        // A directory whose bytes all live in the cloud gets the hatch
-        // marker, and with the toggle on it has the weight to drill so its
-        // cloud child renders in the inner ring.
+        // With the toggle on, an all-cloud directory has the weight to drill, so its child renders.
         let dirOn = try #require(on.first { $0.nodeID == cloudDir.id })
         #expect(dirOn.isDataless)
         #expect(on.contains { $0.nodeID == cloudFile.id })
@@ -830,9 +805,7 @@ private func makeGeometryStore(children: [FileNodeRecord]) -> FileTreeStore {
     return FileTreeStore(root: root, childrenByID: ["/root": children])
 }
 
-/// A dataless (cloud-only) file: no on-disk bytes, `cloudBytes` of logical
-/// content that lives only in the cloud. Local to this suite so the shared
-/// TestFixtures stay untouched.
+/// Local to this suite so the shared TestFixtures stay untouched.
 private func makeDatalessFileNode(id: String, name: String, cloudBytes: Int64) -> FileNodeRecord {
     FileNodeRecord(
         id: id,

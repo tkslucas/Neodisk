@@ -1,16 +1,5 @@
-//
-//  SnapshotPayloadStream.swift
-//  Neodisk
-//
-//  Decompresses a snapshot's node payload while it's parsed, instead of
-//  into one buffer first: a millions-of-nodes payload is hundreds of
-//  megabytes decompressed, and holding it next to the tree it becomes was
-//  the peak of opening a large saved scan. PayloadDecompressor produces the
-//  bytes on demand (LZFSE on Apple platforms, zstd on Linux — see
-//  SnapshotPayloadCompression.swift), and StreamingPayloadReader parses
-//  them through a small refilling window with the same reads as
-//  PayloadReader.
-//
+// Decompresses the node payload while parsing it: holding hundreds of decompressed MB next to the tree they
+// become was the peak of opening a large saved scan.
 
 import Foundation
 #if canImport(Compression)
@@ -42,10 +31,7 @@ nonisolated final class PayloadDecompressor: PayloadByteSource {
     let maximumBytes: Int
     /// Decompressed size, when the stream declares it (zstd frames do).
     let declaredSize: Int?
-    /// What the payload is expected to decompress to at most: the declared
-    /// size, or else a generous multiple of the compressed size. Only an
-    /// estimate for the decoder's plausibility checks — output past it is
-    /// still accepted up to `maximumBytes`.
+    /// Only an estimate for plausibility checks; output past it is accepted up to `maximumBytes`.
     let expectedSizeBound: Int
     private(set) var producedCount = 0
     private(set) var isFinished = false
@@ -109,9 +95,6 @@ nonisolated final class PayloadDecompressor: PayloadByteSource {
         #endif
     }
 
-    /// Writes up to `count` bytes to `destination` and returns how many; 0
-    /// once the payload is complete. Throws on corrupt, truncated, or
-    /// oversized input, and on cancellation.
     /// Time spent decompressing, with NEODISK_SCAN_TIMING (decode reports it).
     private(set) var decompressNanoseconds: UInt64 = 0
 
@@ -195,9 +178,7 @@ nonisolated final class PayloadDecompressor: PayloadByteSource {
     }
 }
 
-/// Parses a compressed payload as it decompresses, through a window that
-/// refills from the decompressor: memory stays at the window's size
-/// instead of the whole payload's.
+/// Memory stays at the window's size instead of the whole payload's.
 nonisolated final class StreamingPayloadReader: PayloadReading {
     private let source: any PayloadByteSource
     private var window: UnsafeMutableRawPointer
@@ -215,9 +196,7 @@ nonisolated final class StreamingPayloadReader: PayloadReading {
         window.deallocate()
     }
 
-    /// Buffered bytes plus what the stream may still produce: exact when
-    /// the stream declares its size, an estimate otherwise (falling back to
-    /// the hard limit once output passes the estimate).
+    /// Exact when the stream declares its size, else an estimate that falls back to the hard limit.
     var remainingByteCount: Int {
         let produced = source.producedCount
         let bound = produced < source.expectedSizeBound ? source.expectedSizeBound : source.maximumBytes
@@ -287,11 +266,8 @@ nonisolated final class StreamingPayloadReader: PayloadReading {
     }
 }
 
-/// Decompresses ahead on its own thread, a few chunks at a time, while the
-/// reader parses what is already out: decoding a snapshot was decompress
-/// then parse, one after the other, on one thread. Errors surface on the
-/// read that would have hit them; cancellation is checked on the reader's
-/// side; the thread stops when the source ends, fails, or this is released.
+/// Decompresses ahead on its own thread while the reader parses. Errors surface on the read that would hit
+/// them; the thread stops when the source ends, fails, or this is released.
 nonisolated final class PrefetchingPayloadSource: PayloadByteSource, @unchecked Sendable {
     private let source: PayloadDecompressor
     let maximumBytes: Int

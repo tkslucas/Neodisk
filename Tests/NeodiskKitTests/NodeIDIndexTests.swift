@@ -17,9 +17,7 @@ import Testing
     }
 
     @Test func testForcedHashCollisionStillDiscriminatesByString() {
-        // Two different IDs forced into the same bucket under one hash: if
-        // lookup keyed on the hash alone it would confuse them. String
-        // equality inside HashedKey must keep them apart.
+        // Two IDs under one forced hash: string equality must keep them apart.
         var index = NodeIDIndex()
         let collidingHash: UInt64 = 0xABCD_EF01_2345_6789
         index.updateValue(11, forKey: "/collision/first", hash: collidingHash)

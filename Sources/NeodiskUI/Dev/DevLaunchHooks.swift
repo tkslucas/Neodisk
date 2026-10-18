@@ -19,15 +19,9 @@ enum DevLaunchHooks {
     static func apply(model: NeodiskViewModel, updates: UpdateController) {
         let environment = ProcessInfo.processInfo.environment
 
-        // NEODISK_AUTOSCAN=<path> scans on launch. A connected cloud account's
-        // target ID (cloudscan://…) works too, composing with
-        // NEODISK_CLOUD_FIXTURE for headless cloud runs.
+        // NEODISK_AUTOSCAN=<path> scans on launch.
         if let path = environment["NEODISK_AUTOSCAN"], model.coordinator.phase == .idle {
-            if let cloudTarget = model.cloudAccounts.accounts.first(where: { $0.id == path }) {
-                model.startScan(cloudTarget)
-            } else {
-                model.startScan(ScanTarget(url: URL(filePath: path, directoryHint: .isDirectory)))
-            }
+            model.startScan(ScanTarget(url: URL(filePath: path, directoryHint: .isDirectory)))
             // NEODISK_BENCH_RESCANS drives repeated in-app rescans of the
             // just-started scan to measure felt rescan cost with the baseline
             // in memory (no relaunch/decode).

@@ -59,9 +59,7 @@ public final class IncrementalScanService: Sendable {
         target: ScanTarget,
         options: ScanOptions
     ) -> AsyncThrowingStream<ScanProgressEvent, Error> {
-        let checkpoint = target.kind == .cloud
-            ? nil
-            : try? historyProvider.currentCheckpoint(for: target)
+        let checkpoint = try? historyProvider.currentCheckpoint(for: target)
         let upstream = engine.scan(target: target, options: options)
         guard let checkpoint else { return upstream }
 
@@ -951,7 +949,6 @@ public final class IncrementalScanService: Sendable {
         baseline: ScanSnapshot?
     ) -> IncrementalFullScanReason? {
         guard isEnabled else { return .incrementalDisabled }
-        guard target.kind != .cloud else { return .cloudTarget }
         guard let baseline else { return .noBaseline }
         guard baseline.isComplete else { return .baselineIncomplete }
         guard baseline.source.isPersistable else { return .baselineNotPersistable }

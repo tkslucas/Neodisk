@@ -83,7 +83,7 @@ macOS app is SwiftUI and AppKit, the Linux app is GTK 4 and libadwaita. See
 
 The Linux app covers the core views (treemap, sunburst, outline, largest
 files, kind and age statistics, search, saved scans, keyboard navigation).
-The duplicates and changes tabs, cloud-drive scanning, and incremental
+The duplicates and changes tabs and incremental
 rescans are macOS-only for now; Linux has no persistent file-change
 journal, so every rescan there is a full scan.
 
@@ -109,7 +109,7 @@ sudo apt install libgtk-4-dev libadwaita-1-dev libzstd-dev pkg-config   # Debian
 sudo dnf install gtk4-devel libadwaita-devel libzstd-devel               # Fedora
 
 swift run -c release neodisk        # build and launch directly
-swift test                          # core, shared model, treemap, cloud suites
+swift test                          # core, shared model and treemap suites
 Packaging/linux/install.sh          # install to ~/.local (menu entry, icon)
 ```
 

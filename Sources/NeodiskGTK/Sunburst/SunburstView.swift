@@ -563,7 +563,7 @@ final class SunburstView: CanvasDelegate {
         guard let id = segment.nodeID, let node = model.store?.node(id: id) else {
             return "\(segment.label)\n\(NeodiskFormatters.size(segment.totalSize))"
         }
-        return "\(node.name)\n\(NeodiskFormatters.size(node.allocatedSize)) · \(DisplayFormatters.displayPath(node.path))"
+        return "\(node.name)\n\(NeodiskFormatters.size(node.allocatedSize)) · \(node.path)"
     }
 
     private func showContextMenu(at point: CGPoint) {

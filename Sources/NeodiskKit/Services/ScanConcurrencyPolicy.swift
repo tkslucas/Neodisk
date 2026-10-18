@@ -128,8 +128,7 @@ public nonisolated enum ScanSourceProfile: Sendable {
 /// can share the machine without fighting over one disk.
 public nonisolated struct ScanSourceIdentity: Sendable, Equatable {
     public let profile: ScanSourceProfile
-    /// The mount's `statfs` fsid; nil for `cloudscan://` targets, which have
-    /// no local device and never contend with an on-disk scan.
+    /// The mount's `statfs` fsid, nil when unknown.
     public let deviceID: UInt64?
 
     public init(profile: ScanSourceProfile, deviceID: UInt64?) {
@@ -138,10 +137,6 @@ public nonisolated struct ScanSourceIdentity: Sendable, Equatable {
     }
 
     public static func detect(for target: ScanTarget) -> ScanSourceIdentity {
-        if target.kind == .cloud {
-            // Cloud accounts stream over the network; no local device.
-            return ScanSourceIdentity(profile: .network, deviceID: nil)
-        }
         let probe = ScanSourceProfile.probe(for: target.url)
         return ScanSourceIdentity(profile: probe.profile, deviceID: probe.deviceID)
     }

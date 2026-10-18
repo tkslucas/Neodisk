@@ -185,8 +185,6 @@ extension FileTreeStore {
             }
         }
 
-        // path, not url: the URL round-trip absolutizes non-filesystem paths
-        // (cloud targets' cloudscan:// scheme) against the working directory.
         return FileNodeRecord(
             id: node.id,
             path: node.path,

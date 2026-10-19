@@ -82,11 +82,6 @@ struct SidebarTargetRow: View {
         if target.kind == .volume {
             return "internaldrive.fill"
         }
-        // Remote cloud-drive account (CloudScan): distinct from the local
-        // iCloud/Dropbox sync folders below.
-        if target.kind == .cloud {
-            return "externaldrive.badge.icloud"
-        }
         if CloudLocationDetector.isCloudPath(target.id) || target.displayName == "Dropbox" {
             return target.displayName.hasPrefix("iCloud") ? "icloud.fill" : "cloud.fill"
         }

@@ -3,7 +3,7 @@
 //  Neodisk
 //
 //  The synthetic space next to the scanned tree: free space of the scanned
-//  volume (or cloud quota remainder) and hidden space. The
+//  volume and hidden space. The
 //  sunburst always renders both for volume scans; the treemap adds them only
 //  behind the Settings toggle. Owned by NeodiskViewModel as `model.freeSpace`.
 //
@@ -42,11 +42,6 @@ final class FreeSpaceModel {
     @ObservationIgnored var preferences: AppPreferences?
 
     @ObservationIgnored private let coordinator: ScanCoordinator
-    /// The CloudScan integration, or nil in builds without the feature.
-    @ObservationIgnored private let cloudScan: (any CloudScanIntegrating)?
-    /// Last-known quota per cloud account, so the free-space cell renders
-    /// immediately on reselect while a fresh figure is fetched.
-    @ObservationIgnored private var cloudQuotaByTargetID: [String: (totalBytes: Int64?, usedBytes: Int64)] = [:]
 
     @ObservationIgnored private let loadVolume: @Sendable (URL) async -> VolumeSpaceInfo?
     @ObservationIgnored private var volumeTask: Task<Void, Never>?
@@ -61,11 +56,9 @@ final class FreeSpaceModel {
 
     init(
         coordinator: ScanCoordinator,
-        cloudScan: (any CloudScanIntegrating)?,
         loadVolume: @escaping @Sendable (URL) async -> VolumeSpaceInfo? = { VolumeSpaceInfo.load(for: $0) }
     ) {
         self.coordinator = coordinator
-        self.cloudScan = cloudScan
         self.loadVolume = loadVolume
         let notifications = NSWorkspace.shared.notificationCenter
         mountObserver = notifications.publisher(for: NSWorkspace.didMountNotification)
@@ -97,14 +90,6 @@ final class FreeSpaceModel {
     }
 
     func update() {
-        if coordinator.selectedTarget?.kind == .cloud {
-            volumeTask?.cancel()
-            volumeTask = nil
-            volumeKey = nil
-            volumeInfo = nil
-            updateCloudFreeSpace()
-            return
-        }
         guard let target = coordinator.selectedTarget, target.kind == .volume else {
             volumeTask?.cancel()
             volumeTask = nil
@@ -157,35 +142,4 @@ final class FreeSpaceModel {
             hiddenSpaceBytes = nil
         }
     }
-
-    /// Free space for a cloud account: quota capacity minus the account's
-    /// whole-quota usage. Renders through the same gates as volume free space
-    /// (sunburst always, treemap behind the Settings toggle). There is no
-    /// remote analog of purgeable/hidden space; the scan's own synthetic
-    /// "Unattributed" node covers trash and versions instead.
-    private func updateCloudFreeSpace() {
-        guard let target = coordinator.selectedTarget, target.kind == .cloud else { return }
-        hiddenSpaceBytes = nil
-        finderUsedBytes = nil
-        purgeableBytes = nil
-        freeSpaceBytes = Self.cloudFreeSpaceBytes(quota: cloudQuotaByTargetID[target.id])
-        guard let cloudScan else { return }
-        Task { [weak self] in
-            guard let quota = await cloudScan.quota(forTargetID: target.id),
-                  let self,
-                  self.coordinator.selectedTarget?.id == target.id else { return }
-            self.cloudQuotaByTargetID[target.id] = quota
-            self.freeSpaceBytes = Self.cloudFreeSpaceBytes(quota: quota)
-        }
-    }
-
-    nonisolated static func cloudFreeSpaceBytes(
-        quota: (totalBytes: Int64?, usedBytes: Int64)?
-    ) -> Int64? {
-        // Unknown or unlimited quota → no free-space cell.
-        guard let quota, let total = quota.totalBytes else { return nil }
-        let free = total - quota.usedBytes
-        return free > 0 ? free : nil
-    }
-
 }

@@ -71,7 +71,7 @@
 "Automatically summarize folders with many small files" = "小さいファイルが多いフォルダを自動的にまとめる";
 "Scan local cloud files" = "ローカルクラウドファイルをスキャン";
 "Summarizing folders with thousands of tiny files (like node_modules or caches) dramatically improves scan speed." = "node_modulesやキャッシュなど、数千もの小さいファイルを含むフォルダをまとめると、スキャン速度が大幅に向上します。";
-"When off, scans skip locally synced cloud folders: ~/Library/CloudStorage (Google Drive, Dropbox, OneDrive) and iCloud Drive. Connected cloud drive accounts are not affected." = "オフにすると、ローカルに同期されたクラウドフォルダ（~/Library/CloudStorage の Google Drive、Dropbox、OneDrive、および iCloud Drive）はスキャンでスキップされます。接続済みのクラウドドライブアカウントには影響しません。";
+"When off, scans skip locally synced cloud folders: ~/Library/CloudStorage (Google Drive, Dropbox, OneDrive) and iCloud Drive." = "オフにすると、ローカルに同期されたクラウドフォルダ（~/Library/CloudStorage の Google Drive、Dropbox、OneDrive、および iCloud Drive）はスキャンでスキップされます。";
 "Changes apply to the next scan." = "変更は次回のスキャンから適用されます。";
 "When opening a scanned location" = "スキャン済みの場所を開くとき";
 "Rescan automatically always refreshes behind the saved results; Smart skips the refresh when the last scan took a while; Show snapshot only always waits for Rescan Now." = "「自動的に再スキャン」は保存済みの結果の裏で常に更新します。「スマート」は前回のスキャンに時間がかかった場合は更新をスキップします。「スナップショットのみ表示」は常に「今すぐ再スキャン」を待ちます。";
@@ -361,22 +361,6 @@
 "License" = "ライセンス";
 "Privacy" = "プライバシー";
 "Version %@" = "バージョン %@";
-
-// Cloud Drives (remote CloudScan)
-"Cloud Drives" = "クラウドドライブ";
-"Duplicate detection isn't available for cloud drives" = "クラウドドライブでは重複検出を利用できません";
-"Finding duplicates reads each file's contents, which only works for files stored on this Mac." = "重複の検出は各ファイルの内容を読み取るため、このMacに保存されているファイルでのみ機能します。";
-"Connect Google Drive…" = "Google Driveに接続…";
-"Google Drive: coming soon" = "Google Drive: 近日対応";
-"Cloud drive scanning is coming in an upcoming update" = "クラウドドライブのスキャンは今後のアップデートで対応予定です";
-"Connect Cloud Drive…" = "クラウドドライブに接続…";
-"Sign Out…" = "サインアウト…";
-"Sign out of this cloud drive?" = "このクラウドドライブからサインアウトしますか？";
-"Sign Out" = "サインアウト";
-"Neodisk will disconnect %@ and remove its cached scan. You can reconnect at any time." = "Neodiskは%@との接続を解除し、キャッシュされたスキャンを削除します。いつでも再接続できます。";
-"Connect a cloud account and keep it in the sidebar" = "クラウドアカウントを接続してサイドバーに表示";
-"Connect Dropbox…" = "Dropboxに接続…";
-"Connect OneDrive…" = "OneDriveに接続…";
 
 /* MARK: - Cloud-only files */
 "Cloud-Only Files" = "クラウドのみのファイル";

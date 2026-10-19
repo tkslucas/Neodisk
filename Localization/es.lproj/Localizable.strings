@@ -72,7 +72,7 @@
 "Automatically summarize folders with many small files" = "Resumir automáticamente las carpetas con muchos archivos pequeños";
 "Scan local cloud files" = "Analizar archivos locales en la nube";
 "Summarizing folders with thousands of tiny files (like node_modules or caches) dramatically improves scan speed." = "Resumir carpetas con miles de archivos diminutos (como node_modules o cachés) mejora enormemente la velocidad del análisis.";
-"When off, scans skip locally synced cloud folders: ~/Library/CloudStorage (Google Drive, Dropbox, OneDrive) and iCloud Drive. Connected cloud drive accounts are not affected." = "Si está desactivado, los análisis omiten las carpetas de nube sincronizadas localmente: ~/Library/CloudStorage (Google Drive, Dropbox, OneDrive) e iCloud Drive. Las cuentas de unidades en la nube conectadas no se ven afectadas.";
+"When off, scans skip locally synced cloud folders: ~/Library/CloudStorage (Google Drive, Dropbox, OneDrive) and iCloud Drive." = "Si está desactivado, los análisis omiten las carpetas de nube sincronizadas localmente: ~/Library/CloudStorage (Google Drive, Dropbox, OneDrive) e iCloud Drive.";
 "Changes apply to the next scan." = "Los cambios se aplican en el próximo análisis.";
 "When opening a scanned location" = "Al abrir una ubicación analizada";
 "Rescan automatically always refreshes behind the saved results; Smart skips the refresh when the last scan took a while; Show snapshot only always waits for Rescan Now." = "«Volver a analizar automáticamente» siempre actualiza detrás de los resultados guardados; «Inteligente» omite la actualización cuando el último análisis tardó bastante; «Mostrar solo la instantánea» siempre espera a «Analizar ahora».";
@@ -362,22 +362,6 @@
 "License" = "Licencia";
 "Privacy" = "Privacidad";
 "Version %@" = "Versión %@";
-
-// Cloud Drives (remote CloudScan)
-"Cloud Drives" = "Unidades en la nube";
-"Duplicate detection isn't available for cloud drives" = "La detección de duplicados no está disponible para unidades en la nube";
-"Finding duplicates reads each file's contents, which only works for files stored on this Mac." = "La búsqueda de duplicados lee el contenido de cada archivo, lo que solo funciona con archivos almacenados en este Mac.";
-"Connect Google Drive…" = "Conectar Google Drive…";
-"Google Drive: coming soon" = "Google Drive: próximamente";
-"Cloud drive scanning is coming in an upcoming update" = "El análisis de unidades en la nube llegará en una próxima actualización";
-"Connect Cloud Drive…" = "Conectar unidad en la nube…";
-"Sign Out…" = "Cerrar sesión…";
-"Sign out of this cloud drive?" = "¿Cerrar sesión en esta unidad en la nube?";
-"Sign Out" = "Cerrar sesión";
-"Neodisk will disconnect %@ and remove its cached scan. You can reconnect at any time." = "Neodisk desconectará %@ y eliminará su análisis guardado. Puedes volver a conectarte en cualquier momento.";
-"Connect a cloud account and keep it in the sidebar" = "Conecta una cuenta en la nube y mantenla en la barra lateral";
-"Connect Dropbox…" = "Conectar Dropbox…";
-"Connect OneDrive…" = "Conectar OneDrive…";
 
 /* MARK: - Cloud-only files */
 "Cloud-Only Files" = "Archivos solo en la nube";

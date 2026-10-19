@@ -50,7 +50,7 @@ final class StatusBar {
             if node.isDirectory {
                 parts.append(L("%@ files", node.descendantFileCount.formatted()))
             }
-            parts.append(DisplayFormatters.displayPath(node.path))
+            parts.append(node.path)
             gtk_label_set_text(ptr(detailLabel), parts.joined(separator: " · "))
             swatch.rgb = model.catalog.rgb(for: node)
         } else {
@@ -67,7 +67,7 @@ final class StatusBar {
         gtk_label_set_text(ptr(warningLabel), warnings == 0 ? "" : L("%@ files couldn't be read", warnings.formatted()))
         Widgets.setVisible(warningLabel, warnings > 0)
         if warnings > 0 {
-            let paths = model.warnings.prefix(12).map { DisplayFormatters.displayPath($0.path) }
+            let paths = model.warnings.prefix(12).map { $0.path }
             let more = warnings > 12 ? "\n…" : ""
             gtk_widget_set_tooltip_text(ptr(warningLabel), paths.joined(separator: "\n") + more)
         }

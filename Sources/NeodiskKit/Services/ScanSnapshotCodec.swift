@@ -322,14 +322,7 @@ nonisolated enum ScanSnapshotCodec {
         guard let kind = ScanTargetKind(rawValue: metadata.targetKind) else {
             throw ScanSnapshotCacheError.corruptData("unknown target kind \(metadata.targetKind)")
         }
-        // Cloud targets store a cloudscan:// identifier, not a filesystem
-        // path; URL(filePath:) would mangle it into a relative file URL.
-        let targetURL = kind == .cloud
-            ? URL(string: metadata.targetPath)
-            : URL(filePath: metadata.targetPath, directoryHint: .isDirectory)
-        guard let targetURL else {
-            throw ScanSnapshotCacheError.corruptData("unparseable target URL \(metadata.targetPath)")
-        }
+        let targetURL = URL(filePath: metadata.targetPath, directoryHint: .isDirectory)
         let target = ScanTarget(
             id: metadata.targetPath,
             url: targetURL,

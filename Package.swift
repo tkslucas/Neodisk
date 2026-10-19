@@ -5,8 +5,8 @@ import PackageDescription
 // One repository, one UI-free Swift core, one native app per platform.
 //
 // The core — scan engine and tree model (NeodiskKit), treemap geometry and
-// rasterizer (TreemapKit), sunburst geometry (SunburstCore), cloud-drive
-// scanning (CloudScanKit), the platform-neutral app vocabulary every shell
+// rasterizer (TreemapKit), sunburst geometry (SunburstCore), the
+// platform-neutral app vocabulary every shell
 // shares (NeodiskAppModel), and the `diskscan` CLI — builds on every
 // platform. Each platform's app is a thin native shell over it, written
 // against that platform's own toolkit:
@@ -15,7 +15,7 @@ import PackageDescription
 //   Linux   NeodiskGTK            GTK 4 + libadwaita through Swift's C interop
 //
 // Platform differences below the UI (directory enumeration, change history,
-// compression, hashing, credential storage) live behind `#if os(...)` in the
+// compression, hashing) live behind `#if os(...)` in the
 // core, never in the shells.
 
 #if os(macOS)
@@ -63,7 +63,7 @@ let dependencies: [Package.Dependency] = [
     // Command Line Tools toolchain. See Packaging/SPARKLE.md.
     .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.6"),
     // CryptoKit's API off Apple platforms (SHA-256 for duplicate hashing,
-    // snapshot keys, PKCE).
+    // snapshot keys).
     .package(url: "https://github.com/apple/swift-crypto.git", "3.0.0"..<"5.0.0"),
 ]
 
@@ -100,19 +100,6 @@ var targets: [Target] = [
     .target(
         name: "SunburstCore",
         path: "Sources/SunburstCore"
-    ),
-    // Remote cloud-drive scanning (CloudScan): provider protocol, tree
-    // assembly, and the scan service that emits the same event stream as
-    // ScanEngine. UI-free like NeodiskKit. Deliberately excludable: drop
-    // "CloudScanKit" from NeodiskUI's dependencies below and the app
-    // builds without the feature (the UI glue is #if canImport-guarded).
-    .target(
-        name: "CloudScanKit",
-        dependencies: [
-            "NeodiskKit",
-            .product(name: "Crypto", package: "swift-crypto", condition: .when(platforms: nonApplePlatforms)),
-        ],
-        path: "Sources/CloudScanKit"
     ),
     // The app layer every platform's shell shares: file-kind classification
     // and catalogs, visualization palettes (as sRGB triples, not toolkit
@@ -158,12 +145,6 @@ var targets: [Target] = [
         path: "Tests/NeodiskAppModelTests",
         linkerSettings: testingInteropLinkerSettings
     ),
-    .testTarget(
-        name: "CloudScanKitTests",
-        dependencies: ["CloudScanKit", "NeodiskKit", testingDependency],
-        path: "Tests/CloudScanKitTests",
-        linkerSettings: testingInteropLinkerSettings
-    ),
 ]
 
 #if os(macOS)
@@ -177,7 +158,6 @@ targets += [
             "NeodiskAppModel",
             "TreemapKit",
             "SunburstCore",
-            "CloudScanKit",
             .product(name: "Sparkle", package: "Sparkle")
         ],
         path: "Sources/NeodiskUI"

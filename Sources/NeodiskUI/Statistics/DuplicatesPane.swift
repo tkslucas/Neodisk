@@ -24,11 +24,7 @@ struct DuplicatesPane: View {
             } else {
                 switch model.duplicates.phase {
                 case .idle:
-                    if isCloudSnapshot {
-                        cloudUnavailableView
-                    } else {
-                        idleView
-                    }
+                    idleView
                 case .scanning:
                     scanningView
                 case .failed(let message):
@@ -47,21 +43,6 @@ struct DuplicatesPane: View {
 
     private var loadTaskID: String {
         model.coordinator.snapshot?.id.uuidString ?? "none"
-    }
-
-    /// A cloud snapshot's nodes are remote entries, not on-disk files the
-    /// hasher can read, so the tab shows an explanation instead of a scan
-    /// button that would do nothing.
-    private var isCloudSnapshot: Bool {
-        model.coordinator.snapshot?.target.kind == .cloud
-    }
-
-    private var cloudUnavailableView: some View {
-        StatsEmptyState(
-            symbol: "cloud",
-            title: Text("Duplicate detection isn't available for cloud drives"),
-            message: Text("Finding duplicates reads each file's contents, which only works for files stored on this Mac.")
-        )
     }
 
     private var idleView: some View {

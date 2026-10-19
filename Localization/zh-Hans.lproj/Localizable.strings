@@ -74,7 +74,7 @@
 "Automatically summarize folders with many small files" = "自动汇总包含大量小文件的文件夹";
 "Scan local cloud files" = "扫描本地云文件";
 "Summarizing folders with thousands of tiny files (like node_modules or caches) dramatically improves scan speed." = "汇总包含数千个微小文件的文件夹（例如 node_modules 或缓存）可以显著提升扫描速度。";
-"When off, scans skip locally synced cloud folders: ~/Library/CloudStorage (Google Drive, Dropbox, OneDrive) and iCloud Drive. Connected cloud drive accounts are not affected." = "关闭后，扫描将跳过本地同步的云文件夹：~/Library/CloudStorage（Google Drive、Dropbox、OneDrive）和 iCloud Drive。已连接的云盘帐户不受影响。";
+"When off, scans skip locally synced cloud folders: ~/Library/CloudStorage (Google Drive, Dropbox, OneDrive) and iCloud Drive." = "关闭后，扫描将跳过本地同步的云文件夹：~/Library/CloudStorage（Google Drive、Dropbox、OneDrive）和 iCloud Drive。";
 "Changes apply to the next scan." = "更改将在下次扫描时生效。";
 "When opening a scanned location" = "打开已扫描的位置时";
 "Rescan automatically always refreshes behind the saved results; Smart skips the refresh when the last scan took a while; Show snapshot only always waits for Rescan Now." = "“自动重新扫描”始终在已保存结果的后台刷新；“智能”会在上次扫描耗时较长时跳过刷新；“仅显示快照”则始终等待点按“立即重新扫描”。";
@@ -367,22 +367,6 @@
 "License" = "许可证";
 "Privacy" = "隐私";
 "Version %@" = "版本 %@";
-
-// Cloud Drives (remote CloudScan)
-"Cloud Drives" = "云盘";
-"Duplicate detection isn't available for cloud drives" = "云盘不支持重复文件检测";
-"Finding duplicates reads each file's contents, which only works for files stored on this Mac." = "查找重复文件需要读取每个文件的内容，因此仅适用于存储在这台 Mac 上的文件。";
-"Connect Google Drive…" = "连接 Google 云端硬盘…";
-"Google Drive: coming soon" = "Google Drive：即将推出";
-"Cloud drive scanning is coming in an upcoming update" = "云盘扫描将在未来的更新中推出";
-"Connect Cloud Drive…" = "连接云盘…";
-"Sign Out…" = "退出登录…";
-"Sign out of this cloud drive?" = "要退出此云盘吗？";
-"Sign Out" = "退出登录";
-"Neodisk will disconnect %@ and remove its cached scan. You can reconnect at any time." = "Neodisk 将断开 %@ 的连接并移除其缓存的扫描结果。你可以随时重新连接。";
-"Connect a cloud account and keep it in the sidebar" = "连接云帐户并将其保留在边栏中";
-"Connect Dropbox…" = "连接 Dropbox…";
-"Connect OneDrive…" = "连接 OneDrive…";
 
 /* MARK: - Cloud-only files */
 "Cloud-Only Files" = "仅云端文件";

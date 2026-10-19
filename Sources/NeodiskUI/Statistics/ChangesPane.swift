@@ -281,17 +281,17 @@ private struct ChangeEntryRow: View {
         if entry.kind == .renamed, let previousPath = entry.previousPath {
             return String(
                 format: NSLocalizedString("Was %@", comment: "Changes tab renamed row; %@ is the old path"),
-                DisplayFormatters.displayPath(previousPath)
+                previousPath
             )
         }
         let kind = NSLocalizedString(kindLabel, comment: "Changes tab row kind")
-        let folder = (DisplayFormatters.displayPath(entry.path) as NSString).deletingLastPathComponent
+        let folder = (entry.path as NSString).deletingLastPathComponent
         return "\(kind) — \(folder)"
     }
 
     private var helpText: String {
-        let path = DisplayFormatters.displayPath(entry.path)
+        let path = entry.path
         guard entry.kind == .renamed, let previousPath = entry.previousPath else { return path }
-        return "\(DisplayFormatters.displayPath(previousPath)) → \(path)"
+        return "\(previousPath) → \(path)"
     }
 }

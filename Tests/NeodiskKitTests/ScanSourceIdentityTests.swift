@@ -61,18 +61,6 @@ import Testing
         #expect(ScanSourceIdentity.ruling(running: running, new: new, newScanIsExplicit: false) == .deferNew)
     }
 
-    @Test func testCloudTargetDetectsWithoutDevice() {
-        let target = ScanTarget(
-            id: "cloudscan://gdrive/acct",
-            url: URL(string: "cloudscan://gdrive/acct")!,
-            displayName: "Drive",
-            kind: .cloud
-        )
-        let identity = ScanSourceIdentity.detect(for: target)
-        #expect(identity.deviceID == nil)
-        #expect(identity.profile == .network)
-    }
-
     @Test func testLocalTargetDetectsADevice() {
         // A real temp dir resolves to some local mount, so detection yields a
         // device id and a local profile (the exact profile depends on the

@@ -19,8 +19,6 @@ struct SidebarPane: View {
     @State private var selection: Set<String> = []
     @State private var capacityByPath: [String: String] = [:]
     @State private var kindBars: [String: VolumeBarData] = [:]
-    /// The cloud account a sign-out confirmation is pending for.
-    @State private var signOutTarget: ScanTarget?
     /// Frames and hover state for the scan-bar hover bubbles, which the List
     /// overlay renders so table cells cannot clip them. Deliberately `@State`
     /// and not `@StateObject`: the pane owns the store's lifetime but must
@@ -64,33 +62,6 @@ struct SidebarPane: View {
                 }
             }
 
-            if model.cloudAccounts.integration != nil || !model.cloudAccounts.accounts.isEmpty {
-                Section("Cloud Drives") {
-                    ForEach(model.cloudAccounts.accounts) { target in
-                        // No Reveal-in-Finder context menu: cloudscan:// IDs
-                        // are not filesystem paths, so these rows can't reuse
-                        // builtInLocationRow.
-                        SidebarTargetRow(
-                            target: target,
-                            subtitle: model.cloudAccounts.integration?.accountSubtitle(forTargetID: target.id) ?? target.id,
-                            lastScanned: model.session.cachedScanInfo[target.id]?.lastScanDate,
-                            now: now,
-                            scanProgress: backgroundScanProgress(for: target),
-                            onScanBarFrameChange: updateScanBarFrame,
-                            onScanBarHover: updateScanBarHover
-                        )
-                        .tag(target.id)
-                        .contextMenu {
-                            Button("Sign Out…") { signOutTarget = target }
-                                .disabled(isScanning(target.id))
-                            stopScanButton(for: target)
-                        }
-                    }
-
-                    cloudConnectButton
-                }
-            }
-
             Section("Folders") {
                 ForEach(visibleFolders) { target in
                     SidebarTargetRow(
@@ -110,18 +81,7 @@ struct SidebarPane: View {
                 Button {
                     model.chooseFolderAndScan()
                 } label: {
-                    HStack {
-                        Spacer()
-                        Label("Add Folder…", systemImage: "folder.badge.plus")
-                            .neoFont(13, weight: .medium)
-                        Spacer()
-                    }
-                    .padding(.vertical, (7 * textScale).rounded())
-                    .background(
-                        RoundedRectangle(cornerRadius: 7)
-                            .fill(Color.primary.opacity(0.07))
-                    )
-                    .contentShape(Rectangle())
+                    sidebarActionLabel(title: "Add Folder…", systemImage: "folder.badge.plus")
                 }
                 .buttonStyle(.plain)
                 .help("Scan any folder or volume and keep it in the sidebar")
@@ -136,22 +96,6 @@ struct SidebarPane: View {
         }
         .dropDestination(for: URL.self) { urls, _ in
             model.addDroppedFolders(urls)
-        }
-        .confirmationDialog(
-            "Sign out of this cloud drive?",
-            isPresented: Binding(
-                get: { signOutTarget != nil },
-                set: { if !$0 { signOutTarget = nil } }
-            ),
-            presenting: signOutTarget
-        ) { target in
-            Button("Sign Out", role: .destructive) {
-                model.cloudAccounts.signOut(targetID: target.id)
-                signOutTarget = nil
-            }
-            Button("Cancel", role: .cancel) { signOutTarget = nil }
-        } message: { target in
-            Text("Neodisk will disconnect \(target.displayName) and remove its cached scan. You can reconnect at any time.")
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             Text("v\(AppVersion.display)")
@@ -242,57 +186,12 @@ struct SidebarPane: View {
         scanTooltips.setHovering(isHovering, targetID: targetID, reduceMotion: reduceMotion)
     }
 
-    /// True while any scan (foreground or a demoted background one) is running
-    /// for this location: mirrors the model guards that refuse removing it or
-    /// signing it out mid-scan.
+    /// True while any scan (foreground or background) runs for this location.
     private func isScanning(_ targetID: String) -> Bool {
         model.session.activeSession(forTargetID: targetID) != nil
     }
 
-    /// The Cloud Drives footer button, styled like "Add Folder…". A single
-    /// configured provider is a plain button; multiple become a menu. When
-    /// CloudScan is built in but no provider is configured (e.g. a release
-    /// packaged before Google's verification clears), the button shows
-    /// disabled as a "Coming soon" teaser instead of disappearing, per the
-    /// persistent-controls rule in AGENTS.md.
-    @ViewBuilder
-    private var cloudConnectButton: some View {
-        if let items = model.cloudAccounts.integration?.connectMenuItems, items.isEmpty {
-            sidebarActionLabel(
-                title: "Google Drive: coming soon",
-                systemImage: "externaldrive.badge.plus"
-            )
-            .foregroundStyle(.secondary)
-            .help("Cloud drive scanning is coming in an upcoming update")
-        }
-        if let items = model.cloudAccounts.integration?.connectMenuItems, !items.isEmpty {
-            if items.count == 1 {
-                let item = items[0]
-                Button {
-                    model.cloudAccounts.connect(providerID: item.id)
-                } label: {
-                    sidebarActionLabel(title: item.title, systemImage: "externaldrive.badge.plus")
-                }
-                .buttonStyle(.plain)
-                .help("Connect a cloud account and keep it in the sidebar")
-            } else {
-                Menu {
-                    ForEach(items, id: \.id) { item in
-                        Button(LocalizedStringKey(item.title)) { model.cloudAccounts.connect(providerID: item.id) }
-                    }
-                } label: {
-                    sidebarActionLabel(title: "Connect Cloud Drive…", systemImage: "externaldrive.badge.plus")
-                }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .help("Connect a cloud account and keep it in the sidebar")
-            }
-        }
-    }
-
-    /// Shared styling for the sidebar's full-width action buttons (Add
-    /// Folder…, Connect …). The title routes through LocalizedStringKey —
-    /// a String-typed value passed to Label is never localized.
+    /// The sidebar's full-width action button look (Add Folder…).
     private func sidebarActionLabel(title: String, systemImage: String) -> some View {
         HStack {
             Spacer()

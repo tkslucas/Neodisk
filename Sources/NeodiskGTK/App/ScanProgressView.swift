@@ -78,7 +78,7 @@ final class ScanProgressView: CanvasDelegate {
             metrics.filesVisited.formatted(),
             NeodiskFormatters.size(metrics.bytesDiscovered)
         )
-        let path = DisplayFormatters.displayPath(metrics.currentPath)
+        let path = metrics.currentPath
         let percent = fraction.formatted(.percent.precision(.fractionLength(0)))
         return path.isEmpty ? "\(percent) · \(counts)" : "\(percent) · \(counts) · \(path)"
     }

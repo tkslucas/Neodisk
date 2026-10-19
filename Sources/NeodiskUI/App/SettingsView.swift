@@ -200,7 +200,7 @@ private struct AdvancedSettingsTab: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 Toggle("Scan local cloud files", isOn: $preferences.includeCloudStorage)
-                Text("When off, scans skip locally synced cloud folders: ~/Library/CloudStorage (Google Drive, Dropbox, OneDrive) and iCloud Drive. Connected cloud drive accounts are not affected.")
+                Text("When off, scans skip locally synced cloud folders: ~/Library/CloudStorage (Google Drive, Dropbox, OneDrive) and iCloud Drive.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 Text("Changes apply to the next scan.")

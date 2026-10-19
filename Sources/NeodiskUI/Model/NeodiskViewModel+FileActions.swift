@@ -3,8 +3,7 @@
 //  Neodisk
 //
 //  File actions for the selected node: Quick Look, Reveal in Finder, Open,
-//  and Copy Path, plus the gates that disable them for cloud snapshots
-//  (whose node paths are cloudscan:// identifiers, not filesystem paths).
+//  and Copy Path.
 //
 
 import AppKit
@@ -13,18 +12,9 @@ import NeodiskKit
 extension NeodiskViewModel {
     // MARK: - File actions
 
-    /// False for a cloud snapshot: its nodes' paths are `cloudscan://`
-    /// identifiers, not filesystem paths, so Reveal in Finder / Open / Copy
-    /// Path / double-click reveal have nothing on disk to act on.
-    var snapshotSupportsFileActions: Bool {
-        coordinator.snapshot?.target.kind != .cloud
-    }
-
-    /// Whether the node's file actions (Reveal in Finder / Open / Copy Path)
-    /// apply: the node must offer them and the displayed snapshot must be a
-    /// filesystem scan.
+    /// Whether the node's file actions (Reveal in Finder / Open / Copy Path) apply.
     func supportsFileActions(_ node: FileNodeRecord) -> Bool {
-        node.supportsFileActions && snapshotSupportsFileActions
+        node.supportsFileActions
     }
 
     /// Whether the selection's file actions apply — enablement for the

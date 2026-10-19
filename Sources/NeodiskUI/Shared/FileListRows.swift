@@ -76,11 +76,11 @@ struct FileResultRow: View {
                 .fixedSize(horizontal: true, vertical: false)
         }
         .neoFont(12)
-        .help(DisplayFormatters.displayPath(node.path))
+        .help(node.path)
     }
 
     private var containingFolder: String {
-        (DisplayFormatters.displayPath(node.path) as NSString).deletingLastPathComponent
+        (node.path as NSString).deletingLastPathComponent
     }
 }
 

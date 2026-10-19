@@ -15,7 +15,6 @@ core is Swift, and its GTK app is Swift talking to GTK's C API.
                  │                  snapshots, duplicates        │
                  │  TreemapKit      squarify, cushion raster     │
                  │  SunburstCore    sunburst layout, hit-test    │
-                 │  CloudScanKit    cloud-drive scanning         │
                  │  NeodiskAppModel kinds, palettes, treemap     │
                  │                  scene, search, formatting    │
                  └───────────┬──────────────────────┬───────────┘
@@ -50,7 +49,6 @@ reuses the same code instead of a translation of it.
 | NeodiskKit | Traversal, tree assembly, hard-link/clone dedup, snapshot cache and codec, change lists, duplicate finder, incremental rescans |
 | TreemapKit | Squarified layout, viewport math, cushion and flat rasterizers (RGBA8 buffers) |
 | SunburstCore | Sunburst layout, branch-hue colors, hit-testing, zoom geometry |
-| CloudScanKit | OAuth (PKCE, loopback), Google Drive / Dropbox / OneDrive providers |
 | NeodiskAppModel | File-kind classification and catalogs, palettes (as sRGB `SIMD3<Float>`), age buckets, the treemap scene (cells, labels, hit-testing), sunburst fill pass, keyboard navigation, fuzzy search, display formatting |
 
 `NeodiskAppModel` declarations use `package` access: every app in this
@@ -91,7 +89,6 @@ Platform differences below the UI stay inside the core behind
 | Packages, clones, dataless files, firmlinks | APFS/Finder semantics | not applicable |
 | Name tie-break in sort order | `localizedStandardCompare` | byte-level natural order (ICU is too slow for the hot path) |
 | File type descriptions | Launch Services (UTType) | GIO / shared-mime-info, installed by the app |
-| Token storage | Keychain | in-memory for now (libsecret is a follow-up) |
 
 ## The GTK app
 
@@ -130,7 +127,7 @@ The plan follows the Linux port:
      persistent journal, so Windows can have FSEvents-style incremental
      rescans where Linux can't.
    - The Compression API (XPRESS) or vendored zstd for snapshots.
-   - swift-crypto for hashing and Credential Manager for tokens.
+   - swift-crypto for hashing.
 2. **Shell:** a `NeodiskWinUI` target using WinUI 3 through
    [swift-winrt](https://github.com/thebrowsercompany/swift-winrt) (the
    route The Browser Company took for Arc on Windows), with the treemap

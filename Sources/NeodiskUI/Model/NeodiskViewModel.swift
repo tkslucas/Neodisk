@@ -195,14 +195,9 @@ final class NeodiskViewModel {
     /// Locally-synced cloud storage folders (iCloud Drive, File Provider
     /// roots), shown in the sidebar's own "Local Cloud Files" section.
     let cloudLocations = SystemIntegration.cloudTargets()
-    /// Connected remote cloud-drive accounts and their connect/sign-out
-    /// flows; see CloudAccountsModel.
-    let cloudAccounts: CloudAccountsModel
-    /// The fixed sidebar locations: volumes, local cloud folders, and remote
-    /// cloud-drive accounts. Unlike the Folders section these can never be
-    /// removed. Feeding cloud accounts through here joins them into sidebar
-    /// selection (`allTargets`), dedup, and the snapshot-cache keep-list.
-    var builtInLocations: [ScanTarget] { volumeLocations + cloudLocations + cloudAccounts.accounts }
+    /// The fixed sidebar locations (volumes, local cloud folders): unlike
+    /// the Folders section these can never be removed.
+    var builtInLocations: [ScanTarget] { volumeLocations + cloudLocations }
 
     // MARK: Scan session
 
@@ -226,7 +221,7 @@ final class NeodiskViewModel {
     }
     // MARK: Free & hidden space
 
-    /// Volume free space, hidden space, and cloud quota remainders; see
+    /// Volume free space and hidden space; see
     /// FreeSpaceModel.
     let freeSpace: FreeSpaceModel
 
@@ -261,22 +256,13 @@ final class NeodiskViewModel {
     init(
         coordinator: ScanCoordinator = ScanCoordinator(),
         snapshotCache: ScanSnapshotCache = ScanSnapshotCache(),
-        sidebarFolderStore: SidebarFolderStore = SidebarFolderStore(),
-        cloudScan: (any CloudScanIntegrating)? = nil
+        sidebarFolderStore: SidebarFolderStore = SidebarFolderStore()
     ) {
         self.coordinator = coordinator
         self.snapshotCache = snapshotCache
         self.sidebarFolderStore = sidebarFolderStore
         self.warnings = ScanWarningsModel(coordinator: coordinator)
-        self.freeSpace = FreeSpaceModel(coordinator: coordinator, cloudScan: cloudScan)
-        // Seeds the connected cloud accounts before the keep-list below is
-        // computed, so their persisted snapshots survive the launch prune
-        // (builtInLocations folds cloudAccounts.accounts in).
-        self.cloudAccounts = CloudAccountsModel(
-            coordinator: coordinator,
-            snapshotCache: snapshotCache,
-            integration: cloudScan
-        )
+        self.freeSpace = FreeSpaceModel(coordinator: coordinator)
         self.search = SearchModel(coordinator: coordinator, indexService: searchIndexService)
         self.kinds = KindStatsModel(coordinator: coordinator, indexService: searchIndexService)
         self.largest = LargestFilesModel(coordinator: coordinator, indexService: searchIndexService)
@@ -295,7 +281,6 @@ final class NeodiskViewModel {
         sidebarFolders = sidebarFolderStore.load()
         diff.model = self
         changes.model = self
-        cloudAccounts.model = self
         session.model = self
 
         // The coordinator is @Observable, so views track its properties

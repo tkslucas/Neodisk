@@ -169,7 +169,7 @@ final class OutlineSearch {
             gtk_widget_set_hexpand(ptr(name), gbool(true))
             let size = Widgets.label(NeodiskFormatters.size(node.allocatedSize), xalign: 1, classes: ["neodisk-numeric", "dim-label"])
             let top = Widgets.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8, [icon, name, size])
-            let location = DisplayFormatters.displayPath((node.path as NSString).deletingLastPathComponent)
+            let location = (node.path as NSString).deletingLastPathComponent
             let path = Widgets.label(location, classes: ["dim-label", "neodisk-caption"], ellipsize: true)
             Widgets.setMargins(path, start: 24)
             let content = Widgets.box(GTK_ORIENTATION_VERTICAL, spacing: 2, classes: ["neodisk-stats-row"], [top, path])

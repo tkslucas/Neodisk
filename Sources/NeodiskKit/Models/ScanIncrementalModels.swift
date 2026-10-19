@@ -181,7 +181,6 @@ enum IncrementalFullScanReason: String, Sendable, Equatable {
     case targetMismatch
     case scanOptionsChanged
     case missingCheckpoint
-    case cloudTarget
     case unattributedVolumeNode
     case checkpointInvalid
     case historyUnavailable

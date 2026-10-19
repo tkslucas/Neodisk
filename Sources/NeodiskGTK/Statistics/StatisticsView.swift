@@ -415,7 +415,7 @@ final class StatisticsView {
                 location = String(location.dropFirst(rootPath.count))
                 if location.isEmpty { location = "/" }
             }
-            let path = Widgets.label(DisplayFormatters.displayPath(location), classes: ["dim-label", "neodisk-caption"], ellipsize: true)
+            let path = Widgets.label(location, classes: ["dim-label", "neodisk-caption"], ellipsize: true)
             Widgets.setMargins(path, start: 24)
             let content = Widgets.box(GTK_ORIENTATION_VERTICAL, spacing: 2, classes: ["neodisk-stats-row"], [top, path])
             let row = raw(gtk_list_box_row_new())!

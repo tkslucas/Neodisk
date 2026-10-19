@@ -8,7 +8,7 @@ import NeodiskKit
     @Test func reusesCapacityUntilSnapshotChangesOrVolumeInvalidates() async throws {
         let coordinator = ScanCoordinator()
         let loader = CapacityLoader()
-        let model = FreeSpaceModel(coordinator: coordinator, cloudScan: nil, loadVolume: loader.load)
+        let model = FreeSpaceModel(coordinator: coordinator, loadVolume: loader.load)
         let target = makeTestTarget("/volume", kind: .volume)
         let root = makeTestDirectoryNode(id: target.id, name: "volume", children: [])
         let store = FileTreeStore(root: root)
@@ -30,7 +30,7 @@ import NeodiskKit
     @Test func lateVolumeResultCannotPopulateFolderSpace() async throws {
         let coordinator = ScanCoordinator()
         let loader = CapacityLoader()
-        let model = FreeSpaceModel(coordinator: coordinator, cloudScan: nil, loadVolume: loader.load)
+        let model = FreeSpaceModel(coordinator: coordinator, loadVolume: loader.load)
         let volume = makeTestTarget("/volume", kind: .volume)
         let root = makeTestDirectoryNode(id: volume.id, name: "volume", children: [])
         let store = FileTreeStore(root: root)

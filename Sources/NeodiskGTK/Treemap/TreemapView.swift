@@ -683,7 +683,7 @@ final class TreemapView: CanvasDelegate {
             return L("%lld smaller items · %@", Int64(aggregate.itemCount), NeodiskFormatters.size(aggregate.totalSize))
         }
         guard let node = model.store?.node(id: cell.nodeID) else { return cell.nodeID }
-        return "\(node.name)\n\(NeodiskFormatters.size(node.allocatedSize)) · \(DisplayFormatters.displayPath(node.path))"
+        return "\(node.name)\n\(NeodiskFormatters.size(node.allocatedSize)) · \(node.path)"
     }
 
     private func showContextMenu(at point: CGPoint) {

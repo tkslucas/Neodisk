@@ -33,8 +33,10 @@
 "Changes too extensive — running a full scan…" = "Muitas alterações — executando uma análise completa…";
 "Scanning %@…" = "Analisando %@…";
 "%@ files · %@" = "%@ arquivos · %@";
+"%@ file · %@" = "%@ arquivo · %@";
 "Stop Scan" = "Parar Análise";
 "%@ · %@ items" = "%@ · %@ itens";
+"%@ · %@ item" = "%@ · %@ item";
 "Opening last scan of %@…" = "Abrindo a última análise de %@…";
 
 /* MARK: - Scan failed */
@@ -43,6 +45,7 @@
 
 /* MARK: - Permission notice */
 "%@ locations couldn't be read — sizes may be underreported." = "%@ locais não puderam ser lidos — os tamanhos podem estar subestimados.";
+"%@ location couldn't be read — sizes may be underreported." = "%@ local não pôde ser lido — os tamanhos podem estar subestimados.";
 "Grant Full Disk Access…" = "Conceder Acesso Total ao Disco…";
 
 /* MARK: - Live scan strip */
@@ -151,6 +154,7 @@
 "Loading…" = "Carregando…";
 "Filter by name" = "Filtrar por nome";
 "%@ files" = "%@ arquivos";
+"%@ file" = "%@ arquivo";
 "Largest %@ of %@ — search to narrow" = "Maiores %@ de %@ — busque para reduzir";
 
 /* MARK: - Statistics panel tabs & age buckets */
@@ -178,6 +182,7 @@
 "Searching for duplicates… %@" = "Buscando duplicatas… %@";
 "Cancel" = "Cancelar";
 "%@ groups · %@ wasted" = "%@ grupos · %@ desperdiçados";
+"%@ group · %@ wasted" = "%@ grupo · %@ desperdiçados";
 "Search for duplicates again" = "Buscar duplicatas novamente";
 "No duplicates found" = "Nenhuma duplicata encontrada";
 "No duplicates found yet" = "Nenhuma duplicata encontrada até agora";
@@ -187,6 +192,7 @@
 "APFS clones" = "Clones APFS";
 "Back to duplicates" = "Voltar às duplicatas";
 "%@ files couldn't be read" = "%@ arquivos não puderam ser lidos";
+"%@ file couldn't be read" = "%@ arquivo não pôde ser lido";
 "Duplicates computed %@" = "Duplicados calculados %@";
 
 /* MARK: - Changes tab */
@@ -400,7 +406,9 @@
 "%@ free" = "%@ livres";
 "%@ hidden" = "%@ ocultos";
 "%@ items" = "%@ itens";
+"%@ item" = "%@ item";
 "%@ matches" = "%@ resultados";
+"%@ match" = "%@ resultado";
 "%@ of scan" = "%@ da análise";
 "%lld smaller items · %@" = "%lld itens menores · %@";
 "Cached Scans" = "Análises em Cache";
@@ -442,3 +450,4 @@
 "Visualization" = "Visualização";
 "%@ free of %@" = "%@ livres de %@";
 "%@ in %@ files" = "%@ em %@ arquivos";
+"%@ in %@ file" = "%@ em %@ arquivo";

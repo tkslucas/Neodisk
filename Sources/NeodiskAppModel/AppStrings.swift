@@ -28,4 +28,12 @@ package enum AppStrings {
         lock.unlock()
         return lookup?(key) ?? NSLocalizedString(key, comment: comment)
     }
+
+    /// A count's phrase in its singular (`one`, for exactly 1) or plural form,
+    /// e.g. "%@ file" / "%@ files"; `arguments` fill the chosen format.
+    package nonisolated static func plural(
+        _ count: Int, one: String, other: String, _ arguments: CVarArg...
+    ) -> String {
+        String(format: localized(count == 1 ? one : other, comment: ""), arguments: arguments)
+    }
 }

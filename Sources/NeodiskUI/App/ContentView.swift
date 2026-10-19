@@ -504,7 +504,12 @@ private struct ScanIssuesStrip: View {
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: allPermissionDenied ? "lock.fill" : "exclamationmark.triangle.fill")
-                    Text("\(count.formatted()) locations couldn't be read — sizes may be underreported.")
+                    Text(AppStrings.plural(
+                        count,
+                        one: "%@ location couldn't be read — sizes may be underreported.",
+                        other: "%@ locations couldn't be read — sizes may be underreported.",
+                        count.formatted()
+                    ))
                         .lineLimit(1)
                     Image(systemName: "chevron.up")
                         .neoFont(8, weight: .semibold)
@@ -647,7 +652,10 @@ private struct LiveScanStrip: View {
             // No counters have moved yet while checking for changes; "0 files"
             // next to that caption would read as lost data.
             if !progress.metrics.isCheckingChanges {
-                Text("\(progress.metrics.filesVisited.formatted()) files · \(NeodiskFormatters.size(progress.metrics.bytesDiscovered))")
+                Text(AppStrings.plural(
+                    progress.metrics.filesVisited, one: "%@ file · %@", other: "%@ files · %@",
+                    progress.metrics.filesVisited.formatted(), NeodiskFormatters.size(progress.metrics.bytesDiscovered)
+                ))
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
                     .lineLimit(1)

@@ -159,7 +159,7 @@ final class OutlineSearch {
         } else {
             gtk_label_set_text(ptr(caption), total > ids.count
                 ? L("Top %lld of %@ matches", Int64(ids.count), total.formatted())
-                : L("%@ matches", total.formatted()))
+                : AppStrings.plural(total, one: "%@ match", other: "%@ matches", total.formatted()))
         }
         guard let store = model.store else { return }
         for id in ids {

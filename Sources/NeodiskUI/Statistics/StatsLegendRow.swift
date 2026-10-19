@@ -10,6 +10,7 @@
 
 import SwiftUI
 import NeodiskKit
+import NeodiskAppModel
 
 struct StatsLegendRow: View {
     let swatch: Color
@@ -28,7 +29,7 @@ struct StatsLegendRow: View {
                 Text(name)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                Text("\(fileCount.formatted()) files")
+                Text(AppStrings.plural(fileCount, one: "%@ file", other: "%@ files", fileCount.formatted()))
                     .foregroundStyle(.secondary)
                     .neoFont(10)
             }

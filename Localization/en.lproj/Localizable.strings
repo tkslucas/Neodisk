@@ -32,8 +32,10 @@
 "Changes too extensive — running a full scan…" = "Changes too extensive — running a full scan…";
 "Scanning %@…" = "Scanning %@…";
 "%@ files · %@" = "%@ files · %@";
+"%@ file · %@" = "%@ file · %@";
 "Stop Scan" = "Stop Scan";
 "%@ · %@ items" = "%@ · %@ items";
+"%@ · %@ item" = "%@ · %@ item";
 "Opening last scan of %@…" = "Opening last scan of %@…";
 
 /* MARK: - Scan failed */
@@ -42,6 +44,7 @@
 
 /* MARK: - Permission notice */
 "%@ locations couldn't be read — sizes may be underreported." = "%@ locations couldn't be read — sizes may be underreported.";
+"%@ location couldn't be read — sizes may be underreported." = "%@ location couldn't be read — sizes may be underreported.";
 "Grant Full Disk Access…" = "Grant Full Disk Access…";
 
 /* MARK: - Live scan strip */
@@ -150,6 +153,7 @@
 "Loading…" = "Loading…";
 "Filter by name" = "Filter by name";
 "%@ files" = "%@ files";
+"%@ file" = "%@ file";
 "Largest %@ of %@ — search to narrow" = "Largest %@ of %@ — search to narrow";
 
 /* MARK: - Statistics panel tabs & age buckets */
@@ -177,6 +181,7 @@
 "Searching for duplicates… %@" = "Searching for duplicates… %@";
 "Cancel" = "Cancel";
 "%@ groups · %@ wasted" = "%@ groups · %@ wasted";
+"%@ group · %@ wasted" = "%@ group · %@ wasted";
 "Search for duplicates again" = "Search for duplicates again";
 "No duplicates found" = "No duplicates found";
 "No duplicates found yet" = "No duplicates found yet";
@@ -186,6 +191,7 @@
 "APFS clones" = "APFS clones";
 "Back to duplicates" = "Back to duplicates";
 "%@ files couldn't be read" = "%@ files couldn't be read";
+"%@ file couldn't be read" = "%@ file couldn't be read";
 "Duplicates computed %@" = "Duplicates computed %@";
 
 /* MARK: - Changes tab */
@@ -399,7 +405,9 @@
 "%@ free" = "%@ free";
 "%@ hidden" = "%@ hidden";
 "%@ items" = "%@ items";
+"%@ item" = "%@ item";
 "%@ matches" = "%@ matches";
+"%@ match" = "%@ match";
 "%@ of scan" = "%@ of scan";
 "%lld smaller items · %@" = "%lld smaller items · %@";
 "Cached Scans" = "Cached Scans";
@@ -441,3 +449,4 @@
 "Visualization" = "Visualization";
 "%@ free of %@" = "%@ free of %@";
 "%@ in %@ files" = "%@ in %@ files";
+"%@ in %@ file" = "%@ in %@ file";

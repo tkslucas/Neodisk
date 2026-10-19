@@ -32,8 +32,10 @@
 "Changes too extensive — running a full scan…" = "変更が多すぎます — 完全スキャンを実行中…";
 "Scanning %@…" = "%@をスキャン中…";
 "%@ files · %@" = "%@個のファイル · %@";
+"%@ file · %@" = "%@個のファイル · %@";
 "Stop Scan" = "スキャンを停止";
 "%@ · %@ items" = "%@ · %@項目";
+"%@ · %@ item" = "%@ · %@項目";
 "Opening last scan of %@…" = "%@の前回のスキャンを開いています…";
 
 /* MARK: - Scan failed */
@@ -42,6 +44,7 @@
 
 /* MARK: - Permission notice */
 "%@ locations couldn't be read — sizes may be underreported." = "%@個の場所を読み取れませんでした — サイズが実際より少なく表示される場合があります。";
+"%@ location couldn't be read — sizes may be underreported." = "%@個の場所を読み取れませんでした — サイズが実際より少なく表示される場合があります。";
 "Grant Full Disk Access…" = "フルディスクアクセスを許可…";
 
 /* MARK: - Live scan strip */
@@ -150,6 +153,7 @@
 "Loading…" = "読み込み中…";
 "Filter by name" = "名前で絞り込む";
 "%@ files" = "%@個のファイル";
+"%@ file" = "%@個のファイル";
 "Largest %@ of %@ — search to narrow" = "%2$@件中サイズの大きい上位%1$@件 — 絞り込むには検索";
 
 /* MARK: - Statistics panel tabs & age buckets */
@@ -177,6 +181,7 @@
 "Searching for duplicates… %@" = "重複を検索中… %@";
 "Cancel" = "キャンセル";
 "%@ groups · %@ wasted" = "%@ グループ · %@ の無駄";
+"%@ group · %@ wasted" = "%@ グループ · %@ の無駄";
 "Search for duplicates again" = "重複を再検索";
 "No duplicates found" = "重複は見つかりませんでした";
 "No duplicates found yet" = "重複はまだ見つかっていません";
@@ -186,6 +191,7 @@
 "APFS clones" = "APFSクローン";
 "Back to duplicates" = "重複の一覧に戻る";
 "%@ files couldn't be read" = "%@ 個のファイルを読み込めませんでした";
+"%@ file couldn't be read" = "%@ 個のファイルを読み込めませんでした";
 "Duplicates computed %@" = "%@に重複を計算";
 
 /* MARK: - Changes tab */
@@ -399,7 +405,9 @@
 "%@ free" = "空き %@";
 "%@ hidden" = "隠れた領域 %@";
 "%@ items" = "%@ 項目";
+"%@ item" = "%@ 項目";
 "%@ matches" = "%@ 件一致";
+"%@ match" = "%@ 件一致";
 "%@ of scan" = "スキャンの %@";
 "%lld smaller items · %@" = "小さい項目 %lld 個 · %@";
 "Cached Scans" = "キャッシュ済みのスキャン";
@@ -441,3 +449,4 @@
 "Visualization" = "表示";
 "%@ free of %@" = "%2$@ 中 %1$@ 空き";
 "%@ in %@ files" = "%2$@ 個のファイルで %1$@";
+"%@ in %@ file" = "%2$@ 個のファイルで %1$@";

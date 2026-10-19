@@ -9,6 +9,7 @@
 
 import SwiftUI
 import NeodiskKit
+import NeodiskAppModel
 
 // MARK: - Welcome
 
@@ -90,7 +91,10 @@ private struct ScanProgressContent: View {
                 .neoFont(.headline)
 
             VStack(spacing: 4) {
-                Text("\(progress.metrics.filesVisited.formatted()) files · \(NeodiskFormatters.size(progress.metrics.bytesDiscovered))")
+                Text(AppStrings.plural(
+                    progress.metrics.filesVisited, one: "%@ file · %@", other: "%@ files · %@",
+                    progress.metrics.filesVisited.formatted(), NeodiskFormatters.size(progress.metrics.bytesDiscovered)
+                ))
                     .monospacedDigit()
                 Text(progress.metrics.currentPath)
                     .foregroundStyle(.secondary)

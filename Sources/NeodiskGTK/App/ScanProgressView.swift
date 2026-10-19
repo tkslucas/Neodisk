@@ -73,8 +73,8 @@ final class ScanProgressView: CanvasDelegate {
         if metrics.isMergingChanges {
             return L("Merging changes…")
         }
-        let counts = L(
-            "%@ files · %@",
+        let counts = AppStrings.plural(
+            metrics.filesVisited, one: "%@ file · %@", other: "%@ files · %@",
             metrics.filesVisited.formatted(),
             NeodiskFormatters.size(metrics.bytesDiscovered)
         )

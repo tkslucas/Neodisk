@@ -1,17 +1,5 @@
-//
-//  DiffModel.swift
-//  Neodisk
-//
-//  "Changes since last scan" state: the per-node size baseline decoded from
-//  the previous snapshot, plus the show/hide loading choreography. Owned by
-//  NeodiskViewModel as `model.diff`. Visibility is driven by the statistics
-//  panel's Changes tab (see NeodiskViewModel.wantsDiffVisible): selecting
-//  the tab shows the outline's Δ column, leaving it hides it.
-//
-//  Persistence and both changes views share one compact comparison through
-//  the snapshot cache. Prefetch waits briefly so first paint gets the cores.
-//  Opening the tab during the wait requests that same comparison immediately.
-//
+// "Changes since last scan" state, shown while the Changes tab is selected. Prefetch waits briefly so first
+// paint gets the cores; opening the tab during the wait requests the comparison immediately.
 
 import Foundation
 import Observation
@@ -20,13 +8,9 @@ import NeodiskKit
 @MainActor
 @Observable
 final class DiffModel {
-    /// Per-node sizes of the displayed target's previous scan. Non-nil
-    /// means "changes since last scan" mode: the outline gains a Δ column
-    /// and sorts by growth.
+    /// Non-nil means diff mode: the outline gains a Δ column and sorts by growth.
     private(set) var baseline: ScanSizeBaseline?
-    /// True while the previous snapshot decodes for diff mode. Prefetches
-    /// set it too: the toolbar spinner is how "Changes is being prepared"
-    /// shows.
+    /// Prefetches set it too: the toolbar spinner is how "Changes is being prepared" shows.
     private(set) var isLoading = false
 
     /// A baseline decoded ahead of the toggle, waiting to show instantly.
@@ -39,20 +23,14 @@ final class DiffModel {
     /// load, or any snapshot change); older completions are dropped.
     @ObservationIgnored private var loadGeneration = 0
     @ObservationIgnored private var loadTask: Task<Void, Never>?
-    /// A restore/rotate prefetch waiting out its delay before it starts
-    /// decoding. Cancelled by any snapshot change, a newer prefetch, or a
-    /// user-initiated load, so a stale baseline never lands late.
+    /// Cancelled by any snapshot change, newer prefetch or user load, so a stale baseline never lands late.
     @ObservationIgnored private var prefetchDelayTask: Task<Void, Never>?
-    /// How long a restore/rotate prefetch defers its decode so the first
-    /// paint (kind catalog + treemap) wins the cores. Instance-settable so
-    /// tests can collapse the wait rather than sleep it out.
+    /// Lets first paint (kind catalog, treemap) win the cores; settable so tests skip the wait.
     @ObservationIgnored var prefetchDelay: Duration = .seconds(4)
 
     @ObservationIgnored private let coordinator: ScanCoordinator
     @ObservationIgnored private let snapshotCache: ScanSnapshotCache
-    /// Weak parent: diffing consults the model's snapshot-cache index
-    /// (`cachedScanInfo`), corrects it when the previous snapshot turns
-    /// out to be gone, and reads the prefetch preference.
+    /// Weak parent: diffing reads and corrects its `cachedScanInfo` and reads the prefetch preference.
     @ObservationIgnored weak var model: NeodiskViewModel?
 
     init(coordinator: ScanCoordinator, snapshotCache: ScanSnapshotCache) {
@@ -95,9 +73,7 @@ final class DiffModel {
         load(for: target, showsOnCompletion: true)
     }
 
-    /// A baseline only makes sense against its own target, and a prefetched
-    /// one only against the exact snapshot it was decoded alongside — a new
-    /// tree on screen invalidates both it and any load in flight.
+    /// A prefetched baseline only matches the exact snapshot it was decoded with.
     func snapshotDidChange(_ snapshot: ScanSnapshot?) {
         loadTask?.cancel()
         loadTask = nil
@@ -111,34 +87,22 @@ final class DiffModel {
         }
     }
 
-    /// Saving the displayed snapshot rotated its predecessor. A baseline on
-    /// screen now compares against the wrong generation, so rebase it; with
-    /// the Changes tab away, prefetch the fresh previous snapshot instead
-    /// when the preference asks for that. Either path needs two scans of
-    /// this target on disk — after its first ever scan `canShow` is false
-    /// and nothing loads, so the tab simply has nothing to show.
+    /// The baseline on screen now compares against the wrong generation, so rebase it, or prefetch the new
+    /// previous snapshot when the tab is away.
     func snapshotWasRotated(for target: ScanTarget) {
         guard coordinator.snapshot?.target.id == target.id else { return }
         prefetchedBaseline = nil
         guard canShow else { return }
         if model?.wantsDiffVisible == true {
-            // The Changes tab is on screen: rebase (or first-load) against
-            // the fresh predecessor right away, not after the prefetch
-            // delay. `load` bumps the generation, dropping any stale decode.
+            // Right away, not after the prefetch delay; `load` bumps the generation, dropping stale decodes.
             load(for: target, showsOnCompletion: true)
         } else if model?.preferences?.prepareChangesAfterScan ?? true {
             schedulePrefetch(for: target)
         }
     }
 
-    /// A snapshot landed on screen without rotating the previous slot — a
-    /// saved snapshot restored without a rescan, or a rescan whose content
-    /// matched the latest (the save skipped the rotation) — so no rotation
-    /// will prefetch for it. With the Changes tab on screen the baseline
-    /// loads (and shows) right away; otherwise, with the preference on,
-    /// prefetch so the tab answers instantly later. `snapshotDidChange`
-    /// already ran for the displayed snapshot, so there is no stale
-    /// prefetch or in-flight load to worry about.
+    /// For a snapshot shown without rotating the previous slot (a restore, or an unchanged rescan), since no
+    /// rotation will prefetch for it.
     func snapshotWasRestored(for target: ScanTarget) {
         guard coordinator.snapshot?.target.id == target.id,
               baseline == nil, !isLoading, canShow else { return }
@@ -150,13 +114,8 @@ final class DiffModel {
         }
     }
 
-    /// Defers a restore/rotate baseline prefetch by `prefetchDelay` and runs
-    /// its decode at `.utility`, so the first paint's kind catalog and
-    /// treemap aren't fighting the ~1s previous-snapshot decode for cores.
-    /// Superseded by any snapshot change, a newer prefetch, or a
-    /// user-initiated load (all cancel this task and/or bump `loadGeneration`),
-    /// so a baseline for a tree no longer on screen never lands. A user toggle
-    /// during the wait goes through `load` immediately, unaffected by the delay.
+    /// Delayed and at `.utility` so first paint isn't fighting the ~1s decode for cores. A user toggle during
+    /// the wait goes through `load` immediately.
     private func schedulePrefetch(for target: ScanTarget) {
         prefetchDelayTask?.cancel()
         let generation = loadGeneration

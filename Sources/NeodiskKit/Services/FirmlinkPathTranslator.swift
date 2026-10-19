@@ -1,28 +1,13 @@
-//
-//  FirmlinkPathTranslator.swift
-//  Neodisk
-//
-//  Translates between the firmlinked path namespace the scan tree stores
-//  (`/Users/...`, `/Applications/...`) and the Data-volume-relative paths an
-//  FSEvents device-relative stream reports. On Catalina+ the Data volume
-//  mounts at `/System/Volumes/Data`; firmlinks graft its subtrees into the
-//  root namespace, so `/Users/x` physically lives at `Users/x` on the Data
-//  volume. `/usr/share/firmlinks` is the authoritative mapping — left column
-//  is the firmlink path in the root namespace, right column is the path
-//  relative to the Data volume root.
-//
+// Firmlinks graft Data-volume subtrees into `/`, so `/Users/x` lives at `Users/x` on `/System/Volumes/Data`,
+// which is how FSEvents reports it. `/usr/share/firmlinks` is the authoritative mapping.
 
 import Foundation
 
 struct FirmlinkPathTranslator: Sendable {
-    /// Canonical Data volume mount point on Catalina+. Firmlink translation
-    /// only applies to events on this volume; every other volume's paths are
-    /// plain `mountPoint + relative`.
+    /// Firmlink translation applies only to this volume; others are plain `mountPoint + relative`.
     static let dataVolumeMountPoint = "/System/Volumes/Data"
 
-    /// firmlink root-namespace path → Data-volume-relative path, longest
-    /// firmlink first so a nested entry (`/System/Library/Caches`) wins over
-    /// any shorter prefix.
+    /// Longest firmlink first so a nested entry (`/System/Library/Caches`) wins over a shorter prefix.
     private let entries: [(firmlink: String, dataRelative: String)]
 
     init(table: [String: String]) {
@@ -31,11 +16,8 @@ struct FirmlinkPathTranslator: Sendable {
             .sorted { $0.firmlink.count > $1.firmlink.count }
     }
 
-    /// An FSEvents relative path (relative to the device/volume root) mapped
-    /// into the absolute path the scan tree uses. Firmlink prefixes are only
-    /// honored on the Data volume; on any other volume the relative path is
-    /// simply appended to its mount point. The result lands in the same
-    /// `/private` namespace as `targetPath`'s scan tree (see below).
+    /// Firmlink prefixes apply only on the Data volume. The result lands in the same `/private` namespace
+    /// as `targetPath`'s tree.
     func absolutePath(
         forEventRelativePath relativePath: String,
         mountPoint: String,
@@ -63,11 +45,8 @@ struct FirmlinkPathTranslator: Sendable {
         return Self.namespaced(mountPoint + "/" + relativePath, forTarget: targetPath)
     }
 
-    /// A target's absolute path mapped to the path relative to the device's
-    /// volume root, used as the FSEvents watch path. Firmlinked prefixes fold
-    /// back to their Data-relative form; the match is self-gating because the
-    /// firmlink keys are absolute root-namespace paths that never prefix a
-    /// plain volume's target. A target at the volume root maps to "".
+    /// Self-gating: firmlink keys are absolute root paths that never prefix a plain volume's target.
+    /// A target at the volume root maps to "".
     func relativePath(forTarget targetPath: String, mountPoint: String) -> String {
         // `/var/...` targets arrive `/private`-stripped (Foundation URL
         // standardization); re-qualify so they match the `/private` firmlink.
@@ -90,13 +69,8 @@ struct FirmlinkPathTranslator: Sendable {
         return ""
     }
 
-    /// Foundation's URL standardization drops the `/private` prefix from
-    /// `/private/var|tmp|etc` paths (the root-level symlinks make both forms
-    /// name the same directory), and `ScanTarget` normalization inherits
-    /// that — so a `/var|/tmp|/etc` target's tree stores the stripped form.
-    /// Every other target (notably a `/` volume scan) reaches `/private` by
-    /// plain traversal and stores the qualified form, so event paths must
-    /// surface in whichever namespace the target's own tree uses.
+    /// URL standardization strips `/private` from `/var|tmp|etc`, so those targets' trees store the stripped
+    /// form while a `/` scan stores the qualified one; events must match the target's own namespace.
     private static func namespaced(_ path: String, forTarget targetPath: String) -> String {
         privateQualified(targetPath) == targetPath ? path : standardizedPrivatePrefix(path)
     }
@@ -112,9 +86,6 @@ struct FirmlinkPathTranslator: Sendable {
         return path
     }
 
-    /// The inverse of `standardizedPrivatePrefix`, for mapping a stripped
-    /// target path back into the `/private` namespace the firmlink table
-    /// (and the physical Data volume layout) uses.
     static func privateQualified(_ path: String) -> String {
         for root in ["/var", "/tmp", "/etc"] {
             if path == root || path.hasPrefix(root + "/") {
@@ -126,9 +97,7 @@ struct FirmlinkPathTranslator: Sendable {
 }
 
 extension FirmlinkPathTranslator {
-    /// The process-wide translator built from `/usr/share/firmlinks`, loaded
-    /// once on first use. A missing or unreadable table yields an empty
-    /// translator (paths pass through as `mountPoint + relative`).
+    /// A missing table yields an empty translator, so paths pass through as `mountPoint + relative`.
     static let system = FirmlinkPathTranslator(table: loadSystemTable())
 
     private static func loadSystemTable() -> [String: String] {

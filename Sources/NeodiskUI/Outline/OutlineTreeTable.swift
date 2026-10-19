@@ -1,13 +1,5 @@
-//
-//  OutlineTreeTable.swift
-//  Neodisk
-//
-//  The AppKit table stack backing the outline: one NSScrollView owning both
-//  axes, a single-column view-based NSTableView that can grow wider than the
-//  pane, and per-row hosting views that keep the rows themselves SwiftUI.
-//  Row metrics mirror the old SwiftUI List so the everything-fits case is
-//  indistinguishable from it (see OutlineRowMetrics).
-//
+// AppKit table backing the outline: one scroll view for both axes, a column that can outgrow the pane,
+// and SwiftUI rows in hosting views.
 
 import AppKit
 import SwiftUI
@@ -15,10 +7,7 @@ import NeodiskKit
 
 // MARK: - AppKit-backed outline table
 
-/// Single-column view-based NSTableView whose column may be wider than the
-/// pane: the one NSScrollView then scrolls both axes natively. Rows remain
-/// SwiftUI via per-row hosting views; the view model stays the single
-/// source of truth for rows, selection, and expansion.
+/// The column may be wider than the pane so the one scroll view scrolls both axes natively.
 struct OutlineTreeTable: NSViewRepresentable {
     let model: NeodiskViewModel
     let snapshot: NeodiskViewModel.OutlineRowsSnapshot
@@ -41,10 +30,8 @@ struct OutlineTreeTable: NSViewRepresentable {
         tableView.clickTrackingEnded = { [weak coordinator] in
             coordinator?.resyncSelectionAfterClick()
         }
-        // .fullWidth: the only style whose frame equals the column width
-        // exactly — .inset pads the table beyond the column, which pushes
-        // the horizontal scroller into engaging with nothing to scroll.
-        // Row look (insets, rounded selection) is drawn by our row views.
+        // The only style whose frame equals the column width; .inset pads the table and engages the horizontal
+        // scroller with nothing to scroll.
         tableView.style = .fullWidth
         tableView.headerView = nil
         tableView.rowHeight = OutlineRowMetrics.rowHeight
@@ -84,10 +71,7 @@ struct OutlineTreeTable: NSViewRepresentable {
             bottom: OutlineRowMetrics.verticalContentInset,
             right: 0
         )
-        // Scrollers position themselves inside the content insets, which
-        // would float the horizontal bar 10pt above the pane's bottom edge.
-        // Cancel the insets for scrollers only, so they hug the pane edges
-        // exactly like the SwiftUI List's did.
+        // Scrollers sit inside the content insets, which would float the horizontal bar 10pt above the bottom.
         scrollView.scrollerInsets = NSEdgeInsets(
             top: -OutlineRowMetrics.verticalContentInset,
             left: 0,
@@ -102,10 +86,7 @@ struct OutlineTreeTable: NSViewRepresentable {
         coordinator.column = column
         coordinator.scrollView = scrollView
 
-        // Track the clip view: re-fit the column when the pane resizes
-        // (the column must never fall below the visible width, or the
-        // trailing sizes detach from the pane's right edge) and re-pin the
-        // trailing clusters when it scrolls horizontally.
+        // The column must never fall below the visible width, or the trailing sizes detach from the right edge.
         let clipView = scrollView.contentView
         clipView.postsFrameChangedNotifications = true
         clipView.postsBoundsChangedNotifications = true
@@ -168,10 +149,8 @@ struct OutlineTreeTable: NSViewRepresentable {
 
         func apply(snapshot: NeodiskViewModel.OutlineRowsSnapshot) {
             guard snapshot.structuralVersion != appliedStructuralVersion else { return }
-            // Mid-click, reloading would clear the row the user is holding
-            // the mouse on (and the deferred delegate would then report an
-            // empty selection). Keep the table frozen until tracking ends;
-            // `rows` also stays consistent with what the click landed on.
+            // Reloading mid-click would clear the held row and the deferred delegate would report an empty
+            // selection.
             if let outlineTable = tableView as? OutlineNSTableView,
                outlineTable.isTrackingClick {
                 pendingApply = snapshot
@@ -198,14 +177,8 @@ struct OutlineTreeTable: NSViewRepresentable {
                 tableView.rowHeight = OutlineRowMetrics.rowHeight
             }
             let clipWidth = scrollView.contentView.bounds.width
-            // The table lays itself out slightly wider than its single
-            // column (style padding — 12pt observed even for .fullWidth),
-            // and that excess would engage the scroller with nothing to
-            // scroll. Measure it from the frames rather than hard-coding —
-            // but only while the table hugs its column: with the column
-            // narrower than the clip, the table stretches to fill the clip
-            // and the difference is meaningless. Iterate since setting the
-            // width re-tiles the table.
+            // The table lays out ~12pt wider than its column, which would engage the scroller; measure the excess
+            // while the table hugs its column, iterating because setting the width re-tiles.
             for _ in 0..<2 {
                 if tableView.frame.width > clipWidth + 0.5 {
                     columnOverhead = max(0, tableView.frame.width - column.width)
@@ -225,9 +198,7 @@ struct OutlineTreeTable: NSViewRepresentable {
             updateViewportPinning()
         }
 
-        /// Keeps every visible row's trailing cluster at the pane's right
-        /// edge while the content scrolls, and the selection highlight
-        /// spanning the visible width.
+        /// Pins each visible row's trailing cluster to the pane's right edge while the content scrolls.
         private func updateViewportPinning() {
             tableView?.enumerateAvailableRowViews { rowView, _ in
                 if let cell = rowView.subviews.first(where: { $0 is OutlineCellView }) {
@@ -241,10 +212,8 @@ struct OutlineTreeTable: NSViewRepresentable {
 
         func syncSelection(to selectedID: String?) {
             guard let tableView, !isReportingSelection else { return }
-            // A click in flight: the table already shows the clicked row but
-            // hasn't told us yet (the delegate fires when tracking ends).
-            // Syncing now would revert the user's click to the stale model
-            // value; clickTrackingEnded re-syncs once the delegate has run.
+            // Mid-click the table shows the clicked row before the delegate fires; syncing now would revert it.
+            // clickTrackingEnded re-syncs once the delegate has run.
             if let outlineTable = tableView as? OutlineNSTableView,
                outlineTable.isTrackingClick {
                 return
@@ -280,9 +249,7 @@ struct OutlineTreeTable: NSViewRepresentable {
             syncSelection(to: model.selectedNodeID)
         }
 
-        /// Vertical-only reveal: never disturbs an intentional horizontal
-        /// position (scrollRowToVisible could tug it since row rects span
-        /// the full content width).
+        /// scrollRowToVisible could tug the horizontal position, since row rects span the full content width.
         private func scrollToRowVerticalOnly(_ row: Int) {
             guard let tableView, let scrollView else { return }
             scrollOutlineRowVertically(tableView.rect(ofRow: row), in: scrollView)
@@ -367,11 +334,8 @@ struct OutlineTreeTable: NSViewRepresentable {
 
 // MARK: - Row view (selection highlight)
 
-/// Draws the List-style rounded selection pinned to the visible width, so
-/// it neither stretches across the whole (possibly much wider) content nor
-/// slides away when the tree pans. Selection and focus state are forwarded
-/// to the hosted SwiftUI row, which AppKit cannot signal directly. Also the
-/// row of the statistics lists (StatsListTable).
+/// Rounded selection pinned to the visible width so it doesn't stretch across wide content or slide when
+/// the tree pans. Forwards selection state to the hosted SwiftUI row. Also used by StatsListTable.
 final class OutlineTableRowView: NSTableRowView {
     override var isSelected: Bool {
         didSet { forwardSelectionState() }
@@ -417,16 +381,8 @@ final class OutlineTableRowView: NSTableRowView {
 
 // MARK: - Cell view (scrolling name + pinned trailing cluster)
 
-/// A row: the name section fills the full content width and scrolls; the
-/// trailing cluster (spinner, diff delta, size) is re-pinned to the clip
-/// view's right edge as the tree pans. Long names are clipped just before
-/// the cluster (`nameClipView`) rather than covered by an opaque backdrop:
-/// the region between name and size then shows the row's own background,
-/// which stays pixel-identical to the pane under desktop tinting — a
-/// hand-painted backdrop resolves the same system color darker. Cluster
-/// position uses Auto Layout so the pin only moves a constraint constant
-/// per scroll frame, and intrinsic-size changes (the spinner appearing,
-/// sizes updating mid-scan) reflow on their own.
+/// The trailing cluster is re-pinned to the clip edge as the tree pans. Names are clipped rather than
+/// covered by a backdrop, which would resolve the system color darker under desktop tinting.
 private final class OutlineCellView: NSView, SelectionStateReceiving {
     static let reuseIdentifier = NSUserInterfaceItemIdentifier("OutlineCell")
 
@@ -447,9 +403,7 @@ private final class OutlineCellView: NSView, SelectionStateReceiving {
         nameHost.sizingOptions = []
         clusterHost.sizingOptions = .intrinsicContentSize
 
-        // The name host keeps its full-content-width frame (so SwiftUI
-        // never sees a narrow proposal and center-shifts an overflowing
-        // name); the clip container cuts it off just before the cluster.
+        // The name host keeps full content width so SwiftUI never center-shifts an overflowing name.
         nameClipView.clipsToBounds = true
         addSubview(nameClipView)
         nameClipView.addSubview(nameHost)
@@ -497,9 +451,7 @@ private final class OutlineCellView: NSView, SelectionStateReceiving {
 
     override func layout() {
         super.layout()
-        // The .fullWidth table style still insets the cell a few points
-        // inside the row; cancel it so the row content starts exactly at
-        // the List's 16pt inset from the pane edge.
+        // .fullWidth still insets the cell a few points; cancel it so content starts at the 16pt inset.
         if nameLeading.constant != -frame.origin.x {
             nameLeading.constant = -frame.origin.x
         }
@@ -523,9 +475,7 @@ protocol SelectionStateReceiving: AnyObject {
     func selectionDidChange(isSelected: Bool, isEmphasized: Bool)
 }
 
-/// Per-row selection/focus state bridged from AppKit into the hosted
-/// SwiftUI row content, which can't receive NSTableRowView's emphasized
-/// signal any other way.
+/// SwiftUI row content can't receive NSTableRowView's emphasized signal any other way.
 @Observable
 @MainActor
 final class OutlineRowSelectionState {
@@ -535,17 +485,13 @@ final class OutlineRowSelectionState {
     var showsAccentSelection: Bool { isSelected && isEmphasized }
 }
 
-/// NSTableView that toggles Quick Look on space, like the SwiftUI lists'
-/// `quickLookOnSpace`. Key events only reach the table while it is first
-/// responder, so typing spaces into the search field is unaffected. Shared
-/// by both outline layouts (left column and bottom table).
+/// Toggles Quick Look on space. Keys only reach the table as first responder, so the search field is
+/// unaffected.
 final class OutlineNSTableView: NSTableView {
     var quickLookRequested: () -> Bool = { false }
     var hierarchyNavigationRequested: (OutlineHierarchyDirection) -> Void = { _ in }
-    /// True while a click's mouse-tracking session is running. The table
-    /// applies a click's selection at mouseDown but fires the delegate only
-    /// when tracking ends, so mid-click the selection legitimately disagrees
-    /// with the model — programmatic sync must not "correct" it back.
+    /// The table applies a click's selection at mouseDown but fires the delegate when tracking ends, so
+    /// programmatic sync must not "correct" the selection mid-click.
     private(set) var isTrackingClick = false
     var clickTrackingEnded: () -> Void = {}
 
@@ -580,11 +526,8 @@ final class OutlineNSTableView: NSTableView {
 }
 
 extension NSTableView {
-    /// Applies new row data. When the rows are the same nodes in the same
-    /// order (a partial tree during a scan, which mostly changes sizes), only
-    /// the visible rows are refreshed in place; a full `reloadData` purged
-    /// and rebuilt every row view on each partial, a main-thread cost the
-    /// window paid several times a second.
+    /// Same rows in the same order (a partial tree mid-scan) refresh only visible rows in place; a full
+    /// `reloadData` rebuilt every row view several times a second.
     func reloadRows(keepingRowViews sameRows: Bool) {
         let visible = rows(in: visibleRect)
         guard sameRows, numberOfRows > 0, visible.length > 0 else {

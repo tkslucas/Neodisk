@@ -1,12 +1,5 @@
-//
-//  SunburstMidpointColorTests.swift
-//  Neodisk
-//
-//  Behavioral invariants of the size-midpoint branch coloring: hue equals
-//  the global interval midpoint, files stay neutral but still displace the
-//  hues after them, saturation halves its distance to pastel per depth, and
-//  the coordinate is scan-root anchored.
-//
+// Hue is the global interval midpoint, files stay neutral but displace later hues, saturation halves
+// toward pastel per depth, and the coordinate is scan-root anchored.
 
 import Foundation
 import SunburstCore

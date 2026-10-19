@@ -1,26 +1,14 @@
-//
-//  KindStatsSidecar.swift
-//  Neodisk
-//
-//  The persisted form of a snapshot's kind statistics, stored through the
-//  snapshot cache's auxiliary-data slot. Restoring a snapshot rebuilds its
-//  kind catalog from these aggregates in milliseconds instead of an
-//  O(nodes) classification pass — so the first render is colored, not gray.
-//
+// Persisted kind statistics, so a restored snapshot's first render is colored in milliseconds, not gray.
 
 import Foundation
 import NeodiskKit
 
 package nonisolated struct KindStatsSidecar: Codable, Sendable {
-    /// Identity of the snapshot these stats describe. A sidecar that does
-    /// not match the decoded snapshot (another process rewrote the cache,
-    /// or a failed save left it behind) is ignored.
+    /// A sidecar that doesn't match the decoded snapshot (rewritten cache, failed save) is ignored.
     package let targetPath: String
     package let finishedAt: Date?
     package let nodeCount: Int
-    /// The category rules the categories were aggregated under
-    /// (`FileCategoryRules.fingerprint`); nil in sidecars from before
-    /// categories could change.
+    /// `FileCategoryRules.fingerprint`; nil in sidecars from before categories could change.
     package let categoryRules: String?
 
     package let categories: [PersistedKindStat]
@@ -33,9 +21,7 @@ package nonisolated struct KindStatsSidecar: Codable, Sendable {
         }
     }
 
-    /// Whether these stats describe the given snapshot under the category
-    /// rules in effect. Dates go through JSON with sub-second loss, so
-    /// equality is tolerant.
+    /// Dates lose sub-second precision through JSON, so equality is tolerant.
     package nonisolated func matches(_ snapshot: ScanSnapshot) -> Bool {
         guard snapshot.isComplete,
               categoryRules == FileCategoryRules.current.fingerprint,

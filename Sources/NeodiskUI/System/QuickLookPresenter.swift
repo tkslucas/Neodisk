@@ -1,16 +1,5 @@
-//
-//  QuickLookPresenter.swift
-//  Neodisk
-//
-//  Spacebar Quick Look for the selected node. QLPreviewPanel normally
-//  flows through the AppKit responder chain (acceptsPreviewPanelControl /
-//  beginPreviewPanelControl); SwiftUI views never get that callback, so
-//  this presenter uses the pragmatic pattern instead: claim the shared
-//  panel's dataSource/delegate when showing and release them when the
-//  panel closes. The presenter is a process-lifetime singleton, so a
-//  stale reference on a reused panel can never dangle — and every show()
-//  re-claims the panel anyway.
-//
+// SwiftUI views never get QLPreviewPanel's responder-chain callbacks, so this singleton claims the shared
+// panel's dataSource/delegate on show and releases them on close.
 
 import AppKit
 import Quartz
@@ -21,11 +10,8 @@ import NeodiskKit
 final class QuickLookPresenter: NSObject {
     static let shared = QuickLookPresenter()
 
-    /// A node previews only if it is a real filesystem item (not the
-    /// synthetic "System Data" node) that still exists on disk and is not
-    /// cloud-only: previewing a dataless file would force a download, which
-    /// the read-only promise forbids. The existence check is injectable for
-    /// tests.
+    /// Real, existing, not cloud-only: previewing a dataless file would force a download, which the
+    /// read-only promise forbids.
     nonisolated static func canPreview(
         _ node: FileNodeRecord,
         fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
@@ -37,9 +23,7 @@ final class QuickLookPresenter: NSObject {
     private var previewedURL: NSURL?
     private var panelCloseObserver: NSObjectProtocol?
 
-    /// Space pressed with `node` selected: open the panel previewing it,
-    /// or close the panel if it is already up (Finder semantics). Beeps
-    /// instead of opening when the node cannot be previewed.
+    /// Closes the panel if it's already up; beeps when the node can't be previewed.
     func togglePreview(for node: FileNodeRecord) {
         if isPanelVisible {
             closePanel()
@@ -53,21 +37,14 @@ final class QuickLookPresenter: NSObject {
         showPanel()
     }
 
-    /// A file was clicked in the sunburst (chart segment or legend row):
-    /// open the panel previewing it, retargeting an already-open panel.
-    /// Unlike the space toggle it never closes the panel, and it stays
-    /// quiet when the node cannot be previewed — a click's primary job
-    /// (selecting) already succeeded.
+    /// Unlike the space toggle it never closes the panel, and stays quiet when the node can't be previewed.
     func openPreview(for node: FileNodeRecord) {
         guard Self.canPreview(node) else { return }
         previewedURL = node.url as NSURL
         showPanel()
     }
 
-    /// Selection moved while the panel is up — arrow-keying through the
-    /// outline live-updates the preview. No-op when the panel is closed;
-    /// keeps the last preview when the new selection is not previewable
-    /// (or is nil), rather than blanking the panel.
+    /// No-op when the panel is closed; keeps the last preview rather than blanking on an unpreviewable node.
     func selectionDidChange(to node: FileNodeRecord?) {
         guard isPanelVisible,
               let panel = QLPreviewPanel.shared(),
@@ -94,9 +71,7 @@ final class QuickLookPresenter: NSObject {
         panel.reloadData()
         panel.makeKeyAndOrderFront(nil)
 
-        // There is no previewPanelDidClose delegate method; observe the
-        // window notification to release the panel when it goes away
-        // (Esc, the close button, or our own space-toggle).
+        // There is no previewPanelDidClose delegate method, so observe the window notification instead.
         if panelCloseObserver == nil {
             panelCloseObserver = NotificationCenter.default.addObserver(
                 forName: NSWindow.willCloseNotification,
@@ -156,11 +131,8 @@ extension QuickLookPresenter: @preconcurrency QLPreviewPanelDelegate {
 
 // MARK: - Spacebar hook for selection lists
 
-/// Space-to-Quick-Look for any list whose selection is the model's
-/// selected node. Attach to the List itself: key presses only reach it
-/// while the list has focus, so typing spaces into a search TextField is
-/// unaffected (the field editor consumes them first) — the explicit
-/// text-editing guard below is belt and braces.
+/// Attach to the List itself: keys only reach it while focused, so typing spaces into a search field
+/// is unaffected.
 private struct QuickLookSpaceKey: ViewModifier {
     let model: NeodiskViewModel
 

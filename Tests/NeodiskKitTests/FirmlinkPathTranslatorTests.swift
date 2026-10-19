@@ -74,10 +74,8 @@ import Testing
     // MARK: /private standardization (Foundation strips it for var/tmp/etc)
 
     @Test func privateVarEventsSurfaceInTheStrippedFormForStrippedTargets() {
-        // ScanTarget("/var/folders/...") keeps the stripped form (Foundation
-        // URL standardization), while the journal and the firmlink table
-        // speak /private — both directions must bridge or a temp-dir target
-        // watches the whole volume and every event lands "outside target".
+        // The target keeps the stripped /var form while the journal speaks /private; without bridging both ways
+        // every event lands "outside target".
         let translator = makeTranslator()
         #expect(
             translator.relativePath(forTarget: "/var/folders/x", mountPoint: dataMount)
@@ -95,10 +93,7 @@ import Testing
     }
 
     @Test func privateVarEventsStayQualifiedForRootTargets() {
-        // A "/" volume scan reaches /private by plain traversal, so its tree
-        // stores /private/var/... — stripping there made every /var/folders
-        // event miss the baseline, walk up to the root, and force a full
-        // scan. Events must stay in the tree's qualified namespace.
+        // A "/" scan stores /private/var/..., so stripping made events miss the baseline and force a full scan.
         let translator = makeTranslator()
         #expect(
             translator.absolutePath(forEventRelativePath: "private/var/folders/x/f.bin", mountPoint: dataMount, targetPath: "/")

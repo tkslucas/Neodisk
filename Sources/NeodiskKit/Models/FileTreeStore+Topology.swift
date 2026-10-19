@@ -1,20 +1,6 @@
-//
-//  FileTreeStore+Topology.swift
-//  Neodisk
-//
-
 import Foundation
 
-// Topology construction/sanitization helpers extracted from FileTreeStore.swift
-// purely to keep each file a manageable size.
-//
-// `SanitizedTopology`, `uniqueChildrenAndDroppedIDs`, `sanitizedTopology`, and
-// `repairMaterializedDirectoryTotals` were `private` when nested in the class
-// body. They are called from FileTreeStore's own initializers (which stay in
-// the core file), so splitting them out promotes them from `private` to
-// internal (Swift `private` is file-scoped). They remain out of NeodiskKit's
-// public API. `repairingDirectoryRecord` stays `private`: its only caller,
-// `repairMaterializedDirectoryTotals`, lives in this same file.
+// Split out of FileTreeStore.swift for size; `internal` (not `private`) because Swift `private` is file-scoped.
 extension FileTreeStore {
     struct SanitizedTopology {
         let nodesByID: [String: FileNodeRecord]
@@ -63,10 +49,7 @@ extension FileTreeStore {
         childIDsByID inputChildIDsByID: [String: [String]]
     ) -> SanitizedTopology {
         guard let root = inputNodesByID[rootID] else {
-            // A rootID absent from nodesByID would otherwise surface as a
-            // preconditionFailure on the first `root` access, far from the
-            // broken construction site. Degrade to a valid empty tree with a
-            // synthesized placeholder root instead.
+            // A missing rootID would trap on the first `root` access far from here; degrade to an empty tree.
             let placeholderRoot = FileNodeRecord(
                 id: rootID,
                 url: URL(filePath: rootID, directoryHint: .isDirectory),

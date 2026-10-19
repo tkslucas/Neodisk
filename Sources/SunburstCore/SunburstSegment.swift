@@ -1,13 +1,5 @@
-//
-//  SunburstSegment.swift
-//  SunburstCore
-//
-//  The laid-out unit of the sunburst: one arc's polar geometry, its tree node
-//  (nil for aggregate/free/hidden arcs), and its color token. Angles are
-//  radians clockwise from 12 o'clock; radii are fractions of the chart radius.
-//  SwiftUI's Angle/CGFloat are deliberately absent — this is plain Double so
-//  the layout is consumable off-platform.
-//
+// Plain Double rather than SwiftUI's Angle/CGFloat so the layout is consumable off-platform.
+// Angles are radians clockwise from 12 o'clock; radii are fractions of the chart radius.
 
 public struct SunburstSegment: Identifiable, Hashable, Sendable {
     public let id: String
@@ -22,16 +14,11 @@ public struct SunburstSegment: Identifiable, Hashable, Sendable {
     public let outerRadius: Double
     public let depth: Int
     public let colorToken: SunburstColorToken
-    /// Fill resolved by the `styled` pass (kind/age colors, branch hues,
-    /// highlight dimming); nil for segments without a node, where the
-    /// drawing styler derives a fallback from `colorToken`.
+    /// Nil for segments without a node, where the drawing styler derives a fallback from `colorToken`.
     public var fillRGB: SIMD3<Float>?
     public let totalSize: Int64
     public let isAggregate: Bool
-    /// Cloud-only (dataless): a dataless file, or a directory whose bytes all
-    /// live in the cloud (no local content). Drives the dashed hairline arc
-    /// treatment; independent of fill so it survives a restyle and works over
-    /// both branch and kind/age coloring.
+    /// Independent of fill so the dashed hairline survives a restyle and works under every coloring.
     public let isDataless: Bool
     /// For aggregate segments: the folder whose small children pooled here,
     /// so hover can report "N smaller items in <folder>".
@@ -86,10 +73,8 @@ public struct SunburstSegment: Identifiable, Hashable, Sendable {
 /// The angular/seam math from the arc-path builder, pure so it can be shared
 /// by NeodiskUI's SwiftUI `Path` construction and any off-platform renderer.
 public enum SunburstArcGeometry {
-    /// Draw-time angular edges: neighbors in a ring each give up half the
-    /// seam so the background shows as a hairline between them. Full-circle
-    /// arcs stay sealed (a lone slit at 12 o'clock reads as a glitch), and
-    /// tiny slivers cap the inset so the seam yields before the item does.
+    /// Full-circle arcs stay sealed (a lone slit at 12 o'clock reads as a glitch), and tiny slivers cap the
+    /// inset so the seam yields before the item does.
     public nonisolated static func seamInsetAngles(
         startRadians: Double,
         endRadians: Double,

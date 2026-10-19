@@ -1,19 +1,5 @@
-//
-//  ScanSyscallTally.swift
-//  Neodisk
-//
-//  Diagnostic per-category syscall counters for the scan engine, gated behind
-//  `NEODISK_SCAN_SYSCALLS=1` (separate from `NEODISK_SCAN_TIMING` so ordinary
-//  timing runs pay nothing). Answers "does the engine issue more syscalls than
-//  the getattrlistbulk floor, and where?" by counting directory opens,
-//  getattrlistbulk calls, and entries returned at each call site, plus the
-//  non-bulk metadata/clone reads. Compare against traversal-syscall-bench.c on
-//  the same tree: the C replay's dir/file counts are the floor.
-//
-//  Counts are exact regardless of lock overhead; these runs are for volume, not
-//  wall time, so a per-event lock is fine. Nothing here runs unless the flag is
-//  set.
-//
+// Per-call-site syscall counters behind `NEODISK_SCAN_SYSCALLS=1`, compared against
+// traversal-syscall-bench.c's floor. Counts volume, not wall time, so a per-event lock is fine.
 
 import Foundation
 

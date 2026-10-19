@@ -1,14 +1,5 @@
-//
-//  DuplicatesPane.swift
-//  Neodisk
-//
-//  The statistics panel's Duplicates tab: an explicit "Find Duplicates"
-//  action (hashing reads real bytes, so it never runs unasked), then the
-//  confirmed groups sorted by reclaimable space — streaming in live while
-//  the scan runs, complete once it finishes. Selecting
-//  a group lights its copies on the treemap; rows are read-only navigation —
-//  cleanup happens via Reveal in Finder.
-//
+// Hashing reads real bytes, so duplicates are found only on an explicit action. Rows are read-only
+// navigation; cleanup happens via Reveal in Finder.
 
 import SwiftUI
 import NeodiskKit
@@ -71,10 +62,7 @@ struct DuplicatesPane: View {
         )
     }
 
-    /// Results render as they confirm — the same header and rows as the
-    /// finished list, with a cancel action and a progress readout instead of
-    /// the computed-at banner and refresh — so scanning feels like the map:
-    /// live, not a loading bar.
+    /// Results render as they confirm, so scanning feels live like the map rather than a loading bar.
     private var scanningView: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
@@ -210,9 +198,7 @@ private struct DuplicateResultsView: View {
         )
     }
 
-    /// "Duplicates computed 3 minutes ago" — shown once a run is finished (a
-    /// fresh scan or a result loaded from cache), so the age of what's on
-    /// screen is clear and Refresh has an obvious meaning.
+    /// Makes the age of what's on screen clear, so Refresh has an obvious meaning.
     private var computedText: String? {
         guard let computedAt = model.duplicates.computedAt else { return nil }
         return String(

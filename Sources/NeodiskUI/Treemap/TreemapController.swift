@@ -1,14 +1,5 @@
-//
-//  TreemapController.swift
-//  Neodisk
-//
-//  Drives the treemap display: owns the live viewport (single source of
-//  truth), schedules background scene builds/rasterization, and translates
-//  view events into model actions. The view shows the last-rendered image
-//  under an affine transform that tracks the live viewport, so gestures never
-//  wait on a render; crisp renders land whenever the viewport has moved away
-//  from the rendered one ("one render in flight, latest viewport wins").
-//
+// The view shows the last image under a transform that tracks the live viewport, so gestures never
+// wait on a render. One render in flight; the latest viewport wins.
 
 import AppKit
 import Foundation
@@ -21,13 +12,9 @@ final class TreemapController {
     weak var view: TreemapNSView?
     weak var model: NeodiskViewModel?
 
-    /// Cursor position (flipped view coordinates), or nil on exit — drives the
-    /// hover tooltip's placement. Kept view-local; the shared model still owns
-    /// the hovered node/cell state the status bar reads.
+    /// Kept view-local; the shared model still owns the hovered node the status bar reads.
     var onHoverPoint: ((CGPoint?) -> Void)?
-    /// Fires on the edges of a pan/zoom gesture so the pane can hide the
-    /// tooltip while the map is moving (never per-frame — gesture frames must
-    /// not round-trip through SwiftUI state).
+    /// Edges only, never per-frame: gesture frames must not round-trip through SwiftUI state.
     var onGestureActiveChange: ((Bool) -> Void)?
 
     /// Render-relevant inputs, compared as a unit so the flood of unrelated
@@ -68,12 +55,8 @@ final class TreemapController {
     private var catalog: FileKindCatalog = .empty
     private var selectedNodeID: String?
 
-    /// Answers derived from the displayed scene, memoized until the scene
-    /// or store changes (both are immutable, so nothing else can stale
-    /// them). `selectionRect` is read on every display refresh — gesture,
-    /// resize, and hover-settle ticks included — and re-running the layout
-    /// down the selection's path each time was pure repeat work; arrow keys
-    /// likewise refiltered every cell per press.
+    /// Memoized per scene and store (both immutable). `selectionRect` is read on every display refresh,
+    /// so re-running the layout down the selection path each time was pure repeat work.
     private struct SceneQueries {
         var navigationCandidates: [TreemapKeyboardNav.Candidate]?
         var selectionRect: (nodeID: String, rect: CGRect?)?
@@ -98,11 +81,7 @@ final class TreemapController {
     /// gesture (the shared "one drill per pinch" latch).
     private var flatPinchRecognizer = PinchDrillRecognizer()
 
-    /// Flat-style drill morph: a root change within one snapshot animates —
-    /// drilling in, the new map grows out of the container's former
-    /// footprint; drilling out, the wider map pulls back from where you
-    /// were. Captured at input time (drill-in needs the outgoing scene's
-    /// rect), consumed when the matching render lands.
+    /// Captured at input time because drill-in needs the outgoing scene's rect; consumed when the render lands.
     private enum PendingDrillAnimation {
         case zoomIn(fromRect: CGRect)
         case zoomOut(previousRootID: String)
@@ -122,9 +101,7 @@ final class TreemapController {
         }
     }
 
-    /// Last pointer position in view coordinates, nil once it leaves the
-    /// map. Kept so the hover ring can re-resolve its cell whenever the
-    /// scene or transform changes under a stationary pointer.
+    /// Kept so the hover ring can re-resolve when the scene changes under a stationary pointer.
     private var hoverPoint: CGPoint?
     /// Cell resolved by the last pointer hit test. Its rect feeds the hover
     /// layer directly, so moving inside one cell never hit-tests twice.
@@ -203,10 +180,8 @@ final class TreemapController {
             )
         }
 
-        // Arm the flat drill morph on a root change within the same
-        // snapshot. The drill-in footprint must be read from the outgoing
-        // scene now — it is gone once the new render lands; drill-out
-        // resolves its rect from the incoming scene instead.
+        // The drill-in footprint must be read from the outgoing scene now; it is gone once the new render
+        // lands.
         if newInputs.style == .flat, inputs.style == .flat,
            newInputs.snapshotID != nil, newInputs.snapshotID == inputs.snapshotID,
            newInputs.rootID != inputs.rootID,
@@ -260,11 +235,8 @@ final class TreemapController {
             return
         }
 
-        // Keep the last pixels filling the pane and stop obsolete renders from
-        // landing labels on MainActor. One exact render follows after idle.
-        // A render bringing a newer tree is not obsolete: it lands (stretched
-        // like the old pixels), else a layout shift at a scan's end threw the
-        // final map away and the user waited out the settle delay for it.
+        // A render bringing a newer tree still lands, else a scan's final map was thrown away
+        // and the user waited out the settle delay for it.
         if !renderBringsNewContent {
             cancelInFlightRender()
         }
@@ -272,9 +244,6 @@ final class TreemapController {
         scheduleSettledResizeRender()
     }
 
-    /// The window moved to a display with a different pixel density —
-    /// re-render at the new scale so the map stays crisp (or stops
-    /// over-rendering on a non-Retina screen).
     func backingScaleChanged() {
         let scale = view?.window?.backingScaleFactor ?? 2
         guard scale != renderedScale else { return }
@@ -291,11 +260,8 @@ final class TreemapController {
         startRender()
     }
 
-    /// The color the flat style's translucent fills are baked against —
-    /// the window background resolved for the view's current appearance.
-    /// Only the fill math uses it: the raster itself clears to transparent
-    /// and the real (desktop-tinted) window backdrop shows through the
-    /// gaps, where no constant could match the on-screen surface.
+    /// Only the fill math uses it: the raster clears to transparent so the real, desktop-tinted backdrop
+    /// shows through the gaps, which no constant could match.
     private func windowBackgroundRGB() -> SIMD3<Float> {
         guard let view else { return TreemapRasterTarget.backgroundRGB }
         var cgColor = CGColor(gray: 0, alpha: 1)
@@ -337,10 +303,7 @@ final class TreemapController {
         return rect
     }
 
-    /// Hovered cell's rect in rendered-scene coordinates, or nil when the
-    /// pointer is off the map or a gesture is moving it (the ring hides
-    /// with the tooltip). Re-resolved when the pointer crosses a cell and
-    /// whenever a render or gesture changes the displayed scene.
+    /// Nil while a gesture moves the map (the ring hides with the tooltip).
     var hoverRect: CGRect? {
         guard !isGesturing else { return nil }
         return hoveredCell?.rect
@@ -374,9 +337,7 @@ final class TreemapController {
         return true
     }
 
-    /// A completed render or settled transform can move a cell under a
-    /// stationary pointer. Re-resolve once at that boundary, never again
-    /// while the pointer remains inside the same rendered cell.
+    /// Re-resolves once at the boundary, never again while the pointer stays inside the same cell.
     private func resolveHoverAfterDisplayChange() {
         guard let hoverPoint else { return }
         _ = setHoveredCell(cell(at: hoverPoint))
@@ -402,11 +363,8 @@ final class TreemapController {
         model.select(cell.nodeID)
     }
 
-    /// Double-click. Cushion: reveal in Finder (mouse never drills there —
-    /// navigation stays pinch/scroll and keyboard, see handleKey). Flat:
-    /// folders are first-class canvas targets, so a folder double-click
-    /// drills into it (aggregates carry their owning folder's id); files
-    /// keep the reveal-in-Finder contract.
+    /// Cushion reveals in Finder (mouse never drills there). Flat drills into folders, including aggregates,
+    /// which carry their owning folder's id.
     func doubleClick(at point: CGPoint) {
         if inputs.style == .flat, let model, let cell = cell(at: point),
            cell.isDirectory, !cell.isFreeSpace, !cell.isHiddenSpace {
@@ -434,9 +392,7 @@ final class TreemapController {
 
     func magnify(by factor: CGFloat, anchor: CGPoint) {
         guard factor > 0 else { return }
-        // Flat style: no viewport zoom — a pinch drills one level, latched
-        // per gesture (spread into the folder under the cursor, squeeze up
-        // to the parent), mirroring the sunburst's contract.
+        // Flat style has no viewport zoom: a pinch drills one level, latched per gesture.
         if inputs.style == .flat {
             switch flatPinchRecognizer.accumulate(factor - 1) {
             case .drillIn: drillIntoFolder(at: anchor)
@@ -466,11 +422,7 @@ final class TreemapController {
         isGesturing = false
     }
 
-    /// Flat pinch-in drill target: the deepest folder-backed cell under the
-    /// cursor — a container frame or header, an undivided directory, or a
-    /// "smaller items" aggregate (its nodeID is the owning folder). Over a
-    /// file the file's enclosing container is the deepest folder cell, so
-    /// the drill still lands where the cursor points.
+    /// Over a file the deepest folder cell is its enclosing container, so the drill lands where the cursor is.
     private func drillIntoFolder(at point: CGPoint) {
         guard let model, let scene else { return }
         let scenePoint = point.applying(displayTransform.inverted())
@@ -487,9 +439,7 @@ final class TreemapController {
         renderIfViewportMoved()
     }
 
-    /// Two-finger scroll pans the zoomed map. Returns false when the event
-    /// should fall through to the responder chain (map at 1:1, or flat
-    /// style — which never zooms or pans).
+    /// False lets the event fall through: map at 1:1, or flat style, which never pans.
     func scroll(by delta: CGSize) -> Bool {
         guard inputs.style != .flat, viewport.scale > 1 else { return false }
         noteTransientGesture()
@@ -509,9 +459,7 @@ final class TreemapController {
         renderIfViewportMoved()
     }
 
-    /// Marks a momentum gesture active and (re)arms the idle reset that
-    /// clears it once the map settles, so the tooltip returns on the next
-    /// pointer move without needing an explicit gesture-end event.
+    /// The idle reset clears it once the map settles, since momentum gestures send no explicit end event.
     private func noteTransientGesture() {
         isGesturing = true
         gestureIdleResetTask?.cancel()
@@ -542,9 +490,6 @@ final class TreemapController {
 
     typealias MoveDirection = TreemapKeyboardNav.Direction
 
-    /// Routes a key event to a navigation action. Returns true when handled so
-    /// the view stops it from propagating. Arrow keys move the selection
-    /// spatially; ⌘↓/⌘↑ drill the map in/out; Return reveals in Finder.
     func handleKey(_ event: NSEvent) -> Bool {
         guard let key = event.specialKey else { return false }
         let command = event.modifierFlags.contains(.command)
@@ -565,9 +510,7 @@ final class TreemapController {
         return true
     }
 
-    /// Moves the selection to the nearest visible tile in `direction`. With no
-    /// current selection, selects the largest tile so the keyboard has an
-    /// anchor to move from.
+    /// With no selection, selects the largest tile so the keyboard has an anchor.
     private func moveSelection(_ direction: MoveDirection) {
         guard let model, let scene else { return }
         let candidates: [TreemapKeyboardNav.Candidate]
@@ -603,9 +546,7 @@ final class TreemapController {
         model.revealSelection()
     }
 
-    /// The cell under a live view point, mapped back into the rendered
-    /// scene's coordinates so hit-testing stays correct while the display
-    /// transform is active.
+    /// Maps back into rendered-scene coordinates so hit-testing holds while the display transform is active.
     func cell(at viewPoint: CGPoint) -> TreemapCell? {
         guard let scene else { return nil }
         let scenePoint = viewPoint.applying(displayTransform.inverted())
@@ -739,20 +680,13 @@ final class TreemapController {
             }
             return (scene, image)
         }
-        // Started now, not from the main-actor task below: right after a scan
-        // finishes the main thread is busy for ~90 ms with the views' updates
-        // for the final tree, and the task could not start until then.
+        // Started now: right after a scan the main thread is busy ~90 ms and the task could not start until
+        // then.
         let pending = TreemapRenderResult()
         Self.renderQueue.async { pending.fulfill(work()) }
         renderTask = Task { [weak self] in
-            // The detached task doesn't inherit cancellation, so a superseded
-            // render (partial bursts, catalog landing mid-render) used to run
-            // its full rasterization anyway and steal cores from the render
-            // that replaces it. Forward the cancel and bail before rastering.
-            // On its own user-interactive queue, not the cooperative pool: when
-            // a scan finishes, the statistics jobs for the final tree queue up
-            // there at the same priority and the final map waited ~90 ms for a
-            // thread behind them.
+            // No inherited cancellation, so forward it or a superseded render steals cores. Own queue: on the
+            // cooperative pool the final map waited ~90 ms behind stats jobs.
             let result = await withTaskCancellationHandler {
                 await pending.value
             } onCancel: {
@@ -795,9 +729,7 @@ final class TreemapController {
         view?.refreshDisplay(contentsChanged: contentsChanged)
     }
 
-    /// Plays the armed drill morph once the render for the new root has
-    /// landed (superseded renders are cancelled in setInputs, so a landed
-    /// scene always matches the current inputs).
+    /// Superseded renders are cancelled in setInputs, so a landed scene always matches the current inputs.
     private func runPendingDrillAnimation() {
         guard let pending = pendingDrillAnimation else { return }
         pendingDrillAnimation = nil

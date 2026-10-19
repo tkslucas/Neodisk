@@ -1,30 +1,5 @@
-//
-//  VizPalette.swift
-//  Neodisk
-//
-//  The complete set of colors the visualization draws with — file-kind hues,
-//  the fixed category colors, the modification-age ramp, and the branch-hue
-//  strategy the sunburst resolver uses. Every raw color table lives in this
-//  file; the Settings palette picker selects one of the named instances in
-//  `VizPalette.all`.
-//
-//  Every kind table is RANK-ordered: the Types mode hands table[i] to the
-//  i-th largest kind. All palettes follow ONE canonical hue-family
-//  sequence — green, blue, red, magenta/pink, yellow, orange, purple,
-//  cyan/aqua, then the tail — so any prefix spreads across the color wheel,
-//  and switching palettes re-skins the map without reshuffling which family
-//  each rank, category, or branch gets. Classic, Vivid, Graphite, and
-//  Colorblind derive categories through the shared role map below;
-//  Graphite is monochrome — one grey-to-deep-blue span for kinds,
-//  categories, age, and branches alike, so its "hue families" are shades.
-//  Retro and Neon carry terminal-scheme accent sets (warm faded
-//  amber-and-olive, and soft neon on a dark canvas) — saturation-punched
-//  for area fills via `punched` — whose maps differ only in the two tail
-//  categories their schemes lack colors for. Colorblind is the Okabe-Ito
-//  qualitative palette (designed to stay distinct under deuteranopia/
-//  protanopia/tritanopia) with the viridis ramp for age — perceptually
-//  uniform and monotonic in lightness so it still reads in greyscale.
-//
+// Every raw visualization color table lives here. Kind tables are rank-ordered and follow one hue-family
+// sequence, so switching palettes re-skins the map without reshuffling which family each rank gets.
 
 import Foundation
 import SunburstCore
@@ -34,16 +9,12 @@ package struct VizPalette: Sendable, Equatable, Identifiable {
     package let id: String
     /// Display name for the Settings picker; localized at the point of use.
     package let title: String
-    /// Rank-ordered hues for the Types kind mode: the largest kind gets the
-    /// first (most recognizable) color. Beyond this many kinds, cells fall
-    /// back to the neutral "other" grey.
+    /// Rank-ordered: the largest kind gets the first color. Beyond this many kinds, cells fall back to grey.
     package let kindPalette: [SIMD3<Float>]
     /// Fixed colors for the Categories kind mode, keyed by category id — a
     /// category keeps its color regardless of size rank.
     package let categoryRGB: [String: SIMD3<Float>]
-    /// Colors for the user's own categories, by their position: the kind
-    /// table's slots no built-in category holds first, then the rest of
-    /// the table (repeats only past that).
+    /// By position: the kind slots no built-in category holds first, then the rest (repeats only past that).
     package let customCategoryRGB: [SIMD3<Float>]
     /// Age-bucket colors, indexed by `AgeBucket.rawValue`.
     package let ageRamp: [SIMD3<Float>]
@@ -79,17 +50,12 @@ package struct VizPalette: Sendable, Equatable, Identifiable {
         id: "standard",
         title: "Classic",
         kinds: classicKinds,
-        // Branch mode uses the continuous size-midpoint hue wheel — the
-        // kind table stays for the Types/Categories modes. The saturation
-        // envelope rides above the plain wheel: the resolver's 0.75
-        // first-ring saturation reads washed out under the cushion's
-        // shading and the flat style's translucent composite.
+        // Saturation is boosted above the plain wheel: 0.75 first-ring saturation reads washed out under the
+        // cushion shading and the flat style's translucent composite.
         sunburst: SunburstPalette(branchHues: .wheel(saturationScale: 1.15, brightnessScale: 1))
     )
 
-    /// The classic hues punched up (saturation and brightness raised in HSB)
-    /// — reads especially well under the cushion's shading, which multiplies
-    /// every color down.
+    /// The classic hues with raised saturation and brightness; holds up under the cushion's darkening shading.
     package static let vivid = VizPalette(
         id: "vivid",
         title: "Vivid",
@@ -99,12 +65,8 @@ package struct VizPalette: Sendable, Equatable, Identifiable {
         sunburst: SunburstPalette(branchHues: .wheel(saturationScale: 1.3, brightnessScale: 1))
     )
 
-    /// Monochrome: every mode draws in one grey-blue span, and depth of
-    /// blue is the only signal — the biggest kind, the biggest branch, and
-    /// the oldest age bucket draw deepest; selection, hover, and highlights
-    /// carry the emphasis instead of hue. Kind identity is deliberately
-    /// soft (kinds differ by shade alone); the ramp is monotonic in
-    /// lightness so every mode also reads in greyscale.
+    /// Monochrome: depth of blue is the only signal (biggest kind, branch and oldest age draw deepest).
+    /// The ramp is monotonic in lightness so every mode also reads in greyscale.
     package static let graphite = VizPalette(
         id: "graphite",
         title: "Graphite",
@@ -122,9 +84,7 @@ package struct VizPalette: Sendable, Equatable, Identifiable {
         sunburst: .ramp(graphiteBranchRamp)
     )
 
-    /// The age ramp's grey-blue span at branch-table resolution: eight
-    /// even RGB steps, deep blue (midpoint 0, the largest branch) → light
-    /// grey, so size position reads as depth of blue.
+    /// Eight even steps from deep blue (largest branch) to light grey.
     private static let graphiteBranchRamp: [SIMD3<Float>] = [
         SIMD3(0.059, 0.286, 0.510), // deep blue — largest
         SIMD3(0.169, 0.366, 0.560),
@@ -136,11 +96,8 @@ package struct VizPalette: Sendable, Equatable, Identifiable {
         SIMD3(0.831, 0.847, 0.863), // light grey — smallest
     ]
 
-    /// Warm faded terminal tones — brick red, olive green, amber, muted
-    /// blue-grey. Branch mode quantizes the midpoint wheel into the table,
-    /// like a terminal's fixed accent set; categories keep their hue
-    /// families through the palette's own role map (the table is
-    /// rank-ordered, not role-ordered).
+    /// Warm faded terminal tones. Branch mode quantizes the wheel into the table; categories use the
+    /// palette's own role map because the table is rank-ordered, not role-ordered.
     package static let retro = VizPalette(
         id: "retro",
         title: "Retro",
@@ -159,11 +116,8 @@ package struct VizPalette: Sendable, Equatable, Identifiable {
         sunburst: .quantized(retroKinds)
     )
 
-    /// Soft neon accents against the dark canvas — glowing mint, pink,
-    /// lavender, ice blue. Branch mode quantizes the midpoint wheel into
-    /// the table, like a terminal's fixed accent set; categories keep
-    /// their hue families through the palette's own role map (the table
-    /// is rank-ordered, not role-ordered).
+    /// Soft neon accents on the dark canvas. Branch mode quantizes the wheel into the table; categories use
+    /// the palette's own role map because the table is rank-ordered, not role-ordered.
     package static let neon = VizPalette(
         id: "neon",
         title: "Neon",
@@ -182,9 +136,8 @@ package struct VizPalette: Sendable, Equatable, Identifiable {
         sunburst: .quantized(neonKinds)
     )
 
-    /// Okabe-Ito kinds/categories + viridis age ramp; the branch mode
-    /// quantizes the midpoint wheel into the same table, so its colors
-    /// stay CVD-safe (the continuous wheel would not be).
+    /// Okabe-Ito plus viridis age. Branch mode quantizes into the same table so it stays colorblind-safe,
+    /// which the continuous wheel would not.
     package static let colorblind = VizPalette(
         id: "colorblind",
         title: "Colorblind-safe",
@@ -208,11 +161,8 @@ package struct VizPalette: Sendable, Equatable, Identifiable {
 
     // MARK: - Shared role maps and raw tables
 
-    /// Category → kind-table index under the canonical rank sequence
-    /// (green, blue, red, magenta, yellow, orange, purple, cyan, …): videos
-    /// in the blue slot, images in the green slot, and so on. Shared by
-    /// Classic, Vivid, and Colorblind; Retro and Neon match it on slots
-    /// 0–7 and differ only where their schemes run out of matching hues.
+    /// Category to kind-table index under the canonical rank sequence. Retro and Neon match it on slots 0-7
+    /// and differ only where their schemes run out of matching hues.
     private static let classicCategoryRoles: [String: Int] = [
         "cat-image": 0,      // green
         "cat-video": 1,      // blue
@@ -229,9 +179,7 @@ package struct VizPalette: Sendable, Equatable, Identifiable {
         "cat-backups": 13,   // plum
     ]
 
-    /// Age ramp as kind-table indices, cool → hot with age so stale files
-    /// glow warm: blue, cyan, lime, yellow, orange, red slots. Shared by
-    /// every classic-role palette; the `unknown` bucket appends the neutral.
+    /// Cool to hot with age so stale files glow warm; the `unknown` bucket appends the neutral.
     private static let classicAgeRoles = [1, 7, 10, 4, 5, 2]
 
     private static let classicKinds: [SIMD3<Float>] = [
@@ -268,26 +216,18 @@ package struct VizPalette: Sendable, Equatable, Identifiable {
         SIMD3(0.62, 0.22, 0.43), // plum
     ]
 
-    /// A 14-step rank ramp over the same grey-blue span as the age and
-    /// branch ramps: the biggest kind draws deepest blue. Categories map
-    /// through the shared role map, so the canonical slots keep every
-    /// category on a stable shade.
+    /// 14 steps over the same grey-blue span as the age and branch ramps; the biggest kind draws deepest.
     private static let graphiteKinds: [SIMD3<Float>] = {
         let deep = SIMD3<Float>(0.059, 0.286, 0.510)
         let light = SIMD3<Float>(0.831, 0.847, 0.863)
         return (0..<14).map { deep + (light - deep) * (Float($0) / 13) }
     }()
 
-    /// The retro accents punched up for the map (see `punched`); everything
-    /// palette-side — kinds, categories, age ramp, quantized branch table —
-    /// derives from this, so the scheme stays internally consistent.
+    /// Everything palette-side derives from these punched accents, so the scheme stays consistent.
     private static let retroKinds = punched(retroAccents, saturationPower: 0.55)
 
-    /// The verbatim 14-accent set of the classic warm retro terminal scheme
-    /// (7 bright accents + 7 muted counterparts), rank-ordered for hue
-    /// diversity: every prefix mixes the scheme's hue families, so the top
-    /// size ranks — and positionally colored branches — never land three
-    /// warm accents in a row. Categories map through `retroCategoryRoles`.
+    /// The retro scheme's 14 accents, rank-ordered so every prefix mixes hue families and the top ranks
+    /// never get three warm accents in a row.
     private static let retroAccents: [SIMD3<Float>] = [
         SIMD3(0.722, 0.733, 0.149), // bright green  #b8bb26
         SIMD3(0.514, 0.647, 0.596), // bright blue   #83a598
@@ -325,11 +265,8 @@ package struct VizPalette: Sendable, Equatable, Identifiable {
     /// `retroKinds` above.
     private static let neonKinds = punched(neonAccents, saturationPower: 0.55)
 
-    /// The verbatim ANSI accent set of the well-known dark vampire theme
-    /// (8 base accents + 6 brights), rank-ordered for hue diversity — the
-    /// base accents interleaved so every prefix spreads across the wheel,
-    /// the brights in the rank-only tail. Categories map through
-    /// `neonCategoryRoles`; its ANSI blue is the signature purple.
+    /// A dark theme's ANSI accents, base ones interleaved so every prefix spreads across the wheel and
+    /// brights in the tail. Its ANSI blue is the signature purple.
     private static let neonAccents: [SIMD3<Float>] = [
         SIMD3(0.314, 0.980, 0.482), // green          #50fa7b
         SIMD3(0.741, 0.576, 0.976), // purple (ANSI blue) #bd93f9
@@ -363,12 +300,8 @@ package struct VizPalette: Sendable, Equatable, Identifiable {
         "cat-backups": 13,    // bright red
     ]
 
-    /// A scheme's accent table punched up for the map: saturation raised on
-    /// a power curve (s^power, 0 < power < 1), so the muted accents gain
-    /// the most and the already-vivid ones barely move — hue and brightness
-    /// stay verbatim, keeping the scheme recognizable. The raw terminal
-    /// accents read too pastel as area fills: colors that carry on a strip
-    /// of text wash out spread over a treemap cell.
+    /// Raises saturation on a power curve so muted accents gain most, keeping hue and brightness. Raw
+    /// terminal accents look too pastel as area fills.
     private static func punched(
         _ entries: [SIMD3<Float>],
         saturationPower: Double
@@ -383,9 +316,7 @@ package struct VizPalette: Sendable, Equatable, Identifiable {
         }
     }
 
-    /// Okabe-Ito, extended past the canonical eight with CVD-checked tones,
-    /// in the canonical rank sequence (bluish green in the green slot,
-    /// indigo in the purple slot, sand in the brown slot, …).
+    /// Okabe-Ito extended past eight with colorblind-checked tones, in the canonical rank sequence.
     private static let okabeItoKinds: [SIMD3<Float>] = [
         SIMD3(0.000, 0.620, 0.451), // bluish green
         SIMD3(0.000, 0.447, 0.698), // blue
@@ -441,10 +372,7 @@ package struct VizPalette: Sendable, Equatable, Identifiable {
     }
 }
 
-/// The two synthetic volume cells the treemap draws (free space, hidden
-/// space) and the status bar echoes in its swatches. Neutral greys, so they
-/// are already CVD-safe and shared across all palettes — unlike the
-/// categorical kind/age hues above.
+/// Free and hidden space cells. Neutral greys, already colorblind-safe, so shared by all palettes.
 package enum SyntheticSpaceColors {
     package nonisolated static let freeSpaceRGB = SIMD3<Float>(0.13, 0.13, 0.16)
     /// A lighter neutral than the near-black free-space cell, so the two

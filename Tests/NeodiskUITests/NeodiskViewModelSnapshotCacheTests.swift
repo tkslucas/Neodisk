@@ -61,10 +61,8 @@ import NeodiskKit
         }
         #expect(model.session.cachedScanInfo[target.id] != nil)
 
-        // Move away, then reselect: the cached snapshot must appear while
-        // the refresh scan is still running, with partials suppressed.
-        // Session memory is cleared first so the disk restore path — this
-        // test's subject — actually runs, as it would after a relaunch.
+        // Session memory is cleared first so the disk restore path (this test's subject) runs, as after a
+        // relaunch.
         let elsewhere = makeTestTarget("/cache-vm/elsewhere")
         model.startScan(elsewhere)
         model.coordinator.forgetAllRecentSnapshots()
@@ -83,9 +81,8 @@ import NeodiskKit
         defer { environment.tearDown() }
         let target = makeTestTarget("/cache-vm/slow")
         environment.sidebarFolderStore.add(target)
-        // The last scan took four minutes — far past the auto-rescan
-        // threshold, so selecting the target must show the snapshot and
-        // leave rescanning to the user.
+        // Four minutes is past the auto-rescan threshold, so the snapshot shows and rescanning is left to the
+        // user.
         try await environment.cache.save(makeSimpleSnapshot(
             target: target,
             startedAt: Date(timeIntervalSinceNow: -300),
@@ -153,9 +150,7 @@ import NeodiskKit
         defer { environment.tearDown() }
         let target = makeTestTarget("/cache-vm/fast-snapshot-only")
         environment.sidebarFolderStore.add(target)
-        // The last scan was instantaneous — smart would auto-rescan this,
-        // but the snapshot-only policy must still display the snapshot and
-        // leave rescanning to the notice or the toolbar.
+        // Smart would auto-rescan this; snapshot-only must still just display it.
         try await environment.cache.save(makeSimpleSnapshot(target: target))
 
         let model = environment.makeModel(policy: .snapshotOnly)
@@ -189,9 +184,8 @@ import NeodiskKit
         defer { environment.tearDown() }
         let target = makeTestTarget("/cache-vm/slow-automatic")
         environment.sidebarFolderStore.add(target)
-        // Four-minute last scan — smart would go snapshot-only, but the
-        // automatic policy refreshes behind the cached snapshot, and the
-        // decode-completion race check must not cancel that refresh.
+        // Smart would go snapshot-only; automatic refreshes behind the snapshot, and the decode race check
+        // must not cancel that refresh.
         try await environment.cache.save(makeSimpleSnapshot(
             target: target,
             startedAt: Date(timeIntervalSinceNow: -300),
@@ -337,9 +331,7 @@ import NeodiskKit
         environment.scanService.yield(.finished(makeSimpleSnapshot(target: target)), scanIndex: 0)
         environment.scanService.finish(scanIndex: 0)
 
-        // The single-file snapshot has no duplicate candidates, so the
-        // auto-started scan finishes immediately with empty results — the
-        // point is that it ran without a click.
+        // No duplicate candidates, so the scan finishes empty at once; the point is it ran without a click.
         try await waitUntilAsync("duplicate scan auto-started and finished") {
             model.duplicates.results != nil
         }
@@ -417,9 +409,7 @@ import NeodiskKit
 
         model.startScan(target)
 
-        // The single-file snapshot has no duplicate candidates, so the
-        // auto-started scan finishes immediately with empty results — the
-        // point is that opening the snapshot ran it without a click.
+        // No duplicate candidates, so the scan finishes empty at once; the point is it ran without a click.
         try await waitUntilAsync("duplicate scan auto-started and finished") {
             model.duplicates.results != nil
         }
@@ -475,9 +465,7 @@ import NeodiskKit
             sidebarFolderStore = SidebarFolderStore(defaults: defaults)
         }
 
-        /// Models get preferences the same way the app injects them
-        /// (ContentView assigns model.preferences once on appear), backed by
-        /// this environment's isolated defaults suite.
+        /// Injected like the app does (ContentView sets model.preferences on appear), on isolated defaults.
         @MainActor
         func makeModel(policy: AutoRescanPolicy? = nil) -> NeodiskViewModel {
             let model = NeodiskViewModel(

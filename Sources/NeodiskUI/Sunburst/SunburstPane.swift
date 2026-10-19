@@ -1,13 +1,5 @@
-//
-//  SunburstPane.swift
-//  Neodisk
-//
-//  Model-facing entry point for the sunburst view: derives the chart's
-//  inputs (root, color style, free space, layout identity) from the view
-//  model and translates chart events into the same model actions the
-//  treemap uses — hover to the status bar, single-click drill-in, center
-//  click out, and the shared file-action context menu.
-//
+// Model-facing entry point for the sunburst: derives chart inputs from the view model and maps chart events
+// to the same model actions the treemap uses.
 
 import SunburstCore
 import AppKit
@@ -17,9 +9,7 @@ import NeodiskKit
 import NeodiskAppModel
 
 struct SunburstPane: View {
-    /// Rings drawn below the focused root (no settings knob in v1): the
-    /// 6-ring body plus 2 fixed thin detail rings at the edge (see
-    /// SunburstRingMetrics).
+    /// The 6-ring body plus 2 thin detail rings at the edge (see SunburstRingMetrics).
     static let depthLimit = 8
 
     let model: NeodiskViewModel
@@ -27,13 +17,10 @@ struct SunburstPane: View {
     /// Shared between the chart and the legend list so both derive from the
     /// same rendered layout (segment fills, aggregate pooling, free space).
     @StateObject private var chartModel = SunburstChartModel()
-    /// The folder the legend previews while the chart hovers a directory
-    /// segment; nil shows the chart root. Driven ONLY by chart hover — list
-    /// row hover must never move the preview (no flicker).
+    /// Driven only by chart hover: list-row hover must never move the preview, or it flickers.
     @State private var previewFolderID: String?
-    /// Segment currently hovered by the chart itself. Legend-row hover also
-    /// highlights a chart segment, so keep this separate when refreshing a
-    /// stationary chart hover after a palette/style change.
+    /// Kept apart from legend-row hover (which also highlights a segment) to refresh a stationary chart hover
+    /// after a palette or style change.
     @State private var chartHoveredSegmentID: SunburstSegment.ID?
 
     /// User-resizable, clamped on read against the pane width so the chart
@@ -92,9 +79,7 @@ struct SunburstPane: View {
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                    // Too narrow for a usable chart plus a usable legend →
-                    // the legend (and its divider) hides and the chart takes
-                    // the full pane.
+                    // Too narrow for both: the legend and its divider hide.
                     if let resolvedLegendWidth = legend.width {
                         PaneSplitter(
                             size: liveLegendWidth,
@@ -156,11 +141,7 @@ struct SunburstPane: View {
 
     // MARK: - Color style
 
-    /// The model's shared visualization coloring, translated to the chart's
-    /// terms: Age gets the ramp with the same reference date as the treemap,
-    /// Kinds the catalog colors, and the legend-less states (Largest tab,
-    /// hidden panel) the default branch hues — with the active tab's
-    /// highlight dimming baked in.
+    /// Age uses the treemap's reference date; legend-less states (Largest tab, hidden panel) get branch hues.
     private var colorStyle: SunburstColorStyle {
         var style = SunburstColorStyle(
             mode: .branch,
@@ -179,9 +160,7 @@ struct SunburstPane: View {
         return style
     }
 
-    /// Free space belongs to the volume as a whole; hide it once the user
-    /// drills into a subfolder. Unlike the treemap the sunburst shows it
-    /// unconditionally for volume scans — no Settings toggle here.
+    /// Free space belongs to the whole volume, so it hides once drilled into a subfolder.
     private var gatedFreeSpaceBytes: Int64? {
         model.zoomRootID == nil ? model.freeSpace.freeSpaceBytes : nil
     }
@@ -197,11 +176,8 @@ struct SunburstPane: View {
         return Set(store.path(to: selectedNodeID).map(\.id))
     }
 
-    /// One string capturing every GEOMETRY input, so `.task(id:)` reloads on
-    /// any change: snapshot, root, depth, free space, hidden space, opened
-    /// "Smaller Items" pools. Colors (tab mode, highlight, palette, catalog)
-    /// are deliberately absent — they restyle the rendered layout in place
-    /// (see SunburstChartModel.applyStyle).
+    /// Every geometry input, so `.task(id:)` reloads on any change. Colors are deliberately absent: they
+    /// restyle the layout in place (SunburstChartModel.applyStyle).
     private static func layoutID(
         snapshotID: UUID,
         rootID: String,
@@ -253,9 +229,7 @@ struct SunburstPane: View {
                 totalSize: segment.totalSize,
                 swatchRGB: FileKindCatalog.otherRGB
             ))
-            // Preview the containing folder — its list holds the Smaller
-            // Items row this segment pools, which highlights through the
-            // hover state above.
+            // The containing folder's list holds the Smaller Items row this segment pools.
             setPreviewFolder(segment.parentFolderID)
             return
         }
@@ -271,10 +245,8 @@ struct SunburstPane: View {
         } else {
             clearHover()
         }
-        // Hovering a directory previews its contents in the legend; files
-        // (and childless folders, which have nothing to list) preview their
-        // parent folder instead, so the legend shows the hovered item
-        // highlighted among its siblings rather than snapping to the root.
+        // Files and childless folders preview their parent, so the hovered item shows highlighted among its
+        // siblings instead of the legend snapping to the root.
         if let nodeID = segment.nodeID,
            let store = model.store,
            let node = store.node(id: nodeID) {
@@ -288,9 +260,7 @@ struct SunburstPane: View {
         }
     }
 
-    /// The chart intentionally publishes only segment-identity edges. A style
-    /// change can recolor the same stationary segment, so refresh just its
-    /// semantic swatch without touching the legend preview.
+    /// The chart publishes only segment-identity edges, but a style change can recolor a stationary segment.
     private func refreshChartHoverSwatch(in store: FileTreeStore) {
         guard let chartHoveredSegmentID,
               let segment = chartModel.segment(forSegmentID: chartHoveredSegmentID) else { return }
@@ -315,11 +285,7 @@ struct SunburstPane: View {
         }
     }
 
-    /// Every preview change funnels through here so the legend's identity
-    /// swap happens inside an animated transaction and cross-fades (see the
-    /// `.transition(.opacity)` in SunburstLegendList). No debounce needed:
-    /// hit-testing treats the ring gaps as glued to their arcs, so sliding
-    /// folder→subfolder never drops the hover in between.
+    /// Animated so the legend cross-fades. No debounce needed: hit-testing glues ring gaps to their arcs.
     private func setPreviewFolder(_ id: String?) {
         guard previewFolderID != id else { return }
         withAnimation(.easeInOut(duration: 0.18)) {
@@ -337,11 +303,7 @@ struct SunburstPane: View {
         model.setVisualizationHover(nil)
     }
 
-    /// Sunburst drills are pure navigation: a successful
-    /// drill clears the selection so the breadcrumb tracks the drill root —
-    /// keeping a stale selection (drillIn preserves one inside the new root,
-    /// which suits the treemap's outline) reads as "that file is still
-    /// selected" here. Refusals degrade to selecting the node.
+    /// Pointer drills clear the selection so a stale one doesn't read as still selected; refusals select.
     private func drillOrSelect(_ nodeID: String) {
         if model.drillIn(to: nodeID) {
             model.select(nil)
@@ -362,9 +324,7 @@ struct SunburstPane: View {
         }
 
         if segment.isAggregate {
-            // Drilling into the containing folder gives the pooled items
-            // more angle to spread out; when it is already the root (or
-            // refuses), fall back to selecting the folder.
+            // Drilling into the containing folder gives pooled items more angle; else select the folder.
             guard let folderID = segment.parentFolderID else { return }
             drillOrSelect(folderID)
             return
@@ -372,14 +332,10 @@ struct SunburstPane: View {
 
         guard let nodeID = segment.nodeID else { return }
         if let store = model.store, store.node(id: nodeID)?.isSunburstFolder(in: store) == true {
-            // A single click on a folder segment drills in. drillIn guards
-            // summarized/childless folders; refusals degrade to a plain
-            // select.
+            // drillIn guards summarized and childless folders.
             drillOrSelect(nodeID)
         } else {
-            // A single click on a file (or a still-opaque package) selects
-            // it and opens Quick Look (selection changes then live-update
-            // the open panel).
+            // Later selection changes live-update the open Quick Look panel.
             model.select(nodeID)
             if let node = model.store?.node(id: nodeID) {
                 QuickLookPresenter.shared.openPreview(for: node)
@@ -387,11 +343,8 @@ struct SunburstPane: View {
         }
     }
 
-    /// Pinch-spread over a segment is pure navigation: drill into the
-    /// folder (the aggregate's containing folder for pooled segments) and
-    /// clear the selection like every sunburst drill. Unlike a click there
-    /// is no select fallback — a refused or file-segment pinch does nothing,
-    /// so an accidental pinch never moves the selection or opens Quick Look.
+    /// Unlike a click there is no select fallback, so an accidental pinch never moves the selection or
+    /// opens Quick Look.
     private func handlePinchDrill(_ segment: SunburstSegment) {
         guard !segment.isFreeSpace, !segment.isHiddenSpace else { return }
 
@@ -404,14 +357,8 @@ struct SunburstPane: View {
 
     // MARK: - Keyboard
 
-    /// Keyboard navigation with the treemap's contract: arrows move the
-    /// selection (←/→ around the ring, ↑ toward the center, ↓ outward to
-    /// the largest child), ⌘↓/⌘↑ drill in/out, Space Quick Looks the
-    /// selection, Return reveals it in Finder. Keyboard drills reuse the
-    /// treemap's selection-anchoring semantics (drillIntoSelection lands on
-    /// the largest child so arrows keep working) — deliberately unlike
-    /// pointer drills, which are pure navigation and clear the selection
-    /// (see drillOrSelect).
+    /// Keyboard drills keep the treemap's selection anchoring (drill lands on the largest child), unlike
+    /// pointer drills, which clear the selection.
     private func handleKey(_ event: NSEvent) -> Bool {
         if event.charactersIgnoringModifiers == " " {
             model.quickLookSelection()
@@ -501,9 +448,7 @@ struct SunburstPane: View {
                 }
             }
         case .aggregate:
-            // Clicking the pooled row opens it up: the displayed folder's
-            // small children lay out (and list) individually, mirroring the
-            // treemap's "smaller items" cell click.
+            // Lays out the displayed folder's small children individually, like the treemap's cell click.
             guard let displayedFolderID else { return }
             model.expandAggregate(inFolder: displayedFolderID)
         case .freeSpace, .hiddenSpace:
@@ -513,12 +458,7 @@ struct SunburstPane: View {
         }
     }
 
-    /// Pinch on the legend list mirrors the chart's pinch-to-drill: a
-    /// spread over a row drills into that folder (pure navigation, no
-    /// select fallback — see handlePinchDrill), a squeeze anywhere in the
-    /// list goes up one level. The aggregate row drills into its containing
-    /// folder like the pooled segment does; free/hidden-space and file rows
-    /// do nothing.
+    /// Spread over a row drills in (no select fallback), a squeeze anywhere goes up one level.
     private func handleRowPinch(_ row: SunburstLegendRow?, direction: SunburstPinchDirection) {
         switch direction {
         case .drillIn:
@@ -547,9 +487,6 @@ struct SunburstPane: View {
         return model.effectiveRootID
     }
 
-    /// Same actions as the treemap's context menu: Reveal in Finder / Open /
-    /// Copy Path, plus Expand Contents / Show Package Contents for
-    /// summarized folders and opaque packages.
     private func contextMenu(for segment: SunburstSegment) -> NSMenu? {
         guard let nodeID = segment.nodeID,
               let node = model.store?.node(id: nodeID) else { return nil }

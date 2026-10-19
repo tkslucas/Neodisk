@@ -1,12 +1,4 @@
-//
-//  KindStatsPane.swift
-//  Neodisk
-//
-//  The statistics panel's Kinds tab: one row per file kind with its treemap
-//  color, total size, and file count, largest first. Right-clicking a type
-//  moves it to another category (or a new one); right-clicking a category
-//  the user made renames or deletes it.
-//
+// Kinds tab. Right-clicking a type moves it to another category; a user-made category can be renamed or deleted.
 
 import SwiftUI
 import NeodiskKit
@@ -62,9 +54,7 @@ struct KindStatsPane: View {
             Divider()
 
             if model.kinds.catalog.stats.isEmpty || model.kinds.catalog.mode != model.kinds.displayMode {
-                // Either nothing built yet, or the user just switched modes
-                // and the catalog for the new mode is still building — don't
-                // show the stale list.
+                // Nothing built yet, or the new mode's catalog is still building: don't show the stale list.
                 Spacer()
                 ProgressView().neoControlSize(base: .small)
                     .frame(maxWidth: .infinity)

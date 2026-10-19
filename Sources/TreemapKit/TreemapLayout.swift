@@ -1,9 +1,4 @@
-//
-//  TreemapLayout.swift
-//  TreemapKit
-//
-//  Squarified treemap layout (Bruls, Huizing, van Wijk, 2000).
-//
+// Squarified treemap layout (Bruls, Huizing, van Wijk, 2000).
 
 #if canImport(CoreGraphics)
 import CoreGraphics
@@ -12,9 +7,7 @@ import Foundation  // CG geometry types off Darwin
 #endif
 
 public enum TreemapLayout {
-    /// Lays out `weights` inside `rect` using the squarified algorithm.
-    /// Returns one rect per weight, in the same order. Weights must be non-negative;
-    /// zero-weight entries produce empty rects at the current layout cursor.
+    /// Weights must be non-negative; zero-weight entries produce empty rects at the current layout cursor.
     public nonisolated static func squarify(weights: [Double], in rect: CGRect) -> [CGRect] {
         guard !weights.isEmpty else { return [] }
 

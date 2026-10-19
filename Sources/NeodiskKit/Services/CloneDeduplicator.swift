@@ -1,22 +1,5 @@
-//
-//  CloneDeduplicator.swift
-//  Neodisk
-//
-//  APFS clone deduplication, the sibling of HardLinkDeduplicator: files in
-//  the same clone family share on-disk blocks, so counting every member at
-//  full allocated size over-counts real usage — the map's items can then sum
-//  past the volume's Finder-reported used space and swallow the hidden-space
-//  figure. The deterministic first member (path order, like hard links)
-//  keeps its full size; every other member is charged only its private
-//  (unshared) bytes, ATTR_CMNEXT_PRIVATESIZE, which traversal reads for
-//  every member as it lists the member's folder (fetched here only for a
-//  record that lacks it) and which stays stamped in the records so cached
-//  snapshots rebalance without the volume mounted. Diverged clones can be slightly
-//  under-counted; the residual surfaces as hidden space, never as a
-//  negative. A summarized directory (package, auto-summarized folder) has no
-//  file records, so its `summarizedClones` tallies stand in for its members:
-//  it is charged for each member it doesn't keep.
-//
+// APFS clones share blocks, so the first member (path order) keeps its full size and the rest are charged
+// only their private bytes; otherwise the map sums past used space. Summarized dirs charge via their tallies.
 
 #if canImport(Darwin)
 import Darwin
@@ -26,16 +9,10 @@ import Glibc
 import Foundation
 
 nonisolated enum CloneDeduplicator {
-    /// Fetches a file's private (unshared) byte count. Injectable so tests
-    /// and offline rebalances run without syscalls; nil means unknown and
-    /// charges the member zero — the conservative direction (the residual
-    /// lands in hidden space). `Sendable` so the parallel fetch can call it
-    /// across workers.
+    /// Nil means unknown and charges zero, the conservative direction (the residual lands in hidden space).
     typealias PrivateSizeProvider = @Sendable (_ path: String) -> Int64?
 
-    /// The real provider: one getattrlist(2) for ATTR_CMNEXT_PRIVATESIZE.
-    /// Called only for duplicate clone-family members, never in scan hot
-    /// loops.
+    /// Called only for duplicate clone-family members, never in scan hot loops.
     nonisolated static func systemPrivateSize(path: String) -> Int64? {
         #if canImport(Darwin)
         ScanSyscallTally.recordCloneGetattr(count: 1)
@@ -63,16 +40,8 @@ nonisolated enum CloneDeduplicator {
         #endif
     }
 
-    /// Applies clone deduplication to the finalize handoff's mutable tree
-    /// arrays. Runs after hard-link deduplication; the two compose because
-    /// this pass only ever lowers a member's current allocated size to its
-    /// private size (idempotent, order-stable).
-    ///
-    /// The per-member private-size reads (`getattrlist`) are independent and
-    /// I/O-bound, and on clone-saturated volumes they dominate finalize
-    /// (~45s on a 1.5M-node home dir). They are fetched concurrently over
-    /// disjoint result slots, then the charges are applied in the original
-    /// sequential order so the store stays byte-identical to the serial pass.
+    /// Only lowers sizes, so it composes with hard-link dedup. Reads run concurrently (~45s serially on 1.5M
+    /// nodes), then charges apply in sequential order to stay byte-identical.
     nonisolated static func applyDeduplication(
         nodes: inout [FileNodeRecord],
         parentIndices: [Int32],
@@ -88,10 +57,8 @@ nonisolated enum CloneDeduplicator {
         ScanProfile.end(.cloneGroup, since: groupSince, count: members.byFamily.count)
         let orderSince = ScanProfile.now()
 
-        // Every family's non-first members (by path, then id) are the ones
-        // charged. Charges are independent per member, so flattening the
-        // families into one list keeps the output byte-identical regardless of
-        // family iteration order.
+        // Charges are independent per member, so flattening families keeps the output independent of
+        // iteration order.
         var chargedIndices: [Int32] = []
         var summaryCharges: SummaryCharges = [:]
         for family in members.byFamily.values {
@@ -111,9 +78,7 @@ nonisolated enum CloneDeduplicator {
         let applySince = ScanProfile.now()
         defer { ScanProfile.end(.cloneApply, since: applySince) }
 
-        // Resolve each charged member's private size: the stamped figure when
-        // present, otherwise a getattrlist read. The reads run concurrently
-        // (bounded, disjoint slots), cancellation is polled between batches.
+        // Stamped private size when present, else a bounded concurrent getattrlist read.
         let stampedPrivateSizes = chargedIndices.map { nodes[Int($0)].cloneInfo?.privateSize }
         // Traversal stamps every member it reads, so a fresh scan has nothing
         // to fetch; only older snapshots and single-item metadata do.
@@ -149,9 +114,7 @@ nonisolated enum CloneDeduplicator {
                 }
             }
             batchStart = rangeEnd
-            // The fetch loop is the phase's cost on clone-heavy volumes; the
-            // charge/rebuild tail is fast, so batch completion is the honest
-            // progress signal.
+            // The fetch loop is the phase's real cost, so batch completion is the honest progress signal.
             progress(Double(rangeEnd) / Double(chargedIndices.count))
         }
 
@@ -186,12 +149,8 @@ nonisolated enum CloneDeduplicator {
         )
     }
 
-    /// Re-derives clone deduplication from the store's own records after
-    /// subtree mutations — the sibling of
-    /// `HardLinkDeduplicator.rebalancedStore`, run right after it so a
-    /// removed or replaced first member hands the family's full size to the
-    /// next survivor. Offline-safe: uses only the private sizes stamped
-    /// into the records at scan time.
+    /// Run after `HardLinkDeduplicator.rebalancedStore` so a removed first member hands the full size on.
+    /// Offline-safe: uses only the private sizes stamped at scan time.
     nonisolated static func rebalancedStore(
         _ store: FileTreeStore,
         families: Set<CloneFamilyKey>? = nil,
@@ -220,12 +179,8 @@ nonisolated enum CloneDeduplicator {
                     let index = member.index
                     let node = nodes[Int(index)]
                     if position == 0 {
-                        // A subtree removal can promote a previously-charged
-                        // member to first; restore it to full size so the
-                        // family's shared blocks stay counted exactly once.
-                        // Never touch hard-link-managed nodes (the pass before
-                        // this one owns their sizes), and only undo a charge
-                        // this deduplicator made (stamped privateSize).
+                        // A removal can promote a charged member to first: restore its size. Skip
+                        // hard-link-managed nodes and only undo charges this pass made (stamped privateSize).
                         let isHardLinkManaged = node.linkCount > 1 && node.fileIdentity != nil
                         if !isHardLinkManaged,
                            node.cloneInfo?.privateSize != nil,
@@ -246,9 +201,7 @@ nonisolated enum CloneDeduplicator {
         }
     }
 
-    /// One member of a clone family: a file record, or a summarized
-    /// directory's tally of the family (`family` indexes its
-    /// `summarizedClones.families`; -1 for a file).
+    /// `family` indexes the directory's `summarizedClones.families`; -1 for a file.
     private struct Member {
         let index: Int32
         let family: Int32
@@ -292,9 +245,7 @@ nonisolated enum CloneDeduplicator {
         return members
     }
 
-    /// A family's members in charge order (`SharedSizeDeduplication.precedes`).
-    /// A summarized directory's members sort as its path plus "/": they live
-    /// below it, so after it and before a sibling whose name extends its own.
+    /// A summarized directory sorts as its path plus "/": after itself, before a sibling whose name extends it.
     private static func ordered(
         _ members: [Member],
         in nodes: [FileNodeRecord],
@@ -357,15 +308,9 @@ nonisolated enum CloneDeduplicator {
     }
 }
 
-/// The two shared-block deduplication passes in their required order —
-/// hard links first (restores claim owners from unduplicated sizes), then
-/// clones (only ever lowers current sizes). Subtree mutations call this
-/// instead of the individual passes.
+/// Hard links first (restores owners from unduplicated sizes), then clones (only lowers sizes).
 nonisolated enum SharedSizeDeduplication {
-    /// The shared-block families an edit can have changed: those with a
-    /// member in a removed or replaced subtree, or in an inserted one. Every
-    /// other family kept its members and records, so it is still balanced
-    /// exactly as before the edit and the rebalance can leave it alone.
+    /// Families with a member in a removed, replaced or inserted subtree; every other one is still balanced.
     struct Scope {
         var cloneFamilies = Set<CloneFamilyKey>()
         var hardLinkIdentities = Set<FileIdentity>()
@@ -400,9 +345,8 @@ nonisolated enum SharedSizeDeduplication {
             try CloneDeduplicator.rebalancedStore(
                 hardLinked,
                 families: scope.map { scope in
-                    // The hard-link pass may have resized a member of an
-                    // otherwise untouched clone family: that family is
-                    // touched too.
+                    // The hard-link pass may have resized a member of an untouched clone family, so it counts
+                    // as touched.
                     var families = scope.cloneFamilies
                     guard !scope.hardLinkIdentities.isEmpty else { return families }
                     for node in hardLinked.storage.nodes where node.linkCount > 1 {
@@ -418,10 +362,7 @@ nonisolated enum SharedSizeDeduplication {
         }
     }
 
-    /// The deterministic tie-break both passes charge on: order shared-block
-    /// members by path, then by node id. The first member keeps its full size;
-    /// every other member is charged. One definition for the hard-link and
-    /// clone passes (and their store-rebalance twins).
+    /// First by path, then id, keeps its full size; one definition for both passes and their rebalance twins.
     nonisolated static func precedes(_ a: FileNodeRecord, _ b: FileNodeRecord) -> Bool {
         a.path == b.path ? a.id < b.id : a.path < b.path
     }

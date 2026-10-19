@@ -1,15 +1,5 @@
-//
-//  CGShims.swift
-//  TreemapKit
-//
-//  Minimal CoreGraphics geometry stand-ins for platforms with neither
-//  CoreGraphics nor Foundation (the WebAssembly demo build). Darwin builds use
-//  the real types and Linux uses Foundation's (swift-corelibs-foundation
-//  ships CGFloat/CGPoint/CGSize/CGRect), so this file compiles to nothing
-//  there — defining them here too would make every consumer that imports
-//  Foundation see two CGRects. Only the API TreemapKit and its off-platform
-//  consumers actually touch is provided.
-//
+// Geometry stand-ins only for builds with neither CoreGraphics nor Foundation (wasm). Linux uses Foundation's,
+// since defining them there too would give Foundation importers two CGRects.
 
 #if !canImport(CoreGraphics) && !canImport(Foundation)
 

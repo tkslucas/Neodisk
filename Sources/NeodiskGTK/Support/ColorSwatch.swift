@@ -1,11 +1,4 @@
-//
-//  ColorSwatch.swift
-//  NeodiskGTK
-//
-//  A small rounded color chip — the kind and age legends' swatches and the
-//  status bar's. Drawn on a canvas, so recoloring is a redraw rather than a
-//  style-sheet change.
-//
+// Drawn on a canvas, so recoloring is a redraw rather than a style-sheet change.
 
 import CGtk
 import Foundation

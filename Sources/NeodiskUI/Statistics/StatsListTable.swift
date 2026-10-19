@@ -1,16 +1,5 @@
-//
-//  StatsListTable.swift
-//  Neodisk
-//
-//  The AppKit list behind the statistics panel's long lists (Largest, the
-//  Kind and Age drill-ins, Changes, Duplicates). A SwiftUI List measures
-//  every row's height, and past about 256 rows an update re-measures them
-//  inside the table's own update pass, which AppKit logs as a reentrant
-//  delegate operation it plans to turn into an assert. These rows all have
-//  the same height, so the table never measures one, and scrolling a few
-//  thousand rows costs nothing. Rows stay SwiftUI in per-row hosting
-//  views, like the outline's.
-//
+// AppKit list for the long statistics lists: a SwiftUI List past ~256 rows re-measures inside the table's own
+// update pass (a reentrant delegate operation AppKit plans to assert on). Fixed-height rows never measure.
 
 import AppKit
 import SwiftUI
@@ -18,19 +7,14 @@ import NeodiskKit
 
 /// What clicking a row does.
 enum StatsListClick {
-    /// Rows are files: the row whose ID is the model's selected node shows
-    /// selected, and a click selects through `select` (Changes routes a
-    /// deleted entry to its nearest surviving ancestor). Right-click,
-    /// double-click and space are the file actions of the other file lists.
+    /// Changes routes a deleted entry to its nearest surviving ancestor; other gestures are the usual file actions.
     case selectsNode((String) -> Void)
     /// Rows are buttons into a drill-in: a click opens the row's ID and
     /// leaves no selection behind.
     case opens((String) -> Void)
 }
 
-/// Height of a statistics list row: a 12pt name over a 10pt detail line
-/// with 1pt between, plus the 10pt of air the SwiftUI List gave the same
-/// rows (37pt at 100%). Every row view shown in the table has that shape.
+/// A 12pt name over a 10pt detail line plus the 10pt of air the SwiftUI List gave (37pt at 100%).
 enum StatsListMetrics {
     static func rowHeight(scale: CGFloat) -> CGFloat {
         ceil(lineHeight(12 * scale) + 1 + lineHeight(10 * scale)) + 10
@@ -50,9 +34,7 @@ struct StatsListTable<Row: Identifiable, RowContent: View>: NSViewRepresentable 
     let click: StatsListClick
     /// Read by the caller so a selection change reaches the table.
     var selectedID: String?
-    /// Scroll back to the top when another row takes the lead. A refreshed
-    /// size ranking keeps its rows while the new one arrives, so the list
-    /// would otherwise stay anchored as bigger files land above.
+    /// A refreshed ranking keeps its rows while the new one arrives, so the list would stay anchored otherwise.
     var keepsLeaderInView = false
     @ViewBuilder let content: (Row) -> RowContent
 
@@ -294,11 +276,8 @@ final class StatsListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDe
     }
 }
 
-/// One recycled row cell hosting the caller's SwiftUI row at the List's
-/// 16pt inset, switching to white-on-accent text while its row is the
-/// focused selection. A hosting view sits outside the SwiftUI environment,
-/// so the cell hands the workspace text scale back in; as a stored value it
-/// also re-renders a reused cell when only the scale changed (issue #10).
+/// Hosting views sit outside the SwiftUI environment, so the text scale is passed in; storing it also
+/// re-renders a reused cell when only the scale changed (issue #10).
 private final class StatsListCellView: NSView, SelectionStateReceiving {
     static let reuseIdentifier = NSUserInterfaceItemIdentifier("StatsListCell")
 

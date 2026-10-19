@@ -1,10 +1,5 @@
-//
-//  WelcomeSheet.swift
-//  Neodisk
-//
-//  First-launch onboarding: what the map is, the read-only guarantee, and
-//  Full Disk Access status with instructions.
-//
+// First-launch onboarding: what the map is, the read-only guarantee, and
+// Full Disk Access status with instructions.
 
 import AppKit
 import SwiftUI
@@ -14,9 +9,8 @@ struct WelcomeSheet: View {
 
     @State private var accessStatus: FullDiskAccessStatus = .unknown
 
-    // Packaged .apps get their own TCC entry (grant it to Neodisk itself);
-    // unbundled `swift run` builds (no CFBundleIdentifier) inherit the
-    // launching terminal's access, so step 2 differs.
+    // Unbundled `swift run` builds inherit the launching terminal's access, so step 2 differs from packaged
+    // apps.
     private var enableAccessSteps: String {
         Bundle.main.bundleIdentifier == nil
             ? "1. Open Privacy & Security → Full Disk Access.\n2. Turn it on for the app that launches Neodisk.\n3. Relaunch Neodisk."
@@ -122,10 +116,8 @@ struct WelcomeSheet: View {
     }
 }
 
-// Granting Full Disk Access makes macOS offer "Quit & Reopen", which sends a
-// polite terminate. A sheet window blocks that by default
-// (preventsApplicationTerminationWhenModal), so the app silently refuses to
-// quit while this welcome sheet is up. Opt the sheet out so the relaunch works.
+// Granting Full Disk Access offers "Quit & Reopen", but a sheet blocks termination by default
+// (preventsApplicationTerminationWhenModal), so opt this one out or the relaunch silently fails.
 private struct ModalTerminationBehavior: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
         let view = NSView(frame: .zero)

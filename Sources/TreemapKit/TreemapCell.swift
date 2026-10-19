@@ -1,11 +1,4 @@
-//
-//  TreemapCell.swift
-//  TreemapKit
-//
-//  The renderable unit of a cushion treemap: a rect, its accumulated cushion
-//  surface coefficients (van Wijk & van de Wetering, "Cushion Treemaps",
-//  1999), and a base color. Knows nothing about what the cells represent.
-//
+// The renderable unit of a cushion treemap (van Wijk and van de Wetering, "Cushion Treemaps", 1999).
 
 #if canImport(CoreGraphics)
 import CoreGraphics
@@ -13,9 +6,7 @@ import CoreGraphics
 import Foundation  // CG geometry types off Darwin
 #endif
 
-/// Accumulated cushion surface for a cell. The surface height field is a sum
-/// of parabolas; only its gradient matters for shading, and the gradient is
-/// linear per axis: dz/dx = xa + xb·x, dz/dy = ya + yb·y.
+/// Only the gradient matters for shading, and it is linear per axis: dz/dx = xa + xb·x, dz/dy = ya + yb·y.
 public struct CushionSurface: Sendable {
     public var xa: Double = 0
     public var xb: Double = 0
@@ -40,17 +31,12 @@ public struct TreemapCell: Sendable {
     public let nodeID: String
     public let rect: CGRect
     public let rgb: SIMD3<Float>
-    /// Undimmed semantic color for UI chrome such as the status-bar swatch.
-    /// Unlike `rgb`, this excludes highlight dimming, cloud treatment, and
-    /// flat-style compositing.
+    /// Excludes highlight dimming, cloud treatment and flat compositing, unlike `rgb`.
     public let swatchRGB: SIMD3<Float>
     public let surface: CushionSurface
     public let isDirectory: Bool
-    /// Set (flat style only) when this cell is a folder container whose
-    /// children are laid out inside it: the cell draws as a bordered box
-    /// with a header strip, its children overdraw the content region, and
-    /// hit-testing prefers the deepest cell so the container wins only on
-    /// its visible frame. Keyboard tile navigation skips containers.
+    /// Flat style only. Hit-testing prefers the deepest cell, so a container wins only on its visible frame;
+    /// keyboard tile navigation skips containers.
     public var isContainer: Bool
     /// Set when this cell stands in for several small siblings that would
     /// each be too tiny to render individually. `nodeID` is their parent.
@@ -58,15 +44,9 @@ public struct TreemapCell: Sendable {
     /// Set when this cell is the synthetic free-space block for the volume
     /// root; `nodeID` is then a synthetic ID that exists in no tree store.
     public var isFreeSpace: Bool
-    /// Set when this cell is the synthetic hidden-space block for the volume
-    /// root (capacity the scan could not account for: purgeable space, local
-    /// snapshots, unreadable files); `nodeID` is then a synthetic ID that
-    /// exists in no tree store.
+    /// `nodeID` is then a synthetic ID that exists in no tree store.
     public var isHiddenSpace: Bool
-    /// Set when this cell's weight is cloud-only (a dataless file, or a
-    /// directory whose bytes all live in the cloud): the rasterizer bakes a
-    /// diagonal hatch over it so the space reads as "not on disk" independent
-    /// of hue (and so it survives the colorblind palette).
+    /// The rasterizer hatches it so "not on disk" reads independent of hue, surviving the colorblind palette.
     public var isDataless: Bool
 
     public struct AggregateInfo: Equatable, Sendable {

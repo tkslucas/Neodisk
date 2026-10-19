@@ -1,12 +1,7 @@
 import Foundation
 
-/// Full directory listings the auto-summary probe has already read, handed
-/// to the summary walk that follows so it doesn't read them again. A probe
-/// that leads to a summary reads the same folders the summary then walks;
-/// without this a big cache folder was listed twice (and its parent three
-/// times). Scoped to one scan's summary pool, so nothing outlives the scan.
-/// Each listing is taken once; the entry budget bounds memory when probes
-/// decline and their listings are never taken.
+/// Listings the summary probe already read, so the summary walk doesn't list them again (a big cache folder
+/// was listed twice). Scoped to one scan; each is taken once, and an entry budget bounds untaken ones.
 nonisolated final class DirectoryListingCache: @unchecked Sendable {
     private let lock = NSLock()
     private var listings: [String: [BulkDirectoryChild]] = [:]

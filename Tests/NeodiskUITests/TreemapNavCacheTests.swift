@@ -1,12 +1,4 @@
-//
-//  TreemapNavCacheTests.swift
-//  Neodisk
-//
-//  The per-scene navigation cache must be a pure optimization: arrow-key
-//  targets from the precomputed candidates match the old refilter-every-
-//  press scan over random scenes, and the controller's memoized selection
-//  rect always equals a fresh `rect(forNodeID:)` for the scene on display.
-//
+// The navigation cache must be a pure optimization: same arrow targets and selection rect as uncached.
 
 import CoreGraphics
 import Foundation
@@ -149,9 +141,7 @@ private func cachedMove(
         }
     }
 
-    /// The memoized selection rect is keyed by selection and dropped with
-    /// the scene: after every selection change and every re-render (new
-    /// size, new style) it equals a fresh layout of the scene on display.
+    /// After every selection change and re-render it must equal a fresh layout of the scene on display.
     @MainActor
     @Test func controllerSelectionRectTracksSelectionAndScene() async throws {
         var rng = SeededTestGenerator(seed: 0xC0FFEE)
@@ -197,11 +187,8 @@ private func cachedMove(
         try assertMatchesFreshLayout()
     }
 
-    /// Opt-in (`NEODISK_TREEMAP_NAV_BENCH=1`): 1,000 arrow presses over a
-    /// large scene, old path (refilter every cell, re-layout the selection
-    /// path for the origin and again for the display refresh) against the
-    /// cached one (precomputed candidates, memoized selection rect), plus
-    /// the per-tick selection-rect cost a gesture or resize pays.
+    /// Opt-in benchmark (`NEODISK_TREEMAP_NAV_BENCH=1`): 1,000 arrow presses, uncached vs cached, plus the
+    /// per-tick selection-rect cost.
     @Test(.enabled(if: ProcessInfo.processInfo.environment["NEODISK_TREEMAP_NAV_BENCH"] != nil))
     func benchArrowNavigation() {
         var childrenByID: [String: [FileNodeRecord]] = [:]

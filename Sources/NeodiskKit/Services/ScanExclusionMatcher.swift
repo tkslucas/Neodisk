@@ -1,8 +1,3 @@
-//
-//  ScanExclusionMatcher.swift
-//  Neodisk
-//
-
 import Foundation
 
 public nonisolated struct ScanExclusionMatcher: Sendable {
@@ -20,9 +15,7 @@ public nonisolated struct ScanExclusionMatcher: Sendable {
     private let firmlinkedRootPath: String?
     private let patterns: [CompiledPattern]
     private let cloudLocations: [CloudLocation]
-    /// Last path component of every cloud root an active location can match.
-    /// A listed child whose parent was admitted can only hit a cloud rule by
-    /// being a cloud root itself, so other names skip the cloud test.
+    /// A child of an admitted parent can only hit a cloud rule by being a cloud root, so other names skip it.
     private let cloudRootNames: Set<String>
 
     init(
@@ -103,21 +96,8 @@ public nonisolated struct ScanExclusionMatcher: Sendable {
         return String(path.dropFirst("/private".count))
     }
 
-    /// Enumeration-hot fast path. The child URL that `excludes(_:isDirectory:)`
-    /// would standardize here was just built from an already-normalized parent
-    /// path plus a single, dot/slash-free name component, so the normalized
-    /// child path is a plain string concatenation — no per-entry URL round trip
-    /// through `scanPath(of:)`.
-    ///
-    /// `normalizedParentPath` MUST be the parent directory's normalized path
-    /// (`scanPath(of: parentURL)`), computed once per directory.
-    /// `childName` MUST be a single path component as a directory enumerator
-    /// yields it: no "/", and never "." or "..". Under those preconditions the
-    /// verdict is identical to `excludes(parentURL.appending(path: childName), …)`.
-    ///
-    /// The parent was itself admitted (it is being listed), so the child can
-    /// only fall under a cloud rule by being a cloud root: other names skip
-    /// that test, which otherwise ran for every file of the scan.
+    /// Hot-path variant of `excludes(_:isDirectory:)` that skips the URL round trip. Requires the parent's
+    /// normalized path and a single component name (no "/", never "." or "..").
     func excludes(normalizedParentPath: String, childName: String, isDirectory: Bool) -> Bool {
         if patterns.isEmpty && !cloudRootNames.contains(childName) {
             return false
@@ -128,14 +108,8 @@ public nonisolated struct ScanExclusionMatcher: Sendable {
         )
     }
 
-    /// Joins a normalized parent path and a clean child component into the
-    /// normalized child path, matching `scanPath(of:)` for the
-    /// appended URL. The parent is normalized, so it has no trailing slash
-    /// except when it is the volume root "/".
-    /// Whether standardizing `path` would leave it unchanged: absolute, no
-    /// empty, "." or ".." components, no trailing slash. Paths the scan builds
-    /// by joining names onto a normalized root always are, and skip the URL
-    /// standardization.
+    /// Whether standardizing `path` would leave it unchanged (absolute, no empty/"."/".." parts, no trailing
+    /// slash), so the URL standardization can be skipped.
     static func isLexicallyNormal(_ path: String) -> Bool {
         var utf8 = path
         return utf8.withUTF8 { bytes in
@@ -257,9 +231,7 @@ public nonisolated struct ScanExclusionMatcher: Sendable {
         }
 
         let components = pathComponents(rootPath)
-        // components.count >= 2: a bare "/Users" normalizes to the early
-        // return above, but don't let the 2..< range below trap if a caller
-        // ever hands us one anyway.
+        // Guards the 2..< range below in case a caller ever passes a bare "/Users".
         guard components.first == "Users", components.count >= 2 else { return false }
 
         // Full cloud path is /Users/<user>/<userRelativeComponents...>.
@@ -278,12 +250,8 @@ public nonisolated struct ScanExclusionMatcher: Sendable {
         return isUsersCloudPath(rootPath, userRelativeComponents: userRelativeComponents)
     }
 
-    /// True when `path` is `/Users/<any-user>/<userRelativeComponents…>` or a
-    /// descendant of it. Runs per enumerated entry on broad scans, so it walks
-    /// the "/"-separated components over the UTF8 view directly rather than
-    /// allocating a `[String]` per call (equivalent to
-    /// `path.split(separator: "/")`: consecutive/leading/trailing slashes are
-    /// ignored; component 1, the user, is a wildcard).
+    /// Runs per entry, so it walks the UTF8 view instead of allocating a split array. Same semantics as
+    /// `split(separator: "/")`; component 1, the user, is a wildcard.
     fileprivate static func isUsersCloudPath(
         _ path: String,
         userRelativeComponents: [String]

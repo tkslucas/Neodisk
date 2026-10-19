@@ -1,33 +1,13 @@
-//
-//  FileNodeActions.swift
-//  Neodisk
-//
-//  Context menu + double-click-to-reveal for the file lists: the SwiftUI
-//  variant for the search results List, the AppKit variant for the outline
-//  tables, the statistics lists, the treemap and the sunburst.
-//
-//  Uses contextMenu(forSelectionType:primaryAction:) — the only mechanism
-//  that adds double-click to a macOS List without breaking single-click row
-//  selection. Every SwiftUI gesture variant (onTapGesture(count: 2),
-//  simultaneousGesture, highPriorityGesture) swallows the mouse-down that
-//  NSTableView needs for selection; primaryAction hooks the table's native
-//  double-click instead.
-//
+// contextMenu(forSelectionType:primaryAction:) is the only way to add double-click to a macOS List
+// without breaking selection: every SwiftUI tap gesture swallows the mouse-down NSTableView needs.
 
 import AppKit
 import SwiftUI
 import NeodiskKit
 
 extension View {
-    /// File actions for a List whose selection type is the node ID:
-    /// right-click context menu (Reveal in Finder / Open / Copy Path) and
-    /// double-click reveals in Finder — same semantics as double-clicking a
-    /// treemap cell. No-ops for nodes without file actions (e.g. the
-    /// synthetic "System Data" node).
-    ///
-    /// `includeExpandContents` adds the outline tree's "Expand Contents" /
-    /// "Show Package Contents" item for auto-summarized folders and opaque
-    /// packages.
+    /// Double-click reveals in Finder, like a treemap cell. No-ops for nodes without file actions
+    /// (the synthetic "System Data" node).
     func fileNodeActions(
         model: NeodiskViewModel, includeExpandContents: Bool = false
     ) -> some View {
@@ -77,11 +57,7 @@ final class ClosureMenuItem: NSMenuItem {
 }
 
 extension NSMenu {
-    /// The AppKit file-node context menu shared by the outline table, the
-    /// treemap, and the sunburst — the same item list as `fileNodeActions`
-    /// above (keep the two in lockstep): Reveal in Finder / Open / Copy
-    /// Path, plus the contents-expansion item for summarized folders and
-    /// opaque packages. Returns nil for nodes without file actions.
+    /// Keep in lockstep with the SwiftUI `fileNodeActions` above. Nil for nodes without file actions.
     @MainActor
     static func fileNodeActions(for node: FileNodeRecord, model: NeodiskViewModel) -> NSMenu? {
         guard model.supportsFileActions(node) else { return nil }
@@ -91,10 +67,7 @@ extension NSMenu {
         return menu
     }
 
-    /// Delegate-driven menus (the outline's menuNeedsUpdate) populate an
-    /// existing menu with the same items instead of building a fresh one.
-    /// The flat statistics lists leave out the contents-expansion item, as
-    /// their SwiftUI predecessors did.
+    /// The flat statistics lists leave out the contents-expansion item, as their SwiftUI predecessors did.
     @MainActor
     func addFileNodeActionItems(
         for node: FileNodeRecord, model: NeodiskViewModel, includeExpandContents: Bool = true

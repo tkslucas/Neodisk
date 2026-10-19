@@ -2,19 +2,11 @@ import Foundation
 import Testing
 @testable import NeodiskKit
 
-/// Sibling display order lives in a store's child slots; the in-place
-/// ancestor rebuild (shared-size dedup, splices) re-sorts those slots without
-/// moving node records. The codec and the content digest must follow the
-/// slots, and decoding a file written by the old array-order encoder must
-/// restore display order.
+/// The in-place rebuild re-sorts child slots without moving records, so codec and digest must follow the
+/// slots, and decoding old array-order files must restore display order.
 @Suite struct SnapshotChildOrderTests {
-    /// /r
-    /// ├── Alpha/  big.bin (hard link, 400) · small.bin (40)
-    /// └── Beta/   big.bin (hard link, 400) · small.bin (40)
-    ///
-    /// Dedup charges Beta/big.bin zero (Alpha's link sorts first), so Beta's
-    /// display order flips to [small.bin, big.bin] while its records stay in
-    /// the pre-dedup array order.
+    /// /r with Alpha/ and Beta/, each holding big.bin (shared hard link, 400) and small.bin (40). Dedup zeroes
+    /// Beta/big.bin, flipping Beta's display order while its records keep the old array order.
     private func makeDedupReorderedStore() throws -> FileTreeStore {
         let identity = FileIdentity.fileSystem(device: 1, inode: 42)
         var childrenByID: [String: [FileNodeRecord]] = [:]
@@ -80,9 +72,8 @@ import Testing
     }
 
     @Test func decodeRestoresDisplayOrderFromArrayOrderFiles() throws {
-        // A file the old array-order encoder wrote: stream order puts the
-        // small child first. The validating init keeps the caller's child
-        // order, so encoding this store reproduces that stream exactly.
+        // Mimics the old array-order encoder; the validating init keeps this child order, so encoding
+        // reproduces it.
         let small = makeTestFileNode(id: "/r/a.bin", name: "a.bin", size: 5)
         let big = makeTestFileNode(id: "/r/b.bin", name: "b.bin", size: 50)
         let tieLate = makeTestFileNode(id: "/r/z.bin", name: "z.bin", size: 5)

@@ -1,14 +1,5 @@
-//
-//  SunburstLegend.swift
-//  Neodisk
-//
-//  Pure derivation of the legend list next to the sunburst:
-//  one row per child of the displayed folder, colored exactly like that
-//  child's chart segment. Rows derive from the chart's rendered segments so
-//  the list and the chart always agree — same aggregate pooling, same
-//  free-space arc, same fills. View-free and stateless for testability;
-//  the view lives in SunburstLegendList.
-//
+// Legend rows derive from the chart's rendered segments, so list and chart always agree (pooling,
+// free space, fills). The view lives in SunburstLegendList.
 
 import SunburstCore
 import Foundation
@@ -39,9 +30,7 @@ struct SunburstLegendRow: Identifiable, Equatable {
     let isDimmed: Bool
     /// Pooled item count; non-zero only on the aggregate row.
     let itemCount: Int
-    /// Marks a row whose size includes cloud-only bytes (the cloud-only
-    /// toggle is on and the node has some) — rendered as a small cloud
-    /// glyph beside the size.
+    /// The size includes cloud-only bytes; drawn as a cloud glyph beside the size.
     var showsCloudGlyph: Bool = false
 }
 
@@ -76,9 +65,7 @@ struct SunburstLegendPresentationKey: Equatable {
     let headerSizeOverride: Int64?
 }
 
-/// A single-entry cache is sufficient: previewing another folder is an
-/// intentional structural replacement, while hover inside that presentation
-/// should only change cheap highlight overlays.
+/// Single entry suffices: another folder is a structural replacement, and hover only changes overlays.
 struct SunburstLegendPresentationCache {
     private var entry: (key: SunburstLegendPresentationKey, value: SunburstLegendPresentation)?
     private(set) var buildCount = 0
@@ -100,16 +87,8 @@ struct SunburstLegendPresentationCache {
 }
 
 enum SunburstLegend {
-    /// The children of `displayedFolderID`, size-descending, followed by one
-    /// pooled "Smaller Items" row when the chart pooled some of them, then
-    /// "Hidden Space" and "Free Space" rows when the chart shows those arcs
-    /// (only at the chart root — both belong to the volume ring, in the
-    /// chart's angular order).
-    ///
-    /// Colors come from the rendered segments. A folder on the outermost
-    /// ring has none — the layout stopped recursing — so the legend asks the
-    /// layout for the ring it would have drawn and derives rows from that,
-    /// pooling included. Either way the rows are the chart's own entries.
+    /// Children size-descending, then pooled, hidden and free space rows in the chart's order. An outermost
+    /// folder has no segments, so the legend asks the layout for the ring it would have drawn.
     nonisolated static func rows(
         forFolder displayedFolderID: String,
         chartRootID: String,
@@ -140,10 +119,8 @@ enum SunburstLegend {
             }
         }
 
-        // Nothing rendered below this folder: it sits on the last ring the
-        // chart had depth for. Lay that ring out now — one grouping pass,
-        // O(children) — so the legend still lists what is in there, pooled
-        // exactly the way drilling in would show it.
+        // Nothing rendered below this folder (last ring): lay that ring out now, one O(children) pass, pooled
+        // the way drilling in would show it.
         if childSegments.isEmpty, aggregateSegment == nil {
             let depth = displayedFolderSegment.map { $0.depth + 1 }
                 ?? max(store.path(to: displayedFolderID).count - store.path(to: chartRootID).count, 0)
@@ -223,10 +200,7 @@ enum SunburstLegend {
         return rows
     }
 
-    /// The legend's header entry: the displayed folder itself with its total
-    /// size, colored like its own segment when the chart drew one (a hovered
-    /// preview folder) or via the fallback path (the chart root has no
-    /// segment of its own).
+    /// Colored like its own segment when drawn (a hovered preview), else via the fallback (the root has none).
     nonisolated static func headerRow(
         forFolder folder: FileNodeRecord,
         chartRootID: String,
@@ -264,10 +238,7 @@ enum SunburstLegend {
         )
     }
 
-    /// Maps a hovered node anywhere below the displayed folder to the row
-    /// that contains it: the node itself when it is a direct child, otherwise
-    /// its ancestor that is a direct child. Nil when the node is not below
-    /// the displayed folder (or is the folder itself).
+    /// The direct child that contains the hovered node; nil when it isn't below the displayed folder.
     nonisolated static func rowNodeID(
         forHovered nodeID: String,
         displayedFolderID: String,
@@ -283,11 +254,8 @@ enum SunburstLegend {
         return nil
     }
 
-    /// The fill the chart would give `node`, built through the exact same
-    /// machinery as rendered segments: a synthetic segment with the layout's
-    /// resolved fill (kind/age modes) or midpoint color token (Largest),
-    /// styled by SunburstChartStyler. The token carries the node's global
-    /// color coordinate, so it yields the same color a real layout would.
+    /// Built through the same machinery as rendered segments (synthetic segment, global color token), so it
+    /// yields the color a real layout would.
     private nonisolated static func fallbackColors(
         for node: FileNodeRecord,
         chartRootID: String,

@@ -1,8 +1,3 @@
-//
-//  SystemIntegration.swift
-//  Neodisk
-//
-
 import AppKit
 import Darwin
 import Foundation
@@ -91,9 +86,7 @@ enum SystemIntegration {
         return deduplicate(targets)
     }
 
-    /// The common folders the sidebar's Folders section is seeded with on
-    /// first launch. After seeding they are ordinary sidebar folders — the
-    /// user can remove any of them (unlike volumes and cloud locations).
+    /// Seeded on first launch, then ordinary folders the user can remove (unlike volumes and cloud locations).
     nonisolated static func defaultFolderTargets() -> [ScanTarget] {
         let fileManager = FileManager.default
         let homeDirectory = fileManager.homeDirectoryForCurrentUser
@@ -109,9 +102,7 @@ enum SystemIntegration {
         return deduplicate(targets)
     }
 
-    /// Locally-synced cloud storage folders, shown in the sidebar's own
-    /// "Local Cloud Files" section. Deduplicated because a legacy ~/Dropbox
-    /// symlink resolves to the same File Provider folder it points into.
+    /// Deduplicated because a legacy ~/Dropbox symlink resolves to the File Provider folder it points into.
     nonisolated static func cloudTargets(fileManager: FileManager = .default) -> [ScanTarget] {
         deduplicate(CloudLocationDetector.detectedTargets(fileManager: fileManager))
     }
@@ -224,9 +215,7 @@ enum SystemIntegration {
         )
     }
 
-    /// One sentinel path whose readability is evidence about Full Disk
-    /// Access — the probe list is data; only the two per-generation verdict
-    /// rules below are code.
+    /// The probe list is data; only the two per-generation verdict rules are code.
     private struct FullDiskAccessSentinel {
         enum Location {
             case system(String)
@@ -255,9 +244,7 @@ enum SystemIntegration {
         .init(location: .home("Library/HomeKit"), kind: .directory, role: .evidence),
     ]
 
-    /// macOS 27 re-protected the classic sentinels; these two gatekeepers
-    /// decide together when both exist, with the system TCC database as
-    /// fallback evidence only.
+    /// macOS 27 re-protected the classic sentinels; the TCC database is fallback evidence only.
     private nonisolated static let macOS27Sentinels: [FullDiskAccessSentinel] = [
         .init(location: .system("/Library/Preferences/com.apple.TimeMachine.plist"), kind: .file, role: .gatekeeper),
         .init(location: .home("Library/Containers/com.apple.stocks"), kind: .directory, role: .gatekeeper),
@@ -313,9 +300,7 @@ enum SystemIntegration {
             : macOS27FullDiskAccessStatus(probes)
     }
 
-    /// Granted needs every gatekeeper readable plus a quorum of readable
-    /// evidence vaults; no sentinel existing at all means the heuristic has
-    /// nothing to say.
+    /// Granted needs every gatekeeper readable plus a quorum of evidence vaults.
     private nonisolated static func legacyFullDiskAccessStatus(
         _ probes: FullDiskAccessProbeSet
     ) -> FullDiskAccessStatus {
@@ -330,9 +315,7 @@ enum SystemIntegration {
         return readableCount >= requiredReadableDataVaultProbeCount ? .granted : .notGranted
     }
 
-    /// The gatekeepers decide alone when all of them exist; otherwise fall
-    /// back to a quorum over everything that does, defaulting to unknown —
-    /// the macOS 27 sentinels are too new to trust a hard negative.
+    /// Defaults to unknown without all gatekeepers: these sentinels are too new to trust a hard negative.
     private nonisolated static func macOS27FullDiskAccessStatus(
         _ probes: FullDiskAccessProbeSet
     ) -> FullDiskAccessStatus {
@@ -414,11 +397,7 @@ private struct ProtectedPathProbe {
 }
 
 enum PermissionAdvisor {
-    // Fragments whose contents Full Disk Access actually unlocks. Note that the
-    // TCC directory itself (/Library/Application Support/com.apple.TCC) is
-    // root-owned/SIP-protected and stays unreadable even with FDA, so it must
-    // not be listed here — matching it would suggest FDA for a grant that can
-    // never resolve the warning.
+    // Not the TCC directory itself: it stays unreadable even with FDA, so suggesting FDA would never help.
     private static let fullDiskAccessProtectedPathFragments = [
         "/Library/Mail",
         "/Library/Messages",
@@ -430,9 +409,7 @@ enum PermissionAdvisor {
         for snapshot: ScanSnapshot?,
         fullDiskAccessStatus: FullDiskAccessStatus
     ) -> Bool {
-        // Don't nag for access that is already granted. Many system paths
-        // (e.g. /Library/Caches/com.apple.iconservices.store) stay unreadable
-        // regardless of FDA, so warning presence alone must not drive the prompt.
+        // Many system paths stay unreadable regardless of FDA, so warnings alone must not drive the prompt.
         guard fullDiskAccessStatus != .granted else { return false }
         guard let snapshot else { return false }
         return snapshot.scanWarnings.contains(where: { warning in

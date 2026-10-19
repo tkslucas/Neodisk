@@ -1,12 +1,5 @@
-//
-//  TreemapViewport.swift
-//  TreemapKit
-//
-//  Continuous zoom/pan state for the treemap. The layout is computed at
-//  `viewSize × scale` (the "virtual canvas") and `origin` is the top-left of
-//  the visible window into it, so scene geometry lands directly in view
-//  coordinates.
-//
+// Layout is computed at `viewSize × scale` and `origin` is the visible window's top-left,
+// so scene geometry lands directly in view coordinates.
 
 #if canImport(CoreGraphics)
 import CoreGraphics
@@ -63,12 +56,8 @@ public struct TreemapViewport: Equatable, Sendable {
     }
 
     #if canImport(CoreGraphics)
-    /// Maps view coordinates as rendered at `rendered` to this viewport's
-    /// view coordinates: for a fixed canvas point, p' = p·f + (o_r·f − o),
-    /// with f the scale ratio. Applied to the treemap content layer so a
-    /// stale render tracks the live viewport until the next crisp render.
-    /// (CGAffineTransform is CoreGraphics-only; off-Darwin consumers do their
-    /// own display mapping.)
+    /// p' = p·f + (o_r·f − o), with f the scale ratio, so a stale render tracks the live viewport until the
+    /// next one. CoreGraphics-only; off-Darwin consumers do their own display mapping.
     public func displayTransform(fromRendered rendered: TreemapViewport) -> CGAffineTransform {
         let factor = scale / rendered.scale
         return CGAffineTransform(scaleX: factor, y: factor)

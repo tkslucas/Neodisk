@@ -2,10 +2,8 @@ import Foundation
 import Testing
 @testable import NeodiskKit
 
-/// Proves the numeric fast path (`ScanTreeAssembler.assemble`) produces a
-/// `FileTreeStore` field-for-field identical to the verbatim
-/// `legacyAssemble` oracle across large randomized phase-1 states, and that a
-/// forced duplicate id engages the legacy fallback.
+/// The fast path must be field-for-field identical to `legacyAssemble` on randomized states,
+/// and a forced duplicate id must engage the legacy fallback.
 @Suite struct ScanTreeAssemblerEquivalenceTests {
     /// Deterministic SplitMix64 so failures reproduce from the seed.
     private struct SeededGenerator: RandomNumberGenerator {
@@ -319,9 +317,8 @@ import Testing
         builder.buildDir("/root", depth: 0, maxDepth: 7)
         #expect(builder.scan.completedByKey.count > 50)
 
-        // Throw on the 2nd check: whatever the tree size, the assembler makes
-        // at least two cancellation checks (step 1 entry, then the post-sort
-        // check), so a cancellation surfaces as a CancellationError.
+        // Any tree gets at least two cancellation checks (step 1 entry, post-sort), so throwing on the 2nd
+        // surfaces.
         var calls = 0
         let callbacks = ScanTreeAssembler.Callbacks(cancellationCheck: {
             calls += 1
@@ -364,9 +361,7 @@ import Testing
     }
 
     @Test func forcedDuplicateIDEngagesLegacyFallback() throws {
-        // Same id under two different parents: the fast path materializes both,
-        // NodeIDIndex.building returns nil, and the fallback yields the legacy
-        // result (dedup + warning).
+        // Same id under two parents: NodeIDIndex.building returns nil and the legacy fallback dedups and warns.
         func meta(_ readable: Bool = true) -> NodeMetadata {
             NodeMetadata(
                 isDirectory: true, isPackage: false, isSymbolicLink: false,

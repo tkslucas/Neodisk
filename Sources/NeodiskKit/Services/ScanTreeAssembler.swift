@@ -1,30 +1,14 @@
-//
-//  ScanTreeAssembler.swift
-//  Neodisk
-//
-
 import Foundation
 
-/// Phase 2 of a scan: turns the coordinator's dense phase-1 state (completed
-/// directory scans keyed 0..<nextKey, plus each key's child keys) into the
-/// contiguous `FileTreeStore` the app consumes.
-///
-/// Extracted from `ScanTraversal.assembleTree` so the assembly can be driven
-/// and asserted in isolation (see `ScanTreeAssemblerTests`), and so the fast
-/// numeric path can sit next to the verbatim `legacyAssemble` it is checked
-/// against. The assembler never touches `ScanMetrics`, the event stream, or
-/// the warning list directly — all of that is routed back to the scan task
-/// through `Callbacks`, which are only ever invoked from that task (never from
-/// a parallel section).
+/// Phase 2 of a scan: turns phase-1 state into the `FileTreeStore`. Side effects go back through
+/// `Callbacks`, only ever invoked on the scan task, never from a parallel section.
 nonisolated enum ScanTreeAssembler {
     typealias CompletedDirScan = ScanEngine.CompletedDirScan
     typealias AssemblyChildReference = ScanTraversal.AssemblyChildReference
     typealias AggregateStatsAccumulator = ScanTraversal.AggregateStatsAccumulator
 
-    /// Side effects the assembler hands back to the scan task. Each is called
-    /// only on that task, in order, so they may freely touch scan-confined
-    /// state. Defaults are no-ops so tests can drive assembly without wiring
-    /// up progress/warning plumbing.
+    /// Called only on the scan task, in order, so they may touch scan-confined state. Defaults are no-ops for
+    /// tests.
     struct Callbacks {
         /// Throws `CancellationError` to abort assembly at a safe point.
         var cancellationCheck: () throws -> Void = {}
@@ -49,27 +33,15 @@ nonisolated enum ScanTreeAssembler {
         }
     }
 
-    /// One finalized child of a directory. `leafIndex >= 0` points into the
-    /// owning directory's `directLeafNodes` (`key` is that directory's key);
-    /// `leafIndex == -1` is a keyed child materialized from `key`. A POD pair
-    /// of `Int32`s so per-directory child ordering sorts 8-byte elements
+    /// `leafIndex == -1` is a keyed child. A POD pair of `Int32`s so child ordering sorts 8-byte elements
     /// instead of the ~330-byte record tuples the legacy path moved.
     struct ChildRef {
         var key: Int32
         var leafIndex: Int32
     }
 
-    /// The fast path: numeric bottom-up aggregation plus a single-pass
-    /// preorder flatten, producing a `FileTreeStore` byte-identical to
-    /// `legacyAssemble`. Directory totals are summed into flat numeric arrays
-    /// (no intermediate `FileNodeRecord` construction), each directory's child
-    /// list is ordered by the same comparator over `ChildRef`s, and every node
-    /// is materialized exactly once.
-    ///
-    /// Duplicate node ids (impossible under phase-1's global path dedup, but a
-    /// safety net) are caught by `NodeIDIndex.building`; on detection this
-    /// forwards to `legacyAssemble`, which dedups and warns. Phase-1 state is
-    /// never mutated here, so the fallback rerun starts clean.
+    /// Byte-identical to `legacyAssemble`, which it forwards to on a duplicate id (dedups and warns).
+    /// Phase-1 state is never mutated here, so that fallback starts clean.
     static func assemble(
         completedByKey: [CompletedDirScan?],
         childrenKeysByKey: [[Int]],
@@ -88,10 +60,8 @@ nonisolated enum ScanTreeAssembler {
         let finalizationStart = diagnostics?.start()
         #endif
 
-        // Step 1 — reverse numeric aggregation. Children have higher keys than
-        // their parent, so one reverse pass resolves every child's totals
-        // before its parent sums them. Replicates FileNodeRecord.directory's
-        // field choices exactly, without building any records.
+        // Step 1: children have higher keys than their parent, so one reverse pass resolves totals bottom-up.
+        // Replicates FileNodeRecord.directory's field choices exactly.
         let aggregateStart = ContinuousClock.now
         var allocated = [Int64](repeating: 0, count: nextKey)
         var logical = [Int64](repeating: 0, count: nextKey)
@@ -172,26 +142,12 @@ nonisolated enum ScanTreeAssembler {
         guard resolved[0] else {
             throw ScanEngine.ScanEngineError.missingRootNode
         }
-        // Progress bands are weighted by measured phase cost on a clone-heavy
-        // home dir (aggregate 0.5s, sort 2.9s, flatten 0.9s, index+hardlink
-        // 0.2s, clone dedup 8.2s): the clone pass gets half the band so its
-        // syscall storm no longer sits behind a frozen bar. Clone-light trees
-        // jump through the unused band — forward jumps are fine, stalls are
-        // not.
+        // Bands weighted by measured cost on a clone-heavy home dir: clone dedup gets half so the bar doesn't
+        // freeze.
         callbacks.progress(0.1)
 
-        // Step 2 — per-directory child ordering, in the legacy pre-sort order
-        // (direct leaves in batch order, then keyed children in key order),
-        // sorted by the same comparator. Identical input order + comparator +
-        // sort algorithm reproduce the legacy permutation even on ties.
-        //
-        // Deliberately sequential: fanning the per-directory sorts across a
-        // DispatchQueue.concurrentPerform was measured slower on the tie-heavy
-        // benchmark (sort 877ms → 1068ms on 300k). The comparator's name
-        // tie-break (`DisplayNameOrder`: `localizedStandardCompare` on Darwin)
-        // and the Swift String/record retain-release it drives contend
-        // across cores, so more threads lose to atomic and ICU-lock traffic. Sorting the small 8-byte `ChildRef`s (vs the
-        // legacy ~330-byte record tuples) is the win that stands.
+        // Step 2: same input order, comparator and sort as legacy, so ties keep its permutation. Sequential:
+        // parallel sorts measured slower (the name tie-break contends on ICU locks and retains).
         let sortStart = ContinuousClock.now
         var childRefsByKey = [[ChildRef]](repeating: [], count: nextKey)
         for key in 0..<nextKey where isTraversableDir[key] {
@@ -218,11 +174,8 @@ nonisolated enum ScanTreeAssembler {
                 }
                 return lhsAllocated > rhsAllocated
             }
-            // The files arrive sorted by this same comparator (presorted on
-            // the directory workers), so only the subfolders are sorted, then
-            // each is binary-searched into place, after any file it ties with:
-            // exactly the stable sort of files-then-folders, without the name
-            // comparisons (Finder order, slow) between equal-sized files.
+            // Files arrive presorted, so only subfolders are sorted and binary-searched in after tying files:
+            // the stable sort's result without slow name compares between files.
             guard completed.directLeafNodesAreSorted else {
                 var refs: [ChildRef] = []
                 refs.reserveCapacity(directLeaves.count + childrenKeysByKey[key].count)
@@ -293,9 +246,7 @@ nonisolated enum ScanTreeAssembler {
         ScanTiming.record("scan.assemble.sort", ContinuousClock.now - sortStart)
         callbacks.progress(0.35)
 
-        // Step 3 — single-pass preorder flatten. Each node is materialized
-        // exactly once: leaves are passed through, directories built via the
-        // memberwise init from the step-1 aggregates.
+        // Step 3: single-pass preorder flatten; each node is materialized exactly once.
         let flattenStart = ContinuousClock.now
         let estimatedNodeCount = resolvedCount + directLeafTotal
         var nodes: [FileNodeRecord] = []
@@ -304,11 +255,8 @@ nonisolated enum ScanTreeAssembler {
         parentIndices.reserveCapacity(estimatedNodeCount)
         var aggregateStats = AggregateStatsAccumulator()
         let progressStride = max(estimatedNodeCount / 20, 1)
-        // A folder's files are emitted inline from its file list, fetched once
-        // per visit: reading each file through `completedByKey[key]!` copied
-        // the folder's whole scan record (and retained everything in it) per
-        // file. `resume` continues a folder's children after a subfolder's
-        // subtree, which keeps the order exactly preorder.
+        // Files are emitted from the folder's list fetched once per visit: reading `completedByKey[key]!`
+        // per file copied the folder's whole scan record each time.
         enum FlattenStep {
             case keyed(key: Int32, parent: Int32)
             case resume(key: Int32, index: Int32, nextRef: Int)
@@ -384,9 +332,7 @@ nonisolated enum ScanTreeAssembler {
         var childSlots = initialChildSlots
         ScanTiming.record("scan.assemble.flatten", ContinuousClock.now - flattenStart)
 
-        // Step 4 — parallel id index build (also detects duplicate ids), then
-        // the shared-block dedup passes. On a duplicate, hand off to the
-        // verbatim legacy assembler.
+        // Step 4: parallel id index (detects duplicates, which hand off to legacy), then shared-block dedup.
         let indexStart = ContinuousClock.now
         guard let built = NodeIDIndex.building(from: nodes) else {
             return try legacyAssemble(
@@ -458,22 +404,14 @@ nonisolated enum ScanTreeAssembler {
         )
     }
 
-    /// POD flatten-stack frame. A direct leaf carries its owning directory's
-    /// key plus the index into that directory's `directLeafNodes`; a keyed
-    /// node carries its own key and `leafIndex == -1`.
     private struct FlattenEntry {
         var key: Int32
         var leafIndex: Int32
         var parent: Int32
     }
 
-    /// The pre-rework assembly, moved here verbatim. Retained as the
-    /// correctness oracle for the numeric fast path and as its
-    /// duplicate-id fallback: the fast path leaves phase-1 state untouched
-    /// until it succeeds, so a rerun here starts from a clean slate.
-    ///
-    /// Consumes `completedByKey` so the large direct-leaf batches free
-    /// progressively as the reverse pass drops each key.
+    /// The pre-rework assembly, kept verbatim as the fast path's correctness oracle and duplicate-id fallback.
+    /// Consumes `completedByKey` so the large leaf batches free as the reverse pass drops each key.
     static func legacyAssemble(
         completedByKey: consuming [CompletedDirScan?],
         childrenKeysByKey: [[Int]],
@@ -567,9 +505,7 @@ nonisolated enum ScanTreeAssembler {
             throw ScanEngine.ScanEngineError.missingRootNode
         }
 
-        // Lay the assembled tree out as contiguous preorder arrays — the
-        // scan keys stay Int end to end; the only string-keyed work left is
-        // one id → index insert per node.
+        // Scan keys stay Int end to end; the only string-keyed work left is one id insert per node.
         let flattenStart = ContinuousClock.now
         var nodes: [FileNodeRecord] = []
         var parentIndices: [Int32] = []

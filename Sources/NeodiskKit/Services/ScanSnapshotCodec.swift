@@ -1,30 +1,9 @@
-//
-//  ScanSnapshotCodec.swift
-//  Neodisk
-//
-//  The binary snapshot format behind ScanSnapshotCache: encode/decode for
-//  complete scans, plus the header-only metadata read that lets the cache
-//  index and prune files without touching node payloads.
-//
+// Binary snapshot format behind ScanSnapshotCache, plus the header-only metadata read for indexing.
 
 import Foundation
 
-/// Encodes a complete `ScanSnapshot` to a self-contained binary blob:
-///
-///     magic (4) · version (4) · metadata length (4) · metadata JSON
-///     payload — compressed in version 2+ (LZFSE on Apple platforms, zstd
-///     on Linux; see SnapshotPayloadCompression.swift), raw in version 1:
-///         warning count (4) · warnings
-///         node records in depth-first preorder, each carrying its child count
-///
-/// The header and metadata JSON stay uncompressed so `readMetadata` can
-/// index and prune cache files without touching the node payload. The
-/// payload itself compresses ~3.5x (repeated file names, similar integers).
-///
-/// Storing nodes in preorder with per-node child counts makes the topology
-/// implicit — no separate child map is written — and node IDs (absolute
-/// paths) are derived from the parent's ID plus the node name unless they
-/// differ, which keeps records compact even for million-node trees.
+/// Layout: magic, version, metadata length, uncompressed metadata JSON, then a payload (compressed in v2+)
+/// of warnings and preorder node records with child counts, so topology is implicit and IDs derive from parents.
 nonisolated enum ScanSnapshotCodec {
     struct Metadata: Codable {
         var targetPath: String
@@ -39,25 +18,16 @@ nonisolated enum ScanSnapshotCodec {
         var directoryCount: Int
         var accessibleItemCount: Int
         var inaccessibleItemCount: Int
-        /// `ScanChangeList.contentDigest` of the tree, so a save can tell an
-        /// unchanged rescan from a real change without decoding the old
-        /// file's payload. Optional: files written before the field existed
-        /// decode as nil (JSON metadata is additive) and simply never match.
+        /// Lets a save tell an unchanged rescan from a real change without decoding the old payload. Older
+        /// files decode as nil and never match.
         var changeDigest: String?
-        /// Cloud-only (dataless) bytes below the root, so index consumers
-        /// (the sidebar's cloud bar) can read it without decoding the node
-        /// payload. Optional and omitted when zero: additive, older files
-        /// decode as nil.
+        /// Readable without decoding the payload (sidebar cloud bar). Omitted when zero; older files decode as
+        /// nil.
         var cloudOnlyLogicalSize: Int64?
-        /// FSEvents journal position captured when the scan started; the
-        /// basis for the next incremental rescan. Optional and additive:
-        /// files written before the field existed decode as nil, which the
-        /// incremental gate reads as "no baseline checkpoint" and falls back
-        /// to a full scan.
+        /// FSEvents position from scan start, the basis for the next incremental rescan. Nil (older files)
+        /// falls back to a full scan.
         var incrementalCheckpoint: FSEventsCheckpoint?
-        /// The effective scan options behind this snapshot, so a rescan can
-        /// verify the options shape is unchanged and reproduce the tree.
-        /// Optional and additive: older files decode as nil.
+        /// Lets a rescan verify the options are unchanged. Older files decode as nil.
         var scanOptions: ScanOptions?
     }
 
@@ -79,9 +49,8 @@ nonisolated enum ScanSnapshotCodec {
         static let hasUnduplicatedSize = NodeFlags(rawValue: 1 << 12)
         static let hasLogicalSize = NodeFlags(rawValue: 1 << 13)
         static let hasDescendantFileCount = NodeFlags(rawValue: 1 << 14)
-        /// v3+, last free UInt16 bit, meaning split by node type: on a file
-        /// it marks the file dataless (cloud-only); on a directory it gates
-        /// a trailing cloudOnlyLogicalSize Int64.
+        /// v3+, last free bit, meaning split by type: a dataless file, or on a directory a trailing
+        /// cloudOnlyLogicalSize Int64.
         static let cloudOnly = NodeFlags(rawValue: 1 << 15)
     }
 
@@ -93,9 +62,8 @@ nonisolated enum ScanSnapshotCodec {
         /// Trailing clone-family payload: device u64 · cloneID u64 ·
         /// refCount u32 · privateSize i64 (−1 when unknown).
         static let hasCloneInfo = NodeExtraFlags(rawValue: 1 << 0)
-        /// v5+, a summarized directory's clone families: count u32, then
-        /// per family device u64 · cloneID u64 · memberCount u32 ·
-        /// totalSize i64 · largestSize i64 · charge i64.
+        /// v5+: count u32, then per family device u64, cloneID u64, memberCount u32, totalSize, largestSize,
+        /// charge (i64 each).
         static let hasSummarizedClones = NodeExtraFlags(rawValue: 1 << 1)
     }
 
@@ -107,10 +75,7 @@ nonisolated enum ScanSnapshotCodec {
         try encode(snapshot, version: ScanSnapshotCache.currentFormatVersion)
     }
 
-    /// The explicit-version variant exists so tests can produce old-format
-    /// files and prove they still load. `changeDigest` lets a caller that
-    /// already computed the tree's content digest pass it in; otherwise it
-    /// is computed here.
+    /// The explicit version lets tests write old-format files. `changeDigest` is computed here if not passed.
     static func encode(
         _ snapshot: ScanSnapshot,
         version: UInt32,
@@ -151,10 +116,8 @@ nonisolated enum ScanSnapshotCodec {
             payload.appendString(warning.category.rawValue)
         }
 
-        // Display preorder, not array order: the decoder rebuilds each
-        // directory's children in stream order, and an in-place rebuild
-        // (dedup, splice) may have re-sorted a directory's child slots
-        // without moving its records.
+        // Display preorder, not array order: the decoder rebuilds children in stream order, and an in-place
+        // rebuild may have re-sorted child slots without moving records.
         let storage = store.storage
         var visited = 0
         try storage.forEachIndexInDisplayPreorder { index in
@@ -304,9 +267,7 @@ nonisolated enum ScanSnapshotCodec {
             (warnings, store) = try decodePayload(from: &reader, metadata: metadata, stats: stats, version: version)
             ScanTiming.record("snapshot.decode.decompress", .nanoseconds(Int64(decompressor.decompressNanoseconds)))
         } else {
-            // The payload is decoded through raw-pointer reads: per-node Data
-            // subscripting and subdata copies were a measurable share of
-            // loading a millions-of-nodes snapshot.
+            // Raw-pointer reads: per-node Data subscripting was a measurable share of loading big snapshots.
             let payload = headerReader.readSlice(count: headerReader.remainingByteCount)
             (warnings, store) = try payload.withUnsafeBytes { bytes in
                 var reader = PayloadReader(buffer: bytes)
@@ -339,9 +300,7 @@ nonisolated enum ScanSnapshotCodec {
             aggregateStats: stats,
             isComplete: true,
             scanOptions: metadata.scanOptions,
-            // Before v5, packages counted the clones inside them at full
-            // size; without a checkpoint the next scan is a full one, which
-            // recounts them instead of carrying the old sizes forward.
+            // Before v5 packages counted inner clones at full size; dropping the checkpoint forces a full rescan.
             incrementalCheckpoint: version >= 5 ? metadata.incrementalCheckpoint : nil
         )
     }
@@ -449,11 +408,8 @@ nonisolated enum ScanSnapshotCodec {
             throw ScanSnapshotCacheError.corruptData("implausible node count \(nodeCount)")
         }
 
-        // Records arrive in preorder with per-node child counts, which is
-        // exactly the contiguous TreeStorage layout — decode fills the
-        // arrays directly. The id → index map is built afterwards in one
-        // parallel pass (NodeIDIndex.building), which also detects
-        // duplicate IDs; keeping it out of this loop roughly halves decode.
+        // Preorder with child counts is exactly the TreeStorage layout. The id index is built afterwards in one
+        // parallel pass, which roughly halves decode.
         var nodes: [FileNodeRecord] = []
         var parentIndices: [Int32] = []
         var childStarts: [Int32] = [0]
@@ -461,9 +417,7 @@ nonisolated enum ScanSnapshotCodec {
         nodes.reserveCapacity(nodeCount)
         parentIndices.reserveCapacity(nodeCount)
         childStarts.reserveCapacity(nodeCount + 1)
-        /// Ancestors whose child ranges are still being filled: how many
-        /// direct children each still expects, and the next free slot in
-        /// the range.
+        /// Ancestors still being filled: children each still expects and the next free slot.
         var openDirectories: [(index: Int32, remainingChildren: Int, nextSlot: Int)] = []
 
         for index in 0..<nodeCount {
@@ -517,9 +471,7 @@ nonisolated enum ScanSnapshotCodec {
         guard let built = NodeIDIndex.building(from: nodes) else {
             throw ScanSnapshotCacheError.corruptData("duplicate node IDs")
         }
-        // Files written before the encoder walked display preorder stored
-        // some siblings in stale pre-dedup order; restore display order so
-        // those caches render sorted. A no-op on files written since.
+        // Older files stored some siblings in stale pre-dedup order; a no-op on files written since.
         TreeStorage.restoreChildDisplayOrder(
             nodes: nodes,
             childStarts: childStarts,

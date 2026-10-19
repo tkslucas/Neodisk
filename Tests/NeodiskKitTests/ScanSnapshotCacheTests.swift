@@ -279,9 +279,7 @@ import Testing
         #expect(changed.rotatedPrevious)
         #expect(changed.hasPreviousSnapshot)
 
-        // A content-identical rescan becomes the latest (fresh scan date)
-        // but skips the rotation: the previous slot keeps the older baseline
-        // instead of a same-content copy that would diff to nothing.
+        // A content-identical rescan skips rotation, so the previous slot keeps a baseline that actually diffs.
         let rescanDate = Date(timeIntervalSinceReferenceDate: 777_000_000)
         let unchanged = try await cache.save(makeFileSnapshot(
             target: target, files: [("a.bin", 300)], finishedAt: rescanDate
@@ -318,9 +316,8 @@ import Testing
         let cache = ScanSnapshotCache(directoryURL: cacheDirectory, isLoggingEnabled: false)
         let target = makeTestTarget("/cache/touched")
 
-        // The change surfaces never read lastModified, so a scan differing
-        // only there must count as unchanged — rotating it in would destroy
-        // the baseline to show an empty diff.
+        // Change surfaces never read lastModified, so rotating this in would destroy the baseline for an
+        // empty diff.
         func snapshot(modified: Date) -> ScanSnapshot {
             let file = makeTestFileNode(
                 id: target.id + "/a.bin", name: "a.bin", size: 100, lastModified: modified
@@ -343,9 +340,7 @@ import Testing
         let cache = ScanSnapshotCache(directoryURL: cacheDirectory, isLoggingEnabled: false)
         let target = makeTestTarget("/cache/pre-digest")
 
-        // Strip the digest from the saved file's metadata JSON, simulating a
-        // file written before the field existed: an identical rescan can't
-        // prove it is unchanged, so it rotates like it always did.
+        // A file from before the digest field can't prove it is unchanged, so it rotates as before.
         try await cache.save(makeFileSnapshot(target: target, files: [("a.bin", 100)]))
         let latestURL = try #require(singleCacheFileURL(in: cacheDirectory))
         let data = try Data(contentsOf: latestURL)
@@ -719,9 +714,7 @@ import Testing
         let save = Task { try await cache.save(snapshot) }
         await gate.waitUntilEntered()
 
-        // Nothing on disk yet — the load must be served from memory, not
-        // reported as a miss (the miss made callers forget the target and
-        // rescan it from scratch).
+        // Must be served from memory: reporting a miss made callers forget the target and rescan from scratch.
         #expect(cacheFileURLs(in: cacheDirectory).isEmpty)
         let loaded = await cache.loadSnapshot(for: target)
         #expect(loaded?.id == snapshot.id)
@@ -850,9 +843,6 @@ import Testing
         return cacheFiles.count == 1 ? cacheFiles[0] : nil
     }
 
-    /// Exercises every optional node field: symlinks, packages, synthetic
-    /// nodes with IDs detached from their paths, auto-summarized directories,
-    /// both file-identity kinds, hard links, size divergence, and warnings.
     private func makeRichSnapshot(rootPath: String) -> ScanSnapshot {
         let hardLinked = makeTestFileNode(
             id: "\(rootPath)/movie.mov",

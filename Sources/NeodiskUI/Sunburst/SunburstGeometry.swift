@@ -1,12 +1,4 @@
-//
-//  SunburstGeometry.swift
-//  Neodisk
-//
-//  The SwiftUI `Path` construction for the sunburst's arcs. The color style
-//  and `styled` fill pass live in NeodiskAppModel (SunburstStyling.swift);
-//  the layout, grouping, hit-testing, branch-hue math, and zoom remap in
-//  SunburstCore.
-//
+// Arc paths only; styling lives in NeodiskAppModel and layout, hit-testing and colors in SunburstCore.
 
 import SwiftUI
 import NeodiskKit

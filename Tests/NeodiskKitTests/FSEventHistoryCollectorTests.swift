@@ -4,10 +4,8 @@ import Foundation
 import Testing
 @testable import NeodiskKit
 
-/// Drives the replay collector directly with fabricated FSEvents callback
-/// batches: per-path coalescing, the distinct-path budget, and the
-/// `(since, through]` window filter, none of which can be pinned down
-/// deterministically through a live fseventsd stream.
+/// Coalescing, the distinct-path budget and the window filter can't be pinned deterministically
+/// through a live fseventsd stream, so these feed fabricated callback batches.
 @Suite struct FSEventHistoryCollectorTests {
     private let mountPoint = "/Volumes/Test"
 
@@ -128,10 +126,8 @@ import Testing
     }
 
     @Test func escalationSentinelsSurviveTheWindowFilter() async throws {
-        // Drop/wrap/root/volume sentinels can carry event ID 0 (like
-        // RootChanged) or land past `through`; filtering one out turns a
-        // truncated replay into a clean-looking one and the planner would
-        // splice instead of full-scanning.
+        // Sentinels can carry event ID 0 or land past `through`; filtering one out makes a truncated replay
+        // look clean and the planner would splice instead of full-scanning.
         let sentinels: [(String, UInt32)] = [
             ("dropped-user", UInt32(kFSEventStreamEventFlagUserDropped)),
             ("dropped-kernel", UInt32(kFSEventStreamEventFlagKernelDropped)),

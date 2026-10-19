@@ -1,13 +1,4 @@
-//
-//  StatsDrillInList.swift
-//  Neodisk
-//
-//  The drill-in file list shared by the Kind and Age stats tabs: a
-//  size-descending slice of the shared per-snapshot search index for one
-//  subject (a file kind, or a modification-age bucket), with a debounced
-//  fuzzy filter over it. The two tabs differ only in the subject they carry
-//  (`Context`) and the predicate that selects its files.
-//
+// Shared by the Kind and Age tabs, which differ only in their `Context` and file predicate.
 
 import Foundation
 import Observation
@@ -20,9 +11,7 @@ package final class StatsDrillInList<Context: Sendable> {
     /// are more than anyone scrolls; the tail is reachable via search.
     package static var browseLimit: Int { 3_000 }
 
-    /// The open list's subject, set once its files have finished loading —
-    /// nil while loading or closed, mirroring the old `fileList` marker so a
-    /// derived treemap highlight only lights up on a fully built list.
+    /// Set only once loaded, so a derived treemap highlight lights up only on a fully built list.
     package private(set) var context: Context?
     package private(set) var isLoading = false
     package private(set) var visibleIDs: [String] = []
@@ -47,9 +36,7 @@ package final class StatsDrillInList<Context: Sendable> {
         self.indexService = indexService
     }
 
-    /// Opens a drill-in list: filters the snapshot's search index (already
-    /// size-descending, so the filter narrows that ranking) with `matches`,
-    /// off the main actor. `context` is published only once the list lands.
+    /// The index is already size-descending, so filtering keeps that ranking. Runs off the main actor.
     package func open(
         context: Context,
         snapshot: ScanSnapshot,

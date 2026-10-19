@@ -1,12 +1,3 @@
-//
-//  StatusBar.swift
-//  NeodiskGTK
-//
-//  The strip along the bottom of the workspace: what the pointer is over
-//  (or what is selected), with its size and share of the scan, and scan
-//  warnings — the same readout the macOS status bar gives.
-//
-
 import CGtk
 import Foundation
 import NeodiskAppModel

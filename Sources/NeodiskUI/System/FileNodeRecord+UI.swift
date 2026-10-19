@@ -1,9 +1,4 @@
-//
-//  FileNodeRecord+UI.swift
-//  Neodisk
-//
-//  Presentation-only affordances for core file nodes (SF Symbols).
-//
+// Presentation-only affordances for core file nodes (SF Symbols).
 
 import NeodiskKit
 

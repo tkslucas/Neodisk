@@ -1,14 +1,7 @@
-//
-//  AtomicDirectorySummaryPool.swift
-//  Neodisk
-//
-
 import Foundation
 import Dispatch
 
-/// Thrown by a job's cancellation token once the job is cancelled, so a worker
-/// abandons the item it is processing promptly instead of finishing a walk whose
-/// result will be discarded.
+/// Lets a worker abandon a walk whose result would be discarded.
 nonisolated struct AtomicSummaryJobCancelled: Error {}
 
 nonisolated private final class AtomicSummaryJobToken: @unchecked Sendable {
@@ -44,10 +37,8 @@ nonisolated struct AtomicSummaryPoolRequest: @unchecked Sendable {
     var ownedDeviceIDs: Set<UInt64> = []
 }
 
-/// Publishes throttled current-path heartbeats while pooled jobs (and the
-/// atomic probe running alongside them) work. The base metrics come from the
-/// scan loop, which recalculates them monotonically, so heartbeats never regress
-/// the progress fraction the way a stale per-job snapshot could.
+/// Base metrics come from the scan loop and only grow, so heartbeats never regress the progress fraction
+/// the way a stale per-job snapshot could.
 nonisolated private final class AtomicSummaryProgressHeartbeat: @unchecked Sendable {
     private struct Contribution {
         var files = 0
@@ -78,9 +69,7 @@ nonisolated private final class AtomicSummaryProgressHeartbeat: @unchecked Senda
         lock.unlock()
     }
 
-    /// Publishes coordinator progress through the same lock and live-delta
-    /// composition as worker heartbeats. A raw base event must never land
-    /// after a heartbeat that already included active summary work.
+    /// Same lock as worker heartbeats, so a raw base event never lands after one that included summary work.
     func publishBase(_ metrics: ScanMetrics) {
         lock.lock()
         base = metrics
@@ -108,9 +97,7 @@ nonisolated private final class AtomicSummaryProgressHeartbeat: @unchecked Senda
         lock.unlock()
     }
 
-    /// Adds a worker's throttled delta and emits it against the latest scan
-    /// base. Contributions remain live after the job completes until the
-    /// coordinator folds and acknowledges its summary.
+    /// Contributions stay live after the job completes until the coordinator folds its summary.
     func recordContribution(
         jobID: Int,
         files: Int,
@@ -170,13 +157,8 @@ nonisolated private final class AtomicSummaryProgressHeartbeat: @unchecked Senda
     }
 }
 
-/// A scan-scoped worker pool shared by every package and atomic-summary job.
-///
-/// The pool owns exactly `workerLimit` workers. Each job keeps its own work
-/// stack (one item = one directory level) and partial summary, while runnable
-/// jobs are selected round-robin so a deep package cannot starve newly
-/// discovered small bundles. Created once per `ScanTraversal.run()` and torn
-/// down when it finishes (drain) or errors/cancels (`cancelAndFinish`).
+/// Scan-scoped pool shared by every package and atomic-summary job. Jobs are picked round-robin so a
+/// deep package can't starve small bundles; torn down on drain or `cancelAndFinish`.
 nonisolated final class AtomicDirectorySummaryPool: @unchecked Sendable {
     /// Listings the run's probes read, for the summaries that follow them.
     let listings = DirectoryListingCache()
@@ -392,9 +374,7 @@ nonisolated final class AtomicDirectorySummaryPool: @unchecked Sendable {
     }
 
     private func workerLoop() async {
-        // Per-worker visit throttle: the shared heartbeat takes a lock per
-        // emit, so only every 64th visited child reaches it (matching the
-        // pre-pool reporters), not every file of every worker.
+        // The heartbeat locks per emit, so only every 64th visited child reaches it.
         var visitCount = 0
         while let lease = await takeWork() {
             do {
@@ -533,9 +513,7 @@ nonisolated final class AtomicDirectorySummaryPool: @unchecked Sendable {
             runnableJobIDs.removeAll { $0 == id }
             action = .failure(job.continuation, error)
         } else if acceptsJobs, shutdownError == nil {
-            // Cancellation can race registration while the submitter prepares
-            // root metadata. Retain a tombstone so a late registration cannot
-            // create orphaned work after its awaiting task has been cancelled.
+            // Cancellation can race registration; the tombstone stops a late registration creating orphaned work.
             cancelledJobIDs.insert(id)
         }
         wakeups = wakeWorkersLocked()
@@ -592,10 +570,8 @@ nonisolated final class AtomicDirectorySummaryPool: @unchecked Sendable {
         )
     }
 
-    /// Round-robins one directory level off the front-most runnable job (FIFO of
-    /// job IDs), taking a DFS item (`removeLast`) within that job and re-appending
-    /// the job to the back if it still has work. This is what stops a deep package
-    /// from starving small sibling bundles.
+    /// One level off the front job (DFS within it), then the job goes to the back: what keeps a deep
+    /// package from starving small siblings.
     private func nextLeaseLocked() -> Lease? {
         while let jobID = runnableJobIDs.first {
             runnableJobIDs.removeFirst()

@@ -1,8 +1,3 @@
-//
-//  AboutDialog.swift
-//  NeodiskGTK
-//
-
 import CGtk
 import Foundation
 import NeodiskAppModel

@@ -1,11 +1,4 @@
-//
-//  TreemapLayoutPropertyTests.swift
-//  TreemapKit
-//
-//  Randomized (but seeded, fully deterministic) property tests for the
-//  squarified layout: area conservation, containment, non-overlap, and
-//  input-order preservation.
-//
+// Seeded property tests for the squarified layout: area, containment, non-overlap, input order.
 
 #if canImport(CoreGraphics)
 import CoreGraphics

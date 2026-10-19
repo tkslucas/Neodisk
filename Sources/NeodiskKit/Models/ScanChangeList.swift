@@ -1,33 +1,5 @@
-//
-//  ScanChangeList.swift
-//  Neodisk
-//
-//  The explicit answer to "what changed since the last scan": an exact diff
-//  of two snapshot trees into Added / Deleted / Renamed / Grown / Shrunk
-//  entries, sorted by how much each one moved the disk.
-//
-//  Unlike ScanSizeBaseline — the hashed, memory-frugal map that colors the
-//  outline's per-node deltas — this diff runs over both full trees with real
-//  paths and exact FileIdentity values, so it has no hash-collision risk and
-//  can afford richer semantics: a moved node (same device+inode at a
-//  different path, linkCount 1) is matched even when its size also changed,
-//  and its entry carries the net delta. Both trees are only needed while
-//  `build` runs; the result keeps just the capped entry list.
-//
-//  Noise control:
-//  - Grown/shrunk are reported for leaves only (files, packages, summarized
-//    folders) — directory growth is derivative of its children.
-//  - A fully added/deleted subtree collapses into one entry for its
-//    top-most node; partially affected directories report their qualifying
-//    descendants instead.
-//  - A moved directory is one renamed entry; everything beneath it (on both
-//    the old and new side) is suppressed and summarized by that entry's
-//    delta. Content that changed inside a moved directory therefore shows
-//    as the renamed entry's delta, not as individual rows.
-//  - Renames of small files (below identity capture — see
-//    ScanSizeBaseline.renameTrackingMinimumFileSize) still read as
-//    added+deleted; hard-linked files (shared identity) are never matched.
-//
+// Exact diff of two full trees (unlike the hashed ScanSizeBaseline), so moves match by identity even when resized.
+// Noise control: leaves only for grown/shrunk, whole added/deleted/moved subtrees collapse into one entry.
 
 #if canImport(CryptoKit)
 import CryptoKit
@@ -62,20 +34,13 @@ public struct ScanChangeEntry: Sendable, Equatable, Identifiable, Codable {
     /// grown/shrunk = current − previous.
     public let delta: Int64
 
-    /// Deleted entries' old paths can't collide with current node IDs (the
-    /// path is deleted precisely because no current node has it), so this
-    /// is unique across one list.
+    /// Unique: a deleted entry's old path is deleted precisely because no current node has it.
     public var id: String { nodeID ?? path }
 }
 
-/// The diff of the displayed snapshot against its predecessor, as a flat
-/// list sorted by |delta| (largest disk movement first; equal-size renames
-/// sink to the end), capped to keep the UI and memory bounded.
+/// Sorted by |delta| (equal-size renames sink to the end) and capped to bound UI and memory.
 public struct ScanChangeList: Sendable, Equatable, Codable {
-    /// The subsets the UI's filter subtabs show. `all` is the full mixed
-    /// list; `added`/`deleted` are per-kind lists capped independently of
-    /// it, so their tails are not crowded out by the other kinds' big
-    /// movers.
+    /// `added`/`deleted` are capped independently of `all`, so other kinds' big movers don't crowd them out.
     public enum Filter: String, Sendable, Equatable, CaseIterable, Identifiable {
         case all
         case added
@@ -132,10 +97,7 @@ public struct ScanChangeList: Sendable, Equatable, Codable {
     ) -> ScanChangeList {
         var entries: [ScanChangeEntry] = []
 
-        // Previous-scan identity index for rename matching. Hard links and
-        // synthetic nodes can't anchor a rename; an identity that appears
-        // twice (shouldn't happen after the linkCount filter) is dropped as
-        // ambiguous.
+        // Hard links and synthetic nodes can't anchor a rename; a duplicate identity is dropped as ambiguous.
         var previousIndexByIdentity: [FileIdentity: Int32] = [:]
         for (index, node) in previous.storage.nodes.enumerated() {
             if Task.isCancelled { return .cancelled }
@@ -146,9 +108,7 @@ public struct ScanChangeList: Sendable, Equatable, Codable {
                 : ambiguousIndex
         }
 
-        // Pass 1 — classify the current tree in preorder (parents first, so
-        // subtree suppression is one parent lookup) and emit grown/shrunk
-        // leaves and renamed entries along the way.
+        // Pass 1, preorder (parents first, so subtree suppression is one parent lookup).
         let currentNodes = current.storage.nodes
         let currentStorage = current.storage
         let previousStorage = previous.storage
@@ -156,9 +116,7 @@ public struct ScanChangeList: Sendable, Equatable, Codable {
         var consumedPreviousIndices = Set<Int32>()
         for index in currentNodes.indices {
             if Task.isCancelled { return .cancelled }
-            // Read fields off the storage array rather than binding the whole
-            // record — classifying a node retains no Strings; only the rare
-            // emitted entry copies id/name/path.
+            // Read fields off the storage array so classifying a node retains no Strings.
             let parentClass: CurrentClass? = currentStorage
                 .parentIndex(of: Int32(index))
                 .map { currentClasses[Int($0)] }
@@ -174,18 +132,13 @@ public struct ScanChangeList: Sendable, Equatable, Codable {
                 continue
             }
 
-            // Cross-tree lookup with the hash the current store already holds
-            // for this node — no rehash of the absolute path (string equality
-            // still decides the match, so collisions stay safe).
+            // Reuses the stored hash instead of rehashing the path; string equality still decides the match.
             let nodeHash = currentStorage.nodeHash(at: index)
             if let previousIndex = previousStorage.index(of: currentNodes[index].id, hash: nodeHash) {
                 currentClasses[index] = .present
                 let delta = currentNodes[index].allocatedSize
                     - previousStorage.nodes[Int(previousIndex)].allocatedSize
-                // Leaf in both trees (files, opaque packages, summarized
-                // folders): a directory that emptied or filled is reported
-                // through its children's deleted/added entries instead —
-                // one row per change, no double counting.
+                // Leaf in both trees: a directory that emptied or filled reports through its children instead.
                 if delta != 0,
                    currentStorage.childCount(of: Int32(index)) == 0,
                    previousStorage.childCount(of: previousIndex) == 0 {
@@ -209,9 +162,7 @@ public struct ScanChangeList: Sendable, Equatable, Codable {
                previousIndex != ambiguousIndex,
                !consumedPreviousIndices.contains(previousIndex) {
                 let previousNode = previousStorage.nodes[Int(previousIndex)]
-                // The old path must be gone: an identity whose old path is
-                // still occupied is an atomic-save/inode-migration artifact,
-                // not a move.
+                // An identity whose old path is still occupied is an atomic-save artifact, not a move.
                 if currentStorage.index(
                     of: previousNode.id,
                     hash: previousStorage.nodeHash(at: Int(previousIndex))
@@ -236,9 +187,7 @@ public struct ScanChangeList: Sendable, Equatable, Codable {
             currentClasses[index] = .added
         }
 
-        // Pass 2 — collapse fully added subtrees: reverse preorder visits
-        // children before parents, so each node can tell its parent whether
-        // its whole subtree is added.
+        // Pass 2: reverse preorder visits children first, so each tells its parent if its subtree is all added.
         var subtreeAllAdded = [Bool](repeating: true, count: currentNodes.count)
         for index in currentNodes.indices.reversed() {
             if Task.isCancelled { return .cancelled }
@@ -267,9 +216,7 @@ public struct ScanChangeList: Sendable, Equatable, Codable {
             ))
         }
 
-        // Pass 3 — the previous tree's side: what vanished. Rename sources
-        // and everything beneath them are accounted for by their renamed
-        // entries; fully deleted subtrees collapse like fully added ones.
+        // Pass 3, the previous tree: rename sources and their subtrees are covered by the renamed entries.
         let previousNodes = previousStorage.nodes
         var previousClasses = [PreviousClass](repeating: .present, count: previousNodes.count)
         for index in previousNodes.indices {
@@ -349,9 +296,7 @@ public struct ScanChangeList: Sendable, Equatable, Codable {
         }
         let totalEntryCount = entries.count
 
-        // Per-kind subsets are carved out of the sorted-but-uncapped list,
-        // so each filter keeps its own biggest movers even when the mixed
-        // list's cap is dominated by another kind.
+        // Carved from the uncapped list so each filter keeps its own biggest movers.
         var addedEntries: [ScanChangeEntry] = []
         var addedEntryCount = 0
         var deletedEntries: [ScanChangeEntry] = []
@@ -387,15 +332,8 @@ public struct ScanChangeList: Sendable, Equatable, Codable {
         )
     }
 
-    /// A digest of exactly the tree content the change surfaces read: per
-    /// node (in display preorder) its ID, allocated size, file identity, link count,
-    /// and synthetic flag. Two stores with equal digests produce an empty
-    /// change list and an all-zero `ScanSizeBaseline` delta, which is what
-    /// lets the snapshot cache keep the previous slot's older baseline
-    /// instead of rotating in a content-identical rescan. Timestamps and
-    /// other display-only fields are deliberately excluded — a scan that
-    /// only touched them would otherwise destroy the baseline to show an
-    /// empty diff.
+    /// Equal digests mean an empty diff, so the cache keeps the older baseline instead of rotating. Timestamps
+    /// are excluded: a scan that only touched them would otherwise destroy the baseline.
     public static func contentDigest(of store: FileTreeStore) -> String {
         contentDigest(of: store, checkCancellation: {})
     }
@@ -405,9 +343,7 @@ public struct ScanChangeList: Sendable, Equatable, Codable {
         func updateInteger<T: FixedWidthInteger>(_ value: T) {
             withUnsafeBytes(of: value.littleEndian) { hasher.update(bufferPointer: $0) }
         }
-        // Display preorder (child-slot order), the same sequence the codec
-        // writes: array order can lag an in-place re-sort, which would make
-        // two content-identical trees digest differently.
+        // Display preorder, as the codec writes: array order can lag an in-place re-sort.
         let storage = store.storage
         var visited = 0
         try storage.forEachIndexInDisplayPreorder { index in

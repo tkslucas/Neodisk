@@ -7,15 +7,8 @@ struct IncrementalRescanPlannerTests {
     private let target = makeTestTarget("/scan")
     private let options = ScanOptions()
 
-    /// /scan
-    /// ├── docs/            (dir)
-    /// │   ├── report.txt
-    /// │   └── nested/      (dir)
-    /// │       └── deep.txt
-    /// ├── apps/            (dir)
-    /// │   └── Tool.app     (package leaf)
-    /// ├── caches/          (dir, auto-summarized leaf)
-    /// └── top.txt
+    /// /scan: docs/report.txt, docs/nested/deep.txt, apps/Tool.app (package leaf),
+    /// caches/ (auto-summarized leaf), top.txt.
     private func makeBaseline() -> FileTreeStore {
         let deep = makeTestFileNode(id: "/scan/docs/nested/deep.txt", name: "deep.txt", size: 5)
         let nested = makeTestDirectoryNode(id: "/scan/docs/nested", name: "nested", children: [deep])
@@ -125,9 +118,8 @@ struct IncrementalRescanPlannerTests {
     }
 
     @Test func eventInsideAutoSummarizedDirectoryRescansThatDirectory() {
-        // Auto-summarized dirs are the most volatile
-        // (caches, node_modules) — they re-summarize as a unit instead of
-        // forcing a full scan.
+        // Auto-summarized dirs are the most volatile, so they re-summarize as a unit instead of forcing a
+        // full scan.
         let result = plan([event("/scan/caches/tmp/blob", [.itemRemoved])])
         #expect(result == .relistDirectories(dirIDs: [], deepRescanRootIDs: ["/scan/caches"]))
     }
@@ -264,12 +256,8 @@ struct IncrementalRescanPlannerTests {
     }
 
     @Test func rootVolumePrivateVarEventsRescanTheirSubtree() {
-        // A "/" scan's tree stores /private/var/... — nodes come from plain
-        // traversal, not URL standardization — and the history provider now
-        // surfaces events in that same qualified namespace. Regression: the
-        // stripped form (/var/folders/...) missed the baseline, the ancestor
-        // walk climbed to the root, and every Macintosh HD rescan degraded
-        // to a full scan via .changedScanRoot.
+        // A "/" scan stores /private/var/... Regression: the stripped form missed the baseline, the walk
+        // climbed to the root, and every Macintosh HD rescan fell back to a full scan via .changedScanRoot.
         let rootTarget = makeTestTarget("/", kind: .volume)
         let folders = makeTestDirectoryNode(id: "/private/var/folders", name: "folders", children: [])
         let varDir = makeTestDirectoryNode(id: "/private/var", name: "var", children: [folders])

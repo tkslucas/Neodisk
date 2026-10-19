@@ -1,25 +1,12 @@
-//
-//  PaneLayout.swift
-//  Neodisk
-//
-//  Sizing policy for the workspace's user-resizable panes: per-pane bounds
-//  and defaults, plus the geometry that keeps the map pane usable no matter
-//  how the window and panes are arranged.
-//
-
 import Foundation
 import NeodiskAppModel
 
-/// Per-pane sizing bounds and defaults. The static maxima describe how far a
-/// pane may grow on a spacious window; `WorkspacePaneMetrics` additionally
-/// caps them against the actual window so the map pane never collapses.
+/// `WorkspacePaneMetrics` further caps the static maxima against the real window so the map never collapses.
 enum PaneLayout {
     static let splitterThickness = 8.0
 
-    /// Every pane that carries text is sized for the workspace text scale
-    /// (see TextScale), so a larger text size widens the pane instead of
-    /// ellipsizing every name in it. All three bounds scale together —
-    /// a pane whose minimum lagged its text would just be a narrower pane.
+    /// Text panes scale all three bounds with the text scale, so larger text widens the pane instead of
+    /// ellipsizing.
 
     static func outlineDefaultWidth(scale: Double = 1) -> Double { 300 * scale }
     static func outlineMinWidth(scale: Double = 1) -> Double { 240 * scale }
@@ -37,17 +24,14 @@ enum PaneLayout {
     static func sunburstLegendMinWidth(scale: Double = 1) -> Double { 260 * scale }
     static func sunburstLegendMaxWidth(scale: Double = 1) -> Double { 420 * scale }
 
-    // The map is graphics, not text. Its floors stay put at every text
-    // size, so a larger size spends the window's width on the panes that
-    // actually carry the text.
+    // The map is graphics: its floors stay put at every text size, so larger text spends width on the text
+    // panes.
 
     /// The map (treemap/sunburst) is a primary navigation surface; side-pane
     /// ranges shrink before its width goes below this.
     static let mapMinWidth = 300.0
 
-    /// Narrowest map the analysis pane may dock beside. When docking it
-    /// (even at its minimum width) would leave less, the pane floats over
-    /// the map's trailing edge instead of squeezing it.
+    /// When docking would leave less, the pane floats over the map's trailing edge instead of squeezing it.
     static let mapMinWidthBesideAnalysis = 560.0
 
     /// Minimum height for the map column above a bottom-docked outline:
@@ -58,20 +42,15 @@ enum PaneLayout {
     /// hides rather than squeeze the chart past it.
     static let sunburstChartMinWidth = 320.0
 
-    /// The window's own minimum. It grows more slowly than the panes do,
-    /// because the map's floor above does not grow at all: at 200% text the
-    /// widest arrangement (both side panes at their minimum plus a minimum
-    /// map) needs 1_196pt and this gives 1_350 — room to spare, without
-    /// demanding a window size a laptop display can't show.
+    /// Grows slower than the panes since the map floor doesn't grow: at 200% text the widest layout needs
+    /// 1_196pt and this gives 1_350, without demanding more than a laptop display shows.
     static func windowMinWidth(scale: Double = 1) -> Double { 900 * damped(scale) }
     static func windowMinHeight(scale: Double = 1) -> Double { 560 * damped(scale) }
 
     private static func damped(_ scale: Double) -> Double { 1 + (scale - 1) * 0.5 }
 }
 
-/// Which form of the shared file list belongs in the current workspace.
-/// Treemap follows its left/bottom docking preference; Sunburst has a
-/// separate opt-in and always uses the bottom table to preserve chart width.
+/// Sunburst always uses the bottom table to preserve chart width.
 struct WorkspaceFileListVisibility: Equatable {
     let showsLeading: Bool
     let showsBottom: Bool
@@ -92,23 +71,8 @@ struct WorkspaceFileListVisibility: Equatable {
     }
 }
 
-/// Effective pane sizes and drag ranges for one workspace layout pass.
-///
-/// Persisted pane sizes are clamped on read, never written back: a size that
-/// no longer fits (smaller window, stale defaults entry) displays clamped and
-/// comes back when room returns. Drag sessions start from the clamped value,
-/// so the divider never jumps.
-///
-/// When the window can't honor both side panes at full size, the analysis
-/// pane concedes first (down to its minimum), then the outline — the outline
-/// is a primary navigation surface, the analysis pane is secondary. The
-/// resolution is sequential, so the invariant "map ≥ `mapMinWidth`" holds at
-/// every step: each pane's cap subtracts the other's already-resolved width.
-///
-/// On a window too narrow for the map to stay comfortable beside even a
-/// minimum-width analysis pane (`mapMinWidthBesideAnalysis`), the analysis
-/// pane floats over the map instead of docking: the map and outline lay out
-/// as if it were hidden.
+/// Persisted sizes are clamped on read, never written back, so they return when room does. The analysis
+/// pane concedes first, then the outline; too narrow even for a minimum analysis pane, it floats over the map.
 struct WorkspacePaneMetrics: Equatable {
     var outlineWidth: Double
     var outlineRange: ClosedRange<Double>
@@ -173,21 +137,14 @@ struct WorkspacePaneMetrics: Equatable {
         bottomOutlineHeight = storedBottomOutlineHeight.clamped(to: bottomOutlineRange)
     }
 
-    /// A pane's drag range: the static bounds, with the maximum lowered to
-    /// what the window can spare. At pathological sizes the cap can fall
-    /// below the minimum; the minimum wins so the range stays valid — the
-    /// window's own minimum size keeps that case out of reach in practice.
+    /// At pathological sizes the cap can fall below the minimum; the minimum wins so the range stays valid.
     private static func range(min lower: Double, max upper: Double, cap: Double) -> ClosedRange<Double> {
         lower...max(lower, min(upper, cap))
     }
 }
 
-/// The legend column inside the sunburst pane, resolved against the pane's
-/// actual width with the same clamp-on-read policy as the workspace panes.
-/// The legend concedes down to its minimum to keep the chart at
-/// `sunburstChartMinWidth`; when even that doesn't fit, it hides entirely
-/// (`width == nil`) and the chart takes the whole pane — a tiny window shows
-/// a small chart, never a blank pane.
+/// Concedes to its minimum to keep the chart at `sunburstChartMinWidth`, then hides (`width == nil`):
+/// a tiny window shows a small chart, never a blank pane.
 struct SunburstLegendMetrics: Equatable {
     /// Effective legend width; nil hides the legend (and its splitter).
     var width: Double?

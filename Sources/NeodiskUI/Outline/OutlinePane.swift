@@ -1,22 +1,5 @@
-//
-//  OutlinePane.swift
-//  Neodisk
-//
-//  The left-hand outline: an expandable name/size tree over the scan,
-//  flattened to visible rows so expansion can be driven programmatically
-//  (treemap clicks auto-reveal their row).
-//
-//  Deep nesting can outgrow the pane, so the tree scrolls horizontally.
-//  Design: names lay out at full natural width (never truncated) and pan
-//  under a viewport-pinned trailing cluster — each row's size (and diff
-//  delta) stays right-aligned at the pane edge at every scroll offset,
-//  behind a short fade so long names slide beneath it. One AppKit
-//  NSScrollView owns both axes (nested SwiftUI scroll views cannot pan
-//  diagonally and bounce on row clicks), a single-column NSTableView
-//  recycles rows, and the rows themselves stay SwiftUI. When everything
-//  fits, offset is zero and the pane renders exactly like the previous
-//  SwiftUI List, whose metrics are mirrored in OutlineRowMetrics.
-//
+// Names lay out at full width and pan horizontally under a pinned trailing size cluster. One NSScrollView owns
+// both axes (nested SwiftUI scroll views can't pan diagonally) over a recycling NSTableView of SwiftUI rows.
 
 import SwiftUI
 
@@ -47,9 +30,7 @@ struct OutlinePane: View {
     }
 }
 
-/// Entire-scan fuzzy search, shared by both outline layouts. Filtering
-/// never navigates or zooms — the treemap stays exactly where it is; only
-/// the outline's list changes.
+/// Filtering never navigates or zooms; only the outline's list changes.
 struct OutlineSearchField: View {
     let model: NeodiskViewModel
     @FocusState private var isSearchFocused: Bool

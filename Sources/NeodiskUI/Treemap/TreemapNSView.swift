@@ -1,15 +1,5 @@
-//
-//  TreemapNSView.swift
-//  Neodisk
-//
-//  Layer-hosting AppKit view for the cushion treemap. A CALayer tree shows
-//  the rendered image, file labels, and the selection outline inside a
-//  masksToBounds container, so zoomed content can never draw over
-//  neighboring panes (CALayer clipping is unconditional, unlike SwiftUI's
-//  .clipped() over transformed content). Gestures update the content layer's
-//  transform directly — no SwiftUI state round-trip — which is what makes
-//  zoom/pan track the trackpad.
-//
+// Layer-hosting view: a masksToBounds container keeps zoomed content off neighboring panes, and gestures
+// set the layer transform directly with no SwiftUI round-trip, so zoom tracks the trackpad.
 
 import AppKit
 import TreemapKit
@@ -34,24 +24,15 @@ final class TreemapNSView: NSView {
         super.init(frame: .zero)
         controller.view = self
 
-        // Layer-hosting (layer assigned before wantsLayer) so the layer tree
-        // is fully ours; geometryFlipped gives it the same top-left origin
-        // as the flipped view and the scene geometry.
-        // No background: the layer and the raster's uncovered pixels stay
-        // transparent, so the pane shows the real window backdrop through
-        // the tile gaps — same surface the sunburst sits on. Painting
-        // windowBackgroundColor here can never match: on screen the window
-        // server tints the actual backdrop (desktop tinting), and a layer
-        // color misses that compositing, reading darker than the app.
+        // No background: the window server tints the real backdrop, and a painted windowBackgroundColor misses
+        // that compositing and reads darker. Uncovered pixels stay transparent.
         let rootLayer = CALayer()
         rootLayer.masksToBounds = true
         rootLayer.isGeometryFlipped = true
         layer = rootLayer
         wantsLayer = true
-        // Since macOS 14, NSView.clipsToBounds defaults to false and AppKit
-        // pushes it onto the layer, silently overriding masksToBounds. The
-        // overscanned, gesture-transformed content must never draw over
-        // neighboring panes, so clip at the view level too.
+        // Since macOS 14 clipsToBounds defaults to false and AppKit pushes it onto the layer, overriding
+        // masksToBounds.
         clipsToBounds = true
 
         contentLayer.anchorPoint = .zero
@@ -143,9 +124,7 @@ final class TreemapNSView: NSView {
         place(hoverLayer, over: controller.hoverRect, borderWidth: 1.75)
     }
 
-    /// Frames an outline layer over a cell rect (rendered-scene
-    /// coordinates), compensating the content transform so the border keeps
-    /// its on-screen width; a nil rect hides the layer.
+    /// Compensates the content transform so the border keeps its on-screen width; nil hides the layer.
     private func place(_ outline: CALayer, over rect: CGRect?, borderWidth: CGFloat) {
         guard let rect, let scene = controller.scene else {
             outline.isHidden = true
@@ -165,14 +144,9 @@ final class TreemapNSView: NSView {
         labelContainerLayer.sublayers = nil
         guard !scene.labels.isEmpty else { return }
 
-        // Label text follows the workspace text scale the scene was laid out
-        // for, so the gates that admitted a label and the text drawn into it
-        // can never disagree.
+        // Uses the scale the scene was laid out for, so label gates and drawn text never disagree.
         let fontSize = 11 * scene.labelScale
         let fileFont = NSFont.systemFont(ofSize: fontSize, weight: .medium)
-        // Flat container headers: the folder name sits left-aligned in the
-        // header strip, bolder than file labels so hierarchy reads at a
-        // glance.
         let headerFont = NSFont.systemFont(ofSize: fontSize, weight: .semibold)
         let backingScale = window?.backingScaleFactor ?? 2
         // Both styles composite over the window background, so light mode
@@ -192,17 +166,11 @@ final class TreemapNSView: NSView {
         }
     }
 
-    /// A truncated label must keep at least this many name characters to be
-    /// worth drawing: "A…" or a bare "…" is clutter carrying no information,
-    /// so such labels are dropped entirely. The scene's size gates are only
-    /// a cheap pre-filter; this is the exact, text-measured rule.
+    /// "A..." carries no information, so such labels are dropped. The scene's size gates are only a pre-filter.
     static let minUsefulTruncatedCharacters = 4
 
-    /// One label's text layer, or nil when the rect is too narrow for a
-    /// useful name. CATextLayer's own truncation draws nothing at all once
-    /// a string overflows its bounds (observed through macOS 26), so the
-    /// text is pre-ellipsized to the frame instead and the layer never has
-    /// to truncate.
+    /// CATextLayer draws nothing once a string overflows its bounds (through macOS 26), so the text is
+    /// pre-ellipsized to the frame.
     static func labelLayer(
         for label: TreemapScene.CellLabel,
         font: NSFont,
@@ -238,10 +206,7 @@ final class TreemapNSView: NSView {
         return textLayer
     }
 
-    /// `text` end-ellipsized so it measures within `width`: the name's head
-    /// survives with a trailing "…", degrading to a bare "…" in the
-    /// narrowest rects. Binary search over the kept character count; fit is
-    /// monotonic in it.
+    /// Binary search over the kept character count; fit is monotonic in it.
     static func endTruncated(
         _ text: String,
         attributes: [NSAttributedString.Key: Any],
@@ -267,12 +232,8 @@ final class TreemapNSView: NSView {
         return candidate(keeping: low)
     }
 
-    /// Plays the flat-style drill morph on the freshly rendered content:
-    /// transform animates from `start` (the drilled container's former
-    /// footprint, or the pulled-back parent position) to rest; labels fade
-    /// in alongside so text never visibly stretches. Purely presentational —
-    /// the layer's model values were already set by refreshDisplay, so an
-    /// interrupted animation just snaps to the correct resting state.
+    /// Purely presentational: model values are already set, so an interrupted animation snaps to rest.
+    /// Labels fade in alongside so text never visibly stretches.
     func animateDrill(from start: CGAffineTransform) {
         let duration: CFTimeInterval = 0.28
         let timing = CAMediaTimingFunction(name: .easeInEaseOut)

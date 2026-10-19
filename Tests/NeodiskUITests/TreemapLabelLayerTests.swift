@@ -1,12 +1,4 @@
-//
-//  TreemapLabelLayerTests.swift
-//  Neodisk
-//
-//  Treemap label text layers: pre-ellipsizing long names to the label rect
-//  (CATextLayer's own truncation draws nothing at all once a string
-//  overflows, so a layer must never be handed one that needs truncating),
-//  and a render check that an overflowing name still puts pixels on screen.
-//
+// CATextLayer draws nothing at all once a string overflows, so names are pre-ellipsized to the label rect.
 
 import AppKit
 import CoreGraphics
@@ -80,9 +72,7 @@ import Testing
         #expect((whole.string as? NSAttributedString)?.string == "bin")
     }
 
-    /// The regression that motivated all of this: a header label whose name
-    /// overflows its strip must still render visible pixels. Guards against
-    /// any future reintroduction of CATextLayer-side truncation.
+    /// Guards against reintroducing CATextLayer-side truncation.
     @Test func overflowingHeaderLabelRendersPixels() throws {
         let label = TreemapScene.CellLabel(
             id: "/scan/DesigningYourLifeShowcase",

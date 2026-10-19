@@ -1,33 +1,19 @@
-//
-//  AgeStatsModel.swift
-//  Neodisk
-//
-
 import Foundation
 import Observation
 import NeodiskKit
 import NeodiskAppModel
 
-/// Modification-age statistics state: the bucket catalog (rebuilt lazily
-/// when the Age pane is on screen, with the same adaptive throttle as the
-/// kind catalog) and the drill-in file list for one bucket. Owned by
-/// NeodiskViewModel as `model.ages` — the Age tab's counterpart to
-/// KindStatsModel. Building only from the pane (via `loadIfNeeded`, like
-/// LargestFilesModel) keeps a hidden Age tab from forcing the O(N) build
-/// during a scan or snapshot restore.
+/// Age tab state: the bucket catalog and one bucket's drill-in list. Built only from the pane
+/// (`loadIfNeeded`), so a hidden Age tab never forces the O(N) build mid-scan.
 @MainActor
 @Observable
 final class AgeStatsModel {
     private(set) var catalog: AgeCatalog = .empty
 
-    /// The drill-in list for one bucket ("what did I touch this week"): every
-    /// countable node modified in that period, largest first. Shares its
-    /// engine with the Kind tab; the context is the bucket it is showing.
+    /// Every countable node modified in that bucket's period, largest first.
     let drill: StatsDrillInList<AgeBucket>
 
-    /// Bucket lit up on the treemap while a drill-in list is open, mirroring
-    /// KindStatsModel.highlightedKindID: derived from the open list, so it
-    /// clears when the list closes (snapshot changes reset it).
+    /// Derived from the open list, so it clears when the list closes.
     var highlightedBucket: AgeBucket? { drill.context }
 
     @ObservationIgnored private let coordinator: ScanCoordinator
@@ -52,13 +38,8 @@ final class AgeStatsModel {
         rebuildThrottle.reset()
     }
 
-    /// The displayed tree changed. Drops the drill-in list (its node IDs
-    /// belong to the replaced tree) and the loaded-snapshot marker so the
-    /// pane rebuilds when next visible; the catalog itself is rebuilt lazily
-    /// by `loadIfNeeded`, not here — a hidden Age tab never pays the O(N)
-    /// build. The catalog stays on screen across a live scan's partials (so
-    /// the pane doesn't flash empty while the throttle skips a rebuild);
-    /// only a nil snapshot — nothing displayed — clears it outright.
+    /// Drops the drill-in list (its IDs belong to the old tree). The catalog stays across partials so the pane
+    /// doesn't flash empty; only a nil snapshot clears it.
     func snapshotDidChange(_ snapshot: ScanSnapshot?) {
         // The drilled-in bucket list holds node IDs of the replaced tree.
         drill.close()
@@ -70,13 +51,8 @@ final class AgeStatsModel {
         }
     }
 
-    /// Called from the Age pane whenever it is on screen with a snapshot (tab
-    /// switches and partial-snapshot updates alike). Rebuilds the bucket
-    /// totals for the displayed snapshot; no-op once the catalog matches it.
-    /// While a scan streams partials the rebuild is throttled by the same
-    /// adaptive interval as KindStatsModel, so a fast-changing tree doesn't
-    /// rebuild the O(N) catalog on every partial; the final complete snapshot
-    /// always rebuilds.
+    /// During a scan, rebuilds are throttled like KindStatsModel so partials don't each pay O(N); the final
+    /// snapshot always rebuilds.
     func loadIfNeeded() {
         guard let snapshot = coordinator.snapshot else { return }
         guard loadedSnapshotID != snapshot.id else { return }

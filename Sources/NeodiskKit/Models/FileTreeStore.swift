@@ -1,16 +1,8 @@
-//
-//  FileTreeStore.swift
-//  Neodisk
-//
-
 import Foundation
 
 public struct FileTreeStore: Sendable {
     public let rootID: String
-    // Contiguous Int32-indexed storage (see TreeStorage). Consumers go
-    // through the accessor methods (node(id:), children(of:), allNodes, …);
-    // node identity stays the String ID (absolute path) everywhere in the
-    // public API.
+    // Contiguous Int32-indexed storage; node identity in the public API stays the String ID (absolute path).
     let storage: TreeStorage
     private let precomputedAggregateStats: ScanAggregateStats?
 
@@ -116,18 +108,8 @@ public struct FileTreeStore: Sendable {
         )
     }
 
-    /// Trusted fast path — the default for topology produced inside the
-    /// package. Callers guarantee a consistent tree: every child reference
-    /// resolves, the parent map matches the child map, no node appears under
-    /// two parents, and directory totals already sum their children. That
-    /// holds for engine assembly (deduped during phase 1/2), the snapshot
-    /// codec (validates while reading), and the store's own mutation ops
-    /// (which rebuild affected ancestors). The sanitization and repair
-    /// passes of the validating init are pure overhead on those paths.
-    ///
-    /// Storage construction still walks from the root and skips missing or
-    /// duplicate references, so a violated guarantee degrades to dropped
-    /// nodes or wrong totals, never a crash.
+    /// Callers guarantee a consistent tree (engine assembly, snapshot codec, the store's own ops), so
+    /// validation is skipped. A violated guarantee degrades to dropped nodes or wrong totals, never a crash.
     nonisolated init(
         trustedRootID rootID: String,
         nodesByID: [String: FileNodeRecord],
@@ -144,9 +126,6 @@ public struct FileTreeStore: Sendable {
         self.precomputedAggregateStats = aggregateStats
     }
 
-    /// Trusted adoption of prebuilt contiguous storage — the engine's
-    /// finalize phase and the snapshot codec construct storage directly
-    /// without ever materializing dictionaries.
     nonisolated init(
         trustedStorage storage: TreeStorage,
         rootID: String,
@@ -157,12 +136,8 @@ public struct FileTreeStore: Sendable {
         self.precomputedAggregateStats = aggregateStats
     }
 
-    /// Validating init for untrusted topology (arbitrary caller-assembled
-    /// dictionaries): drops unreachable nodes, duplicate and dangling child
-    /// references, and repairs directory totals where references were
-    /// dropped. Known-valid internal producers use `init(trustedRootID:…)`
-    /// instead — this pass roughly doubles construction cost on
-    /// million-node trees.
+    /// Drops unreachable nodes and bad references and repairs totals. Roughly doubles construction on
+    /// million-node trees, so internal producers use `init(trustedRootID:…)`.
     public nonisolated init(
         rootID: String,
         nodesByID: [String: FileNodeRecord],

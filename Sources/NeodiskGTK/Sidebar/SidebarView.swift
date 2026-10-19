@@ -1,14 +1,5 @@
-//
-//  SidebarView.swift
-//  NeodiskGTK
-//
-//  The locations sidebar: Home, the root filesystem, mounted volumes with a
-//  capacity bar (split by file kind once scanned), and recently scanned
-//  folders. Rows say how much is free and
-//  when the location was last scanned; activating one opens it (instantly
-//  from the snapshot cache when a scan is on file). The list follows mounts
-//  and unmounts live through GIO's volume monitor.
-//
+// Scanned locations open instantly from the snapshot cache. The list follows mounts live through GIO's
+// volume monitor.
 
 import CGtk
 import Foundation
@@ -25,9 +16,7 @@ final class SidebarView {
     private var locations: [Location] = []
     private var recents: [Location] = []
     private var volumeMonitor: GObjectRef?
-    /// The bars on screen, by location (each list's own, as each is rebuilt
-    /// on its own), and the segments last loaded for each scanned location
-    /// (rows are rebuilt often; segments outlive them).
+    /// Segments are kept apart from the bars because rows are rebuilt often and segments outlive them.
     private var capacityBars: [String: CapacityBar] = [:]
     private var recentBars: [String: CapacityBar] = [:]
     private var segments: [String: [VolumeCapacitySegment]] = [:]
@@ -164,9 +153,7 @@ final class SidebarView {
         return row
     }
 
-    /// Colors each scanned location's bar from its kind-stats sidecar: a
-    /// volume's capacity, a folder's makeup. A volume never scanned keeps
-    /// the plain used/total bar; a folder never scanned shows none.
+    /// An unscanned volume keeps the plain used/total bar; an unscanned folder shows none.
     private func reloadSegments() {
         let scanned = (locations + recents).filter { model.cachedScans[$0.id] != nil }
         let scannedBytes = scanned.map { model.cachedScans[$0.id]?.totalAllocatedSize ?? 0 }

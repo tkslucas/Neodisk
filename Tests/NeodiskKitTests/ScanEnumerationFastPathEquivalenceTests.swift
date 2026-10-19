@@ -2,15 +2,8 @@ import Foundation
 import Testing
 @testable import NeodiskKit
 
-/// Proves the enumeration hot-path string fast paths are verdict-identical to
-/// the URL-based oracles they replace: `ScanExclusionMatcher.excludes(
-/// normalizedParentPath:childName:isDirectory:)` vs `excludes(_:isDirectory:)`,
-/// and `ScanEngine.includedChildName(_:underParentPath:behavior:)` vs
-/// `includedChildURL(_:under:behavior:)`. The precondition both fast paths rely
-/// on — an already-normalized parent path plus a single dot/slash-free child
-/// component — is exactly what `bulkDirectoryEntries` guarantees, and the
-/// generator exercises it across roots, patterns, cloud opt-in/out, unicode and
-/// dot-name children, the scan root itself, and cloud-location roots.
+/// The string fast paths must give the same verdicts as the URL-based oracles they replace, under the
+/// precondition `bulkDirectoryEntries` guarantees (normalized parent, single dot/slash-free component).
 @Suite struct ScanEnumerationFastPathEquivalenceTests {
     /// Deterministic SplitMix64 so failures reproduce from the seed.
     private struct SeededGenerator: RandomNumberGenerator {
@@ -124,19 +117,8 @@ import Testing
         }
     }
 
-    /// The enumeration hot path builds each child's node id by string
-    /// concatenation — `childBasePath + "/" + name` (or `"/" + name` at the
-    /// volume root) — and relies on it staying byte-identical to
-    /// `url.appending(path: name).path`, the form the compatibility path and
-    /// snapshot ids use. In production a debug `assert` guards that equality, but
-    /// `-O` release builds (what ships and what benchmarks run) strip it, so the
-    /// only place the invariant is checked in release is here. The subtle case is
-    /// unicode normalization: `URL.appending(path:)` could in principle normalize
-    /// an NFD-decomposed name (an `e` + combining accent) while concatenation
-    /// preserves the raw bytes — which would silently drift the fast-path id from
-    /// the compatibility/snapshot id. This asserts they agree across NFD/NFC,
-    /// emoji, percent, trailing-dot and leading-dot names, at ordinary parents
-    /// and at the volume root.
+    /// Release builds strip the debug assert, so this is the only release check that concatenated node IDs
+    /// match `url.appending(path:).path`, notably for unicode normalization (NFD vs NFC).
     @Test func nodeIDConcatenationMatchesAppendedURLPathAcrossExoticNames() {
         // Mirrors ScanEngine+Enumeration's `childPath` expression exactly.
         func concatenatedID(base childBasePath: String, name: String) -> String {

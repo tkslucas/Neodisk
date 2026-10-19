@@ -1,11 +1,4 @@
-//
-//  SunburstLegendTests.swift
-//  Neodisk
-//
-//  The sunburst legend list derives its rows from the chart's rendered
-//  segments — these tests pin the agreement: sort order, aggregate pooling,
-//  free-space row gating, fill colors, and the hover→row mapping.
-//
+// The legend derives its rows from the chart's rendered segments; these tests pin that agreement.
 
 import SunburstCore
 import Foundation
@@ -200,10 +193,7 @@ import NeodiskKit
     }
 
     @Test func maxDepthFolderPoolsItsChildrenLikeAnyOtherRing() throws {
-        // A max-depth folder gets no ring, so the legend lays one out. It
-        // must pool exactly like a rendered ring does: the big children
-        // listed, the long tail behind one "Smaller Items" row — never a
-        // row per child, and never an empty list.
+        // A max-depth folder has no ring, so the legend lays one out; it must pool like a rendered ring does.
         var children = (0..<3).map { index in
             makeTestFileNode(
                 id: "/root/sub/big-\(index).mov", name: "big-\(index).mov",
@@ -252,10 +242,7 @@ import NeodiskKit
     }
 
     @Test func maxDepthRingFillsMatchWhatTheChartWouldRenderAtThatDepth() throws {
-        // /root/sub's children at depth 1: a depthLimit-2 layout renders
-        // them; a depthLimit-1 layout does not (max-depth preview folder).
-        // The ring the legend lays out itself must carry the same colors the
-        // chart would — for both branch mode and layout-resolved kind mode.
+        // At depthLimit 1 these children aren't rendered; the legend's own ring must carry the chart's colors.
         let nestedChildren = [
             makeTestFileNode(id: "/root/sub/one.mov", name: "one.mov", size: 30),
             makeTestFileNode(id: "/root/sub/two.jpg", name: "two.jpg", size: 20),
@@ -406,9 +393,7 @@ import NeodiskKit
         _ = cache.value(for: cloudWeighted) { presentation }
         #expect(cache.buildCount == 3)
 
-        // Expanding a pooled row changes the rows a max-depth folder shows,
-        // so it has to miss the cache on its own rather than depend on the
-        // caller happening to clear it.
+        // Expanding a pooled row must miss the cache on its own rather than rely on the caller clearing it.
         let expanded = SunburstLegendPresentationKey(
             renderedLayoutVersion: cloudWeighted.renderedLayoutVersion,
             displayedFolderID: cloudWeighted.displayedFolderID,

@@ -1,13 +1,5 @@
-//
-//  FileActions.swift
-//  NeodiskGTK
-//
-//  The read-only file actions, as on the Mac: open, show in the file
-//  manager, copy the path. GtkFileLauncher goes through the desktop portal
-//  or the FileManager1 D-Bus interface, so "Show in Files" selects the item
-//  in whichever file manager the desktop uses (Nautilus, Thunar, Dolphin).
-//  Neodisk never modifies or deletes files.
-//
+// GtkFileLauncher goes through the portal or FileManager1 D-Bus, so "Show in Files" selects the item
+// in whatever file manager the desktop uses. Neodisk never modifies or deletes files.
 
 import CGtk
 import Foundation

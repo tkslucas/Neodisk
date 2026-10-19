@@ -1,13 +1,5 @@
-//
-//  VolumeCapacitySegments.swift
-//  NeodiskAppModel
-//
-//  The segments of a sidebar volume's capacity bar, storage-settings style:
-//  one per file kind category (the Kinds tab's colors), then a neutral tail
-//  for used capacity the scan didn't account for. The empty track after
-//  them stands for free space. A scanned folder's bar is its categories
-//  alone, filling the bar. Both apps draw their bars from this.
-//
+// A sidebar capacity bar: one segment per kind category, then a neutral tail for unaccounted used space;
+// the empty track is free space. Both apps draw their bars from this.
 
 import Foundation
 import NeodiskKit
@@ -43,17 +35,13 @@ package nonisolated enum VolumeCapacitySegments {
         guard let space, space.totalCapacity > 0 else { return [] }
         let sizes = categorySizes(sidecar: sidecar, scannedBytes: scannedBytes)
         let categorizedBytes = sizes.reduce(0) { $0 + $1.size }
-        // A scan that counts more than the volume uses (blocks shared in a
-        // way it can't see) would push the free track off the bar: the
-        // categories then share the used space in proportion.
+        // Counting more than the volume uses (unseen shared blocks) would push free space off the bar.
         let scale = categorizedBytes > space.usedBytes
             ? Double(space.usedBytes) / Double(categorizedBytes)
             : 1
         var segments = segments(sizes, palette: palette) { Double($0) * scale / Double(space.totalCapacity) }
 
-        // Used capacity the scan didn't account for (unreadable paths,
-        // other users' homes, snapshot-held blocks): a neutral tail
-        // segment, like macOS "System Data" — same formula everywhere.
+        // Unreadable paths, other users' homes and snapshot-held blocks, like macOS "System Data".
         if let hidden = space.hiddenSpaceBytes(scannedBytes: max(scannedBytes, categorizedBytes)) {
             segments.append(VolumeCapacitySegment(
                 id: "unscanned",
@@ -79,10 +67,7 @@ package nonisolated enum VolumeCapacitySegments {
         return segments(sizes, palette: palette) { Double($0) / Double(total) }
     }
 
-    /// Bytes per category, largest first. Scanned bytes the kind stats don't
-    /// cover (directory overhead, synthetic nodes) fold into the catch-all
-    /// category, so the colored segments tile the scanned tree exactly and
-    /// the hidden tail states the same figure as the sunburst legend.
+    /// Uncovered bytes fold into the catch-all, so segments tile the tree and the tail matches the sunburst legend.
     private static func categorySizes(sidecar: KindStatsSidecar, scannedBytes: Int64) -> [(kindID: String, size: Int64)] {
         var sizeByKindID: [String: Int64] = [:]
         for stat in sidecar.stats(for: .categories) where stat.size > 0 {

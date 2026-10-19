@@ -1,13 +1,5 @@
-//
-//  ScrollDrillLatch.swift
-//  NeodiskGTK
-//
-//  Ctrl+scroll as a pinch for the views that drill instead of zooming (the
-//  flat treemap and the sunburst): X11 delivers no touchpad pinch, and a
-//  mouse has none. Like PinchDrillRecognizer, one deliberate burst commits
-//  one drill and then latches until the scrolling pauses, so a long flick
-//  can't tunnel through several levels.
-//
+// Ctrl+scroll as a pinch, since X11 delivers no touchpad pinch. One burst commits one drill, then latches until
+// scrolling pauses, so a long flick can't tunnel through levels.
 
 import CGtk
 import Foundation

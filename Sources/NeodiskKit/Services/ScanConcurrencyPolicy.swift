@@ -1,14 +1,5 @@
-//
-//  ScanConcurrencyPolicy.swift
-//  Neodisk
-//
-//  Worker-pool sizing for the scan engine. Limits derive from hardware
-//  (active cores) derated by the machine's power/thermal conditions.
-//  Thermal state is re-sampled on a throttle during traversal (see
-//  AdaptiveScanConcurrency) so a scan that starts cold and heat-soaks over
-//  minutes sheds parallelism instead of running on the ceiling frozen at
-//  scan setup.
-//
+// Scan worker-pool sizing from active cores, derated by power and thermal state. Thermal state is
+// re-sampled during traversal so a scan that heat-soaks sheds parallelism.
 
 import Foundation
 #if canImport(Darwin)
@@ -32,10 +23,8 @@ public nonisolated enum ScanSourceProfile: Sendable {
         probe(for: url).profile
     }
 
-    /// One `statfs` yielding both the traversal profile and the mount's
-    /// device identity, so callers that need both (concurrency ruling) don't
-    /// pay two syscalls. `deviceID` is nil only when the path can't be
-    /// stat'd; the profile then falls back to `.unsupported`.
+    /// One `statfs` yields both profile and device identity. `deviceID` is nil only when the path can't be
+    /// stat'd, and the profile then falls back to `.unsupported`.
     #if canImport(Darwin)
     static func probe(for url: URL) -> (profile: ScanSourceProfile, deviceID: UInt64?) {
         var fileSystemStats = statfs()
@@ -69,12 +58,8 @@ public nonisolated enum ScanSourceProfile: Sendable {
         return high | low
     }
     #elseif os(Linux)
-    /// Linux statfs reports no type name and no MNT_LOCAL flag, so the
-    /// profile comes from the mount table's type string: network
-    /// filesystems (FUSE included — usually sshfs/rclone) fan out poorly;
-    /// the mainstream local ones get the parallel profile unless the backing
-    /// block device is rotational or removable (sysfs); FAT/exFAT/NTFS —
-    /// typically USB sticks and dual-boot partitions — stay moderate.
+    /// Linux statfs has no type name or MNT_LOCAL, so the profile comes from the mount table: network and
+    /// FUSE fan out poorly, rotational or removable disks and FAT/exFAT/NTFS stay moderate.
     static func probe(for url: URL) -> (profile: ScanSourceProfile, deviceID: UInt64?) {
         var status = stat()
         let statResult = url.withUnsafeFileSystemRepresentation { path -> Int32 in
@@ -98,9 +83,7 @@ public nonisolated enum ScanSourceProfile: Sendable {
         }
     }
 
-    /// Reads the backing block device's queue flags. Partitions keep them on
-    /// their parent disk; virtual devices (btrfs subvolumes, tmpfs, overlay
-    /// report major 0) have none and count as neither.
+    /// Partitions keep the queue flags on their parent disk; virtual devices (major 0) have none.
     private static func isRotationalOrRemovable(device: dev_t) -> Bool {
         let major = (device >> 8) & 0xfff | (device >> 32) & ~0xfff
         let minor = device & 0xff | (device >> 12) & ~0xff
@@ -123,9 +106,7 @@ public nonisolated enum ScanSourceProfile: Sendable {
     #endif
 }
 
-/// A scan target's traversal profile paired with the physical device it lives
-/// on — the inputs the concurrency ruling needs to decide whether two scans
-/// can share the machine without fighting over one disk.
+/// Profile plus physical device: what the ruling needs to tell whether two scans would fight over one disk.
 public nonisolated struct ScanSourceIdentity: Sendable, Equatable {
     public let profile: ScanSourceProfile
     /// The mount's `statfs` fsid, nil when unknown.
@@ -156,12 +137,8 @@ public enum ConcurrentScanRuling: Sendable, Equatable {
 }
 
 extension ScanSourceIdentity {
-    /// Whether a new scan may run concurrently with one already in flight.
-    /// Different devices, a cloud source on either side (no local device), or
-    /// a network source on either side never contend, so they run together.
-    /// On one local device, only the internally-parallel profile fans out
-    /// safely to two scans; conservative/exotic disks serialize — an explicit
-    /// new scan wins the disk, an implicit refresh yields to the running one.
+    /// Different devices, cloud or network sources never contend. On one local disk only the parallel
+    /// profile runs two scans; otherwise an explicit scan wins and an implicit refresh yields.
     public static func ruling(
         running: ScanSourceIdentity,
         new: ScanSourceIdentity,
@@ -182,9 +159,7 @@ extension ScanSourceIdentity {
     }
 }
 
-/// Thermal pressure on the platform-neutral scale the policy derates by.
-/// Cases and raw values mirror `ProcessInfo.ThermalState`, which only Apple
-/// platforms report; elsewhere every sample reads `.nominal`.
+/// Mirrors `ProcessInfo.ThermalState`, which only Apple platforms report; elsewhere it reads `.nominal`.
 nonisolated enum ScanThermalState: Int, Sendable {
     case nominal, fair, serious, critical
 
@@ -230,11 +205,8 @@ nonisolated enum ScanConcurrencyPolicy {
     // Shared budget for concurrent child metadata reads across traversal and classification workers.
     static let directoryMetadataWorkerBudgetMaximum = 16
 
-    /// Bounded worker count for the clone-family private-size reads in
-    /// finalize (`CloneDeduplicator`). These are independent, I/O-bound
-    /// `getattrlist` reads, so they oversubscribe cores modestly; the
-    /// hardware-aware helper still halves under thermal/low-power pressure and
-    /// the shared metadata budget caps the ceiling.
+    /// Independent I/O-bound `getattrlist` reads, so they oversubscribe cores modestly; still halves under
+    /// thermal or low-power pressure.
     static func cloneMetadataFetchWorkerLimit(
         conditions: ScanThermalConditions = .current()
     ) -> Int {
@@ -256,13 +228,8 @@ nonisolated enum ScanConcurrencyPolicy {
             return max(1, environmentLimit)
         }
 
-        // Summary workers block in directory reads on the shared cooperative
-        // pool, which is one thread per core. Filling every thread starves
-        // the traversal loop that dispatches packages and publishes progress
-        // until the pool runs dry: packages complete in bursts and the bar
-        // sits near empty for most of a package-heavy scan (/Applications),
-        // then jumps to full. Leaving one thread free costs no measurable
-        // wall time (interleaved /System/Library and /Applications runs).
+        // Leave one cooperative thread free: filling every thread starves the loop that dispatches packages,
+        // so the bar sits near empty then jumps. Costs no measurable wall time.
         let cooperativeWidth = max(1, ProcessInfo.processInfo.activeProcessorCount)
         return min(
             hardwareAwareWorkerLimit(minimum: 4, processorDivisor: 1, maximum: 8),
@@ -277,9 +244,7 @@ nonisolated enum ScanConcurrencyPolicy {
             .flatMap(Int.init) {
             return max(1, environmentLimit)
         }
-        // Each subtree owns its own bounded traversal and summary pools. Two
-        // independent roots expose useful I/O overlap without multiplying the
-        // full-scan ceilings into an unbounded machine-wide fan-out.
+        // Each subtree has its own bounded pools; two roots give I/O overlap without unbounded fan-out.
         if conditions.isLowPowerModeEnabled {
             return 1
         }
@@ -316,18 +281,13 @@ nonisolated enum ScanConcurrencyPolicy {
             return override
         }
 
-        // Bulk enumeration turns each directory into one fat, self-
-        // contained work unit with no intra-directory sub-workers, so the
-        // traversal pool is the only parallelism left — cores/2 measurably
-        // starves it (~15.1s vs ~10.2s on a 470k-file fixture, 10 cores).
+        // Bulk enumeration leaves the traversal pool as the only parallelism; cores/2 starves it
+        // (~15.1s vs ~10.2s on a 470k-file fixture, 10 cores).
         if bulkEnumeration {
             switch sourceProfile {
             case .localParallel:
-                // getattrlistbulk self-contends in the kernel past ~8 concurrent
-                // readers: on `~` (1.6M files) traversal wall was 59-65s at 20
-                // workers vs 36-44s at 8 while summed sys CPU ballooned 56→64s
-                // for zero wall gain (PERFORMANCE.md, 2026-07-17). Cap width at
-                // physical cores but no more than that contention knee.
+                // getattrlistbulk self-contends in the kernel past ~8 readers (on `~`, 59-65s at 20 workers vs
+                // 36-44s at 8), so cap at physical cores but no more than that.
                 return hardwareAwareWorkerLimit(
                     minimum: 4,
                     processorMultiplier: 1,
@@ -458,21 +418,8 @@ nonisolated enum ScanConcurrencyPolicy {
     }
 }
 
-/// Live worker ceilings for one scan's traversal loop.
-///
-/// `refreshIfDue()` re-samples thermal conditions at most once per
-/// `sampleInterval` (default 250 ms) and re-derives the traversal and
-/// per-directory classification ceilings from the fresh sample. The
-/// traversal dispatcher only launches new directory tasks while it is under
-/// the ceiling, so a lowered ceiling sheds parallelism as in-flight tasks
-/// drain — nothing is cancelled. Explicit option/environment overrides pin
-/// their ceiling for the whole scan.
-///
-/// `thermalState` lags real DVFS throttling, so this is a coarse
-/// mitigation aimed at multi-minute scans; short scans never leave the
-/// initial sample.
-///
-/// Single-consumer by design: mutated only from the traversal loop.
+/// Live worker ceilings, re-sampled from thermal conditions at most every `sampleInterval`. A lowered
+/// ceiling sheds parallelism as tasks drain, never by cancelling. Mutated only from the traversal loop.
 nonisolated struct AdaptiveScanConcurrency {
     private let deriveTraversalLimit: @Sendable (ScanThermalConditions) -> Int
     private let deriveClassificationLimit: @Sendable (ScanThermalConditions) -> Int
@@ -524,11 +471,8 @@ nonisolated struct AdaptiveScanConcurrency {
         self.classificationWorkerLimit = deriveClassificationLimit(initialConditions)
     }
 
-    /// The ceiling under nominal conditions — what the scan can grow back to
-    /// once thermal or low-power pressure clears. Sizes fixed pools (the
-    /// directory I/O executor) so a scan started under pressure is not
-    /// capped for its whole life; the adaptive in-flight limit still sheds
-    /// parallelism while pressure lasts.
+    /// Sizes fixed pools so a scan started under pressure isn't capped for life; the adaptive in-flight
+    /// limit still sheds parallelism while pressure lasts.
     var undegradedTraversalWorkerLimit: Int {
         deriveTraversalLimit(.nominal)
     }

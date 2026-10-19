@@ -1,19 +1,9 @@
-//
-//  AgeStatistics.swift
-//  Neodisk
-//
-//  Groups scanned files by how long ago they were modified and assigns each
-//  age bucket a fixed ramp color (recent = cool, stale = hot), mirroring the
-//  file-kind statistics: the buckets drive the treemap's age color mode and
-//  the Age tab of the statistics panel.
-//
+// Modification-age buckets with fixed ramp colors (recent cool, stale hot) for the age color mode and Age tab.
 
 import Foundation
 import NeodiskKit
 
-/// Discrete modification-age buckets, newest first. Boundaries are measured
-/// against the snapshot's scan date, not "now", so a cached snapshot colors
-/// identically to the day it was scanned and renders are reproducible.
+/// Measured against the scan date, not "now", so a cached snapshot colors the same as the day it was scanned.
 package enum AgeBucket: Int, CaseIterable, Identifiable, Sendable {
     case day
     case week
@@ -64,9 +54,7 @@ package struct AgeStat: Identifiable, Sendable {
     package var id: Int { bucket.rawValue }
 }
 
-/// Per-bucket totals over one snapshot, in bucket (chronological) order so
-/// the legend reads as a timeline. Counts the same nodes as the kind
-/// statistics: files, packages, and auto-summarized folders.
+/// Counts the same nodes as the kind statistics: files, packages and summarized folders.
 package struct AgeCatalog: Sendable {
     /// Non-empty buckets only, newest first.
     package let stats: [AgeStat]

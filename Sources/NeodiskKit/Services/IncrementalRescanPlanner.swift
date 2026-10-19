@@ -1,27 +1,15 @@
-//
-//  IncrementalRescanPlanner.swift
-//  Neodisk
-//
-//  Turns a replayed FSEvents window into the minimal set of baseline-tree
-//  subtrees to re-enumerate. Pure: no filesystem access, no FSEvents types —
-//  events are hints for WHERE to look, never trusted for content, and any
-//  event the planner cannot map confidently escalates to a full scan.
-//
+// Turns replayed FSEvents into the minimal baseline subtrees to re-enumerate. Events are hints for where
+// to look, never content; anything it can't map confidently escalates to a full scan.
 
 import Foundation
 
 nonisolated enum IncrementalRescanPlanner {
-    /// Deep-rescan (recursive re-walk) subtree count above which a full scan
-    /// wins: hundreds of recursive sub-scans plus a batch splice cost more than
-    /// one traversal, and the progress story degrades. Shallow relists are far
-    /// cheaper (one readdir each), so they get a much larger budget below.
+    /// Above this many recursive re-walks a full scan wins. Shallow relists (one readdir each) get a much
+    /// larger budget.
     static let defaultMaxSubtrees = 128
 
-    /// Shallow-relist directory count above which a full scan wins. Each relist
-    /// is a single directory read, so this is generous — scattered churn across
-    /// thousands of directories is still a fraction of a full `/` traversal
-    /// (hundreds of thousands of directories) — but bounded so a pathological
-    /// journal can't turn into a directory-read storm rivaling the full scan.
+    /// Generous because each relist is one directory read, but bounded so a pathological journal can't
+    /// rival a full scan.
     static let defaultMaxRelistDirectories = 4096
 
     static func plan(
@@ -35,21 +23,15 @@ nonisolated enum IncrementalRescanPlanner {
         maxRelistDirectories: Int = defaultMaxRelistDirectories
     ) -> IncrementalRescanPlan {
         let targetPath = target.id
-        /// Materialized directories to shallow-relist (one readdir + diff each),
-        /// preserving first-seen order. NOT coalesced: a directory and its
-        /// changed subdirectory are both relisted independently, which is the
-        /// whole point — scattered churn no longer collapses into a re-walk of a
-        /// high-mass common ancestor.
+        /// Deliberately not coalesced: scattered churn must not collapse into a re-walk of a high-mass common
+        /// ancestor.
         var shallowRootIDs: [String] = []
         var shallowRootIDSet = Set<String>()
-        /// Subtrees FSEvents semantics force a recursive re-walk for: a
-        /// hierarchical coalesce (MustScanSubDirs) or an auto-summarized /
-        /// package directory whose interior the baseline never materialized.
+        /// Recursive re-walks: a hierarchical coalesce (MustScanSubDirs) or a summarized/package directory
+        /// whose interior the baseline never materialized.
         var deepRootIDs: [String] = []
         var deepRootIDSet = Set<String>()
-        /// The scan root's own membership or record moved; it is shallow-relisted
-        /// like any other directory. Deferred to the end so it is added exactly
-        /// once regardless of how many root-level events name it.
+        /// Deferred to the end so the root is relisted once however many events name it.
         var rootMembershipChanged = false
         /// Candidate paths whose ancestor walk already ran — event bursts
         /// name the same few directories thousands of times.
@@ -65,9 +47,7 @@ nonisolated enum IncrementalRescanPlanner {
                 return .fullScan(.eventOutsideTarget)
             }
             guard path != targetPath else {
-                // A hierarchical coalesce on the root itself means the whole
-                // tree lost granularity — only a full scan is trustworthy. Any
-                // other root event (record/membership move) is a shallow relist.
+                // A hierarchical coalesce on the root loses all granularity, so only a full scan is trustworthy.
                 if event.flags.contains(.mustScanSubdirectories) {
                     return .fullScan(.changedScanRoot)
                 }
@@ -75,12 +55,8 @@ nonisolated enum IncrementalRescanPlanner {
                 continue
             }
 
-            // Content the baseline scan never covered can't invalidate it:
-            // hidden components (when the scan skipped hidden files),
-            // startup-volume internals, and excluded paths — checked for
-            // the path and every ancestor, because the scan prunes at the
-            // excluded directory and events name its descendants — all
-            // change without consequence for the tree.
+            // Paths the baseline never covered can't invalidate it. Ancestors are checked too because the scan
+            // prunes at an excluded directory and events name its descendants.
             let baselineNode = baseline.node(id: path)
             if isPathSkipped(
                 path,
@@ -92,10 +68,8 @@ nonisolated enum IncrementalRescanPlanner {
             ) {
                 continue
             }
-            // A new `ln`, say, names only the new link: relisting its folder
-            // adds a record whose sibling link elsewhere still reads link
-            // count 1 with no identity, so dedup can't pair them and the
-            // bytes count twice. Only a full scan re-derives ownership.
+            // A new link's sibling elsewhere still reads link count 1 with no identity, so a relist would count
+            // the bytes twice. Only a full scan re-derives ownership.
             if event.flags.touchesHardLink {
                 return .fullScan(.hardLinkTopologyChanged)
             }
@@ -115,10 +89,8 @@ nonisolated enum IncrementalRescanPlanner {
                 return .fullScan(.noMaterializedAncestor)
             }
             guard matched != baseline.rootID, matched != targetPath else {
-                // A membership change directly under the scan root (or a
-                // direct-child file's own change) lands here. A hierarchical
-                // coalesce still demands a full scan; otherwise relist the root
-                // shallowly instead of discarding the baseline.
+                // Changes directly under the root relist it shallowly; a hierarchical coalesce still needs a
+                // full scan.
                 if event.flags.contains(.mustScanSubdirectories) {
                     return .fullScan(.changedScanRoot)
                 }
@@ -126,11 +98,8 @@ nonisolated enum IncrementalRescanPlanner {
                 continue
             }
 
-            // A shallow relist can only reconstruct a directory whose children
-            // the baseline actually holds. A hierarchical coalesce, or a
-            // summarized/package directory (materialized as a childless leaf),
-            // must be recursively re-walked so its interior is rebuilt exactly
-            // as a full scan would — the coarse, preserved subtree path.
+            // A shallow relist needs the baseline's children; coalesced, summarized and package directories
+            // (childless leaves) must be re-walked recursively.
             let matchedNode = baseline.node(id: matched)
             let needsDeepRewalk = event.flags.contains(.mustScanSubdirectories)
                 || matchedNode?.isAutoSummarized == true
@@ -153,9 +122,7 @@ nonisolated enum IncrementalRescanPlanner {
             shallowRootIDs.append(baseline.rootID)
         }
 
-        // Deep roots are recursively re-walked, so they must be pairwise
-        // disjoint; a shallow relist at or under a deep root is redundant (the
-        // re-walk rebuilds it) and is dropped.
+        // Deep roots must be pairwise disjoint; a shallow relist under one is redundant and dropped.
         let deepCollapsed = baseline.topLevelNodeIDs(from: deepRootIDs)
         let deepSet = Set(deepCollapsed)
         let relistDirIDs = deepSet.isEmpty
@@ -185,9 +152,7 @@ nonisolated enum IncrementalRescanPlanner {
         return nil
     }
 
-    /// The deepest path worth re-enumerating for one event. Membership
-    /// changes (create/remove/rename) must re-list the parent; a change to a
-    /// directory's own content or attributes re-lists the directory itself.
+    /// Membership changes re-list the parent; a change to a directory's own content re-lists the directory.
     private static func rescanCandidate(
         for path: String,
         flags: FileSystemEventFlags,
@@ -207,11 +172,8 @@ nonisolated enum IncrementalRescanPlanner {
         return parentPath(of: path)
     }
 
-    /// Walks up from `candidate` to the nearest baseline node that is a
-    /// real, materialized directory — the unit the engine can rescan.
-    /// Packages and auto-summarized directories are leaves in the tree but
-    /// valid rescan roots (the sub-scan re-summarizes them); synthetic
-    /// nodes are not real filesystem paths and never match.
+    /// Nearest real, materialized directory. Packages and summarized directories are leaves but valid roots;
+    /// synthetic nodes never match.
     private static func materializedAncestor(
         of candidate: String,
         targetPath: String,
@@ -230,11 +192,8 @@ nonisolated enum IncrementalRescanPlanner {
 
     // MARK: - Coverage filters
 
-    /// Whether the baseline scan never covered this path: hidden components
-    /// when hidden files were skipped, names the scan behavior excludes
-    /// (`/Volumes`, `/System/Volumes`, …), or exclusion-pattern matches on
-    /// the path or any ancestor below the target. Changes there are
-    /// invisible to the tree by construction.
+    /// Hidden components when skipped, excluded names, or pattern matches on the path or an ancestor:
+    /// changes there are invisible to the tree.
     private static func isPathSkipped(
         _ path: String,
         isDirectoryHint: Bool,

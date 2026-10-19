@@ -1,13 +1,4 @@
-//
-//  CloneDeduplicatorTests.swift
-//  Neodisk
-//
-//  APFS clone deduplication: one clone family counts its shared blocks
-//  once — the path-first member keeps full size, later members are charged
-//  only their private (unshared) bytes — plus the end-to-end path over real
-//  clonefile(2) copies, and the offline rebalance that survives subtree
-//  removals.
-//
+// The path-first clone keeps full size and later members are charged only their private bytes.
 
 import Testing
 import Foundation

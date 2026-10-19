@@ -18,9 +18,7 @@ import SunburstCore
     }
 
     @Test func testEveryPaletteCoversEveryKindSlotCategoryAndAgeBucket() {
-        // A color for every rank the kind mode colors, for every fixed
-        // category, and for every age bucket — in every selectable palette —
-        // so nothing silently falls back to grey when the picker switches.
+        // Every rank, category and age bucket in every palette, so nothing silently falls back to grey.
         let categoryKeys = Set(VizPalette.standard.categoryRGB.keys)
         for palette in VizPalette.all {
             #expect(palette.kindPalette.count == FileKindCatalog.coloredKindLimit)
@@ -30,11 +28,8 @@ import SunburstCore
     }
 
     @Test func testClassicRolePalettesShareColorMeaning() {
-        // Classic and Vivid keep one hue-role order: each category maps to
-        // the same kind-table slot, so switching between them changes the
-        // look, never what a color means. (Graphite shares the category
-        // roles but swaps the age ramp for its grey-blue ordinal ramp, so
-        // it sits out the age assertions here.)
+        // Classic and Vivid share one role order, so switching changes the look, never the meaning. Graphite
+        // swaps the age ramp and sits out the age assertions.
         for palette in [VizPalette.vivid] {
             for (category, rgb) in VizPalette.standard.categoryRGB where category != "cat-other" {
                 let index = VizPalette.standard.kindPalette.firstIndex(of: rgb)
@@ -49,11 +44,7 @@ import SunburstCore
     }
 
     @Test func testEveryPaletteFollowsTheCanonicalRankSequence() {
-        // One canonical rank sequence across ALL palettes — green, blue,
-        // red, magenta/pink, yellow, orange, purple, cyan — pinned through
-        // the eight categories every scheme can color: switching palettes
-        // re-skins the map without reshuffling which hue family a size
-        // rank, category, or branch position gets.
+        // One canonical rank sequence across all palettes, so switching never reshuffles hue families.
         let canonicalSlots: [String: Int] = [
             "cat-image": 0, "cat-video": 1, "cat-apps": 2, "cat-code": 3,
             "cat-docs": 4, "cat-archive": 5, "cat-data": 6, "cat-audio": 7,
@@ -69,12 +60,8 @@ import SunburstCore
     }
 
     @Test func testSchemePalettesStayInsideTheirAccentTables() {
-        // Retro and Neon are terminal-scheme accent sets (saturation-punched
-        // for area fills) with their own role maps: every category color and
-        // every dated age-ramp entry
-        // must be a table entry — nothing hand-invented off-scheme — and the
-        // table entries must be pairwise distinct so rank and positional
-        // assignment never hand two kinds or branches the same color.
+        // Every category and age color must be a table entry (nothing off-scheme), and entries must be pairwise
+        // distinct so no two kinds or branches share a color.
         for palette in [VizPalette.retro, .neon] {
             let table = palette.kindPalette
             #expect(Set(table.map { "\($0)" }).count == table.count, palette.id == "retro" ? "duplicate retro entry" : "duplicate neon entry")
@@ -113,10 +100,7 @@ import SunburstCore
     }
 
     @Test func testTableBranchHuesQuantizeTheMidpointWheel() {
-        // A table palette quantizes the midpoint into its hue-sorted
-        // accents: every resolved hue is exactly one of the table's hues
-        // (no wheel colors leak through — that's the CVD-safety contract),
-        // walking the table in hue order as the midpoint sweeps 0…1.
+        // Every resolved hue must be one of the table's (the colorblind-safety contract), walked in hue order.
         let tableHues = VizPalette.retro.kindPalette.map { Self.hue(of: $0) }.sorted()
         var previousIndex = -1
         for step in 0..<12 {
@@ -135,10 +119,7 @@ import SunburstCore
     }
 
     @Test func testGraphiteBranchRampSweepsDarkToLight() {
-        // Graphite's branch table is an ordinal ramp, not a hue-sorted
-        // accent set: as the midpoint sweeps the size order, brightness
-        // must rise monotonically (deep blue on the largest branch → light
-        // grey on the smallest) — hue-sorting would scramble it.
+        // An ordinal ramp: brightness must rise monotonically with the size order; hue-sorting would scramble it.
         var previous = -1.0
         for step in 0..<8 {
             let midpoint = (Double(step) + 0.5) / 8
@@ -152,9 +133,7 @@ import SunburstCore
     }
 
     @Test func testTableBranchDepthFadesSaturationNeverHue() {
-        // Depth pastels a table accent (halving its saturation's distance
-        // to half the accent's own) but never moves its hue — hue identity
-        // is what the viewer must distinguish.
+        // Depth pastels an accent but never moves its hue, which is what the viewer must distinguish.
         let palette = VizPalette.retro.sunburst
         let first = SunburstColorResolver.components(
             for: SunburstColorToken(midpoint: 0.3, depth: 1, role: .normal), palette: palette

@@ -1,27 +1,13 @@
-//
-//  OutlineRowMetrics.swift
-//  Neodisk
-//
-//  Layout constants of the old SwiftUI List rows, measured pixel-for-pixel
-//  from it, isolated here so the SwiftUI row content and the AppKit table
-//  both mirror the same numbers.
-//
-
 import AppKit
 import NeodiskKit
 
 // MARK: - Shared row metrics
 
-/// Layout constants of the old SwiftUI List rows, measured pixel-for-pixel
-/// from it: both the SwiftUI row content and the AppKit table below mirror
-/// them so the everything-fits case is indistinguishable from the List.
+/// Measured pixel-for-pixel from the old SwiftUI List rows, so the everything-fits case looks identical to it.
 @MainActor
 enum OutlineRowMetrics {
-    /// The workspace text scale (see TextScale), pushed here by the view
-    /// model: this enum is read from AppKit table code with no SwiftUI
-    /// environment to draw on. Everything sized around text below derives
-    /// from it; the measurement cache holds widths for the current scale
-    /// only, so it clears on every change.
+    /// Pushed here by the view model because AppKit table code has no SwiftUI environment.
+    /// The measurement cache holds one scale's widths, so it clears on every change.
     static var scale: CGFloat = 1 {
         didSet {
             guard scale != oldValue else { return }
@@ -37,10 +23,7 @@ enum OutlineRowMetrics {
     static var rowHeight: CGFloat { ceil(fontSize) + 11 }
     /// Indentation per outline depth level.
     static var indentPerDepth: CGFloat { (14 * scale).rounded() }
-    /// Fixed-width slots the name section reserves ahead of the name, and
-    /// the glyph sizes that sit in them. Mirrored by OutlineNameSection —
-    /// they live here so the measurement below and the row that renders can
-    /// never disagree.
+    /// Mirrored by OutlineNameSection; they live here so measurement and rendering never disagree.
     static var chevronSlotWidth: CGFloat { (14 * scale).rounded() }
     static var iconSlotWidth: CGFloat { (16 * scale).rounded() }
     static var chevronFontSize: CGFloat { 9 * scale }
@@ -65,11 +48,7 @@ enum OutlineRowMetrics {
     }
     private static let widthCache = NSCache<NSString, NSNumber>()
 
-    /// Natural (untruncated) width of the widest row: the column grows to
-    /// this, at which point the horizontal scroller engages. Mirrors the
-    /// HStack in OutlineNameSection: inset + indent + the chevron and icon
-    /// slots, four inter-element gaps, then the name, an 8pt minimum gap,
-    /// and the trailing cluster at its own inset.
+    /// The column grows to this, then the horizontal scroller engages. Mirrors OutlineNameSection's HStack.
     static func contentWidth(
         for rows: [NeodiskViewModel.OutlineRow], baseline: ScanSizeBaseline?,
         includeCloudOnly: Bool
@@ -120,9 +99,7 @@ enum OutlineRowMetrics {
     }
 }
 
-/// Reveals an outline row without changing horizontal scroll. AppKit's table
-/// header overlays the top of its clip view, so callers with a header supply
-/// that covered height instead of treating the whole clip bounds as visible.
+/// The table header overlays the clip view's top, so callers with a header pass that covered height.
 @MainActor
 func scrollOutlineRowVertically(
     _ rowRect: NSRect,

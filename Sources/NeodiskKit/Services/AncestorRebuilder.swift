@@ -1,30 +1,11 @@
-//
-//  AncestorRebuilder.swift
-//  Neodisk
-//
-//  Generic tree re-aggregation toolkit: after some leaf/node sizes change, the
-//  affected ancestor directories must re-sum their children and re-sort their
-//  display order. Extracted from HardLinkDeduplicator (it was never hard-link
-//  specific): the shared-size dedup passes, the numeric splice, and the
-//  dictionary subtree mutations all rebuild ancestors the same way.
-//
+// Re-sums and re-sorts ancestors after sizes change; shared by the dedup passes, numeric splice
+// and dictionary subtree mutations.
 
 import Foundation
 
 nonisolated enum AncestorRebuilder {
-    /// Rebuilds every ancestor directory of the changed nodes bottom-up:
-    /// totals re-sum their children and the child display order is
-    /// re-sorted in place. Descending index order is bottom-up because a
-    /// preorder parent always has a smaller index than its descendants.
-    ///
-    /// Numeric in-place rebuild: totals are summed by reading child fields
-    /// directly from `nodes` (no `orderedChildIndices.map { nodes[$0] }`
-    /// whole-record copies) and the parent record is rebuilt from `path`
-    /// (no per-directory `URL` construction). On hardlink/clone-heavy trees
-    /// the affected-ancestor set covers most of the tree, so the fat copies
-    /// and URL builds the reference rebuild does dominated assembly (~38s of
-    /// a ~42s home-dir assemble); this reproduces its output field-for-field
-    /// — see `DedupRebuildEquivalenceTests`.
+    /// Descending index is bottom-up in preorder. Reads in place: the reference rebuild's record copies
+    /// and URL builds took ~38s of a ~42s assemble (`DedupRebuildEquivalenceTests`).
     nonisolated static func rebuildAffectedAncestors(
         of changedIndices: Set<Int32>,
         nodes: inout [FileNodeRecord],
@@ -45,12 +26,8 @@ nonisolated enum AncestorRebuilder {
         )
     }
 
-    /// Re-aggregates and re-sorts an explicit set of directory indices
-    /// bottom-up (descending index = deepest first, so a parent re-sums
-    /// already-rebuilt children). `rebuildAffectedAncestors` passes the
-    /// ancestor closure of changed nodes; the splice-with-removals path passes
-    /// the affected parents directly, because a removed child leaves no node in
-    /// the new array to seed an ancestor walk from.
+    /// The splice-with-removals path passes affected parents directly: a removed child leaves no node to seed
+    /// an ancestor walk from.
     nonisolated static func rebuildDirectories(
         _ directoryIndices: Set<Int32>,
         nodes: inout [FileNodeRecord],
@@ -67,9 +44,7 @@ nonisolated enum AncestorRebuilder {
             guard nodes[dir].isDirectory else { continue }
 
             let range = Int(childStarts[dir])..<Int(childStarts[dir + 1])
-            // Re-sort the child index list by the display comparator, reading
-            // sizes/names in place rather than through childDisplayOrder's
-            // by-value FileNodeRecord parameters (which copy each record).
+            // Reads in place: childDisplayOrder's by-value FileNodeRecord parameters copy each record.
             var orderedChildIndices = Array(childSlots[range])
             #if canImport(Darwin)
             // Names bridged once each, not on every tie comparison.
@@ -186,12 +161,7 @@ nonisolated enum AncestorRebuilder {
         }
     }
 
-    /// Shared skeleton for the two shared-size rebalance passes
-    /// (`HardLinkDeduplicator` / `CloneDeduplicator`): `computeCharges` lowers
-    /// or restores allocated sizes in place and returns the indices it changed;
-    /// the skeleton then rebuilds affected ancestors and reconstructs the
-    /// store. Only node sizes ever change, never ids, so the stored per-node
-    /// hashes carry over unchanged.
+    /// Only sizes ever change, never ids, so the stored per-node hashes carry over unchanged.
     nonisolated static func rebalancedStore(
         _ store: FileTreeStore,
         cancellationCheck: () throws -> Void = {},

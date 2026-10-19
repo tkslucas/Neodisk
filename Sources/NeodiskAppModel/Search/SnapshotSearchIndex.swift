@@ -1,22 +1,10 @@
-//
-//  SnapshotSearchIndex.swift
-//  Neodisk
-//
-//  The shared search infrastructure behind the outline's entire-scan search
-//  and the kind drill-in list: one FileSearchEntry index built per displayed
-//  snapshot (lazily, off the main actor; dropped when the snapshot changes)
-//  and one debounce helper serving both search fields.
-//
+// One search index per displayed snapshot (built lazily off the main actor) plus a debouncer for both fields.
 
 import Dispatch
 import Foundation
 import NeodiskKit
 
-/// Every node of a displayed snapshot in searchable form, classified for
-/// both kind display modes and sorted by allocated size descending — the
-/// statistics file lists' browse order comes straight from a filter over
-/// it, and their name filters preserve that order (see
-/// FuzzyMatcher.matchesInEntryOrder).
+/// Sorted by allocated size descending, so the statistics lists browse and filter straight from it.
 package struct SnapshotSearchIndex: Sendable {
     package let snapshotID: UUID
     /// The tree root, which the outline search excludes from results.
@@ -27,9 +15,7 @@ package struct SnapshotSearchIndex: Sendable {
         let nodes = store.allNodes
         let nodeCount = nodes.count
 
-        // Classifying millions of names is the slow part: do it in parallel
-        // chunks, each with its own kind-ID codes, then merge the codes into
-        // one table.
+        // Classifying millions of names is the slow part, so chunks run in parallel and merge their codes.
         struct Chunk {
             var codes: [(category: UInt32, type: UInt32, countable: Bool)] = []
             var kindIDs: [String] = []
@@ -136,10 +122,7 @@ package final class SearchIndexService {
     }
 }
 
-/// Shared debounce for the search fields: scheduling cancels the previous
-/// operation — including any post-debounce work still in flight, which
-/// observes the cancellation through `Task.isCancelled` — and runs the new
-/// one after the interval.
+/// Scheduling cancels the previous operation, including post-debounce work, which sees `Task.isCancelled`.
 @MainActor
 package final class SearchDebouncer {
     package static let interval: Duration = .milliseconds(180)

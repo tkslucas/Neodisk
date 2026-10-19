@@ -1,10 +1,5 @@
-//
-//  HeadlessRender.swift
-//  Neodisk
-//
-//  Debug/CI entry point: scan a folder and write the cushion treemap as a
-//  PNG, no window required. Invoked as `Neodisk --render-png <path> <out>`.
-//
+// Debug/CI entry point: scan a folder and write the cushion treemap as a
+// PNG, no window required. Invoked as `Neodisk --render-png <path> <out>`.
 
 import AppKit
 import CoreGraphics
@@ -57,9 +52,7 @@ public enum HeadlessRender {
         originFraction: CGPoint = .zero
     ) -> Int32 {
         let semaphore = DispatchSemaphore(value: 0)
-        // A box rather than a captured `nonisolated(unsafe) var`: release
-        // builds reject sending a closure that captures a mutable local.
-        // The semaphore orders the write before the read.
+        // A box, not a captured mutable local: release builds reject sending such a closure.
         final class ExitCode: @unchecked Sendable { var value: Int32 = 1 }
         let result = ExitCode()
 
@@ -81,33 +74,23 @@ public enum HeadlessRender {
 
                 let store = snapshot.treeStore
                 let environment = ProcessInfo.processInfo.environment
-                // NEODISK_RENDER_PALETTE=<id> renders with that VizPalette
-                // (any id in VizPalette.all); unknown ids fall back to
-                // standard.
+                // NEODISK_RENDER_PALETTE=<id> picks a VizPalette; unknown ids fall back to standard.
                 let palette = VizPalette.named(
                     environment["NEODISK_RENDER_PALETTE"] ?? VizPalette.standard.id
                 )
                 let catalog = FileKindCatalog.build(from: store, palette: palette)
-                // NEODISK_RENDER_COLOR_MODE=age renders the modification-age
-                // heatmap; =branch the sunburst-matching branch hues (flat
-                // style's Largest/panel-hidden coloring); default kind colors.
+                // NEODISK_RENDER_COLOR_MODE=age or =branch; kind colors by default.
                 let colorMode: TreemapColorMode = switch environment["NEODISK_RENDER_COLOR_MODE"] {
                 case "age": .age(referenceDate: snapshot.finishedAt ?? snapshot.startedAt)
                 case "branch": .branch
                 default: .kind
                 }
-                // NEODISK_RENDER_HIGHLIGHT_KIND=<kindID> (types mode: an
-                // extension like "swift") exercises the kind-highlight
-                // dimming in headless renders.
+                // NEODISK_RENDER_HIGHLIGHT_KIND=<kindID> (e.g. "swift") exercises highlight dimming.
                 let highlight = environment["NEODISK_RENDER_HIGHLIGHT_KIND"]
                     .map { TreemapHighlight.kind($0) }
-                // NEODISK_RENDER_CLOUD_ONLY=0 turns cloud-only weighting off;
-                // on by default to match the app's toolbar toggle (a no-op
-                // for scans without cloud items).
+                // NEODISK_RENDER_CLOUD_ONLY=0 turns cloud-only weighting off; on by default like the app's toggle.
                 let includingCloudOnly = environment["NEODISK_RENDER_CLOUD_ONLY"] != "0"
-                // NEODISK_RENDER_STYLE=flat renders the flat nested-box
-                // style instead of the cushion default. Both styles sit on
-                // the window background like the app (system appearance).
+                // NEODISK_RENDER_STYLE=flat renders the flat style instead of cushion.
                 let style = environment["NEODISK_RENDER_STYLE"]
                     .flatMap(TreemapStyle.init(rawValue:)) ?? .cushion
                 let background: SIMD3<Float>

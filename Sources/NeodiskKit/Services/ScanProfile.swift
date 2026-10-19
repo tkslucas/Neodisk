@@ -6,15 +6,8 @@ import Glibc
 import Dispatch
 import Foundation
 
-/// Exact per-scan counters and a throughput timeline for the scan hot paths,
-/// for finding where a scan's wall time goes. `NEODISK_SCAN_PROFILE=1` turns
-/// it on; off, every call is one load of a static `Bool`.
-///
-/// Each counter keeps a call count, total and max nanoseconds. At scan end
-/// `emit()` prints one `NEODISK_SCAN_TIMING phase=profile.<name> ms=<total>
-/// count=<n> maxMs=<max>` line per counter that ran (the timing-line
-/// contract), and while the scan runs a sampler prints `note timeline` lines
-/// every 500 ms with the deltas, so stalls and slow tails show up in time.
+/// `NEODISK_SCAN_PROFILE=1` turns it on; off, every call is one load of a static `Bool`. Emits
+/// `profile.<name>` timing lines at scan end and `note timeline` deltas every 500 ms while it runs.
 package nonisolated enum ScanProfile {
     package static let isEnabled = ProcessInfo.processInfo.environment["NEODISK_SCAN_PROFILE"] == "1"
 

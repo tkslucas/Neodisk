@@ -1,15 +1,5 @@
-//
-//  NodeIDIndex.swift
-//  Neodisk
-//
-//  The node ID (absolute path) → node index map behind TreeStorage. A plain
-//  [String: Int32] hashes every long path with SipHash on each insert and
-//  lookup, which alone cost ~60% of decoding a millions-of-nodes snapshot,
-//  and spends about 50 bytes per node. Keys here hash with FNV-1a, the hash
-//  picks one of 16 open-addressing shards so bulk builds from a decoded
-//  node array fill all shards in parallel, and a slot is 8 bytes: the key
-//  strings are the tree's own node IDs.
-//
+// Path to node index map. A [String: Int32] SipHashes every long path (~60% of a big decode) and costs ~50 bytes
+// per node; this uses FNV-1a, 16 shards built in parallel, and 8-byte slots keyed by the tree's own IDs.
 
 import Dispatch
 import Foundation
@@ -31,13 +21,8 @@ nonisolated enum FNV1a {
 }
 
 nonisolated struct NodeIDIndex: Sendable {
-    // Open addressing with linear probing, in 16 shards (low hash bits) so
-    // bulk builds fill them in parallel. A slot is a node index plus the
-    // high 32 bits of its key's hash; keys themselves aren't stored twice:
-    // once the index belongs to a tree they're read from its node array,
-    // and until then (while a tree is being assembled) from a plain array
-    // indexed by value. About 8 bytes per slot, versus the ~50 per node of
-    // a Dictionary keyed by path.
+    // A slot is a node index plus the high 32 hash bits; keys are read from the tree's nodes (or a plain array
+    // while assembling), never stored twice.
 
     private enum Keys: Sendable {
         /// Key of value v is `nodes[v].id` — the index of a tree.
@@ -133,10 +118,7 @@ nonisolated struct NodeIDIndex: Sendable {
         }
     }
 
-    /// Probe with a precomputed FNV-1a hash of `id` instead of rehashing the
-    /// (possibly long) path. Equality still compares the string, so a hash
-    /// collision costs a memcmp, never a wrong answer — pass the hash the
-    /// storage already stored for the node whose ID you are looking up.
+    /// Pass the hash storage already holds for the node; equality still compares strings, so collisions are safe.
     func lookup(hash: UInt64, id: String) -> Int32? {
         let shard = shards[Self.shardIndex(for: hash)]
         let (slot, found) = probe(shard, hash: hash, id: id)
@@ -150,11 +132,7 @@ nonisolated struct NodeIDIndex: Sendable {
         updateValue(value, forKey: id, hash: FNV1a.hash(id))
     }
 
-    /// Insert variant that takes an already-computed hash of `id`. Used to
-    /// force hash collisions in tests (two different IDs under one hash), and
-    /// avoids rehashing when a caller holds the hash already. (A shard that
-    /// grows rehashes its keys with FNV-1a, so a forced hash only holds until
-    /// then.)
+    /// Also used to force collisions in tests; a shard that grows rehashes with FNV-1a, undoing a forced hash.
     @discardableResult
     mutating func updateValue(_ value: Int32, forKey id: String, hash: UInt64) -> Int32? {
         precondition(value >= 0, "NodeIDIndex values are node indices")
@@ -175,9 +153,7 @@ nonisolated struct NodeIDIndex: Sendable {
         return nil
     }
 
-    /// Inserts `id` → `value` unless `id` is already present, and returns the
-    /// value already there if so (leaving it untouched) — the assemblers'
-    /// "first occurrence wins" insert.
+    /// "First occurrence wins": returns the existing value untouched.
     mutating func insertIfAbsent(_ value: Int32, forKey id: String) -> Int32? {
         if let existing = self[id] {
             return existing
@@ -234,9 +210,6 @@ nonisolated struct NodeIDIndex: Sendable {
         return index
     }
 
-    /// FNV-1a hash of each node's ID, in the node array's order, computed in
-    /// disjoint parallel chunks. Shared by `building` (which also shards on
-    /// it) and by storage that keeps the per-node hash for later lookups.
     static func parallelHashes(of nodes: [FileNodeRecord]) -> [UInt64] {
         let nodeCount = nodes.count
         guard nodeCount > 0 else { return [] }
@@ -259,11 +232,7 @@ nonisolated struct NodeIDIndex: Sendable {
         return hashes
     }
 
-    /// Bulk build for a decoded preorder node array: hashes and shard fills
-    /// both run in parallel. Returns the built index alongside the per-node
-    /// FNV hashes (in node order) so storage can keep them for later lookups
-    /// instead of rehashing. Returns nil when two nodes share an ID — the
-    /// duplicate detection the serial insert loop used to provide.
+    /// Returns the per-node hashes so storage keeps them, or nil when two nodes share an ID.
     static func building(from nodes: [FileNodeRecord]) -> (index: NodeIDIndex, hashes: [UInt64])? {
         let nodeCount = nodes.count
         guard nodeCount > 0 else { return (NodeIDIndex(), []) }

@@ -1,14 +1,5 @@
-//
-//  SunburstLegendList.swift
-//  Neodisk
-//
-//  The legend beside the sunburst chart: a header for the
-//  displayed folder and one row per child, colored exactly like the chart's
-//  segments (rows derive from the rendered layout via SunburstLegend).
-//  Hovering a row highlights its arc in the chart and feeds the status bar;
-//  hovering the chart highlights the containing row here. Clicks, the
-//  context menu, and pinch-to-drill mirror the chart's segment interactions.
-//
+// Legend beside the sunburst; rows derive from the rendered layout via SunburstLegend, so colors match.
+// Hover, clicks, context menu and pinch-to-drill mirror the chart's segments.
 
 import SwiftUI
 import NeodiskKit
@@ -78,11 +69,8 @@ struct SunburstLegendList: View {
                     .padding(.vertical, 6)
                 }
             }
-            // Swapping the identity when the displayed folder changes (hover
-            // preview, drill) restarts the scroll at the top instead of
-            // keeping a stale offset — and gives the transition an
-            // insertion/removal to animate, so the legend cross-fades (the
-            // pane wraps preview changes in withAnimation).
+            // A new identity per displayed folder resets the scroll to the top and gives the transition an
+            // insertion/removal to cross-fade.
             .id(displayedFolder.id)
             .transition(.opacity)
         }
@@ -92,11 +80,8 @@ struct SunburstLegendList: View {
 
     // MARK: - Pinch to drill
 
-    /// Pinch-to-drill on the list, matching the chart overlay's contract via
-    /// the shared PinchDrillRecognizer: the first threshold crossing commits
-    /// one drill and latches until the fingers lift. MagnifyGesture reports an
-    /// absolute ratio, so 1 ± threshold is the same finger travel the chart's
-    /// accumulated ±threshold covers.
+    /// The first threshold crossing commits one drill and latches until the fingers lift. MagnifyGesture is
+    /// an absolute ratio, so 1 ± threshold matches the chart's accumulated travel.
     private func pinchDrillGesture(rows: [SunburstLegendRow]) -> some Gesture {
         MagnifyGesture()
             .onChanged { value in
@@ -111,11 +96,8 @@ struct SunburstLegendList: View {
 
     // MARK: - Rows
 
-    /// For a volume scan showing the whole tree, the header states the
-    /// Finder/Disk Utility "used" figure — the same number as the window
-    /// title — so the legend tiles: children + hidden space = header, plus
-    /// free space = capacity. Drilled or hover-previewed folders keep their
-    /// own weight.
+    /// For a whole volume, the header shows the system "used" figure (as the window title) so children plus
+    /// hidden space tile it. Drilled or previewed folders keep their own weight.
     private func headerSizeOverride(store: FileTreeStore) -> Int64? {
         guard displayedFolder.id == chartRootID,
               chartRootID == store.rootID,
@@ -184,10 +166,7 @@ struct SunburstLegendList: View {
         return nodeID == model.selectedNodeID
     }
 
-    /// The row the chart hover maps to: the free/hidden-space rows, the
-    /// aggregate row, the hovered node's own row, or its top-level
-    /// ancestor's row. List-row hover feeds the same model state, so a
-    /// hovered row highlights itself through this too.
+    /// List-row hover feeds the same model state, so a hovered row highlights itself through this too.
     private func highlightedRowID(in presentation: SunburstLegendPresentation) -> String? {
         switch model.visualizationHover {
         case .freeSpace:

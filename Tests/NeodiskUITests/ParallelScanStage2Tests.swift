@@ -3,9 +3,7 @@ import Testing
 import NeodiskKit
 @testable import NeodiskUI
 
-/// Stage 2 of parallel scanning: the navigate-away ruling (run both / cancel /
-/// defer), the background-session registry and its completion, the model-level
-/// guards, and the diff-rotation isolation a background save must respect.
+/// The navigate-away ruling, the background-session registry, model guards and diff-rotation isolation.
 extension ScanTimingSuites {
 @MainActor
 @Suite(.serialized) struct ParallelScanStage2Tests {
@@ -36,9 +34,7 @@ extension ScanTimingSuites {
         model.stopScan()
     }
 
-    /// A background scan finishing persists like a foreground one (cache index,
-    /// sidecar generation, recent-snapshot LRU) but never touches the displayed
-    /// tree and never runs the on-screen conveniences.
+    /// Persists like a foreground finish but never touches the displayed tree or runs on-screen conveniences.
     @Test func testBackgroundScanFinishPersistsAndInsertsLRUWithoutTouchingDisplay() async throws {
         let environment = try TestEnvironment()
         defer { environment.tearDown() }
@@ -101,9 +97,7 @@ extension ScanTimingSuites {
         model.stopScan()
     }
 
-    /// An implicit refresh on the same contended disk defers to the running
-    /// scan: the new target shows from cache with the manual-rescan notice, no
-    /// second scan starts, and the running scan keeps going in the background.
+    /// The new target shows from cache with the manual-rescan notice; the running scan continues in the background.
     @Test func testImplicitRefreshOnContendedDiskDefersAndShowsCache() async throws {
         let environment = try TestEnvironment()
         defer { environment.tearDown() }

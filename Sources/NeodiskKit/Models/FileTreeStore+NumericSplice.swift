@@ -1,36 +1,10 @@
-//
-//  FileTreeStore+NumericSplice.swift
-//  Neodisk
-//
-//  The numeric fast path behind `replacingSubtrees` and `applyingDirectoryRelist`:
-//  splices replacement subtrees, inserts new ones, removes gone ones, and
-//  refreshes the root's own record directly at the contiguous-array level,
-//  instead of round-tripping the whole store through dictionary topology. The
-//  dictionary path costs O(baseline) in string hashing and record dictionaries
-//  (~6.5s of a ~9.4s splice on a 1.6M-node home dir) for any change size; this
-//  path's per-node work is plain Int32/array copies, with the only string-keyed
-//  pass the parallel id-index rebuild.
-//
-//  Every edit — replace, insert, remove, root-record refresh — is applied in a
-//  single copy pass followed by one ancestor rebuild and one shared-size
-//  rebalance, so a root relist that adds a folder while replacing a deep
-//  subtree never pays two O(baseline) rebalances.
-//
-//  `legacyReplacingSubtrees` (the dictionary path) stays as the correctness
-//  oracle and as the fallback for stores `replacingSubtrees` declines
-//  (non-contiguous subtree layout, duplicate ids) — see
-//  `FileTreeStoreSpliceEquivalenceTests`. `applyingDirectoryRelist` has no
-//  dictionary fallback (it returns nil so the incremental service escalates to
-//  a full scan); its equivalence oracle lives in the test target — see
-//  `FileTreeStoreRelistEquivalenceTests`.
-//
+// Numeric fast path for splices: array-level edits in one copy pass, one ancestor rebuild and one rebalance,
+// instead of the dictionary path's O(baseline) string hashing. That path stays as the correctness oracle.
 
 import Foundation
 
 extension FileTreeStore {
-    /// Three-way outcome so the dispatcher can distinguish "target invalid"
-    /// (public contract: return nil) from "this store's layout defeats the
-    /// numeric path" (fall back to the dictionary oracle).
+    /// Separates "target invalid" (public nil) from "layout defeats the numeric path" (fall back to the oracle).
     enum NumericSpliceOutcome {
         case spliced(FileTreeStore)
         case invalidTarget
@@ -43,9 +17,7 @@ extension FileTreeStore {
         var store: FileTreeStore
     }
 
-    /// One substituted or removed baseline subtree resolved against the arrays:
-    /// the preorder range it occupies and, for a replacement, the store taking
-    /// its place (`nil` for a removal, which contributes zero new nodes).
+    /// A target's preorder range plus its replacement store (`nil` for a removal).
     private struct ResolvedTarget {
         var rangeStart: Int32
         var rangeCount: Int32
@@ -71,13 +43,8 @@ extension FileTreeStore {
         )
     }
 
-    /// The unified numeric edit pass. `replacements` substitute existing
-    /// subtrees, `removingSubtreeIDs` delete them, `insertions` graft new ones
-    /// under a surviving parent, and `recordOverrides` refresh the own-record
-    /// fields (mtime, identity) of surviving directories — the relisted
-    /// directories whose membership or metadata moved — keyed by node id (their
-    /// totals are re-derived by the rebuild). All edits are validated up front,
-    /// then applied in one copy + rebuild + rebalance.
+    /// Replaces, removes, inserts and refreshes surviving directories' own records (totals are re-derived).
+    /// Everything is validated up front, then applied in one copy, rebuild and rebalance.
     nonisolated func numericApplyEdits(
         replacements: [(id: String, store: FileTreeStore)],
         removingSubtreeIDs: [String],
@@ -94,18 +61,13 @@ extension FileTreeStore {
         let storage = storage
         let oldCount = storage.count
 
-        // Each override must name an existing node whose record it matches by
-        // id; a stored id mismatch is a caller bug, not a layout the dictionary
-        // path could rescue.
+        // A mismatched override id is a caller bug, not a layout the dictionary path could rescue.
         for (id, record) in recordOverrides where record.id != id || storage.index(of: id) == nil {
             return .unsupported
         }
 
-        // Validate replacement targets first (existence, non-root, well-formed
-        // single-root store) so the outcome precedence matches the replace-only
-        // legacy path: a missing or root target is `invalidTarget` (public nil)
-        // before any structural surprise becomes `unsupported`, and both come
-        // before an overlap throw.
+        // Replacement targets are validated first so outcome precedence matches the legacy path: `invalidTarget`
+        // before `unsupported`, and both before an overlap throw.
         var resolved: [ResolvedTarget] = []
         resolved.reserveCapacity(replacements.count + removingSubtreeIDs.count)
 
@@ -160,9 +122,7 @@ extension FileTreeStore {
             }
         }
 
-        // Insertion parents must exist and survive (not lie inside a removed or
-        // replaced range); each insertion store must be a well-formed
-        // single-root tree whose root id is new to the baseline.
+        // Insertion parents must survive the edit, and each insertion root id must be new to the baseline.
         var insertionParentIndices: [Int32] = []
         insertionParentIndices.reserveCapacity(insertions.count)
         for insertion in insertions {
@@ -176,9 +136,8 @@ extension FileTreeStore {
             insertionParentIndices.append(parentIndex)
         }
 
-        // Resolve each substitution/removal target's preorder range. Preorder
-        // makes every subtree a contiguous run starting at its root; verify
-        // rather than assume, and hand any surprise to the dictionary path.
+        // Preorder should make each subtree contiguous; verify rather than assume, and hand surprises to the
+        // dictionary path.
         for i in resolved.indices {
             try cancellationCheck()
             let targetIndex = resolved[i].rangeStart
@@ -216,9 +175,7 @@ extension FileTreeStore {
             return .unsupported
         }
 
-        // Collision preflight: a replacement/insertion id may only reuse a
-        // baseline id that lies inside one of the removed/replaced ranges, and
-        // no two grafted stores may introduce the same id.
+        // A grafted id may only reuse a baseline id inside a removed/replaced range, and never another graft's.
         var seenGraftIDs = Set<String>()
         func preflight(_ store: FileTreeStore) throws {
             for (offset, node) in store.storage.nodes.enumerated() {
@@ -236,9 +193,6 @@ extension FileTreeStore {
         for replacement in replacements { try preflight(replacement.store) }
         for insertion in insertions { try preflight(insertion.store) }
 
-        // Placement pass: where every kept segment, replacement, and appended
-        // insertion lands in the new arrays, plus the old→new map for kept
-        // nodes.
         let copyStart = ContinuousClock.now
         let removedTotal = resolved.reduce(0) { $0 + Int($1.rangeCount) }
         let replacementTotal = replacements.reduce(0) { $0 + $1.store.storage.count }
@@ -283,10 +237,8 @@ extension FileTreeStore {
             writeIndex += Int32(insertion.store.storage.count)
         }
 
-        // Copy pass. A kept node's parent is always kept (a removed parent
-        // would put the node inside a removed/replaced range), so the map
-        // lookup never misses; a grafted store's internal parents shift by its
-        // base and its root re-parents onto the mapped old parent.
+        // A kept node's parent is always kept, so the map lookup never misses; a grafted root re-parents onto
+        // the mapped old parent.
         var segmentCursor = 0
         var substitutionCursor = 0
         var emitted: Int32 = 0
@@ -339,24 +291,16 @@ extension FileTreeStore {
             }
         }
 
-        // Refreshed own-records land on their surviving kept node (the root, at
-        // index 0, is just the common case). Totals are re-derived by the
-        // rebuild below for directories whose membership moved, and preserved
-        // as-is otherwise. An override that fell inside a removed or replaced
-        // range has no surviving node — a caller-side reconciliation bug — so
-        // hand the whole edit to the dictionary path rather than write astray.
+        // An override inside a removed or replaced range has no surviving node (a caller bug), so hand the whole
+        // edit to the dictionary path rather than write astray.
         for (id, record) in recordOverrides {
             let newIndex = oldToNew[Int(storage.index(of: id)!)]
             guard newIndex >= 0 else { return .unsupported }
             newNodes[Int(newIndex)] = record
         }
 
-        // Child layout: counts + prefix sums, then per-parent slot fills that
-        // preserve each parent's existing display order — kept parents keep
-        // their old slot order with each replaced child substituted in place
-        // and removed children dropped; grafted parents keep their store's
-        // internal order; inserted roots append to their parent. Affected
-        // parents are re-sorted by the rebuild, so append order is cosmetic.
+        // Each parent keeps its existing child order with replacements substituted in place; inserted roots
+        // append, which is cosmetic because affected parents are re-sorted.
         var newChildStarts = [Int32](repeating: 0, count: newCount + 1)
         for parent in newParents where parent >= 0 {
             newChildStarts[Int(parent) + 1] += 1
@@ -421,27 +365,19 @@ extension FileTreeStore {
             }
         }
         ScanTiming.record("rescan.splice.copy", ContinuousClock.now - copyStart)
-        // Four coarse boundaries feed the strip's "Applying changes…" band so a
-        // multi-second merge on a huge baseline shows honest forward motion
-        // rather than a static hold. Stride-free (one call per phase), so it
-        // adds no measurable cost. Rebalance dominates on real trees, so it
-        // owns the largest slice.
+        // Coarse phase boundaries so a multi-second merge shows forward motion; rebalance dominates, so it owns
+        // the largest slice.
         spliceProgress(0.25)
 
-        // Parallel id-index rebuild — the one unavoidable full string pass.
-        // A duplicate id here means the collision preflight's assumptions
-        // were violated; the legacy path knows how to dedup-and-warn.
+        // The one unavoidable full string pass. A duplicate here means the preflight was wrong; the legacy path
+        // can dedup and warn.
         let indexStart = ContinuousClock.now
         guard let built = NodeIDIndex.building(from: newNodes) else { return .unsupported }
         ScanTiming.record("rescan.splice.index", ContinuousClock.now - indexStart)
         spliceProgress(0.4)
 
-        // Ancestor re-aggregation (totals + display re-sort) over every parent
-        // whose membership moved and its own ancestors, then the scan-wide
-        // shared-size rebalance the legacy path also finishes with. Removals
-        // leave no node to seed an ancestor walk from, so the affected parents
-        // are gathered directly rather than as the ancestor closure of new
-        // nodes.
+        // Removals leave no node to seed an ancestor walk from, so affected parents are gathered directly rather
+        // than as the ancestor closure of new nodes.
         let rebuildStart = ContinuousClock.now
         var nodes = newNodes
         var childSlots = newChildSlots
@@ -481,9 +417,7 @@ extension FileTreeStore {
             ),
             rootID: rootID
         )
-        // Only the families with a member in what was removed, replaced or
-        // inserted can have changed (a scan-wide rebalance was ~0.3 s of
-        // every incremental rescan of a home folder).
+        // Only families touched by the edit can change; a scan-wide rebalance cost ~0.3 s per home-folder rescan.
         var scope = SharedSizeDeduplication.Scope()
         for target in resolved {
             for index in Int(target.rangeStart)..<Int(target.rangeStart + target.rangeCount) {

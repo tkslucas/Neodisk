@@ -1,11 +1,4 @@
-//
-//  AppModel+SwiftUI.swift
-//  Neodisk
-//
-//  SwiftUI colors over NeodiskAppModel's platform-neutral RGB vocabulary.
-//  The shared model speaks SIMD3<Float> sRGB triples so every platform's
-//  shell draws the same hues; this is the macOS shell's translation.
-//
+// SwiftUI colors over the shared model's sRGB SIMD3<Float> triples, so every shell draws the same hues.
 
 import SwiftUI
 import NeodiskKit

@@ -1,12 +1,3 @@
-//
-//  SunburstChartModel.swift
-//  Neodisk
-//
-//  Off-main sunburst layout with stale-result protection, plus the rendered
-//  segment state (hover, hit-test index, selection overlay cache). Layout
-//  requests carry Neodisk's color style and free space.
-//
-
 import SunburstCore
 import Combine
 import CoreGraphics
@@ -14,10 +5,7 @@ import Foundation
 import NeodiskKit
 import NeodiskAppModel
 
-/// Everything one sunburst layout needs, bundled Sendable so the layout can
-/// run detached from the main actor. `style` colors the finished layout —
-/// it is deliberately not part of `layoutID`, so color changes restyle the
-/// rendered segments (`applyStyle`) instead of re-laying the chart out.
+/// `style` is deliberately not part of `layoutID`, so color changes restyle instead of re-laying out.
 struct SunburstLayoutRequest: Sendable {
     let treeStore: FileTreeStore
     let rootID: String
@@ -182,10 +170,7 @@ final class SunburstChartModel: ObservableObject {
         }
     }
 
-    /// Recolors the rendered layout for a new style — O(segments), never a
-    /// re-layout. No-op until a layout has landed; a load in flight picks
-    /// the latest style up when it completes. Hover survives (the segment
-    /// ids are unchanged).
+    /// O(segments), never a re-layout. A load in flight picks up the latest style when it completes.
     func applyStyle(_ style: SunburstColorStyle, in treeStore: FileTreeStore) {
         guard style != currentStyle else { return }
         currentStyle = style

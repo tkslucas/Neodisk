@@ -1,25 +1,12 @@
-//
-//  BulkDirectoryReader+Linux.swift
-//  Neodisk
-//
-//  Linux has no getattrlistbulk: the kernel returns names and types in
-//  getdents64 batches (readdir buffers those), and every other attribute
-//  costs one fstatat per entry, relative to the already-open directory so no
-//  path is resolved twice. This is the same floor du, gdu, and dua sit on;
-//  the traversal's parallel directory workers are what hide the per-entry
-//  latency. Produces the same `BulkDirectoryChild` records as the Darwin
-//  reader, so the engine above it is platform-blind. Read-only by
-//  construction: open(O_RDONLY), readdir, fstatat, close.
-//
+// Linux has no getattrlistbulk: readdir plus one fstatat per entry relative to the open directory.
+// Emits the same records as the Darwin reader. Read-only: open(O_RDONLY), readdir, fstatat, close.
 
 #if os(Linux)
 import Foundation
 import Glibc
 
 extension BulkDirectoryReader {
-    /// Streams decoded records to `onChild`. `context` is unused — readdir
-    /// owns its own getdents64 buffer — but the signature matches the Darwin
-    /// reader so the traversal's worker plumbing is shared.
+    /// `context` is unused (readdir owns its buffer) but matches the Darwin signature for shared plumbing.
     @discardableResult
     static func readChildren(
         ofDirectory url: URL,
@@ -90,9 +77,7 @@ extension BulkDirectoryReader {
         return name[1] == 0 || (name[1] == dot && name[2] == 0)
     }
 
-    /// Mirrors the Darwin reader's per-entry semantics: an entry the kernel
-    /// can't stat (vanished mid-listing, permission) comes back with its
-    /// errno instead of metadata; directories carry no sizes of their own.
+    /// Like the Darwin reader, an entry that can't be stat'd carries its errno; directories have no sizes.
     private static func makeChild(
         name namePointer: UnsafePointer<CChar>,
         directoryFD: Int32,
@@ -117,37 +102,27 @@ extension BulkDirectoryReader {
             entryErrno: nil,
             isHidden: isHiddenName(name),
             deviceID: UInt64(status.st_dev),
-            // Nested mounts show up as a device change against the scan's
-            // owned devices (MountBoundaryPolicy); Linux has no per-entry
-            // mount-status attribute to add to that.
+            // Linux has no per-entry mount status; nested mounts are caught as device changes
+            // (MountBoundaryPolicy).
             directoryMountStatus: 0
         )
     }
 }
 
-/// Linux stat helpers shared by the scanner's Linux paths: the bulk reader
-/// and `ScanMetadataLoader` both turn a `stat` into `NodeMetadata` here, so
-/// a relisted or fallback-enumerated item always matches what the full
-/// traversal recorded for it.
+/// Shared by the bulk reader and `ScanMetadataLoader`, so a relisted item matches the full traversal.
 nonisolated enum LinuxStat {
-    /// AT_NO_AUTOMOUNT (fcntl.h, _GNU_SOURCE-only so Swift's Glibc module
-    /// doesn't import it): stat an autofs trigger instead of mounting it —
-    /// a disk scan must never fire automounts.
+    /// AT_NO_AUTOMOUNT, which Swift's Glibc module doesn't import (_GNU_SOURCE-only). A scan must never
+    /// fire automounts.
     static let noAutomount: Int32 = 0x800
 
-    /// The bulk reader's per-entry rules: directories carry no sizes of
-    /// their own and a link count of 1; identity is captured for
-    /// directories, multi-link files, and files big enough for rename
-    /// tracking (the Darwin reader's policy — see there).
+    /// Directories carry no sizes and link count 1; identity follows the Darwin reader's policy.
     static func nodeMetadata(_ status: stat, isReadable: Bool? = nil, volumeUsedCapacity: Int64? = nil) -> NodeMetadata {
         let fileType = status.st_mode & S_IFMT
         let isDirectory = fileType == S_IFDIR
         let isSymbolicLink = fileType == S_IFLNK
         let linkCount = UInt64(max(status.st_nlink, 1))
         let logicalSize = isDirectory ? 0 : Int64(max(status.st_size, 0))
-        // st_blocks counts 512-byte units regardless of the filesystem's
-        // block size (stat(2)); sparse and compressed files report less
-        // than their length, reflinked extents are counted per file.
+        // st_blocks is always 512-byte units (stat(2)); reflinked extents are counted per file.
         let allocatedSize = isDirectory ? 0 : Int64(max(status.st_blocks, 0)) * 512
         let lastModified = Date(
             timeIntervalSince1970: Double(status.st_mtim.tv_sec) + Double(status.st_mtim.tv_nsec) / 1_000_000_000
@@ -173,11 +148,8 @@ nonisolated enum LinuxStat {
         )
     }
 
-    /// One lstat of `url`, converted like a bulk-read entry. The scan root
-    /// (`includeVolumeDetails`) asks the kernel for a precise readability
-    /// verdict — access(2) honors ACLs — and carries its volume's used bytes
-    /// for progress estimation. Failures throw POSIX errors, which
-    /// `ScanWarningFactory` classifies like the Darwin loader's.
+    /// The scan root gets a precise access(2) readability check (honors ACLs) and its volume's used bytes.
+    /// Failures throw POSIX errors.
     static func metadata(for url: URL, includeVolumeDetails: Bool = false) throws -> NodeMetadata {
         try url.withUnsafeFileSystemRepresentation { path -> NodeMetadata in
             guard let path else {
@@ -202,11 +174,8 @@ nonisolated enum LinuxStat {
 
     private static let processCredentials = Credentials()
 
-    /// Whether the process may read the object, decided from the mode bits
-    /// the fstatat already returned — the equivalent of Darwin's
-    /// ATTR_CMN_USERACCESS without an access(2) per entry. ACLs and
-    /// capabilities other than root are not consulted; a directory that
-    /// turns out unreadable still fails its open and is reported then.
+    /// From mode bits, avoiding an access(2) per entry; ACLs are ignored, so an unreadable directory is
+    /// reported when its open fails.
     static func isReadable(_ status: stat) -> Bool {
         let credentials = processCredentials
         if credentials.effectiveUserID == 0 { return true }

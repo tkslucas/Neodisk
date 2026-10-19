@@ -1,30 +1,11 @@
-//
-//  SunburstLayout.swift
-//  SunburstCore
-//
-//  Sunburst ring layout and grouping. Adapted to represent
-//  volume free/hidden space as synthetic top-ring segments. Layout emits
-//  geometry + color tokens only — final fills resolve in a separate `styled`
-//  pass (kept in NeodiskUI, which knows the app's palettes), so color changes
-//  never re-lay the chart out.
-//
-//  Pure and generic over `SunburstTreeReading`: no SwiftUI, no NeodiskKit,
-//  no Foundation — stdlib only, so it stays Embedded-Swift-compatible for the
-//  wasm build. Display strings for the synthetic arcs are passed in by the
-//  caller (NeodiskUI localizes them) rather than resolved via NSLocalizedString.
-//
+// Layout emits geometry and color tokens only; fills resolve in a separate `styled` pass so color
+// changes never re-lay out. Stdlib only (no Foundation) so it stays Embedded-Swift-compatible for wasm.
 
 public enum SunburstLayout {
     public nonisolated static let centerRadius: Double = 0.22
-    /// Visual breathing room between rings: each arc is drawn this much
-    /// short of its full ring band. Purely cosmetic — hit-testing treats
-    /// the bands as glued (see SunburstHitTestIndex) so hovering the gap
-    /// still lands on the arc it hangs off, never a dead zone.
+    /// Cosmetic only: hit-testing treats bands as glued, so hovering the gap still lands on an arc.
     public nonisolated static let ringGap: Double = 0.015
-    /// Background seam between neighbors within the same ring, as arc
-    /// length in units of the chart radius — thinner than the radial ring
-    /// gap. Applied at draw time (each edge insets half), never to angles
-    /// or hit-testing, so layout math and hovering are unaffected.
+    /// In units of chart radius. Applied at draw time only, never to angles or hit-testing.
     public nonisolated static let angularSeam: Double = 0.008
     /// The synthetic free-space segment's id; exists in no tree store.
     public nonisolated static let freeSpaceSegmentID = "__sunburst-free-space__"
@@ -33,12 +14,7 @@ public enum SunburstLayout {
 
     public typealias CancellationCheck = () throws -> Void
 
-    /// Whether the sunburst treats this node as a drillable folder. Packages
-    /// (.app, .imovielibrary, …) are directories on disk, but the scan keeps
-    /// them opaque, so the sunburst treats them as files: gray in branch
-    /// mode, Quick Look on click, never a drill target. Once "Show Package
-    /// Contents" splices a package's children into the store it behaves like
-    /// any other folder.
+    /// Packages are opaque in the scan, so they behave as files until "Show Package Contents" splices them in.
     public nonisolated static func isSunburstFolder(
         _ node: some SunburstNode,
         in tree: some SunburstTreeReading
@@ -67,14 +43,10 @@ public enum SunburstLayout {
 
         let rootChildren = try treeStore.children(of: root.id, cancellationCheck: cancellationCheck)
         let visibleChildren = rootChildren.isEmpty ? [root] : rootChildren
-        // Ring radii — bands taper with depth (deeper rings thinner). Computed
-        // once here and threaded through the recursion; the zoom remap bands
-        // through the same metrics, so drawn and hit-tested arcs agree.
+        // Computed once and shared with the zoom remap, so drawn and hit-tested arcs agree.
         let metrics = SunburstRingMetrics(depthLimit: depthLimit)
-        // Free and hidden space join the root denominator so the allocated
-        // arcs shrink to make room; the child total floor keeps zero-byte
-        // children (each counted as at least one unit) from overflowing into
-        // the synthetic arcs.
+        // The child-total floor keeps zero-byte children (one unit each) from overflowing into the synthetic
+        // arcs.
         let freeBytes = max(freeSpaceBytes ?? 0, 0)
         let hiddenBytes = max(hiddenSpaceBytes ?? 0, 0)
         let childUnitTotal = visibleChildren.reduce(0.0) {
@@ -83,10 +55,7 @@ public enum SunburstLayout {
         let rootWeight = root.displayWeight(includingCloudOnly: includeCloudOnly)
         let allocatedDenominator = max(Double(rootWeight), childUnitTotal)
         let denominator = allocatedDenominator + Double(freeBytes) + Double(hiddenBytes)
-        // The color coordinate is anchored at the scan root even when the
-        // chart is drilled in, so drilling preserves every color. The
-        // synthetic free/hidden arcs are not tree nodes and never advance
-        // the color cursor: allocated data always spans the full hue wheel.
+        // Anchored at the scan root so drilling preserves colors; free/hidden arcs never advance the cursor.
         let rootCoordinate = rootID == treeStore.rootID
             ? (start: 0.0, span: 1.0, depth: 0)
             : colorCoordinate(for: rootID, in: treeStore, includeCloudOnly: includeCloudOnly)
@@ -149,15 +118,8 @@ public enum SunburstLayout {
         return result
     }
 
-    /// The ring the chart would draw for `folderID`'s children if it had one
-    /// more ring to spend: same grouping, same "Smaller Items" pooling, same
-    /// color tokens, at ring `depth`. The legend calls this for a folder
-    /// sitting on the outermost rendered ring, where the layout stopped
-    /// recursing and left it with no segments to derive rows from.
-    ///
-    /// The children take the full circle, which is what drilling into the
-    /// folder shows — the sliver they would get inside their parent's arc is
-    /// exactly what the chart has no room to draw. O(children).
+    /// For a folder on the outermost ring, where the layout stopped recursing and left no segments
+    /// for the legend. Children take the full circle, as drilling in shows. O(children).
     public nonisolated static func ringSegments<Tree: SunburstTreeReading>(
         forFolder folderID: String,
         in treeStore: Tree,
@@ -235,20 +197,14 @@ public enum SunburstLayout {
             denominator: safeDenominator,
             totalAngle: totalAngle,
             minimumAngle: minimumAngle,
-            // A clicked-open "Smaller Items" pool renders its children
-            // individually, however thin (mirrors the treemap's
-            // expandAggregate contract).
             disableAggregation: expandedAggregateIDs.contains(parentID),
             includeCloudOnly: includeCloudOnly,
             cancellationCheck: cancellationCheck
         )
 
         var cursor = startAngle
-        // The parent's color interval divides among the children purely by
-        // size (no free/hidden slack — the hue wheel always covers the
-        // data). Every entry advances the color cursor — gray files and
-        // aggregates too — so a large file shifts the hues of everything
-        // after it; grouped entries sum to the children they pool.
+        // Divided purely by size, no free/hidden slack. Every entry advances the cursor, gray files too,
+        // so a large file shifts the hues of everything after it.
         var colorCursor = colorStart
         for entry in grouped {
             try cancellationCheck()
@@ -352,9 +308,7 @@ public enum SunburstLayout {
             let itemCount = groupedNodes.reduce(0) {
                 clampedSum($0, $1.isDirectory ? max($1.descendantFileCount, 1) : 1)
             }
-            // `children` is non-empty here (guarded above), so `first` always
-            // resolves; the `?? ""` only satisfies the optional and avoids a
-            // Foundation UUID fallback that never runs.
+            // `children` is non-empty here; `?? ""` only avoids a Foundation UUID fallback that never runs.
             let aggregateID = "aggregate-\(children.first?.id ?? "")"
             visible.append(GroupEntry(
                 id: aggregateID,
@@ -375,13 +329,8 @@ public enum SunburstLayout {
 
     // MARK: - Color coordinate
 
-    /// A node's global color coordinate: the start and span of its size
-    /// interval and its depth, all relative to the scan root. This is the
-    /// same subdivision the layout's color cursor performs — each level
-    /// splits the parent's interval among the size-sorted siblings by
-    /// weight — so call sites that color nodes outside a layout pass (the
-    /// treemap's drilled scenes, the status-bar swatch, the legend) agree
-    /// with rendered segments. O(depth × siblings); nil for unknown nodes.
+    /// Same subdivision as the layout's color cursor, so colors outside a layout pass agree with segments.
+    /// O(depth × siblings); nil for unknown nodes.
     public nonisolated static func colorCoordinate(
         for nodeID: String,
         in treeStore: some SunburstTreeReading,

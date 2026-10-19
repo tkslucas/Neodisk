@@ -1,25 +1,10 @@
-//
-//  FuzzySearch.swift
-//  Neodisk
-//
-//  fzf-style fuzzy name matching, shared by the outline's entire-scan
-//  search and the kind drill-in filter: subsequence matching with ranked
-//  scoring — consecutive-run and word-start bonuses, gap penalties.
-//
+// fzf-style fuzzy name matching: subsequence matching with run, word-start and gap scoring.
 
 import Foundation
 import NeodiskKit
 
-/// One searchable node — the entry shape of the shared per-snapshot search
-/// index (see SnapshotSearchIndex) that serves both the outline's
-/// entire-scan search and the kind drill-in filter.
-///
-/// An index holds one entry per node of a scan (millions), so entries are
-/// small: a node index into one shared table plus pre-classified kind
-/// codes. Names are matched in place with ASCII case folding; only names
-/// whose lowercase needs more than that keep a lowercased copy (in the
-/// table), so per-keystroke scoring never allocates. Kinds are classified
-/// once so the drill-in list can filter the index without re-touching nodes.
+/// An index holds millions of these, so they're small: a node index into a shared table plus kind codes.
+/// Names match in place with ASCII case folding, so per-keystroke scoring never allocates.
 package struct FileSearchEntry: Sendable {
     private let table: SearchEntryTable
     private let nodeIndex: Int32
@@ -125,10 +110,7 @@ package struct LowercasedNameBytes: Sequence {
     }
 }
 
-/// What an index's entries share: the scan's node array (IDs, names, and
-/// dates are read from it, never copied), the kind-ID strings the entries'
-/// codes point at, and lowercased copies of the few names that ASCII case
-/// folding doesn't fully lowercase.
+/// Names and dates are read from the node array, never copied; only names ASCII folding can't lowercase are kept.
 package final class SearchEntryTable: Sendable {
     private let nodes: [FileNodeRecord]
     let kindIDs: [String]
@@ -196,11 +178,7 @@ package enum FuzzyMatcher {
         }
     }
 
-    /// Greedy forward subsequence match of pre-lowercased query bytes
-    /// against a pre-lowercased name. Returns nil unless every query byte
-    /// appears in order; higher scores are better. (fzf's v2 algorithm
-    /// re-optimizes match positions; greedy is a deliberate simplification —
-    /// wrong rankings need pathological names, and never drop matches.)
+    /// Greedy, unlike fzf's v2 re-optimization: wrong rankings need pathological names and never drop matches.
     package static func score(queryBytes: [UInt8], lowercasedName: String) -> Int? {
         score(queryBytes: queryBytes, lowercasedNameBytes: lowercasedName.utf8)
     }
@@ -243,26 +221,11 @@ package enum FuzzyMatcher {
         return queryIndex == queryBytes.count ? score : nil
     }
 
-    /// How often the whole-index loops poll `Task.isCancelled`: cheap
-    /// enough to vanish next to scoring, frequent enough that a superseded
-    /// keystroke stops within microseconds instead of finishing the scan.
+    /// Cheap next to scoring, frequent enough that a superseded keystroke stops within microseconds.
     package static let cancellationCheckInterval = 4_096
 
-    /// The `limit` best-scoring entries for a query, plus how many matched
-    /// in total — the outline search's ranking, where the best name match
-    /// belongs on top. Ties break to shorter names, then larger files
-    /// (between two identically-named items, the disk analyzer cares about
-    /// the fat one), then stable by ID. An empty query returns the first
-    /// `limit` entries in their given order. `isIncluded` scopes the match
-    /// to a slice of a shared index (outline search skips the root) without
-    /// copying entries.
-    ///
-    /// Only the best `limit` matches are kept, in a bounded heap: a match
-    /// that can't beat the worst kept one is rejected in one comparison, so
-    /// a broad query over a million names never sorts the whole match list.
-    /// Cancellation is polled every `cancellationCheckInterval` entries;
-    /// a cancelled call returns early with partial results the caller must
-    /// discard (callers re-check `Task.isCancelled` after awaiting).
+    /// Ties break to shorter names, then larger files, then ID. A bounded heap keeps only `limit` matches, and a
+    /// cancelled call returns partial results the caller must discard.
     package static func topMatches(
         query: String,
         entries: [FileSearchEntry],
@@ -320,10 +283,7 @@ package enum FuzzyMatcher {
         }
     }
 
-    /// Bounded top-k selection: a binary heap holding the best `capacity`
-    /// matches seen so far, with the *worst* kept match at the root so each
-    /// new candidate is accepted or rejected against it in O(1), and kept in
-    /// O(log k).
+    /// The worst kept match sits at the root, so each candidate is accepted or rejected in O(1).
     package struct TopMatchHeap {
         package let capacity: Int
         package private(set) var storage: [RankedMatch] = []
@@ -378,13 +338,8 @@ package enum FuzzyMatcher {
         }
     }
 
-    /// The first `limit` entries matching the query, in the entries' given
-    /// order, plus how many matched in total — the statistics file lists'
-    /// filter. Their browse order is allocated-size descending, and typing
-    /// must narrow that ranking, not replace it with match-quality order
-    /// (filtering a size list for "mov" should keep the biggest movie
-    /// first). An empty query matches everything. Polls cancellation like
-    /// `topMatches`; a cancelled call returns partial results.
+    /// Keeps the entries' given order (size-descending lists), since typing must narrow that ranking, not
+    /// replace it with match quality.
     package static func matchesInEntryOrder(
         query: String,
         entries: [FileSearchEntry],

@@ -1,8 +1,3 @@
-//
-//  HardLinkDeduplicator.swift
-//  Neodisk
-//
-
 import Dispatch
 import Foundation
 
@@ -27,10 +22,7 @@ nonisolated struct HardLinkDeduplicator {
         )
     }
 
-    /// Applies hard-link deduplication to prebuilt mutable tree arrays (the
-    /// engine's finalize handoff): each duplicate claim's size is subtracted
-    /// from its owner, affected ancestor directories are rebuilt bottom-up,
-    /// and child orders are re-sorted where sizes changed.
+    /// Subtracts each duplicate claim from its owner, rebuilds ancestors bottom-up and re-sorts changed children.
     nonisolated static func applyDeduplication(
         nodes: inout [FileNodeRecord],
         parentIndices: [Int32],
@@ -43,9 +35,7 @@ nonisolated struct HardLinkDeduplicator {
         let duplicates = duplicateClaimIndices(from: hardLinkClaims)
         guard !duplicates.isEmpty else { return }
 
-        // Resolve each duplicate's owner to its node index — read-only
-        // index lookups, so they fan out — then total the charges in a flat
-        // per-node array rather than a dictionary keyed by path.
+        // Owner lookups are read-only so they fan out; charges total in a flat per-node array, not a dictionary.
         let owners = ownerIndices(of: duplicates, in: hardLinkClaims, indexByID: indexByID)
         var chargeByIndex = [Int64](repeating: 0, count: nodes.count)
         for (position, claimIndex) in duplicates.enumerated() where owners[position] >= 0 {
@@ -102,9 +92,7 @@ nonisolated struct HardLinkDeduplicator {
         return owners
     }
 
-    /// Lowers each charged node's allocated size (never below its floor) in
-    /// place, in parallel over disjoint node ranges; returns the indices it
-    /// changed.
+    /// Never below the node's floor; parallel over disjoint ranges. Returns the changed indices.
     private nonisolated static func applyCharges(
         _ chargeByIndex: [Int64],
         minimumAllocatedSizeByIndex: [Int32: Int64],
@@ -142,11 +130,8 @@ nonisolated struct HardLinkDeduplicator {
         return changedIndices
     }
 
-    /// Re-derives hard-link claims from the store's own nodes and reapplies
-    /// deduplication — used after subtree mutations, where a removed or
-    /// replaced owner can shift which link claims a shared file's size.
-    /// `identities`, when given, limits the pass to those files (the ones an
-    /// edit touched; see `SharedSizeDeduplication.Scope`).
+    /// After subtree mutations a removed or replaced owner can shift which link holds the size.
+    /// `identities` limits the pass to files an edit touched.
     nonisolated static func rebalancedStore(
         _ store: FileTreeStore,
         identities: Set<FileIdentity>? = nil,
@@ -227,12 +212,8 @@ nonisolated struct HardLinkDeduplicator {
         return duplicateAllocatedSizeByOwner
     }
 
-    /// The claims charged as duplicates: every claim of a file except the
-    /// first in `SharedSizeDeduplication` order. Claims of one file are
-    /// chained through claim indices rather than copied into an array per
-    /// file: package-manager stores (pnpm, bun) hard-link one file into
-    /// dozens of projects, and on a developer home with millions of such
-    /// links the per-file arrays and claim copies dominated finalize.
+    /// Claims of one file are chained by index rather than copied per file: package-manager stores link one
+    /// file into dozens of projects, and per-file arrays dominated finalize.
     nonisolated static func duplicateClaimIndices(from claims: [HardLinkClaim]) -> [Int32] {
         var headByIdentity: [FileIdentity: Int32] = [:]
         headByIdentity.reserveCapacity(claims.count)

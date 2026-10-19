@@ -177,9 +177,7 @@ import Foundation
 
         let children = try readBulkChildren(of: rootURL)
 
-        // Directories and files at/above the rename-tracking threshold
-        // carry their device+inode identity; small single-link files skip
-        // it to keep snapshots lean.
+        // Small single-link files skip identity to keep snapshots lean.
         let folder = try #require(children["folder"]?.metadata)
         #expect(folder.fileIdentity?.isFileSystemIdentity == true)
         let big = try #require(children["big.bin"]?.metadata)
@@ -318,9 +316,7 @@ import Foundation
     }
     #endif
 
-    /// End-to-end pin: a full scan through the bulk path must produce the
-    /// same tree (IDs, sizes, counts, package handling, dedup) as the
-    /// FileManager fallback path.
+    /// A full scan through the bulk path must produce the same tree as the FileManager fallback.
     @Test func testFullScanMatchesFileManagerPath() async throws {
         let rootURL = try makeBulkTestDirectory()
         defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -361,10 +357,7 @@ import Foundation
             options: options
         )
 
-        // The FileManager enumerator spells children of /var/... as
-        // /private/var/... while the scan root and the bulk path keep the
-        // target's /var spelling (a pre-existing fallback inconsistency).
-        // Compare under the canonical spelling.
+        // The FileManager enumerator spells children /private/var while the bulk path keeps /var.
         func canonicalID(_ id: String) -> String {
             id.hasPrefix("/private/var/") ? String(id.dropFirst("/private".count)) : id
         }
@@ -454,10 +447,7 @@ private func readBulkChildren(of url: URL) throws -> [String: BulkDirectoryChild
 }
 
 private func makeBulkTestDirectory() throws -> URL {
-    // realpath the temp root: FileManager's enumerator canonicalizes
-    // /var/... to /private/var/... for children while the scan root keeps
-    // the /var spelling; starting from the canonical path keeps node IDs
-    // comparable across both enumeration paths.
+    // FileManager canonicalizes children to /private/var while the root keeps /var; realpath keeps IDs comparable.
     let temporaryPath = FileManager.default.temporaryDirectory.path
     let canonicalPath = temporaryPath.withCString { pointer -> String in
         guard let resolved = realpath(pointer, nil) else { return temporaryPath }

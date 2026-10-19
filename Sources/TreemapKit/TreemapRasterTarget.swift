@@ -1,13 +1,5 @@
-//
-//  TreemapRasterTarget.swift
-//  TreemapKit
-//
-//  Shared pixel-buffer plumbing for the treemap rasterizers: allocates the
-//  RGBA8 buffer, prefills the background, and hands the raw pointer to a
-//  renderer's draw pass. The CGImage assembly and the `memset_pattern4`
-//  background fill are gated so the core is consumable off-platform
-//  (e.g. a WebAssembly demo), same as the renderers themselves.
-//
+// Shared RGBA8 buffer plumbing for the rasterizers. CGImage assembly and `memset_pattern4` are gated
+// so the core builds off-platform (a WebAssembly demo).
 
 #if canImport(CoreGraphics)
 import CoreGraphics
@@ -17,23 +9,15 @@ import Foundation
 #endif
 
 public enum TreemapRasterTarget {
-    /// Fallback background for headless renders and tests; the app passes
-    /// the window background instead, so the map sits on the same surface
-    /// as the rest of the pane in both styles. Dark, so sub-pixel cells
-    /// that get skipped read as seams rather than holes. RGBA, straight
-    /// (alpha 255).
+    /// Fallback for headless renders and tests (the app passes the window background). Dark, so skipped
+    /// sub-pixel cells read as seams rather than holes.
     static let backgroundPattern: [UInt8] = [18, 18, 22, 255]
 
-    /// `backgroundPattern` as linear RGB, public so scenes and renderers
-    /// share one fallback color (translucent flat fills composite against
-    /// the same color the raster clears to).
+    /// Public so translucent flat fills composite against the same color the raster clears to.
     public nonisolated static let backgroundRGB = SIMD3<Float>(18, 18, 22) / 255
 
-    /// A caller-provided background as the raster's RGBA clear pattern.
-    /// nil clears to transparent (premultiplied zeros): the app composites
-    /// the raster over the live window backdrop instead of baking a color —
-    /// an opaque guess can never match the window server's desktop-tinted
-    /// backdrop on screen.
+    /// nil clears to transparent: the app composites over the live window backdrop, since an opaque guess
+    /// can never match the desktop-tinted backdrop on screen.
     nonisolated static func pattern(for rgb: SIMD3<Float>?) -> [UInt8] {
         guard let rgb else { return [0, 0, 0, 0] }
         return [
@@ -44,10 +28,8 @@ public enum TreemapRasterTarget {
         ]
     }
 
-    /// Portable rasterization: RGBA8 premultipliedLast, one byte-quadruple
-    /// per pixel packed little-endian, row stride `width * 4`, alpha always
-    /// 255. The output covers `bounds` at `scale` (2 for Retina); `draw`
-    /// receives the buffer prefilled with `background` and writes the cells.
+    /// RGBA8 premultipliedLast, row stride `width * 4`, alpha always 255; `draw` gets a buffer prefilled with
+    /// `background`.
     static func rasterizeRGBA(
         bounds: CGRect,
         scale: CGFloat,
@@ -70,10 +52,7 @@ public enum TreemapRasterTarget {
     }
 
     #if canImport(CoreGraphics)
-    /// Same pixels as `rasterizeRGBA`, but drawn directly into a CFData the
-    /// CGImage's data provider retains without copying — a plain `[UInt8]`
-    /// would cost a full-buffer copy (~25 MB at 2× on a large window) on
-    /// every render.
+    /// Draws into a CFData the provider retains without copying; a `[UInt8]` would copy ~25 MB per render.
     static func render(
         bounds: CGRect,
         scale: CGFloat,
@@ -93,11 +72,8 @@ public enum TreemapRasterTarget {
         fillBackground(rawBase, byteCount: byteCount, pattern: background)
         draw(rawBase, width, height, bytesPerRow)
 
-        // The pixel values are sRGB (the app resolves the window background
-        // through the sRGB space and the palettes are authored against it).
-        // Tag the image accordingly: an untagged/device-RGB image skips color
-        // matching on wide-gamut displays, shifting the whole map visibly
-        // off the real window background it must blend into.
+        // The pixels are sRGB; an untagged or device-RGB image skips color matching on wide-gamut displays
+        // and shifts the map off the window background it must blend into.
         let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
         guard let provider = CGDataProvider(data: pixelData) else { return nil }
         return CGImage(

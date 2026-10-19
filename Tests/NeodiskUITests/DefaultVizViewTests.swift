@@ -1,11 +1,4 @@
-//
-//  DefaultVizViewTests.swift
-//  Neodisk
-//
-//  The default-view launch preference: creating AppPreferences (= launch)
-//  applies the chosen default over the persisted current-view pair, while
-//  "last viewed" (the default) keeps whatever the previous session left.
-//
+// Creating AppPreferences (launch) applies the default view; "last viewed" keeps the previous session's.
 
 import Foundation
 import Testing

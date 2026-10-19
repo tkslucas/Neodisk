@@ -3,9 +3,6 @@ import Foundation
 @testable import NeodiskKit
 
 @Suite struct HardLinkDeduplicatorTests {
-    /// The old dictionary-shaped entry point, rebuilt over the contiguous
-    /// storage API: construct trusted storage, apply deduplication to the
-    /// mutable arrays, freeze.
     private func deduplicatedStore(
         rootID: String,
         nodesByID: [String: FileNodeRecord],

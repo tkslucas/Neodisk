@@ -1,10 +1,5 @@
-//
-//  ContentView.swift
-//  Neodisk
-//
-//  Root composition: welcome → scanning progress → the classic analyzer
-//  workspace (outline | treemap | kind stats) with a status bar.
-//
+// Root composition: welcome → scanning progress → the classic analyzer
+// workspace (outline | treemap | kind stats) with a status bar.
 
 import AppKit
 import SwiftUI
@@ -37,13 +32,9 @@ public struct ContentView: View {
                     model.addDroppedFolders(urls)
                 }
         }
-        // The one place the workspace text scale enters the view tree; every
-        // `neoFont` below resolves against it. Window chrome (Settings,
-        // About, alerts) lives in other scenes and keeps the system size.
+        // The one place the workspace text scale enters the view tree; other scenes keep the system size.
         .environment(\.neoTextScale, textScale)
-        // Scaled default for everything that never names a font — plain
-        // Text, button titles, text fields. macOS's own default is 13pt, so
-        // at 100% this is exactly what those views already rendered at.
+        // For views that never name a font. macOS's default is 13pt, so 100% renders as before.
         .font(.system(size: 13 * textScale))
         .frame(
             minWidth: PaneLayout.windowMinWidth(scale: model.textScale),
@@ -68,9 +59,7 @@ public struct ContentView: View {
         .onDisappear {
             updates.viewModel.hostDidDisappear()
         }
-        // Full Disk Access gates the warning surfaces (panel and notice
-        // strip). Recheck on activation: that is when the user comes back
-        // from granting access in System Settings.
+        // Recheck on activation: that's when the user returns from granting access in System Settings.
         .task {
             await model.warnings.refreshFullDiskAccessStatus()
         }
@@ -102,18 +91,12 @@ public struct ContentView: View {
         case .restoring:
             SnapshotRestoreView(target: model.coordinator.selectedTarget)
         case .scanning, .displaying:
-            // A partial tree arrives within a few hundred ms; from then on
-            // the workspace renders live while the scan keeps running. One
-            // case for both phases keeps WorkspaceView's SwiftUI identity
-            // stable when the scan finishes — separate branches would tear
-            // down and recreate the treemap view mid-session.
+            // One case for both phases keeps WorkspaceView's identity stable when the scan finishes;
+            // separate branches would recreate the treemap view mid-session.
             if model.coordinator.snapshot != nil {
                 WorkspaceView(model: model)
             } else if case .cachedWhileRefreshing = model.coordinator.displaySource {
-                // A cached snapshot is decoding for display while the refresh
-                // runs — a previously scanned location must never present as
-                // a from-zero scan. If the decode fails, the coordinator
-                // drops to .liveStreaming and the progress view takes over.
+                // A previously scanned location must never present as a from-zero scan while its cache decodes.
                 SnapshotRestoreView(target: model.coordinator.selectedTarget)
             } else {
                 ScanProgressView(model: model)
@@ -132,10 +115,7 @@ public struct ContentView: View {
         )
     }
 
-    /// Volume scans title the Finder/Disk Utility "used" figure (capacity
-    /// minus available), so the window agrees with the rest of the system
-    /// and with the sunburst legend header; folder and cloud scans title
-    /// what the scan itself accounted for.
+    /// Volume scans title the system's "used" figure so the window agrees with Finder and the legend.
     nonisolated static func windowTitle(
         targetName: String?,
         targetKind: ScanTargetKind?,
@@ -157,25 +137,13 @@ public struct ContentView: View {
         ToolbarItem(placement: .principal) {
             vizModePicker
         }
-        // Cloud-only toggle sits beside the view switcher: it re-weights the
-        // whole visualization, so it shares the picker's altitude. Persistent
-        // but disabled when there is nothing for it to do (per the toolbar
-        // contract in AGENTS.md).
+        // Persistent but disabled when there's nothing to do, per the toolbar contract in AGENTS.md.
         ToolbarItem(placement: .principal) {
             cloudOnlyToggle
         }
 
-        // Update status pill kept visually separate from the trailing button
-        // group. On macOS 26 every toolbar item in a logical group shares one
-        // Liquid Glass capsule, which fuses the pill onto the button group and
-        // makes that capsule grow when the pill appears. A ToolbarSpacer does
-        // not break the grouping here; `sharedBackgroundVisibility(.hidden)`
-        // does — it drops the pill out of the shared glass so it renders as
-        // its own cluster (its own capsule, drawn by UpdateIndicator) with a
-        // gap before the button group. Older systems have no shared-glass
-        // grouping, so the pill is simply its own item ahead of the group.
-        // Hidden while idle; once a check runs it persists until the user acts
-        // on it (see UpdateIndicator).
+        // On macOS 26 grouped toolbar items share one glass capsule, which fused the pill onto the buttons;
+        // `sharedBackgroundVisibility(.hidden)` separates it (a ToolbarSpacer does not).
         if #available(macOS 26.0, *) {
             ToolbarItem(placement: .primaryAction) {
                 UpdateIndicator(viewModel: updates.viewModel)
@@ -194,11 +162,7 @@ public struct ContentView: View {
         }
     }
 
-    /// The three mutually exclusive center views, flattened for the toolbar
-    /// picker. Backed by the two persisted preferences (`vizViewMode` +
-    /// `treemapStyle`): picking a treemap segment writes both; picking
-    /// Sunburst leaves the treemap style untouched so switching back
-    /// restores it.
+    /// Picking Sunburst leaves `treemapStyle` untouched so switching back restores it.
     private enum VizChoice: Hashable {
         case cushion, flat, sunburst
     }
@@ -295,9 +259,7 @@ public struct ContentView: View {
 private struct WorkspaceView: View {
     let model: NeodiskViewModel
 
-    // Defaults leave the treemap clearly dominant on a fresh install's
-    // default-size window; all panes stay user-resizable (persisted).
-    // Bounds and window-aware clamping live in PaneLayout.
+    // Defaults leave the treemap dominant on a fresh window; bounds and clamping live in PaneLayout.
     @AppStorage("outlinePaneWidth")
     private var outlinePaneWidth = PaneLayout.outlineDefaultWidth()
     @AppStorage("kindStatsPaneWidth")
@@ -325,9 +287,8 @@ private struct WorkspaceView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Pane sizes are clamped against the actual workspace geometry
-            // (WorkspacePaneMetrics), so the map keeps a usable size however
-            // small the window gets and however wide the panes were dragged.
+            // Clamped against the real geometry so the map stays usable however small the window or wide the
+            // panes.
             GeometryReader { proxy in
                 let metrics = paneMetrics(available: proxy.size)
                 workspacePanes(metrics: metrics)
@@ -424,9 +385,7 @@ private struct WorkspaceView: View {
                         TreemapPane(model: model)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
-                    // Bottom dock: the wide multi-column file list sits
-                    // under the map only — the analysis pane keeps its
-                    // full height beside both.
+                    // The bottom dock sits under the map only; the analysis pane keeps its full height.
                     if fileListVisibility.showsBottom {
                         PaneSplitter(
                             size: bottomOutlinePaneSize,
@@ -483,10 +442,7 @@ private struct WorkspaceView: View {
     }
 }
 
-/// Shown after a scan that hit unreadable locations: totals are
-/// underreported until every location can be read. Clicking opens the
-/// grouped details popover; the inline Full Disk Access shortcut appears
-/// only when granting would actually unlock a failed path.
+/// The inline Full Disk Access shortcut appears only when granting would unlock a failed path.
 private struct ScanIssuesStrip: View {
     let model: NeodiskViewModel
     let count: Int
@@ -580,9 +536,7 @@ private struct ScanIssuesPopover: View {
     }
 }
 
-/// Passive one-line mention shown when an explicit new scan took a contended
-/// disk from a scan the app stopped for it. Dismissable; clears on its own
-/// when the new scan finishes.
+/// Shown when a new scan took a contended disk from a scan the app stopped; clears when it finishes.
 private struct SupersededScanStrip: View {
     let displayName: String
     var onDismiss: () -> Void
@@ -626,12 +580,8 @@ private struct LiveScanStrip: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            // Always determinate and monotonic: the bar never bounces. The
-            // formerly "silent" phases (checking, merging) now either hold at
-            // their current fraction with an explanatory caption or report real
-            // sub-phase progress (the splice reports its copy/index/rebuild/
-            // rebalance boundaries), so the bar only ever moves forward. The
-            // drifting stripe sheen signals liveness during held fractions.
+            // Always determinate and monotonic: held phases keep their fraction with a caption, and the stripe
+            // sheen signals liveness meanwhile.
             StripedProgressBar(
                 value: progress.metrics.progressFraction,
                 isActive: !isStopped
@@ -681,9 +631,7 @@ private struct LiveScanStrip: View {
         if progress.metrics.isMergingChanges {
             return NSLocalizedString("Applying changes…", comment: "Live strip, incremental splice")
         }
-        // An incremental refresh that degraded to a full scan says so, rather
-        // than looking like a mysteriously long rescan. The root-relist path is
-        // a normal incremental rescan and never sets this flag.
+        // A fallback to a full scan says so rather than looking like a mysteriously long rescan.
         if progress.metrics.isFullScanFallback {
             return NSLocalizedString("Changes too extensive — running a full scan…", comment: "Live strip, incremental rescan fell back to a full scan")
         }

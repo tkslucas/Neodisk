@@ -1,8 +1,3 @@
-//
-//  TreemapSceneViewportTests.swift
-//  Neodisk
-//
-
 #if canImport(CoreGraphics)
 import CoreGraphics
 #endif

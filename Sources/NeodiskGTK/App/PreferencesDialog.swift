@@ -1,11 +1,4 @@
-//
-//  PreferencesDialog.swift
-//  NeodiskGTK
-//
-//  Settings, as an AdwPreferencesDialog: appearance, what scans include,
-//  how the map is drawn, and the snapshot cache. Rows write straight to
-//  `Preferences`; the views observe it, so changes apply live.
-//
+// Rows write straight to `Preferences`, which the views observe, so changes apply live.
 
 import CGtk
 import Foundation

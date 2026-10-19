@@ -1,10 +1,5 @@
-//
-//  Widgets.swift
-//  NeodiskGTK
-//
-//  Small constructors for the widgets the views compose, so layout code
-//  reads as a description of the layout rather than of the C API.
-//
+// Small constructors for the widgets the views compose, so layout code
+// reads as a description of the layout rather than of the C API.
 
 import CGtk
 import Foundation
@@ -109,10 +104,7 @@ enum Widgets {
         }
     }
 
-    /// A menu model from sections of (label, detailed action) items.
-    /// Pops up a right-click menu at `point` in `parent`, creating it into
-    /// `cache` on first use. The parent's tooltip is off while the menu is
-    /// open; GTK otherwise leaves a showing tooltip drawn over the menu.
+    /// Created into `cache` on first use. The tooltip is off while open, or GTK draws a showing one over the menu.
     static func popupMenu(_ cache: inout GPtr?, sections: [[(String, String)]], on parent: GPtr, at point: CGPoint) {
         let hadTooltip = gtk_widget_get_has_tooltip(ptr(parent)) != 0
         if cache == nil {

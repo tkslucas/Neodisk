@@ -1,11 +1,4 @@
-//
-//  Drawing.swift
-//  NeodiskGTK
-//
-//  GtkSnapshot helpers in Neodisk's vocabulary: rectangles in points, colors
-//  as the shared model's sRGB SIMD3<Float> triples, rasters as the
-//  premultiplied RGBA8 buffers TreemapKit produces.
-//
+// GtkSnapshot helpers: rects in points, sRGB SIMD3<Float> colors, premultiplied RGBA8 rasters from TreemapKit.
 
 import CGtk
 import Foundation

@@ -4,9 +4,7 @@ import Glibc
 import Testing
 @testable import NeodiskKit
 
-/// The Linux platform layer: the readdir+fstatat bulk reader, the lstat
-/// metadata path, the mount table, and statvfs capacity. The Darwin
-/// counterparts are covered by the suites gated to Apple platforms.
+/// Darwin counterparts are covered by the suites gated to Apple platforms.
 @Suite struct LinuxPlatformTests {
     private func makeDirectory() throws -> URL {
         let url = URL(filePath: NSTemporaryDirectory(), directoryHint: .isDirectory)

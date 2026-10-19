@@ -1,21 +1,5 @@
-//
-//  DevLaunchHooks.swift
-//  NeodiskGTK
-//
-//  Environment-variable hooks for development and headless verification,
-//  named like the macOS app's:
-//
-//    NEODISK_AUTOSCAN=<path>        open that location on launch
-//    NEODISK_UI_SNAPSHOT=<out.png>  once the scan is on screen, render the
-//                                   window to a PNG and quit (works under
-//                                   Xvfb or a headless compositor — nothing
-//                                   needs to reach a real display)
-//    NEODISK_SNAPSHOT_DELAY=<secs>  settle time before the capture (1.5)
-//    NEODISK_VIZ_MODE=<treemap|sunburst>, NEODISK_TREEMAP_STYLE=<cushion|flat>,
-//    NEODISK_ANALYSIS_TAB=<largest|kinds|age>
-//                                   show that view without persisting it
-//    NEODISK_SELECT=<path>          select that node once displayed
-//
+// Dev env hooks, named like the macOS app's: NEODISK_AUTOSCAN, NEODISK_UI_SNAPSHOT (works under Xvfb),
+// NEODISK_SNAPSHOT_DELAY, NEODISK_VIZ_MODE, NEODISK_TREEMAP_STYLE, NEODISK_ANALYSIS_TAB, NEODISK_SELECT.
 
 import CGtk
 import Foundation

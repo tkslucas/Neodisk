@@ -1,33 +1,12 @@
-//
-//  ScanSizeBaseline.swift
-//  Neodisk
-//
-//  Compact per-node allocated sizes of a previous snapshot — the baseline
-//  for "what grew since the last scan" comparisons against the current one.
-//
+// Compact per-node allocated sizes of a previous snapshot — the baseline
+// for "what grew since the last scan" comparisons against the current one.
 
 import Foundation
 
-/// Node IDs are stored as 64-bit FNV-1a hashes so a million-node baseline
-/// costs ~16 bytes per node instead of retaining every path string; a hash
-/// collision (odds around 1e-7 for a two-million-node tree) at worst shows
-/// one wrong delta.
-///
-/// A second, smaller map keys the previous scan's file identities
-/// (device+inode, hashed) to their hashed node IDs, so a node that merely
-/// moved — same identity at a different path with the same size — diffs
-/// against its old entry (delta 0) instead of reading as brand new. Only
-/// identity-bearing nodes land in that map (directories and files above
-/// `Self.renameTrackingMinimumFileSize` — see BulkDirectoryReader — with
-/// linkCount 1), which keeps it a fraction of the size map. Requiring an
-/// exact size match on top of the identity hash is the collision guard: a
-/// false rename needs a 64-bit hash collision *and* an identical allocated
-/// size at a different path.
+/// Node IDs are FNV-1a hashes (~16 bytes per node); a collision at worst shows one wrong delta. A smaller
+/// identity map lets a moved node (same identity and size) diff as delta 0 instead of reading as new.
 public struct ScanSizeBaseline: Sendable {
-    /// Files below this allocated size don't get their identity captured at
-    /// scan time (see BulkDirectoryReader), so renames of smaller files still
-    /// read as added+deleted. The threshold keeps snapshots small while
-    /// covering every change big enough to matter in a size diff.
+    /// Smaller files' identities aren't captured, so their renames read as added plus deleted.
     public static let renameTrackingMinimumFileSize: Int64 = 1 << 20
 
     /// Target the baseline belongs to; deltas against other targets are
@@ -36,9 +15,7 @@ public struct ScanSizeBaseline: Sendable {
     /// When the baseline scan finished, for "changes since …" labels.
     public let finishedAt: Date?
     private let sizeByHashedID: [UInt64: Int64]
-    /// Hashed file identity → hashed node ID of the previous scan. Entries
-    /// whose identity hash collided within the baseline are poisoned with
-    /// `Self.ambiguousHashedID` so they can never produce a false rename.
+    /// Identity hashes that collided are poisoned with `Self.ambiguousHashedID` so they never fake a rename.
     private let hashedIDByIdentityHash: [UInt64: UInt64]
 
     private static let ambiguousHashedID = UInt64.max
@@ -71,13 +48,8 @@ public struct ScanSizeBaseline: Sendable {
         sizeByHashedID[Self.hashedID(id)]
     }
 
-    /// The size the node had at its previous path when it was renamed or
-    /// moved since the baseline scan: its identity matches a baseline entry
-    /// at a different path with the same allocated size. nil when the node
-    /// existed at this path already, carries no identity, or nothing
-    /// matches. The same-size requirement makes the answer trivially equal
-    /// to `node.allocatedSize`; it exists as the collision guard and so
-    /// callers can distinguish "moved" from "new".
+    /// The same-size requirement makes the answer equal `node.allocatedSize`; it exists as the collision guard
+    /// and to tell "moved" from "new".
     public func movedSourceSize(for node: FileNodeRecord) -> Int64? {
         guard node.linkCount == 1, !node.isSynthetic,
               let identity = node.fileIdentity,
@@ -90,11 +62,7 @@ public struct ScanSizeBaseline: Sendable {
         return oldSize
     }
 
-    /// Growth of a node since the baseline scan. A node still at its old
-    /// path diffs against that entry; a node that moved (same identity,
-    /// different path, same size) diffs against its old entry — delta 0 —
-    /// instead of counting its full size as growth; only a genuinely new
-    /// node counts everything.
+    /// A moved node diffs against its old entry (delta 0); only a genuinely new node counts its full size.
     public func sizeDelta(for node: FileNodeRecord) -> Int64 {
         if let previousSize = allocatedSize(forNodeID: node.id) {
             return node.allocatedSize - previousSize

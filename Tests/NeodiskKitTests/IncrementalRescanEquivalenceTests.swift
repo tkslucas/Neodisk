@@ -2,18 +2,8 @@ import Foundation
 import Testing
 @testable import NeodiskKit
 
-/// The strongest guarantee the incremental pipeline makes: a fine-grained
-/// directory relist must produce a tree byte-for-byte equivalent to a fresh
-/// full scan of the same on-disk state. These tests build a random tree, apply
-/// randomized churn (creates, deletes, renames, cross-directory moves, content
-/// touches — for both files and directories), synthesize the FSEvents the
-/// Darwin history provider would surface for that churn, run the incremental
-/// rescan, and assert the result equals a from-scratch scan. Many seeds.
-///
-/// The FSEvents journal is scripted (a stub), so the events are minimal-but-
-/// faithful: every mutation names the affected path with the flags a real
-/// journal carries. Sparser events than reality would only *miss* changes —
-/// which surfaces here as a divergence, exactly the failure this guards.
+/// Random churn plus the FSEvents it would produce must relist into a tree equal to a fresh full scan.
+/// The journal is a stub with minimal-but-faithful events: sparser ones would show up here as divergence.
 @Suite("IncrementalRescanEquivalence", .serialized)
 struct IncrementalRescanEquivalenceTests {
 
@@ -75,11 +65,7 @@ struct IncrementalRescanEquivalenceTests {
 
     // MARK: - Random tree + churn
 
-    /// Maps a FileManager path (which resolves the temp dir's firmlink to
-    /// `/private/var/...`) back to the standardized `/var/...` namespace that
-    /// `ScanTarget` uses for node ids. Purely lexical, so it works for paths
-    /// that no longer exist on disk (a rename/delete's old path) — where the
-    /// filesystem-backed `standardizedFileURL` cannot resolve the firmlink.
+/// Lexical, so it also maps paths that no longer exist, where `standardizedFileURL` can't resolve the firmlink.
     private func toIDNamespace(_ path: String) -> String {
         for firmlinked in ["/private/var/", "/private/tmp/", "/private/etc/"] where path.hasPrefix(firmlinked) {
             return String(path.dropFirst("/private".count))
@@ -255,16 +241,7 @@ struct IncrementalRescanEquivalenceTests {
     }
 
     // MARK: - Adversarial degraded-event streams
-    //
-    // A real FSEvents stream can lose or coalesce events (a delete whose parent
-    // membership event never lands; a rename with only one side named). The
-    // relist recovers because it re-reads the WHOLE named directory from disk
-    // rather than trusting the event to describe the change — as long as SOME
-    // surviving event still points at (or into) the affected directory, the
-    // result converges to a fresh scan. These pin that guarantee; a stream that
-    // loses its last pointer to a change is undetectable by construction and is
-    // the FSEvents provider's contract (kernel/user-drop flags force a full
-    // scan), not the planner's.
+    // A relist re-reads the whole named directory, so lost events still converge while any survivor points at it.
 
     private func makeControlledTree() throws -> URL {
         let root = FileManager.default.temporaryDirectory
@@ -281,10 +258,7 @@ struct IncrementalRescanEquivalenceTests {
         return root
     }
 
-    /// A directory is deleted, but the only surviving event is a stale self-event
-    /// for the now-gone directory (its removal semantics and the parent's
-    /// membership event were both dropped). Promotion re-reads the parent and
-    /// removes it — convergence, not silent staleness.
+    /// The only surviving event is a stale self-event for the gone directory; promotion re-reads the parent.
     @Test func deletedDirectoryWithOnlyStaleSelfEventConverges() async throws {
         let root = try makeControlledTree()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -341,9 +315,7 @@ struct IncrementalRescanEquivalenceTests {
         #expect(rescanned.treeStore.node(id: target.id + "/d0/renamed.bin") != nil)
     }
 
-    /// A whole nested branch is deleted, and the only surviving event names the
-    /// deepest gone directory. Promotion must climb d2 → d1 → d0 to the nearest
-    /// surviving ancestor and remove the branch there.
+    /// Promotion must climb d2, d1, d0 to the nearest surviving ancestor.
     @Test func cascadedDeletionPromotesToSurvivingAncestor() async throws {
         let root = try makeControlledTree()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -371,14 +343,7 @@ struct IncrementalRescanEquivalenceTests {
     }
 
     // MARK: - Unreadable directories (permission)
-    //
-    // Without Full Disk Access a whole-volume scan meets unreadable directories
-    // and TCC-protected children everywhere. A full scan turns them into
-    // childless inaccessible nodes + warnings; the relist must reproduce that
-    // — case (a) a directly-named unreadable directory (deep re-walk), case (b)
-    // unreadable children under a readable-but-not-searchable parent (inline
-    // inaccessible node, no subtree walk) — never abort the rescan to a full
-    // scan (which degraded every / rescan before this).
+    // The relist must reproduce a full scan's inaccessible nodes and warnings, never abort to a full scan.
 
     private func chmodPath(_ url: URL, _ mode: Int16) {
         try? FileManager.default.setAttributes([.posixPermissions: mode], ofItemAtPath: url.path)
@@ -414,15 +379,8 @@ struct IncrementalRescanEquivalenceTests {
         #expect(rescanned.treeStore.children(of: node.id).isEmpty)
     }
 
-    /// The opposite of the deep-rewalk case: a directory that was UNREADABLE at
-    /// baseline (a childless inaccessible node) becomes readable before the
-    /// rescan. FSEvents names it, the shallow relist reads its children — and the
-    /// directory's own record must lose its stale `isAccessible=false` /
-    /// `isSelfAccessible=false` flags and take the fresh identity, matching a full
-    /// scan. Refreshing only `lastModified` left it displaying children while
-    /// still flagged inaccessible (chmod moves ctime, not mtime, so the stale
-    /// flag was never even refreshed). Guards the own-record override built from
-    /// the full fresh own-metadata.
+    /// The directory's own record must lose its stale inaccessible flags; chmod moves ctime, not mtime, so
+    /// refreshing only `lastModified` missed it.
     @Test func inaccessibleDirectoryBecomingReadableRefreshesOwnRecord() async throws {
         let root = try makeControlledTree() // has d0/sub with s.bin
         let secret = root.appending(path: "d0/sub", directoryHint: .isDirectory)
@@ -458,15 +416,8 @@ struct IncrementalRescanEquivalenceTests {
         #expect(rescanned.treeStore.node(id: target.id + "/d0/sub/s.bin") != nil)
     }
 
-    /// Case (b) — a readable parent with an individually-unreadable CHILD (the
-    /// getattrlist-denied / TCC-protected shape a whole-volume scan without Full
-    /// Disk Access meets) — is not reproducible with POSIX `chmod`: a
-    /// non-searchable parent renders the WHOLE directory unreadable (case (a)),
-    /// not a single child. So this asserts the two invariants case (b) relies on
-    /// at the point they matter: `directChildren` materialises an unreadable
-    /// child as an inline inaccessible node + warning (never nil), which the
-    /// relist splices without a subtree walk. The end-to-end (b) path is
-    /// exercised by the real `/` scan (TCC-protected children).
+    /// POSIX chmod can't make a single child unreadable, so this asserts the invariant that case relies on:
+    /// `directChildren` yields an inline inaccessible node plus warning, never nil.
     @Test func unavailableChildMaterializesAsInlineInaccessibleNode() async throws {
         let root = try makeControlledTree()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -486,16 +437,8 @@ struct IncrementalRescanEquivalenceTests {
     // MARK: - Synthesizer fidelity vs the real kernel stream
 
     #if canImport(CoreServices)
-    /// The oracle only proves anything if its synthesized events are not MORE
-    /// generous than the events the real fseventsd journal actually delivers:
-    /// if the synthesizer named directories the kernel wouldn't, the oracle
-    /// would prove convergence real rescans can't achieve. This scripts a fixed
-    /// churn on a live fixture, replays the REAL journal, and asserts that every
-    /// directory the synthesized stream makes the planner relist is also relisted
-    /// (or deep-re-walked, or subsumed by a full-scan) under the real stream —
-    /// i.e. the synthesizer is a subset of reality. Prints both sets for the
-    /// record. Self-skips where the volume has no usable journal (no-FDA dev
-    /// shells), where the stubbed suites carry the logic.
+    /// The oracle only proves something if its synthesized events are a subset of what the real journal
+    /// delivers. Self-skips where the volume has no usable journal.
     @Test(.timeLimit(.minutes(1))) func synthesizedEventsAreASubsetOfTheRealJournal() async throws {
         let root = try makeControlledTree()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -552,11 +495,7 @@ struct IncrementalRescanEquivalenceTests {
         }
         let synthSet = relistSet(synthesized) ?? []
 
-        // Poll the real journal until it has surfaced the newest churned path
-        // (the create of d0/nd/n.bin, the last op above) — fseventsd numbers
-        // events in order, so its presence proves every earlier op is in the
-        // window too, not a partial early flush — draining the full window
-        // each time.
+        // fseventsd numbers events in order, so seeing the last op's path proves every earlier op is in the window.
         let newestChurnedPath = "/d0/nd/n.bin"
         var realEvents: [FileSystemChangeEvent] = []
         for _ in 0..<120 {
@@ -611,9 +550,7 @@ struct IncrementalRescanEquivalenceTests {
         )
     }
 
-    /// Churn that lands inside auto-summarized directories, which the baseline
-    /// never materialized: the planner must route them to a deep re-walk
-    /// (re-summarize) rather than a shallow diff that would explode the summary.
+    /// The planner must deep re-walk summarized directories; a shallow diff would explode the summary.
     @Test(arguments: 0..<16)
     func churnInsideSummarizedDirectoriesMatchesFreshFullScan(seedIndex: Int) async throws {
         var options = ScanOptions()

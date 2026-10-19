@@ -1,24 +1,10 @@
-//
-//  SunburstZoomTransition.swift
-//  NeodiskAppModel
-//
-//  The sunburst's drill transition timeline, shared by both apps: the
-//  clicked segment's arc sweeps open to the full circle while its band
-//  morphs into the center disk, its descendants shift up one ring per
-//  level, and everything outside the arc collapses to zero width; zooming
-//  out plays the exact reverse on the incoming parent layout. This file is
-//  the state and its per-frame phase; the geometry is SunburstCore's
-//  SunburstZoomGeometry, and each app draws the frames with its toolkit.
-//
+// The sunburst drill transition's state and per-frame phase, shared by both apps; the geometry lives in
+// SunburstCore's SunburstZoomGeometry and each app draws the frames.
 
 import Foundation
 import SunburstCore
 
-/// View-local state for one drill transition, owned by the sunburst view
-/// (SunburstChartView on the Mac, SunburstView on Linux). All rendering
-/// derives deterministically from this plus the current frame date (via
-/// SunburstZoomPresentation), so the apps only need a per-frame redraw — a
-/// TimelineView on the Mac, a frame-clock tick on Linux.
+/// Rendering derives deterministically from this plus the frame date, so the apps only need a per-frame redraw.
 package struct SunburstZoomTransitionState: Sendable {
     package enum Direction: Sendable {
         case zoomIn
@@ -47,9 +33,7 @@ package struct SunburstZoomTransitionState: Sendable {
     package var layoutReadyDate: Date?
     /// Zoom-in: the landed target layout the handoff reveals.
     package var incomingSegments: [SunburstSegment] = []
-    /// Rings deeper than this have no remapped counterpart — the remap can
-    /// only carry what the outgoing/incoming layout drew. They alpha-fade
-    /// at the handoff (in for zoom-in, out for zoom-out) instead of popping.
+    /// Rings the remap can't carry alpha-fade at the handoff instead of popping.
     package var handoffFadeDepthThreshold = Int.max
 
     package static func zoomIn(
@@ -85,27 +69,16 @@ package struct SunburstZoomTransitionState: Sendable {
     }
 }
 
-/// What the transition canvas shows this frame. Exactly one scene draws at
-/// a time — the phases never stack two full arc passes, so alpha-blended
-/// fills can't double up (a brightness flash), and nothing paints a
-/// background, so the pane behind the chart shows through untouched.
-/// Phase boundaries land on pixel-identical content: the remap preserves
-/// each segment's angular proportions, colors, and depth fade, so switching
-/// between a settled remap and the real layout is an invisible cut. The
-/// only rings that differ — deeper than `handoffFadeDepthThreshold`, which
-/// the remap could not carry — alpha-fade as a single layer over the pane.
+/// Exactly one scene draws at a time so alpha fills never double up into a flash. Phase boundaries land on
+/// pixel-identical content, so each switch is an invisible cut.
 package enum SunburstZoomPhase: Equatable, Sendable {
     /// Segments remapped toward (zoom-in) or away from (zoom-out) the focus.
     case zooming(progress: Double)
-    /// Zoom-in handoff: the landed target layout, its uncarried deep rings
-    /// fading in ("new rings radiate") — everything else already matches
-    /// the settled remap pixel-for-pixel.
+    /// The landed layout with its uncarried deep rings fading in; the rest already matches the remap.
     case revealingIncoming(alpha: Double)
     /// Zoom-out, parent layout still loading: the outgoing chart, held.
     case holdingPrevious
-    /// Zoom-out handoff: the remapped parent held fully zoomed (matching
-    /// the outgoing chart) while the outgoing chart's orphaned outermost
-    /// rings fade away before the reverse motion starts.
+    /// The remapped parent held zoomed while the outgoing chart's orphaned outer rings fade before the reverse.
     case fadingOrphans(alpha: Double)
 }
 
@@ -123,9 +96,7 @@ package struct SunburstZoomPresentation: Sendable {
         case .zoomIn:
             let elapsed = now.timeIntervalSince(state.startDate)
 
-            // The handoff waits for both the motion to fully settle and the
-            // real layout to exist; until then the remap holds the zoomed
-            // frame.
+            // Waits for the motion to settle and the real layout to exist.
             if let layoutReadyDate = state.layoutReadyDate {
                 let handoffStart = max(
                     state.startDate.addingTimeInterval(geometryDuration),
@@ -172,11 +143,7 @@ package struct SunburstZoomPresentation: Sendable {
 }
 
 extension SunburstZoomTransitionState {
-    /// The deepest ring the remap can carry: animated ring `d` lands
-    /// `focus.depth + 1` rings shallower, so anything in the other layout
-    /// past this depth has no remapped counterpart and alpha-fades at the
-    /// handoff (incoming deep rings on zoom-in, the outgoing chart's
-    /// orphaned outermost rings on zoom-out).
+    /// Ring `d` lands `focus.depth + 1` rings shallower, so deeper rings have no counterpart and fade instead.
     package static func handoffFadeDepthThreshold(
         animatedSegments: [SunburstSegment],
         focus: SunburstSegment

@@ -2,13 +2,8 @@ import Foundation
 import Testing
 @testable import NeodiskKit
 
-/// Drives `ScanTreeAssembler.legacyAssemble` with hand-built phase-1 state and
-/// asserts the full assembled `FileTreeStore` — node order, ids, every record
-/// field, topology, aggregate stats, and index lookups. Covers the feature
-/// matrix the coordinator can hand phase 2: plain dirs/files, packages,
-/// auto-summarized leaves, inaccessible dirs, empty dirs, mount-boundary
-/// leaves, hard links, clone families, size ties, and case-insensitive-equal
-/// sibling names.
+/// Asserts the full assembled store from hand-built phase-1 state across the feature matrix the
+/// coordinator can hand phase 2.
 @Suite struct ScanTreeAssemblerTests {
     // MARK: - Fixture builders
 
@@ -325,9 +320,8 @@ import Testing
     // MARK: - Duplicate node id and missing root
 
     @Test func duplicateNodeIDDroppedWithWarning() throws {
-        // Per-directory childPairs dedup keeps the first occurrence, so force
-        // the same id under two different parents: the second occurrence to
-        // reach the flatten pass is dropped and a warning surfaces.
+        // Per-directory dedup keeps the first occurrence, so the same id under two parents tests the flatten
+        // pass: the second is dropped with a warning.
         let dup = Self.fileRecord("/dup", name: "dup", alloc: 10)
         let completed: [ScanEngine.CompletedDirScan?] = [
             Self.traversableScan("/root", depth: 0),     // 0
@@ -337,9 +331,7 @@ import Testing
             Self.leafScan(dup, depth: 2),                // 4 (child of B, same id)
         ]
         var warnings: [ScanWarning] = []
-        // The fast path materializes the duplicate, NodeIDIndex.building
-        // detects it, and the assembler falls back to legacyAssemble, which
-        // dedups and warns.
+        // NodeIDIndex.building detects the duplicate and the assembler falls back to legacyAssemble.
         let store = try ScanTreeAssembler.assemble(
             completedByKey: completed,
             childrenKeysByKey: [[1, 2], [3], [4], [], []],

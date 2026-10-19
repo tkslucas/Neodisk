@@ -2,10 +2,8 @@ import Foundation
 import Testing
 @testable import NeodiskKit
 
-/// End-to-end incremental rescans over a real temp-dir tree, with the
-/// FSEvents journal replaced by a scripted stub — deterministic without
-/// depending on fseventsd timing. The real-journal path is covered by
-/// FileSystemEventHistoryProviderTests.
+/// End-to-end incremental rescans over a temp-dir tree with a scripted FSEvents stub, so tests don't
+/// depend on fseventsd timing.
 @Suite("IncrementalScanService", .serialized)
 struct IncrementalScanServiceTests {
     // MARK: - Stub provider
@@ -84,13 +82,8 @@ struct IncrementalScanServiceTests {
         return root
     }
 
-    /// A tree whose one multiply-linked file has its two links in two
-    /// different top-level subtrees, so hard-link deduplication must
-    /// reconcile ownership ACROSS subtree boundaries — the case a splice can
-    /// get wrong when it re-scans one subtree in isolation. "A-Owner" sorts
-    /// before "Z-Changed", so dedup keeps the shared bytes on the owner link
-    /// in the untouched subtree and zeroes the changed subtree's link; a
-    /// splice that forgets to rebalance leaves that link double-counted.
+    /// One file's two hard links live in different top-level subtrees, so dedup must reconcile across a
+    /// splice. A splice that forgets to rebalance leaves the changed subtree's link double-counted.
     private func makeHardLinkTree() throws -> URL {
         let root = FileManager.default.temporaryDirectory
             .appending(path: "incremental-hardlink-\(UUID().uuidString)", directoryHint: .isDirectory)
@@ -121,9 +114,7 @@ struct IncrementalScanServiceTests {
         return finished
     }
 
-    /// Node-for-node equivalence on the fields a user can observe. Directory
-    /// mtimes are excluded on purpose: both trees are scanned after the same
-    /// mutations, but HFS-level timestamp granularity can still differ.
+    /// Directory mtimes are excluded: timestamp granularity can differ even after the same mutations.
     private func expectEquivalentTrees(
         _ lhs: FileTreeStore,
         _ rhs: FileTreeStore,
@@ -141,11 +132,8 @@ struct IncrementalScanServiceTests {
         }
     }
 
-    /// Node-for-node parity focused on hard-link accounting: identity, link
-    /// count, both the raw (`unduplicatedAllocatedSize`) and the
-    /// dedup-adjusted (`allocatedSize`) sizes, and child ordering. A splice
-    /// that mis-rebalances a cross-subtree hard link diverges here even when
-    /// the coarser `expectEquivalentTrees` fields happen to line up.
+    /// Hard-link parity (identity, link count, raw and deduped sizes, child order); catches a mis-rebalanced
+    /// cross-subtree link that `expectEquivalentTrees` can miss.
     private func expectHardLinkParity(
         _ lhs: FileTreeStore,
         _ rhs: FileTreeStore,
@@ -170,10 +158,8 @@ struct IncrementalScanServiceTests {
             )
             #expect(a.logicalSize == b.logicalSize, "\(id)", sourceLocation: sourceLocation)
             #expect(a.descendantFileCount == b.descendantFileCount, "\(id)", sourceLocation: sourceLocation)
-            // Identity drives hard-link dedup for files and rename detection
-            // in scan diffs for directories; both must match a fresh scan,
-            // including a rescanned subtree's root directory (the scan-root
-            // metadata load captures directory identity for exactly this).
+            // Identity drives hard-link dedup and rename detection, so it must match a fresh scan, including a
+            // rescanned subtree's root.
             #expect(a.fileIdentity == b.fileIdentity, "\(id)", sourceLocation: sourceLocation)
             #expect(a.linkCount == b.linkCount, "\(id)", sourceLocation: sourceLocation)
             #expect(a.isPackage == b.isPackage, "\(id)", sourceLocation: sourceLocation)
@@ -277,11 +263,8 @@ struct IncrementalScanServiceTests {
         #expect(progressFractions == progressFractions.sorted())
     }
 
-    /// A hard link straddling two subtrees, where only one subtree changes.
-    /// The changed subtree is rescanned in isolation — where the shared file
-    /// looks like an unlinked file (its twin is out of scope) — so the splice
-    /// must re-run global hard-link deduplication to keep the accounting
-    /// identical to a from-scratch scan.
+    /// The rescanned subtree sees the shared file as unlinked (its twin is out of scope), so the splice must
+    /// re-run global hard-link dedup.
     @Test func incrementalSpliceMatchesFreshFullScanForHardLinksAcrossSubtrees() async throws {
         let root = try makeHardLinkTree()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -296,10 +279,7 @@ struct IncrementalScanServiceTests {
         ))
         #expect(baseline.incrementalCheckpoint?.eventID == 10)
 
-        // The fixture must actually exercise dedup, or the parity check below
-        // is vacuous: both links share one identity, and the baseline kept the
-        // bytes on the owner link (alphabetically-first subtree) while the
-        // changed subtree's link was reduced below its raw size.
+        // Proves the fixture exercises dedup, or the parity check below is vacuous.
         let ownerLink = try #require(baseline.treeStore.node(id: target.id + "/A-Owner/shared.bin"))
         let changedLink = try #require(baseline.treeStore.node(id: target.id + "/Z-Changed/shared.bin"))
         #expect(ownerLink.linkCount == 2)
@@ -317,9 +297,7 @@ struct IncrementalScanServiceTests {
         ]
         provider.setHistory(.success(FileSystemEventHistory(events: events)))
 
-        // Guarantee the splice path — not a silent full-scan fallback —
-        // handles these events: run the same planner the service runs and
-        // require it to resolve them to re-scanning only the changed subtree.
+        // Requires the planner to resolve these events to a subtree splice, not a silent full-scan fallback.
         let behavior = ScanEngine.ScanBehavior(
             excludesStartupVolumeInternals: target.kind == .volume && target.url.path == "/"
         )
@@ -355,15 +333,11 @@ struct IncrementalScanServiceTests {
         #expect(rescanned.aggregateStats.fileCount == fresh.aggregateStats.fileCount)
         #expect(rescanned.aggregateStats.directoryCount == fresh.aggregateStats.directoryCount)
 
-        // The changed subtree's link is deduped again after the splice: its
-        // isolated sub-scan saw it at full size, and the rebalance had to
-        // reduce it. A rebalance-less splice would leave it at raw size here.
+        // The isolated sub-scan saw this link at full size; a rebalance-less splice would leave it there.
         let splicedChangedLink = try #require(rescanned.treeStore.node(id: target.id + "/Z-Changed/shared.bin"))
         #expect(splicedChangedLink.allocatedSize < splicedChangedLink.unduplicatedAllocatedSize)
 
-        // The rescanned subtree's ROOT directory is built by the single-URL
-        // scan-root metadata load, not the bulk child reader — make sure that
-        // path recorded a real identity too, not a matching pair of nils.
+        // The subtree root comes from the single-URL metadata load, not the bulk reader; check it got an identity.
         #expect(rescanned.treeStore.node(id: target.id + "/Z-Changed")?.fileIdentity != nil)
 
         // And the incremental machinery actually ran: history was consulted
@@ -377,10 +351,8 @@ struct IncrementalScanServiceTests {
         #expect(requests.first?.through == 20)
     }
 
-    /// `ln` after the baseline: the journal names only the new link, and
-    /// the existing link's baseline record still reads link count 1 with no
-    /// identity. A relist of the new link's folder would count the shared
-    /// bytes twice; the hard-link flag must route the rescan to a full scan.
+    /// The journal names only the new link and the old one still reads link count 1, so a relist would
+    /// double-count; the hard-link flag must force a full scan.
     @Test func newHardLinkFallsBackToFullScanAndMatchesFreshScan() async throws {
         let root = try makeTemporaryTree()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -482,11 +454,8 @@ struct IncrementalScanServiceTests {
         #expect(first.isCheckingChanges)
         #expect(progress.drop(while: \.isCheckingChanges).allSatisfy { !$0.isCheckingChanges })
 
-        // The counters then open at the baseline totals of everything the
-        // relist retains, not at zero. This churn only inserts a new file (the
-        // shallow relist of beta re-reads its membership, nothing leaves the
-        // tree), so the seed is the full baseline and grows as the insertion
-        // scans in.
+        // Counters open at the baseline totals the relist retains, not zero; this churn only inserts, so the
+        // seed is the full baseline.
         let seed = try #require(progress.first { !$0.isCheckingChanges })
         #expect(seed.filesVisited == baseline.aggregateStats.fileCount)
         #expect(seed.bytesDiscovered == baseline.aggregateStats.totalAllocatedSize)
@@ -500,9 +469,7 @@ struct IncrementalScanServiceTests {
         let fractions = progress.map(\.progressFraction)
         #expect(fractions == fractions.sorted())
         #expect(progress.contains { $0.isMergingChanges && $0.isFinalizing })
-        // The merge phase reports real sub-phase progress (determinate and
-        // moving), not a static hold at the rescan ceiling: at least one
-        // merging metric sits strictly between the ceiling and completion.
+        // The merge phase must report moving progress, not a static hold at the rescan ceiling.
         #expect(progress.contains {
             $0.isMergingChanges
                 && $0.progressFraction > ScanMetrics.traversalSpan
@@ -544,10 +511,7 @@ struct IncrementalScanServiceTests {
         )
     }
 
-    /// A new top-level file and a new top-level directory appear under the scan
-    /// root. The planner relists the root (not a full scan); the spliced tree
-    /// must match a from-scratch scan node-for-node — the correctness proof that
-    /// the shallow relist reproduces a fresh scan's root membership.
+    /// New root-level entries relist the root (not a full scan), and the splice must match a fresh scan.
     @Test func rootMembershipAdditionRelistsAndMatchesFullScan() async throws {
         let root = try makeTemporaryTree()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -633,9 +597,7 @@ struct IncrementalScanServiceTests {
         #expect(rescanned.aggregateStats.totalAllocatedSize == fresh.aggregateStats.totalAllocatedSize)
     }
 
-    /// A direct-child file of the scan root grows. Its own event maps to the
-    /// root (the change is directly under it), so the relist replaces just that
-    /// file's record — matching a fresh scan without re-reading anything else.
+    /// A direct-child file's event maps to the root, so the relist replaces just that file's record.
     @Test func directChildFileChangeRelistsAndMatchesFullScan() async throws {
         let root = try makeTemporaryTree()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -676,9 +638,7 @@ struct IncrementalScanServiceTests {
         #expect(rescannedTop.allocatedSize == fresh.treeStore.node(id: target.id + "/topfile.bin")?.allocatedSize)
     }
 
-    /// When an incremental rescan degrades to a full scan mid-flight (a mapped
-    /// subtree vanished), the bar must not step backward and the metrics must
-    /// flag the fallback so the strip can say a full scan is running.
+    /// A mid-flight fallback (mapped subtree vanished) must not step the bar back and must flag the fallback.
     @Test func fallbackFullScanKeepsBarMonotonicAndIsFlagged() async throws {
         let root = try makeTemporaryTree()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -690,10 +650,8 @@ struct IncrementalScanServiceTests {
         let baseline = try #require(try await finishedSnapshot(
             from: service.scan(target: target, options: options)
         ))
-        // beta is deleted, and the journal hierarchically coalesces on it
-        // (MustScanSubDirs), so the planner forces a deep re-walk of beta; that
-        // sub-scan then fails on the missing directory and the service falls
-        // back to a full scan after progress has advanced.
+        // A coalesced event on beta forces a deep re-walk, which fails on the missing directory and falls back
+        // to a full scan after progress has advanced.
         try FileManager.default.removeItem(at: root.appending(path: "beta", directoryHint: .isDirectory))
         provider.setHistory(.success(FileSystemEventHistory(events: [
             FileSystemChangeEvent(
@@ -831,10 +789,8 @@ struct IncrementalScanServiceTests {
             from: service.scan(target: target, options: options)
         ))
 
-        // beta is deleted on disk but the journal only reports a change
-        // INSIDE it, so the planner targets beta itself for a relist; the relist
-        // finds it gone and removes it in place, matching a fresh scan without
-        // escalating to a full traversal.
+        // The journal reports a change inside beta only, so the relist targets beta, finds it gone and removes
+        // it in place without a full traversal.
         let beta = root.appending(path: "beta", directoryHint: .isDirectory)
         try FileManager.default.removeItem(at: beta)
         provider.setHistory(.success(FileSystemEventHistory(events: [
@@ -883,9 +839,7 @@ struct IncrementalScanServiceTests {
             incrementalCheckpoint: scanned.incrementalCheckpoint
         )
 
-        // The journal names the warned directory itself (its readability
-        // changed); relisting it re-verifies it and prunes the stale warning,
-        // while the untouched warning elsewhere in the tree survives.
+        // Relisting the warned directory prunes its stale warning; the untouched one elsewhere survives.
         provider.setHistory(.success(FileSystemEventHistory(events: [
             FileSystemChangeEvent(path: target.id + "/alpha/nested", eventID: 15, flags: [.itemIsDirectory]),
         ])))
@@ -898,10 +852,8 @@ struct IncrementalScanServiceTests {
     }
 
     #if canImport(CoreServices)
-    /// Whole chain against the real fseventsd journal: capture → mutate →
-    /// replay → plan → splice. Self-skips when the volume has no usable
-    /// journal (the checkpoint capture fails). The journal write is
-    /// asynchronous, so the rescan polls until the change surfaces.
+    /// Against the real fseventsd journal; self-skips without a usable journal. The journal write is async,
+    /// so the rescan polls until the change surfaces.
     @Test(.timeLimit(.minutes(1))) func realJournalRescanConvergesToFreshScan() async throws {
         let root = try makeTemporaryTree()
         defer { try? FileManager.default.removeItem(at: root) }

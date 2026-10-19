@@ -1,13 +1,5 @@
-//
-//  UpdateIndicator.swift
-//  Neodisk
-//
-//  Update status pill in the window toolbar, between the center view picker
-//  and the trailing buttons. Invisible while idle; once a check runs it
-//  persists until the user acts on it. The pill body is the primary action
-//  (install when an update exists, dismiss when up to date) and the small
-//  x dismisses or cancels, so no popover is needed.
-//
+// Invisible while idle; once a check runs it stays until the user acts. The body is the primary action
+// and the small x dismisses or cancels, so no popover is needed.
 
 import SwiftUI
 

@@ -1,19 +1,11 @@
-//
-//  MountBoundaryPolicy.swift
-//  Neodisk
-//
-
 #if canImport(Darwin)
 import Darwin
 #elseif canImport(Glibc)
 import Glibc
 #endif
 
-/// A scan owns the filesystem containing its explicitly selected root. Child
-/// mount points remain visible as zero-child directory records, but traversal
-/// does not silently expand into another mounted filesystem. Selecting that
-/// mounted directory as the scan root makes its device the owned device and
-/// therefore preserves explicit-target behavior.
+/// Child mount points stay visible as zero-child records but are never expanded; selecting one as the root
+/// makes its device the owned one.
 nonisolated enum MountBoundaryPolicy {
     #if canImport(Darwin)
     static let mountPointFlag = UInt32(bitPattern: DIR_MNTSTATUS_MNTPOINT)
@@ -39,12 +31,8 @@ nonisolated enum MountBoundaryPolicy {
         return !ownedDeviceIDs.contains(deviceID)
     }
 
-    /// The devices a scan rooted at `rootPath` legitimately spans. Usually
-    /// just the root's own device — but the startup volume is an APFS volume
-    /// group, where the sealed system snapshot at "/" and the Data volume
-    /// grafted in via firmlinks can report distinct devices. A "/" scan owns
-    /// all of them; treating either as a nested mount would silently drop a
-    /// whole volume from the map.
+    /// The startup volume group's sealed system and Data volumes can report distinct devices; a "/" scan owns
+    /// all of them, or a whole volume would drop from the map.
     static func ownedDeviceIDs(rootPath: String, rootDeviceID: UInt64?) -> Set<UInt64> {
         var owned = Set<UInt64>()
         if let rootDeviceID {
@@ -52,10 +40,7 @@ nonisolated enum MountBoundaryPolicy {
         }
         #if os(macOS)
         guard rootPath == "/" else { return owned }
-        // "/" covers whichever side of the group the root stat resolved to,
-        // "/System" the sealed snapshot, "/System/Volumes/Data" the Data
-        // volume. On systems where the group shares one device these
-        // collapse into a single entry.
+        // "/" is whichever side the root stat resolved to; these collapse when the group shares one device.
         for path in ["/", "/System", "/System/Volumes/Data"] {
             var status = stat()
             if lstat(path, &status) == 0 {

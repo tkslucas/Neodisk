@@ -2,9 +2,7 @@ import Testing
 import Foundation
 @testable import NeodiskKit
 
-/// Focused coverage for the scan-wide `AtomicDirectorySummaryPool`: two jobs
-/// sharing the worker set, hard-link claim parity through the pooled path, and
-/// mid-job cancellation resuming the caller with `CancellationError`.
+/// Shared workers across two jobs, hard-link claim parity, and mid-job cancellation.
 @Suite struct AtomicDirectorySummaryPoolTests {
     /// Throws `CancellationError` once it has been called more than `throwAfter`
     /// times, so a walk can be cancelled deterministically mid-flight.

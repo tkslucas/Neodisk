@@ -1,13 +1,5 @@
-//
-//  DirectoryIOExecutor.swift
-//  Neodisk
-//
-//  Blocking directory syscalls run on bounded, dedicated threads instead of
-//  occupying Swift's cooperative executor. The threads share one queue, so
-//  whichever is idle takes the next directory: a slow listing (a cache folder
-//  with tens of thousands of entries) holds one thread, never the work queued
-//  behind it. Each thread owns one reusable getattrlistbulk context.
-//
+// Blocking directory syscalls on bounded dedicated threads, off the cooperative executor. One shared queue, so
+// a slow listing holds one thread, never the work behind it.
 
 import Dispatch
 import Foundation

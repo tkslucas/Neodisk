@@ -1,30 +1,18 @@
-//
-//  DebugSnapshotter.swift
-//  Neodisk
-//
-//  Dev/testing hook: NEODISK_UI_SNAPSHOT=<out.png> waits for a scan, zooms
-//  the map programmatically, and writes a capture of the whole window so
-//  clipping and layer orientation can be verified headlessly. Lives outside
-//  TreemapNSView so the shipping view class stays about rendering.
-//
+// Dev hook: NEODISK_UI_SNAPSHOT=<out.png> waits for a scan, zooms the map and captures the window headlessly.
 
 import AppKit
 import SwiftUI
 
-/// Keeps the host window off Lucas's screen while a headless snapshot runs:
-/// moves it far offscreen and makes it transparent as soon as it is attached
-/// to a window, so `NEODISK_UI_SNAPSHOT` captures (via `cacheDisplay`, which
-/// reads the layer tree regardless of on-screen visibility) without the window
-/// ever appearing or stealing focus. Inert unless the env var is set.
+/// Moves the window offscreen and transparent once attached; `cacheDisplay` reads the layer tree anyway,
+/// so it captures without the window appearing or stealing focus. Inert unless the env var is set.
 struct SnapshotWindowHider: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
         guard HeadlessMode.isOffscreen else {
             return view
         }
-        // Poll for the window instead of relying on updateNSView: SwiftUI
-        // does not re-call updateNSView on window attachment, so a quiet
-        // view hierarchy (sunburst mode) never saw a non-nil window there.
+        // Poll: SwiftUI doesn't re-call updateNSView on window attachment, so a quiet hierarchy never saw the
+        // window.
         Task { @MainActor [weak view] in
             for _ in 0..<200 {
                 if let view, let window = view.window {
@@ -76,9 +64,7 @@ final class DebugSnapshotter {
         }
     }
 
-    /// Plain window capture for runs where no treemap view ever attaches
-    /// (NEODISK_VIZ_MODE=sunburst): waits out the scan, then defers to the
-    /// treemap path if one registered in the meantime.
+    /// For runs where no treemap view attaches (NEODISK_VIZ_MODE=sunburst).
     func scheduleWindowFallback(for view: NSView) {
         guard view.window != nil, !fallbackScheduled, !scheduled,
               let path = ProcessInfo.processInfo.environment["NEODISK_UI_SNAPSHOT"] else {
@@ -94,10 +80,8 @@ final class DebugSnapshotter {
     }
 
     private static func writeWindowSnapshot(of view: NSView, to path: String) {
-        // Capture the window's frame view (superview of the content view) so
-        // the titlebar and toolbar are included — the content view alone omits
-        // the toolbar, which some snapshots need to verify (e.g. the update
-        // pill). Falls back to the content view if the frame view is absent.
+        // The frame view includes the titlebar and toolbar, which the content view omits (e.g. the update
+        // pill).
         guard let contentView = view.window?.contentView else {
             log("no content view to capture")
             return

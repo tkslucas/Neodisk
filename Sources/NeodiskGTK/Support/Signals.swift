@@ -1,17 +1,5 @@
-//
-//  Signals.swift
-//  NeodiskGTK
-//
-//  Closure-based GObject signal connection. GLib calls C function pointers;
-//  each signal *shape* gets one non-capturing @convention(c) trampoline that
-//  recovers the Swift closure from the user-data pointer. GLib owns one
-//  retain on the closure box and releases it when the handler is
-//  disconnected or the instance is finalized, so handlers never outlive
-//  their widget and never leak.
-//
-//  Every handler runs on the main thread, inside GLib's loop, which is the
-//  main actor's executor too (see MainLoop.swift).
-//
+// Each signal shape gets one non-capturing @convention(c) trampoline; GLib holds one retain on the closure box
+// and releases it on disconnect or finalize, so handlers never leak. Handlers run on the main actor's loop.
 
 import CGtk
 
@@ -62,9 +50,7 @@ func connect(_ instance: GPtr?, _ signal: String, after: Bool = false, _ handler
     return connectBox(instance, signal, handler as Handler, unsafeBitCast(trampoline, to: GCallback.self), after: after)
 }
 
-/// `void handler(GObject*, GParamSpec*, gpointer)` — property change
-/// notification. Always use this for `notify::…`: the extra GParamSpec
-/// argument means the two-argument shape would read it as the closure.
+/// Always use this for `notify::`: the two-argument shape would read the extra GParamSpec as the closure.
 @discardableResult
 func connectNotify(_ instance: GPtr?, _ property: String, _ handler: @escaping @MainActor () -> Void) -> gulong {
     connectPointer(instance, "notify::\(property)") { _ in handler() }
@@ -82,9 +68,7 @@ func connectBool(_ instance: GPtr?, _ signal: String, _ handler: @escaping @Main
     return connectBox(instance, signal, handler as Handler, unsafeBitCast(trampoline, to: GCallback.self), after: false)
 }
 
-/// `void handler(GObject*, gpointer arg, gpointer)` — notify::prop
-/// (GParamSpec*), list-item factory setup/bind (GtkListItem*), row-activated
-/// (GtkListBoxRow*), action activate (GVariant*).
+/// `void handler(GObject*, gpointer arg, gpointer)`: list-item setup/bind, row-activated, action activate.
 @discardableResult
 func connectPointer(_ instance: GPtr?, _ signal: String, _ handler: @escaping @MainActor (GPtr?) -> Void) -> gulong {
     typealias Handler = @MainActor (GPtr?) -> Void
@@ -193,9 +177,7 @@ func connectTooltip(_ instance: GPtr?, _ handler: @escaping @MainActor (_ x: Int
 
 // MARK: - Actions
 
-/// Adds a GSimpleAction named `name` to an action map (application or
-/// window), optionally taking a string parameter. Returns the action so the
-/// caller can toggle its enabled state.
+/// Returns the action so the caller can toggle its enabled state.
 @discardableResult
 @MainActor
 func addAction(

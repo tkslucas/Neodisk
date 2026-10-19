@@ -1,13 +1,3 @@
-//
-//  StatusBar.swift
-//  Neodisk
-//
-//  The bottom status bar: a swatch plus name/kind/size for whatever the user
-//  is hovering or has selected — free space, hidden space, an aggregated
-//  "smaller items" cell, or a real node — falling back to a hint when nothing
-//  is under inspection.
-//
-
 import SwiftUI
 import NeodiskKit
 import NeodiskAppModel
@@ -24,9 +14,8 @@ struct StatusBar: View {
                 Text("Free space on this volume")
                 Spacer(minLength: 12)
                 if let freeSpaceBytes = model.freeSpace.freeSpaceBytes {
-                    // Finder-style available figure: purgeable space counts
-                    // as free, annotated so the number still matches Disk
-                    // Utility's "available" at a glance.
+                    // Purgeable space counts as free, annotated so the figure matches the system "available"
+                    // number.
                     Text(Self.freeSpaceText(
                         freeSpaceBytes: freeSpaceBytes,
                         purgeableBytes: model.freeSpace.purgeableBytes
@@ -100,10 +89,8 @@ struct StatusBar: View {
         )
     }
 
-    /// Size for the inspected item, annotated when it carries cloud-only
-    /// (not-downloaded) bytes: a dataless file is ~0 on disk, so its full
-    /// logical size is shown with a qualifier; a folder splits its on-disk
-    /// bytes from the cloud-only bytes below it.
+    /// A dataless file is ~0 on disk, so its logical size shows with a qualifier; a folder splits on-disk
+    /// from cloud-only bytes.
     private static func sizeText(for node: FileNodeRecord) -> String {
         if node.isDataless {
             return String(

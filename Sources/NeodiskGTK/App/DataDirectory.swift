@@ -1,12 +1,4 @@
-//
-//  DataDirectory.swift
-//  NeodiskGTK
-//
-//  Where the app's read-only data lives: the translation catalogs and its
-//  own symbolic icons. An installed build keeps them in
-//  <prefix>/share/neodisk next to <prefix>/bin/neodisk; `swift run` from a
-//  checkout reads them straight from the repository.
-//
+// Translations and symbolic icons: <prefix>/share/neodisk when installed, the repository under `swift run`.
 
 import Foundation
 import NeodiskKit

@@ -1,12 +1,4 @@
-//
-//  CloudSummaryStrip.swift
-//  Neodisk
-//
-//  A compact footer under the statistics panel, shown only when the scan
-//  contains cloud-only (dataless) bytes: how much of the scanned tree lives
-//  on this Mac versus only in the cloud, with a proportion bar. Read-only
-//  summary — no download/evict actions.
-//
+// Shown only when the scan has cloud-only bytes. Read-only: no download or evict actions.
 
 import SwiftUI
 import NeodiskKit
@@ -19,11 +11,8 @@ struct CloudSummaryStrip: View {
     /// Bytes that live only in the cloud below the scanned root.
     let cloudOnly: Int64
 
-    /// Same hue, different intensity: no color-only encoding to decode, so
-    /// the bar needs no colorblind-palette handling and the labels carry the
-    /// meaning regardless. The cloud-only segment additionally wears the
-    /// same diagonal hatch as dataless tiles and arcs, so the bar speaks
-    /// the visualizations' texture language.
+    /// Same hue at different intensity, so no colorblind handling is needed; the cloud-only segment also
+    /// wears the dataless hatch.
     private var onThisMacColor: Color { .accentColor }
     private var cloudOnlyColor: Color { .accentColor.opacity(0.3) }
 

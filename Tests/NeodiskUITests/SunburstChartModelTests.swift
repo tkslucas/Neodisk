@@ -1,11 +1,4 @@
-//
-//  SunburstChartModelTests.swift
-//  Neodisk
-//
-//  Generation-guarded layout loads (stale results
-//  dropped, older work cancelled), hover clearing, and selection overlay
-//  ordering.
-//
+// Generation-guarded layout loads, hover clearing and selection overlay ordering.
 
 import SunburstCore
 import Combine

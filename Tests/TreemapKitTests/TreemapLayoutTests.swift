@@ -1,8 +1,3 @@
-//
-//  TreemapLayoutTests.swift
-//  TreemapKit
-//
-
 #if canImport(CoreGraphics)
 import CoreGraphics
 #endif

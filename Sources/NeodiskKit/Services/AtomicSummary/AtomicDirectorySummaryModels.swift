@@ -1,36 +1,22 @@
-//
-//  AtomicDirectorySummaryModels.swift
-//  Neodisk
-//
-
 import Foundation
 
 typealias CancellationCheck = @Sendable () throws -> Void
 
-/// A child discovered during directory enumeration.
-/// Directory enumeration prefetches resource values, so carrying decoded metadata forward
-/// avoids asking each URL for the same values again when the child is scanned.
+/// Carries the metadata enumeration already prefetched, so scanning the child doesn't ask its URL again.
 nonisolated struct DirectoryEntry: Sendable {
-    /// The child's absolute path (its node id) and display name, materialized
-    /// once at enumeration and reused everywhere so nothing re-derives them
-    /// from a `URL`. `name` is the last path component.
+    /// Materialized once at enumeration so nothing re-derives them from a `URL`.
     let path: String
     let name: String
     let metadata: NodeMetadata?
     let localizedEnumerationError: Error?
     let isDirectoryHint: Bool?
-    /// Device identity used only for traversal boundary decisions. This is
-    /// populated directly by getattrlistbulk and derived from a directory's
-    /// FileIdentity on the compatibility path.
+    /// Only for traversal boundary decisions; from getattrlistbulk, or the FileIdentity on the fallback path.
     let deviceID: UInt64?
     /// ATTR_DIR_MOUNTSTATUS when bulk enumeration supplied it.
     let directoryMountStatus: UInt32
 
-    /// Rebuilt on demand from `path`: only directories, packages, and
-    /// unavailable entries ever need a `URL`; plain files go straight from
-    /// `path`/`name` to a `FileNodeRecord`, so building it eagerly per entry
-    /// was wasted `URL.appending`. `URL(filePath:)` is byte-equivalent to the
-    /// `parent.appending(path:)` it replaces for every property the scan reads.
+    /// Built on demand: only directories, packages and unavailable entries need a `URL`, so building it per
+    /// entry was wasted work. Byte-equivalent to `parent.appending(path:)` for everything the scan reads.
     var url: URL {
         let isDirectory = metadata?.isDirectory ?? isDirectoryHint ?? false
         return URL(filePath: path, directoryHint: isDirectory ? .isDirectory : .notDirectory)
@@ -64,9 +50,7 @@ nonisolated struct AtomicDirectorySummary: Sendable {
     let warnings: [ScanWarning]
     let hardLinkClaims: [HardLinkClaim]
     let cloneMembers: [SummarizedCloneMember]
-    /// Pool jobs whose live progress contribution is still displayed. The
-    /// traversal acknowledges these IDs when it folds this summary into its
-    /// authoritative metrics base.
+    /// The traversal acknowledges these when it folds the summary into its authoritative metrics.
     let progressJobIDs: [Int]
 }
 
@@ -167,9 +151,7 @@ nonisolated struct AtomicDirectorySummaryPartial: Sendable {
 /// Callbacks a directory-level walk drives so `processDirectoryLevel`'s
 /// per-child classification can fold into the shared pool's per-job partial.
 nonisolated struct AtomicSummaryLevelSink {
-    /// `onVisit`/`onFile` take the child's path string (progress, hard-link
-    /// claim key) so the bulk walker builds no per-child `URL`; `onWarning`/
-    /// `onSubdirectory` keep `URL`s, built only for rare errors and recursion.
+    /// Path strings so the bulk walker builds no per-child `URL`; URLs only for rare errors and recursion.
     let onVisit: (String) -> Void
     let onAccessibility: (Bool) -> Void
     let onWarning: (URL, Error) -> Void
@@ -187,9 +169,7 @@ nonisolated struct LeafNodeResult: Sendable {
     let progressJobIDs: [Int]
 }
 
-/// Reference-typed holder for the immediate-children reuse path, which mutates
-/// one running partial as it folds each child. Accumulation semantics live
-/// entirely in `AtomicDirectorySummaryPartial`.
+/// Accumulation semantics live entirely in `AtomicDirectorySummaryPartial`.
 nonisolated final class AtomicDirectorySummaryState {
     var partial = AtomicDirectorySummaryPartial()
     let ownerNodeID: String

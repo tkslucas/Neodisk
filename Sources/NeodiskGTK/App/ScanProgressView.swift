@@ -1,14 +1,5 @@
-//
-//  ScanProgressView.swift
-//  NeodiskGTK
-//
-//  The scan progress strip under the header bar. The product rules are the
-//  Mac's: the bar is determinate always, never moves backward within a scan,
-//  and is full exactly when the scan is done; liveness is the drifting
-//  diagonal-stripe sheen on the fill, which drifts while work runs and
-//  freezes when it stops. The stripes are a GPU repeating gradient animated
-//  from the frame clock.
-//
+// Determinate, never backward, full exactly when done. Liveness is the stripe sheen (a GPU repeating
+// gradient on the frame clock), which freezes when work stops.
 
 import CGtk
 import Foundation

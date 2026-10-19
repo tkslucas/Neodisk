@@ -1,15 +1,5 @@
-//
-//  CatalogRebuildThrottle.swift
-//  Neodisk
-//
-//  Adaptive throttle for the O(nodes) stats-catalog rebuild while a scan
-//  streams partials, shared by the Kind and Age catalogs: skip a rebuild if
-//  the last one was under an interval ago, where the interval grows to ~10×
-//  the measured build cost — the same cost × N adaptation as partial-tree
-//  emission — so a fast-changing big tree isn't rebuilt on every partial. The
-//  final complete snapshot always rebuilds (callers gate on `isComplete`
-//  before consulting `shouldSkip`).
-//
+// Skips a stats-catalog rebuild while partials stream if the last was within ~10x its measured cost, so a big
+// changing tree isn't rebuilt every partial. Callers always rebuild the complete snapshot.
 
 import Foundation
 

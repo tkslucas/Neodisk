@@ -1,14 +1,5 @@
-//
-//  OutlineSearch.swift
-//  NeodiskGTK
-//
-//  The file list's search field, as on the Mac: fuzzy search over every
-//  name in the scan, off the main actor, through the shared search index
-//  and matcher. While there's a query, the matches take the outline's place
-//  (Ctrl+F focuses the field, Escape clears it). Filtering never navigates:
-//  the map stays where it is until a result is picked, which selects it —
-//  the treemap widens its focus to show it and the outline expands to it.
-//
+// Fuzzy search over every scanned name, off the main actor. Filtering never navigates: the map stays put
+// until a result is picked.
 
 import CGtk
 import Foundation
@@ -85,9 +76,7 @@ final class OutlineSearch {
             self.clear()
         })
         tokens.append(track { [unowned self] in
-            // Searching needs a finished scan: the field waits for one (a
-            // live scan streams partial trees), and a refresh of the same
-            // location reruns the query on the new tree.
+            // Partial trees aren't searchable; a refresh of the same location reruns the query on the new tree.
             let hasSnapshot = self.model.snapshot != nil
             Widgets.setVisible(self.entryBar, hasSnapshot)
             Widgets.setVisible(self.separator, hasSnapshot)

@@ -4,14 +4,8 @@ import Darwin
 import Dispatch
 import Foundation
 
-/// Other apps' sandbox and group containers (`~/Library/Containers/<app>`,
-/// `~/Library/Group Containers/<group>`), which macOS checks on every access.
-/// More than a couple of directory opens in flight inside them can stall one
-/// open for five to six seconds; one or two at a time never does (measured on
-/// macOS 26: 0 stalls in 20 two-thread walks of Group Containers, 5 in 20
-/// four-thread walks). Reads inside them are held to `concurrentReadLimit`,
-/// and traversal gives them their own lane so they run beside the rest of the
-/// scan instead of holding its readers.
+/// Sandbox and group containers: more than two opens in flight inside them can stall one for 5-6 s
+/// (macOS 26), so reads are capped at `concurrentReadLimit` on their own traversal lane.
 nonisolated enum ProtectedContainers {
     static let concurrentReadLimit = 2
 

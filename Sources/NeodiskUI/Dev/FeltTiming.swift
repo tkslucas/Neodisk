@@ -1,32 +1,5 @@
-//
-//  FeltTiming.swift
-//  Neodisk
-//
-//  App-level "felt time" instrumentation: the wall/CPU cost of what the user
-//  actually waits on, which the engine-phase NEODISK_SCAN_TIMING lines do not
-//  capture (they stop at the engine boundary; the UI tail — splice apply,
-//  treemap layout, first render — is unmeasured, and reopening a scan runs
-//  snapshot-restore + incremental rescan, not a full scan). Active only under
-//  NEODISK_SCAN_TIMING=1, driven by INSTRUCTIONS/scripts/app-bench.sh.
-//
-//  Marks are emitted through NeodiskKit's ScanTiming so the line format stays
-//  a single contract:
-//    app.launchToScanStart        process creation → first scan/restore begins
-//    app.firstPartialDisplayed    scan start → first tree committed to the map
-//                                 (for a rescan this is the cached map showing)
-//    app.scanFinishedToTreeDisplayed  engine finished → final tree on the map
-//    app.feltTotal                scan start → final interactive tree on the map
-//  Every episode's marks carry one resolved `mode=full|restore|rescan`.
-//
-//  The three per-episode marks are buffered and emitted together when the
-//  final tree is displayed: the full-vs-rescan distinction is only settled
-//  then (the cold-launch index race routes first scans through the same
-//  optimistic-refresh path a real rescan takes), and emitting at the end keeps
-//  every line of one episode tagged with the same mode.
-//
-//  "Displayed" means pixels committed to the treemap layer (the render task's
-//  push), correlated by snapshot id — not where the event arrived.
-//
+// Felt-time `app.*` marks for the UI tail engine timing misses (NEODISK_SCAN_TIMING=1). Buffered and
+// emitted at final display, once full vs rescan is settled, so an episode shares one mode.
 
 import AppKit
 import Foundation
@@ -139,9 +112,8 @@ enum FeltTiming {
         finalSnapshotID = snapshotID
     }
 
-    /// The treemap committed a rendered image for `snapshotID`. The first such
-    /// commit records the first-partial instant; the commit of the final
-    /// snapshot flushes the episode's marks (and triggers auto-quit).
+    /// The first commit records first-partial; the final snapshot's commit flushes the marks and triggers
+    /// auto-quit.
     static func noteTreemapDisplayed(snapshotID: UUID?) {
         guard isEnabled, scanStart != nil else { return }
         if firstDisplay == nil {

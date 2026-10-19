@@ -1,12 +1,5 @@
-//
-//  UpdateState.swift
-//  Neodisk
-//
-//  Sparkle-free model for the in-window update indicator (in the spirit of
-//  Ghostty's UpdateViewModel): the driver maps Sparkle callbacks onto this
-//  state machine, and the toolbar indicator + popover render it. Closures
-//  wrap Sparkle's replies so views never touch Sparkle types.
-//
+// Sparkle-free state machine for the in-window update indicator; closures wrap Sparkle's replies so
+// views never touch Sparkle types.
 
 import Combine
 import Foundation
@@ -15,10 +8,7 @@ import Foundation
 final class UpdateViewModel: ObservableObject {
     @Published var state: UpdateState = .idle
 
-    /// Number of live main windows that can host the toolbar indicator.
-    /// ContentView increments/decrements this; when it is zero the driver
-    /// falls back to Sparkle's standard dialog UI so update flows are never
-    /// invisible (e.g. menu-triggered check with the window closed).
+    /// At zero the driver falls back to Sparkle's standard dialogs, so update flows are never invisible.
     var indicatorHostCount = 0
 
     var hasIndicatorHost: Bool { indicatorHostCount > 0 }
@@ -27,10 +17,7 @@ final class UpdateViewModel: ObservableObject {
         indicatorHostCount += 1
     }
 
-    /// When the last host window closes, unwind whatever update state is
-    /// pending (answering Sparkle's outstanding reply) so the session does
-    /// not dangle invisibly; a later manual check falls back to the
-    /// standard dialog driver.
+    /// Answers Sparkle's outstanding reply so the session doesn't dangle invisibly.
     func hostDidDisappear() {
         indicatorHostCount -= 1
         guard indicatorHostCount <= 0, !state.isIdle else { return }
@@ -118,10 +105,7 @@ enum UpdateState {
         }
     }
 
-    /// Dev/testing hook (NEODISK_UPDATE_STATE): builds a representative
-    /// non-idle state with inert closures so headless snapshots can show the
-    /// toolbar pill without driving a real Sparkle check. Not used in
-    /// shipping flows.
+    /// Dev hook (NEODISK_UPDATE_STATE): a non-idle state with inert closures for headless snapshots.
     static func devState(named name: String) -> UpdateState? {
         let noop: () -> Void = {}
         switch name {

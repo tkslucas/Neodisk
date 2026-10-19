@@ -1,13 +1,5 @@
-//
-//  FileCategoryRules.swift
-//  Neodisk
-//
-//  The user's changes to the Categories grouping — extensions moved to
-//  another category, and categories of their own — and the rules both apps
-//  classify with once those changes are merged over the built-in table.
-//  Each app persists the customization as JSON and installs it here at
-//  launch and on every change.
-//
+// The user's Categories customization merged over the built-in table; each app installs it at launch and
+// on every change.
 
 import Foundation
 import NeodiskKit
@@ -151,9 +143,7 @@ package final class FileCategoryRules: Sendable {
         id.hasPrefix(customIDPrefix)
     }
 
-    /// Whether a Types-grouping kind ID stands for an extension that can
-    /// move to another category, rather than a pseudo-kind (no extension,
-    /// aliases, system data, summarized folders).
+    /// False for pseudo-kinds (no extension, aliases, system data, summarized folders).
     package nonisolated static func isAssignableTypeID(_ kindID: String) -> Bool {
         !["no-extension", "symlink", "system-data", "summarized", "folder"].contains(kindID)
     }
@@ -193,11 +183,8 @@ package final class FileCategoryRules: Sendable {
     }
 }
 
-/// Path patterns ("/steamapps/") that file everything under a folder in
-/// one category. Runs for every node in a catalog build, so matching walks
-/// the path's slashes once with memchr and compares only where a pattern
-/// could start, over raw buffers allocated once (array copies and their
-/// reference counting per node cost more than the match itself).
+/// Runs for every node, so it walks the path's slashes once with memchr over raw buffers; array copies and
+/// refcounting per node cost more than the match itself.
 package final class FolderCategoryRules: @unchecked Sendable {
     private let categoryIDs: [String]
     /// Every pattern's bytes, back to back.

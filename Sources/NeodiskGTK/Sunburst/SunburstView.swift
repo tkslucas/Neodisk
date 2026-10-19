@@ -1,20 +1,5 @@
-//
-//  SunburstView.swift
-//  NeodiskGTK
-//
-//  The sunburst on a NeodiskCanvas. Layout (SunburstCore) and the fill pass
-//  (NeodiskAppModel's `styled`) are the same code the Mac runs; the arcs are
-//  painted once per layout into a cairo raster that becomes a GPU texture,
-//  and hover/selection highlights are GskPath fills and strokes on top — so
-//  pointer movement never repaints thousands of arcs. The center shows the
-//  folder the chart is drilled into; clicking it drills back out.
-//
-//  Drilling plays the Mac's zoom (NeodiskAppModel's SunburstZoomTransition
-//  over SunburstCore's geometry): the drilled arc sweeps open into the
-//  center while its descendants move in a ring, and zooming out plays it
-//  in reverse. Those frames draw the remapped arcs as GskPaths each frame,
-//  then hand off to the new layout's raster, which they match exactly.
-//
+// Arcs are painted once per layout into a cairo raster, with hover and selection drawn as GskPaths on top,
+// so pointer movement never repaints thousands of arcs. Zoom frames hand off to a raster they match exactly.
 
 import CGtk
 import Foundation
@@ -304,9 +289,8 @@ final class SunburstView: CanvasDelegate {
         }
         gtk_widget_add_controller(ptr(widget), ptr(click))
 
-        // As on the Mac, a pinch drills one level (spread over an arc opens
-        // it, squeeze goes up) and latches until the fingers lift. Ctrl+scroll
-        // does the same for a mouse, or for X11, which delivers no pinch.
+        // A pinch drills one level, latched until the fingers lift. Ctrl+scroll does the same, since X11 has
+        // no pinch.
         let zoom = raw(gtk_gesture_zoom_new())!
         connectPointer(zoom, "begin") { [unowned self] _ in
             self.pinchDrill.begin()
@@ -383,11 +367,8 @@ final class SunburstView: CanvasDelegate {
 
     // MARK: - Drill animation
 
-    /// Starts the drill zoom when the chart moves to a different root in
-    /// the same tree, as on the Mac: drilling in animates the outgoing
-    /// layout at once; zooming out waits for the parent layout to land and
-    /// plays the reverse. Anything else (a new tree, an unrendered target,
-    /// animations turned off) just swaps.
+    /// Zoom-out waits for the parent layout to land. A new tree, unrendered target or disabled animations
+    /// just swap.
     private func focusDidChange(to rootID: String?) {
         guard let frame, let rootID, let store = model.store,
               frame.inputs.storeGeneration == model.storeGeneration,
@@ -419,9 +400,7 @@ final class SunburstView: CanvasDelegate {
         }
     }
 
-    /// The drilled layout is on screen: zoom-in can reveal it; zoom-out
-    /// finds the old root in it and starts the reverse motion (or skips the
-    /// animation when that root has no arc there).
+    /// Skips the zoom-out animation when the old root has no arc in the new layout.
     private func zoomLayoutDidLand() {
         guard var transition = zoom, transition.layoutReadyDate == nil, let frame,
               frame.inputs.rootID == model.focusedRootID else { return }
@@ -597,9 +576,7 @@ struct SunburstGeometry {
         path(for: SunburstZoomGeometry.identityArc(for: segment))
     }
 
-    /// An arc (angles from the layout, radii as fractions of the chart) as
-    /// a GskPath, with the layout's seams; spans over half a turn are split
-    /// so every SVG arc command stays well-defined.
+    /// Spans over half a turn are split so every SVG arc command stays well-defined.
     @MainActor
     func path(for arc: SunburstZoomArc) -> OpaquePointer? {
         let (seamStart, seamEnd) = SunburstArcGeometry.seamInsetAngles(

@@ -1,18 +1,8 @@
-//
-//  FileSizeFormatter.swift
-//  Neodisk
-//
-
 import Foundation
 
-/// Formatting the core and CLI actually need: byte counts and percentages.
-/// Display-only formatting (dates, durations) lives in the app
-/// (DisplayFormatters).
+/// Display-only formatting (dates, durations) lives in the app (DisplayFormatters).
 public enum NeodiskFormatters {
-    /// Signed size delta for diff displays: "+1.2 GB", "−340 MB", or a
-    /// quiet "·" for unchanged. The outline's width-measurement path and the
-    /// rendered DeltaLabel must produce byte-identical strings, so both
-    /// call this.
+    /// The outline's width measurement and DeltaLabel must produce byte-identical strings, so both call this.
     public static func sizeDelta(_ delta: Int64) -> String {
         if delta == 0 { return "·" }
         if delta > 0 { return "+\(size(delta))" }

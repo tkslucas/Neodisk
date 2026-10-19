@@ -1,8 +1,3 @@
-//
-//  ScanWarningFactory.swift
-//  Neodisk
-//
-
 #if canImport(Darwin)
 import Darwin
 #elseif canImport(Glibc)

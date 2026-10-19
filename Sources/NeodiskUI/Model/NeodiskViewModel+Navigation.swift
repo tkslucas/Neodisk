@@ -1,13 +1,4 @@
-//
-//  NeodiskViewModel+Navigation.swift
-//  Neodisk
-//
-//  Navigation verbs over the model's selection/zoom state: selection with
-//  reveal, drill in/out, breadcrumb re-rooting, Back/Forward, and the
-//  outline's flattened row list. Stored state (selectedNodeID, zoomRootID,
-//  drillHistory, expandedNodeIDs) stays in NeodiskViewModel.swift; this file
-//  only moves.
-//
+// Navigation verbs over the model's selection and zoom state; the stored state stays in NeodiskViewModel.swift.
 
 import Foundation
 import NeodiskKit
@@ -20,22 +11,16 @@ extension NeodiskViewModel {
         selectedNodeID = nodeID  // its didSet widens the map if the node is off-screen
         if let nodeID {
             revealInOutline(nodeID)
-            // With duplicate results on screen, selecting a copy anywhere
-            // (treemap, outline) drills into its group; selecting a
-            // non-duplicate steps back out of an open group.
+            // With duplicate results on screen, selecting a copy drills into its group; a non-duplicate steps
+            // out.
             if analysisTab == .duplicates {
                 duplicates.handleSelection(of: nodeID)
             }
         }
     }
 
-    /// Keeps a selection visible when the map is drilled in: if the node lands
-    /// outside the current root, widen the root OUT to the lowest common
-    /// ancestor of the current root and the node. Only ever drills out —
-    /// selecting something on the far side of the tree never narrows the view
-    /// (drilling in stays ⌘↓). No-op at the full map, or when the node is
-    /// already inside the drilled subtree. Internal (not private) because the
-    /// caller — selectedNodeID's didSet — lives in NeodiskViewModel.swift.
+    /// Widens the root out to the lowest common ancestor; never narrows (drilling in stays ⌘↓).
+    /// Internal because the caller, selectedNodeID's didSet, lives in NeodiskViewModel.swift.
     func widenRootToShow(_ nodeID: String) {
         guard let store, let currentRootID = effectiveRootID,
               currentRootID != store.root.id,
@@ -77,10 +62,8 @@ extension NeodiskViewModel {
         zoomRootID = nil
     }
 
-    /// Keyboard drill-in (⌘↓): re-root the treemap into the selected folder,
-    /// or into the folder containing the selected file, so "zoom into where I
-    /// am" always makes progress. Returns false (caller beeps) when there is
-    /// nowhere deeper to go — no selection, or already rooted at the target.
+    /// Drills into the selected folder or the file's folder, so ⌘↓ always makes progress. False makes the
+    /// caller beep.
     @discardableResult
     func drillIntoSelection() -> Bool {
         guard let store, let node = selectedNode else { return false }
@@ -90,9 +73,7 @@ extension NeodiskViewModel {
         guard let dir = targetDir, dir.isDirectory, dir.id != effectiveRootID else {
             return false
         }
-        // A summarized folder has no children in the store yet: expand its
-        // real contents (async scan + splice) instead of drilling into a blank
-        // subtree. It populates in place; a second ⌘↓ then drills in normally.
+        // A summarized folder has no children yet: expand it in place first; a second ⌘↓ then drills in.
         if dir.isAutoSummarized {
             guard canRefreshSubtree else { return false }
             expandNodeContents(dir)
@@ -112,11 +93,7 @@ extension NeodiskViewModel {
         return true
     }
 
-    /// Breadcrumb navigation: re-root the treemap OUT to an ancestor folder.
-    /// Only drills out — the target must be strictly above the current map
-    /// root; drilling in stays keyboard-only (⌘↓). The selection is left
-    /// untouched (it stays a descendant of the wider root). Returns false when
-    /// the crumb isn't an out target, so the caller can fall back to selecting.
+    /// Only drills out; the selection stays untouched. False lets the caller fall back to selecting the crumb.
     @discardableResult
     func reRoot(to nodeID: String) -> Bool {
         guard let store, let node = store.node(id: nodeID), node.isDirectory,
@@ -126,12 +103,8 @@ extension NeodiskViewModel {
         return true
     }
 
-    /// Breadcrumb navigation: re-root the treemap IN to a descendant folder —
-    /// the symmetric partner of `reRoot`. The target must sit strictly below
-    /// the current map root (a crumb between the root and the selection). The
-    /// selection is preserved when it stays inside the new root; otherwise it
-    /// lands on the folder's largest child, matching ⌘↓. Returns false when the
-    /// crumb isn't an in target, so the caller can fall back to selecting.
+    /// Keeps the selection if it stays inside the new root, else lands on the largest child like ⌘↓.
+    /// False lets the caller fall back to selecting the crumb.
     @discardableResult
     func drillIn(to nodeID: String) -> Bool {
         guard let store, let node = store.node(id: nodeID), node.isDirectory,
@@ -149,9 +122,7 @@ extension NeodiskViewModel {
             return false
         }
         zoomRootID = node.id == store.root.id ? nil : node.id
-        // Keep the selection if it stays a descendant of the new root; otherwise
-        // (the crumb was the selection itself, or nothing is selected) land on
-        // the largest child so the outline and arrow keys stay oriented.
+        // Otherwise land on the largest child so the outline and arrow keys stay oriented.
         let selectionStaysInside = selectedNodeID.map {
             $0 != node.id && store.isAncestor(node.id, of: $0)
         } ?? false
@@ -208,9 +179,7 @@ extension NeodiskViewModel {
         return true
     }
 
-    /// Lands the selection on the folder's largest renderable child so arrow
-    /// keys keep working inside — shared by ⌘↓ drill-in and breadcrumb
-    /// drill-in.
+    /// So arrow keys keep working inside; shared by ⌘↓ and breadcrumb drill-in.
     private func selectLargestChild(of folderID: String, in store: FileTreeStore) {
         let children = store.children(of: folderID).filter { $0.allocatedSize > 0 }
         if let largest = children.max(by: { $0.allocatedSize < $1.allocatedSize }) {
@@ -231,19 +200,13 @@ extension NeodiskViewModel {
         var id: String { node.id }
     }
 
-    /// Depth-first flattening of the expanded portion of the tree. In diff
-    /// mode, siblings order by how much they changed since the baseline
-    /// (largest magnitude first, growth or shrinkage alike) — that ordering
-    /// outranks a header sort so the diff reads top-down in both outline
-    /// layouts. Otherwise `sortedBy` (the bottom table's header sort)
-    /// reorders siblings; nil keeps the store's size order.
+    /// In diff mode siblings order by change magnitude, which outranks a header sort so the diff reads
+    /// top-down. Otherwise `sortedBy` reorders siblings; nil keeps the store's size order.
     func visibleOutlineRows(sortedBy sort: OutlineSort? = nil) -> [OutlineRow] {
         outlineRowsSnapshot(sortedBy: sort).rows
     }
 
-    /// The structural cache's only flattening entry point. Kept separate
-    /// from `visibleOutlineRows` so selection-only calls can be proven to
-    /// reuse an existing snapshot.
+    /// Separate from `visibleOutlineRows` so selection-only calls can be proven to reuse a snapshot.
     func flattenVisibleOutlineRows(sortedBy sort: OutlineSort? = nil) -> [OutlineRow] {
         guard let store, let effectiveRootID,
               let root = store.node(id: effectiveRootID) else { return [] }
@@ -289,9 +252,7 @@ extension NeodiskViewModel {
 }
 
 extension OutlineSort {
-    /// Sibling comparator for the flattened outline. Ties fall back to
-    /// descending size then name, so every sort stays deterministic and the
-    /// familiar biggest-first order shows through equal keys.
+    /// Ties fall back to descending size then name, so every sort is deterministic.
     func areInIncreasingOrder(
         includingCloudOnly: Bool
     ) -> (FileNodeRecord, FileNodeRecord) -> Bool {

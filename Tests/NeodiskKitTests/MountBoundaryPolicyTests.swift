@@ -58,10 +58,7 @@ import Testing
     }
 
     #if os(macOS)
-    /// A "/" scan must own every device of the startup APFS volume group —
-    /// the sealed system snapshot and the firmlinked Data volume. On systems
-    /// where the group shares one device this collapses to a single entry;
-    /// either way both real devices must be members.
+    /// Must own the sealed system snapshot and the Data volume, even where the group shares one device.
     @Test func startupVolumeScanOwnsSystemAndDataDevices() {
         let owned = MountBoundaryPolicy.ownedDeviceIDs(rootPath: "/", rootDeviceID: nil)
         for path in ["/", "/System", "/System/Volumes/Data", "/Users", "/usr"] {

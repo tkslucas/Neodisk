@@ -3,11 +3,7 @@ import Testing
 @testable import NeodiskKit
 
 @Suite struct TreeStorageTests {
-    ///     /r
-    ///     ├── big/            (30)
-    ///     │   ├── x.bin  (20)
-    ///     │   └── y.bin  (10)
-    ///     └── small.bin  (5)
+    /// /r: big/ (30: x.bin 20, y.bin 10) and small.bin (5).
     private func makeStore() -> FileTreeStore {
         let x = makeTestFileNode(id: "/r/big/x.bin", name: "x.bin", size: 20)
         let y = makeTestFileNode(id: "/r/big/y.bin", name: "y.bin", size: 10)

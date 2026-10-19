@@ -1,14 +1,5 @@
-//
-//  TreemapPane.swift
-//  Neodisk
-//
-//  SwiftUI wrapper around the AppKit treemap view: pushes render inputs from
-//  the view model into the TreemapController on every model change and lets
-//  the controller/view pair handle everything else (rendering, gestures,
-//  hover, selection, context menu). A SwiftUI overlay adds the floating hover
-//  tooltip on top, fed by the controller's hover/gesture callbacks — the
-//  gestures themselves still mutate the CALayer directly, never SwiftUI state.
-//
+// SwiftUI wrapper pushing model inputs into TreemapController. Gestures mutate the CALayer directly, never
+// SwiftUI state; the overlay only draws the hover tooltip.
 
 import SwiftUI
 
@@ -78,10 +69,7 @@ private struct TreemapRepresentable: NSViewRepresentable {
             colorMode: model.vizColorMode,
             highlight: model.vizHighlight,
             expandedAggregateIDs: model.expandedAggregateIDs,
-            // Free and hidden space belong to the volume as a whole; hide
-            // them once the user zooms into a subfolder. The treemap gates
-            // them behind the Settings toggle (the sunburst always shows
-            // them) — hence the treemap-specific accessors.
+            // Volume-wide space hides once zoomed into a subfolder; the treemap also gates it on the Settings toggle.
             freeSpaceBytes: model.zoomRootID == nil ? model.freeSpace.treemapFreeSpaceBytes : nil,
             hiddenSpaceBytes: model.zoomRootID == nil ? model.freeSpace.treemapHiddenSpaceBytes : nil,
             includingCloudOnly: model.showsCloudOnlyFiles,

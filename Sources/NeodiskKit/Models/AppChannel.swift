@@ -1,11 +1,5 @@
-//
-//  AppChannel.swift
-//  Neodisk
-//
-
-/// Which build this is: the stable release, or the nightly that installs
-/// beside it (built with `-Xswiftc -DNEODISK_NIGHTLY`). Each has its own
-/// name, id and storage, so a nightly never touches the stable app's data.
+/// Stable or nightly (`-Xswiftc -DNEODISK_NIGHTLY`). Each has its own name, id and storage, so a nightly
+/// never touches the stable app's data.
 public enum AppChannel: Sendable {
     case stable
     case nightly

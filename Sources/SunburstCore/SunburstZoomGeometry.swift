@@ -1,17 +1,7 @@
-//
-//  SunburstZoomGeometry.swift
-//  SunburstCore
-//
-//  The polar remap math for the drill transition: the clicked
-//  segment's arc sweeps open to the full circle while its band morphs into the
-//  center disk, its descendants shift up one ring per level, and everything
-//  outside the arc collapses to zero width. Pure — the SwiftUI Canvas that
-//  draws these arcs and the per-frame state machine stay in NeodiskUI.
-//
+// Polar remap for the drill transition: the clicked arc opens to the full circle, its band becomes the
+// center disk, descendants shift up one ring, and everything outside collapses.
 
-/// A segment's polar geometry mid-transition, in the same normalized
-/// coordinates as SunburstSegment (radians clockwise from 12 o'clock, radii
-/// as fractions of the chart radius).
+/// Same normalized coordinates as SunburstSegment.
 public struct SunburstZoomArc: Equatable {
     public var startRadians: Double
     public var endRadians: Double
@@ -38,29 +28,15 @@ public struct SunburstZoomArc: Equatable {
 }
 
 public enum SunburstZoomGeometry {
-    /// Staggered per-segment timing over the linear transition progress:
-    /// the outgoing shell (ancestors, siblings, anything not under the
-    /// focus) collapses fast — done by this fraction — while descendants
-    /// start a beat later and glide over the rest of the duration. The
-    /// focus itself keeps the plain full-length curve, bridging the two.
+    /// The outgoing shell collapses fast while descendants start a beat later; the focus bridges the two.
     public static let collapseFinishFraction = 0.55
     public static let descendantStartFraction = 0.12
-    /// The shell fades out over this much of its own schedule, so it is
-    /// gone well before its collapse completes — ancestor rings never read
-    /// as a circle closing on the center. (Mirrored on zoom-out: the
-    /// parent shell fades in while fanning outward.)
+    /// Gone well before its collapse completes so ancestor rings never read as a circle closing on the center.
     public static let shellFadeOutFraction = 0.7
-    /// The focus stays opaque while its arc sweeps open, then fades over
-    /// this window of its schedule — gone before its band seals into a
-    /// disk at the center (the same closing-circle read as the shell).
+    /// Fades before its band seals into the center disk, for the same reason as the shell.
     public static let focusFadeStartFraction = 0.55
     public static let focusFadeEndFraction = 0.9
 
-    /// Where a segment of the focus's layout sits once the chart is fully
-    /// zoomed into `focus`: the focus itself becomes the center disk,
-    /// descendants shift up `focus.depth + 1` rings with their angles
-    /// remapped from the focus arc onto the full circle, ancestors shrink
-    /// into the center, and segments outside the arc clamp to zero width.
     public nonisolated static func zoomedArc(
         for segment: SunburstSegment,
         focus: SunburstSegment,
@@ -80,11 +56,8 @@ public enum SunburstZoomGeometry {
             min(max((radians - focus.startAngle) / span, 0), 1) * .pi * 2
         }
 
-        // Descendants shift up `focus.depth + 1` levels, so the focus's child
-        // lands on ring 0. Band it through the tapered metrics at that new
-        // ring index — the same radii the real re-layout (focus as root) will
-        // stamp, so the handoff is an invisible cut. Ancestors land at
-        // negative indices, which metrics extrapolates toward the center.
+        // Same radii the real re-layout (focus as root) will stamp, so the handoff is an invisible cut.
+        // Ancestors land at negative indices, which metrics extrapolates toward the center.
         let relativeDepth = segment.depth - focus.depth - 1
 
         return SunburstZoomArc(
@@ -104,9 +77,7 @@ public enum SunburstZoomGeometry {
         )
     }
 
-    /// Blend between the segment's own geometry (progress 0) and its fully
-    /// zoomed geometry (progress 1). Progress arrives linear; each segment
-    /// eases on its own staggered timing (see `timedProgress`).
+    /// Progress arrives linear; each segment eases on its own staggered timing (`timedProgress`).
     public nonisolated static func arc(
         for segment: SunburstSegment,
         focus: SunburstSegment,
@@ -127,10 +98,7 @@ public enum SunburstZoomGeometry {
         )
     }
 
-    /// Fractional ring depth for the depth-faded fill, blended on the same
-    /// staggered timing as the geometry so a ring doesn't pop a shade at
-    /// the handoff to the real layout (where the same node is one depth
-    /// shallower).
+    /// Blended on the geometry's timing so a ring doesn't pop a shade at the handoff to the real layout.
     public nonisolated static func effectiveDepth(
         for segment: SunburstSegment,
         focus: SunburstSegment,
@@ -141,9 +109,7 @@ public enum SunburstZoomGeometry {
         return max(0, lerp(Double(segment.depth), target, progress))
     }
 
-    /// A segment's eased progress on its class's schedule. Descendants are
-    /// the segments strictly inside the focus wedge — a deeper segment
-    /// under a sibling collapses with the shell, not with the reveal.
+    /// A deeper segment under a sibling collapses with the shell, not with the reveal.
     public nonisolated static func timedProgress(
         for segment: SunburstSegment,
         focus: SunburstSegment,
@@ -160,10 +126,6 @@ public enum SunburstZoomGeometry {
         return easeInOut(raw / collapseFinishFraction)
     }
 
-    /// A segment's fill opacity multiplier: the collapsing shell fades out
-    /// over the first `shellFadeOutFraction` of its schedule, the focus
-    /// holds through its sweep and fades before sealing into a center
-    /// disk, and descendants stay opaque throughout.
     public nonisolated static func opacity(
         for segment: SunburstSegment,
         focus: SunburstSegment,

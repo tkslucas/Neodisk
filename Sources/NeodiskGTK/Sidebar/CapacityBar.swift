@@ -1,15 +1,5 @@
-//
-//  CapacityBar.swift
-//  NeodiskGTK
-//
-//  The capacity bar under a sidebar volume, as on the Mac: once the volume
-//  has been scanned, one segment per file kind category in the Kinds tab's
-//  colors, a neutral tail for used space the scan couldn't see, and the
-//  empty track for free space. Hovering a stretch shows its name and size
-//  in a bubble pointing at it. Before any scan it's a plain used/total bar.
-//  Under a scanned folder (no space of its own) the categories alone fill
-//  it, and it hides until there is a scan.
-//
+// Once scanned: one segment per kind category, a neutral tail for unseen used space, and the empty track
+// for free space. Before any scan a plain used/total bar; under a folder it hides until scanned.
 
 import CGtk
 import Foundation

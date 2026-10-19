@@ -1,29 +1,5 @@
-//
-//  BenchRescanDriver.swift
-//  Neodisk
-//
-//  Dev/bench hook for the DECISIVE incremental-scan question: does an in-app
-//  repeated rescan (the user hitting Rescan a minute after a scan) cost as much
-//  as a full scan? A relaunch bench can't answer it — relaunch pays snapshot
-//  decode + process launch that an in-app rescan never does (the baseline stays
-//  in memory). This driver reproduces the real pattern inside one running app:
-//
-//    scan (NEODISK_AUTOSCAN) → wait INTERVAL → rescan → wait → rescan → … → quit
-//
-//  Each rescan is model.rescan() (forcesRescan): the on-screen snapshot is the
-//  in-memory incremental baseline, so the felt cost is relist + changed-dir
-//  traversal + splice + family-map rebuild + UI apply/render — no decode, no
-//  launch. Set NEODISK_INCREMENTAL=0 to make the same rescans re-traverse in
-//  full for the head-to-head. FeltTiming emits one app.* episode per rescan
-//  (mode=rescan); this driver just sequences them and quits after the last.
-//
-//    NEODISK_BENCH_RESCANS=<count>            how many in-app rescans to time
-//    NEODISK_BENCH_RESCAN_INTERVAL=<seconds>  wait before each (default 60), so
-//                                             real fs-event churn accumulates
-//    NEODISK_BENCH_TARGETS=<path:path:…>      every other step scans the next of
-//                                             these instead (memory soak, issue #9)
-//    NEODISK_BENCH_STAY=1                     stay open after the last step
-//
+// Times in-app rescans (no decode or launch, unlike a relaunch bench): NEODISK_BENCH_RESCANS, _RESCAN_INTERVAL
+// (default 60s), _TARGETS (memory soak, issue #9), _STAY=1; NEODISK_INCREMENTAL=0 forces full re-traversal.
 
 import AppKit
 import Foundation

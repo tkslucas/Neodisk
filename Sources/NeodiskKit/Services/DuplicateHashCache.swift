@@ -1,43 +1,17 @@
-//
-//  DuplicateHashCache.swift
-//  Neodisk
-//
-//  Per-file content-hash cache for the duplicate finder — the expensive
-//  intermediate the `.nddup` result cache can't cover. `.nddup` makes an
-//  unchanged *reopen* instant; this makes the *re-scan* fast: each file's
-//  tier digests persist across runs, validated by size + mtime + inode, so
-//  a Refresh (or a scan of another target sharing files) only re-reads the
-//  files that actually changed.
-//
-//  Freshness follows the standard mtime+size check (what jdupes and rmlint
-//  ship): a touched file misses and re-hashes; a tool that rewrites content
-//  while restoring the old mtime defeats it, which is the accepted trade.
-//  The inode closes the cheaper hole of a path being replaced by a
-//  different file with coincidentally matching size and mtime.
-//
-//  One shared cache, not a per-target slot: entries are validated per file,
-//  so any target's scan can reuse them. The finder mutates it from its
-//  bounded hashing workers, hence the lock. Persistence lives in
-//  ScanSnapshotCache (`.ndhash`).
-//
+// Per-file tier digests persisted across runs, validated by size, mtime and inode, so a re-scan only
+// re-reads changed files. A tool that rewrites content but restores mtime defeats it (accepted trade).
 
 import Foundation
 
 public final class DuplicateHashCache: @unchecked Sendable {
-    /// The hashing ladder's tiers, cached independently: a re-scan reuses
-    /// whichever digests it needs, and a file that only ever reached the
-    /// head tier still saves that read next time.
+    /// Cached per tier, so a file that only reached the head tier still saves that read next time.
     public enum Tier: String, Codable, Sendable {
         case head
         case prefix
         case full
     }
 
-    /// Freshness stamp: cached digests are valid only while all three
-    /// fields match a fresh stat. mtime keeps nanoseconds (APFS
-    /// resolution); the digests also depend on the file size through the
-    /// tiers' read lengths, so size is part of correctness, not just
-    /// freshness.
+    /// mtime keeps nanoseconds (APFS). Size is part of correctness: the tiers' read lengths depend on it.
     public struct FileStamp: Codable, Equatable, Sendable {
         public let size: Int64
         public let modifiedAtNanoseconds: Int64
@@ -83,10 +57,7 @@ public final class DuplicateHashCache: @unchecked Sendable {
     /// Bump when any tier's read shape changes (lengths, tail sampling, or
     /// the digest algorithm): older caches are then discarded wholesale.
     public static let currentHashFormatVersion = 1
-    /// Entries kept on save, most recently used first. Only candidates that
-    /// reached hashing (size-colliding files above the minimum) ever land
-    /// here, so real caches stay far smaller; the cap bounds the pathological
-    /// case.
+    /// Only size-colliding files that reached hashing land here; the cap bounds the pathological case.
     public static let maxPersistedEntries = 100_000
 
     private let lock = NSLock()
@@ -131,9 +102,7 @@ public final class DuplicateHashCache: @unchecked Sendable {
         }
     }
 
-    /// Records a freshly computed digest. A stamp change replaces the whole
-    /// entry — every tier's digest describes the same bytes, so none of the
-    /// old ones can outlive the file that produced them.
+    /// A stamp change replaces the whole entry: no old tier digest can outlive the bytes it described.
     public func storeDigest(_ digest: String, for path: String, tier: Tier, stamp: FileStamp) {
         lock.withLock {
             var entry: Entry

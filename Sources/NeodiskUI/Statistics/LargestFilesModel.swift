@@ -1,16 +1,5 @@
-//
-//  LargestFilesModel.swift
-//  Neodisk
-//
-//  The statistics panel's Largest tab: the whole scan's biggest files as a
-//  flat, size-descending list ("what's eating my disk"), with the same
-//  fuzzy filter as the drill-in lists. Owned by NeodiskViewModel as
-//  `model.largest`. The unfiltered browse list comes from a dedicated O(N)
-//  top-N scan that never touches the shared search index — that index is a
-//  full classified, sorted array of every node, far more than a top-500
-//  browse needs. Typing a name filter needs every name, so it falls back to
-//  the shared index, built once on demand off the critical path.
-//
+// Largest tab: browsing uses a dedicated O(N) top-N scan, since the shared search index is far more than a
+// top-500 list needs; a name filter needs every name, so it builds that index once on demand.
 
 import Foundation
 import Observation
@@ -44,10 +33,7 @@ final class LargestFilesModel {
     @ObservationIgnored private let indexService: SearchIndexService
     @ObservationIgnored private var loadTask: Task<Void, Never>?
     @ObservationIgnored private let filterDebouncer = SearchDebouncer()
-    /// Every kind-countable entry of the loaded snapshot, allocated-size
-    /// descending — the shared index filtered down. Built lazily only when a
-    /// name filter is first used (the filter matches against all names, not
-    /// just the visible prefix); empty while browsing.
+    /// Built lazily on the first name filter; empty while browsing.
     @ObservationIgnored private var entries: [FileSearchEntry] = []
     @ObservationIgnored private var loadedSnapshotID: UUID?
     /// Whether cloud-only bytes count toward the ranking — mirrors the
@@ -63,19 +49,14 @@ final class LargestFilesModel {
         self.indexService = indexService
     }
 
-    /// Called from the pane whenever it is on screen with a snapshot (tab
-    /// switches, partial-snapshot updates, and cloud-only toggle flips);
-    /// no-op when the list already matches the displayed snapshot and
-    /// toggle. Loading only from the pane keeps hidden tabs from scanning
-    /// the tree during scans.
+    /// Loading only from the pane keeps hidden tabs from walking the tree during scans.
     func loadIfNeeded(includeCloudOnly: Bool = false) {
         guard let snapshot = coordinator.snapshot else { return }
         guard loadedSnapshotID != snapshot.id || self.includeCloudOnly != includeCloudOnly else {
             return
         }
-        // Partial trees arrive several times a second; re-ranking and
-        // re-rendering 500 rows for each kept the main thread busy. The final
-        // tree always refreshes, and so does a list that is still empty.
+        // Re-ranking 500 rows per partial kept the main thread busy; the final tree and an empty list
+        // always refresh.
         if !snapshot.isComplete, !rows.isEmpty, self.includeCloudOnly == includeCloudOnly,
            filterText.trimmingCharacters(in: .whitespaces).isEmpty,
            let lastPartialRefresh, lastPartialRefresh.duration(to: .now) < Self.partialRefreshInterval {
@@ -95,15 +76,8 @@ final class LargestFilesModel {
         applyFilter()
     }
 
-    /// The displayed tree changed: the list holds node IDs of the replaced
-    /// tree. The filter text survives (like the outline search query) so a
-    /// scan streaming partials doesn't wipe what the user is typing; the
-    /// pane's task reloads against the new tree whenever it is visible.
-    ///
-    /// A newer tree of the same location (the next partial, or the scan's
-    /// final tree) keeps the rows until the reload replaces them: clearing
-    /// made every partial empty the list and refill 500 rows, a full table
-    /// rebuild twice per partial on the main thread, and a blinking list.
+    /// The filter text survives so streaming partials don't wipe typing. `keepingRows` avoids clearing per
+    /// partial, which rebuilt the table twice each time and made the list blink.
     func snapshotDidChange(keepingRows: Bool = false) {
         loadTask?.cancel()
         filterDebouncer.cancel()
@@ -116,9 +90,7 @@ final class LargestFilesModel {
         totalMatches = 0
     }
 
-    /// Full clear before a new scan takes the screen (part of the model's
-    /// per-scan state reset) — unlike snapshotDidChange, the filter belongs
-    /// to the previous location and goes too.
+    /// Unlike snapshotDidChange, the filter belongs to the previous location and goes too.
     func reset() {
         snapshotDidChange()
         filterText = ""
@@ -126,18 +98,14 @@ final class LargestFilesModel {
 
     private func scheduleFilter() {
         filterDebouncer.cancel()
-        // First use of a name filter must build the shared index (seconds on
-        // a large scan); show the spinner rather than the browse list, which
-        // ranks by size and would not reflect the query.
+        // Building the index takes seconds on a large scan; the size-ranked browse list wouldn't reflect the query.
         if entries.isEmpty, !filterText.trimmingCharacters(in: .whitespaces).isEmpty {
             isLoading = true
         }
         applyFilter()
     }
 
-    /// Routes to the browse list (no filter, no shared index) or the fuzzy
-    /// filter (needs the index) for the current filter text. Re-reads
-    /// filterText fresh so it is safe to call again after an await lands.
+    /// Re-reads filterText, so it's safe to call again after an await lands.
     private func applyFilter() {
         guard let snapshot = coordinator.snapshot else { return }
         let query = filterText.trimmingCharacters(in: .whitespaces)
@@ -148,16 +116,11 @@ final class LargestFilesModel {
         }
     }
 
-    /// The unfiltered browse list: the biggest kind-countable files, largest
-    /// first, from a dedicated O(N) top-N scan — never the shared index, so
-    /// opening the tab and streaming partials don't force a full index build.
+    /// Never the shared index, so opening the tab and streaming partials don't force a full index build.
     private func loadBrowseList(snapshot: ScanSnapshot) {
         loadTask?.cancel()
         filterDebouncer.cancel()
-        // Once the index has been built for a filter, its size-descending
-        // prefix is exactly the browse list — reuse it instead of rescanning.
-        // Not with cloud-only weighting: the index ranks by on-disk size, so
-        // the top-N rescan (which ranks by display weight) stays the truth.
+        // A built index's prefix is the browse list, except with cloud-only weighting (it ranks by on-disk size).
         if !entries.isEmpty, !includeCloudOnly {
             isLoading = false
             rows = entries.prefix(Self.browseLimit).compactMap { snapshot.treeStore.node(id: $0.id) }
@@ -181,11 +144,6 @@ final class LargestFilesModel {
         }
     }
 
-    /// The fuzzy filter path: matching names needs every name, so it lazily
-    /// builds the shared index once (off the critical path — the browse list
-    /// is already on screen) and fuzzy-matches over it. First use spins while
-    /// the index builds; later keystrokes reuse the loaded entries behind the
-    /// debounce.
     private func loadFilteredList(snapshot: ScanSnapshot, query: String) {
         guard entries.isEmpty else {
             applyFuzzy(query: query)
@@ -218,9 +176,7 @@ final class LargestFilesModel {
                 // Order-preserving on purpose: this list ranks by size, and
                 // the filter narrows that ranking.
                 var results = FuzzyMatcher.matchesInEntryOrder(query: query, entries: entries, limit: limit)
-                // The index order is on-disk size; with cloud-only weighting
-                // on, re-rank the kept matches by display weight (bounded by
-                // `limit`, so the store lookups stay cheap).
+                // The index ranks by on-disk size; re-rank by display weight (bounded by `limit`).
                 if includeCloudOnly, let store {
                     results.ids.sort { lhs, rhs in
                         let lhsWeight = store.node(id: lhs)?.displayWeight(includingCloudOnly: true) ?? 0
@@ -241,14 +197,8 @@ final class LargestFilesModel {
     }
 }
 
-/// The unfiltered Largest browse list without the shared search index: a
-/// single O(N) scan of the tree keeping only the top `limit` kind-countable
-/// nodes by allocated size in a bounded min-heap (a node no bigger than the
-/// smallest kept entry is rejected in one comparison), plus a running count
-/// of every kind-countable node. No full entry array and no full sort are
-/// materialized — only the `limit` kept entries are sorted at the end. The
-/// returned IDs are allocated-size descending, matching the index-backed
-/// browse order the filter path reuses.
+/// One O(N) pass keeping the top `limit` nodes in a bounded min-heap, so no full entry array or sort is
+/// materialized. IDs come out allocated-size descending, matching the index order.
 private enum TopLargestFiles {
     struct Result: Sendable {
         var ids: [String]

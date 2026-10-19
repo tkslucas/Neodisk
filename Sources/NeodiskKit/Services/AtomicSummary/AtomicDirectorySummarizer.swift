@@ -1,8 +1,3 @@
-//
-//  AtomicDirectorySummarizer.swift
-//  Neodisk
-//
-
 import Foundation
 
 nonisolated struct AtomicDirectorySummarizer: Sendable {
@@ -11,10 +6,7 @@ nonisolated struct AtomicDirectorySummarizer: Sendable {
     /// Mirrors ScanEngine's flag: getattrlistbulk walks with the FileManager
     /// path as fallback. Injected-provider tests keep this off.
     let bulkEnumerationEnabled: Bool
-    /// Scan-wide worker pool shared across all package/atomic summaries. When
-    /// present, `summarize` routes the whole recursive walk through it as one
-    /// job (fanning directory levels across the shared workers) instead of
-    /// spinning a fresh per-call task group. `nil` outside a traversal.
+    /// When set, a whole recursive summary runs as one pool job instead of a fresh task group per call.
     var ownedDeviceIDs: Set<UInt64> = []
     let summaryPool: AtomicDirectorySummaryPool?
 
@@ -41,11 +33,8 @@ nonisolated struct AtomicDirectorySummarizer: Sendable {
         )
     }
 
-    /// Zero-I/O gate the scan loop runs before deferring a directory to a
-    /// pooled probe/summary task. Mirrors exactly the cheap declines at the top
-    /// of `summaryIfNeeded`, so a directory that would trivially expand never
-    /// occupies a summary request slot or sits in the candidate queue retaining
-    /// its full child-entry array.
+    /// Mirrors the cheap declines in `summaryIfNeeded`, so a directory that would expand never takes a summary
+    /// slot or sits queued holding its child-entry array.
     nonisolated func isPooledSummaryProbeWorthwhile(
         childEntries: [DirectoryEntry],
         minFileCount: Int,
@@ -63,14 +52,8 @@ nonisolated struct AtomicDirectorySummarizer: Sendable {
         )
     }
 
-    /// The candidate gate above expressed over just the direct-child counts the
-    /// decision reads — no `DirectoryEntry` array. The incremental relist calls
-    /// this with a directory's freshly-read direct children: if a membership
-    /// change makes a directory newly eligible for a summary probe (or no longer
-    /// eligible), the relist re-walks it so the summarize/expand decision matches
-    /// a full scan exactly, instead of splicing a directory the traversal would
-    /// have collapsed. Fires only for directories dense enough to summarize, so
-    /// the re-walk is a rare, bounded fallback.
+    /// The same gate over direct-child counts, for the relist: a membership change that flips eligibility
+    /// forces a re-walk so the summarize decision matches a full scan.
     nonisolated func isSummaryProbeWorthwhile(
         directChildCount: Int,
         hasDirectoryChild: Bool,
@@ -88,12 +71,7 @@ nonisolated struct AtomicDirectorySummarizer: Sendable {
         return directChildCount >= minimumImmediateEntries
     }
 
-    /// Determines if a directory should be treated as atomic (summarized without expansion).
-    /// Returns a summary if the directory has many small files (like node_modules, caches).
-    /// Returns nil if the directory should be expanded normally.
-    ///
-    /// Sampling uses metadata decoded from `contentsOfDirectory`'s prefetched resource values,
-    /// so no additional per-file resource lookups are needed.
+    /// Returns a summary for dense small-file directories (node_modules, caches), nil to expand normally.
     func summaryIfNeeded(
         url: URL,
         childEntries: [DirectoryEntry],
@@ -164,11 +142,7 @@ nonisolated struct AtomicDirectorySummarizer: Sendable {
                 count += 1
             }
         }
-        // The reuse fast path folds the already-enumerated immediate entries —
-        // zero additional directory I/O — and only applies to flat directories
-        // (few subdirectories), where the fold is pure CPU over prefetched
-        // metadata. Under a pool it runs on the request's group child task and
-        // routes any nested-directory walks through the pool.
+        // Folds the already-enumerated entries with no extra I/O; only for flat directories.
         let canReuseImmediateEntries = immediateCandidate
             && directDirectoryCount <= max(8, childEntries.count / 10)
         if canReuseImmediateEntries {
@@ -207,10 +181,7 @@ nonisolated struct AtomicDirectorySummarizer: Sendable {
         makeFileNode(path: url.path, name: ScanTarget.displayName(for: url), metadata: metadata)
     }
 
-    /// Hot-path leaf builder for enumerated children: the directory worker
-    /// already holds the child's absolute path and name (from
-    /// `DirectoryEntry`), so it constructs the record straight from strings
-    /// without any per-file `url.path`/`lastPathComponent` derivation.
+    /// Hot path: builds straight from the strings the worker already holds, no `url.path` derivation.
     func makeFileNode(path: String, name: String, metadata: NodeMetadata) -> FileNodeRecord {
         FileNodeRecord(
             id: path,
@@ -234,9 +205,7 @@ nonisolated struct AtomicDirectorySummarizer: Sendable {
         )
     }
 
-    /// Builds the node for a leaf item: a plain file/symlink node, or — for a
-    /// non-expanded package — a summarized directory node whose totals come from
-    /// walking the package (through the pool when one is bound).
+    /// A non-expanded package becomes a summarized directory node whose totals come from walking it.
     func makeLeafNode(
         url: URL,
         metadata: NodeMetadata,
@@ -308,10 +277,6 @@ nonisolated struct AtomicDirectorySummarizer: Sendable {
         )
     }
 
-    /// Performs a fast recursive summary of a directory's size and file count.
-    /// - Parameters:
-    ///   - url: The directory to summarize.
-    ///   - includeHiddenFiles: Whether to include hidden files in the summary.
     func summarize(
         at url: URL,
         includeHiddenFiles: Bool = true,
@@ -325,12 +290,8 @@ nonisolated struct AtomicDirectorySummarizer: Sendable {
     ) async throws -> AtomicDirectorySummary? {
         try cancellationCheck()
 
-        // The whole recursive walk is one pool job: each directory level fans
-        // across the shared workers, and nested packages and subdirectories fold
-        // in as further work items rather than nested jobs. `metrics`/
-        // `emissionState` are untouched here — the pool drives its own progress
-        // heartbeat. Summaries only ever run inside a traversal, which binds the
-        // pool in `ScanTraversal.run()`; there is no pool-less summary path.
+        // One pool job: levels fan across the shared workers and nested directories fold in as more work
+        // items. Summaries only run inside a traversal, which binds the pool.
         guard let summaryPool else {
             assertionFailure("AtomicDirectorySummarizer.summarize requires a summary pool")
             return nil

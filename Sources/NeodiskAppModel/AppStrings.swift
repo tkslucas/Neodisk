@@ -1,13 +1,5 @@
-//
-//  AppStrings.swift
-//  Neodisk
-//
-//  Localized strings the shared model produces itself (synthetic node names,
-//  relative-time pins). Apple platforms look them up with NSLocalizedString
-//  in the app bundle's catalogs; a shell whose catalogs live elsewhere (the
-//  GTK app reads Localization/*.lproj from its data directory) installs its
-//  own lookup once at launch.
-//
+// Strings the shared model produces itself. A shell whose catalogs live outside the bundle (GTK) installs its
+// own lookup at launch.
 
 import Foundation
 

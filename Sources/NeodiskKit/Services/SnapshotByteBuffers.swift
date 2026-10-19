@@ -1,19 +1,9 @@
-//
-//  SnapshotByteBuffers.swift
-//  Neodisk
-//
-//  Little-endian byte buffers behind ScanSnapshotCodec: ByteWriter for
-//  encoding, ByteReader over Data for headers and metadata, and the
-//  raw-pointer PayloadReader for the hot node-payload decode.
-//
+// Little-endian byte buffers behind ScanSnapshotCodec; PayloadReader is the raw-pointer hot path.
 
 import Foundation
 
 
-/// The little-endian decode surface PayloadReader and ByteReader share: each
-/// type provides the bounds-checked primitives for its backing storage (raw
-/// pointer vs Data), and the fixed-width reads are derived here once so the
-/// two decoders cannot drift.
+/// Fixed-width reads are derived here once so the pointer and Data decoders cannot drift.
 nonisolated protocol LittleEndianByteReading {
     var isAtEnd: Bool { get }
     var remainingByteCount: Int { get }
@@ -44,9 +34,7 @@ extension LittleEndianByteReading {
     }
 }
 
-/// Raw-pointer counterpart of ByteReader for the (possibly decompressed)
-/// node payload: no per-read Data subscripting, and strings decode straight
-/// from the buffer. Only valid inside the payload's withUnsafeBytes scope.
+/// No per-read Data subscripting; only valid inside the payload's withUnsafeBytes scope.
 nonisolated struct PayloadReader: LittleEndianByteReading {
     let buffer: UnsafeRawBufferPointer
     private var offset = 0

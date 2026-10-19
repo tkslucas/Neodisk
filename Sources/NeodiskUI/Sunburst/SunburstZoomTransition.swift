@@ -1,12 +1,4 @@
-//
-//  SunburstZoomTransition.swift
-//  Neodisk
-//
-//  Draws the sunburst's drill transition (state and timeline in
-//  NeodiskAppModel's SunburstZoomTransition): pure polar remapping over
-//  already-styled segments, so tab colors, highlights, the colorblind
-//  palette, and the free-space arc all carry through unchanged.
-//
+// Pure polar remapping over already-styled segments, so colors, highlights and the free-space arc carry through.
 
 import CoreGraphics
 import Foundation
@@ -14,16 +6,11 @@ import SwiftUI
 import SunburstCore
 import NeodiskAppModel
 
-/// The transition frame: one scene per phase, no background, no stacked
-/// layers. Segments draw in layout order — ancestors precede descendants
-/// in the segment array, so the expanding focus disk covers its collapsing
-/// ancestors.
+/// Ancestors precede descendants in the array, so the expanding focus disk covers collapsing ancestors.
 struct SunburstZoomTransitionCanvas: View {
     let state: SunburstZoomTransitionState
     let presentation: SunburstZoomPresentation
-    /// Tapered ring radii, matching the layout's — the remap bands its
-    /// re-depthed arcs through these so the handoff to the real layout is an
-    /// invisible cut.
+    /// Matches the layout's radii so the handoff to the real layout is an invisible cut.
     let metrics: SunburstRingMetrics
 
     var body: some View {

@@ -1,8 +1,3 @@
-//
-//  TreemapSceneTests.swift
-//  Neodisk
-//
-
 #if canImport(CoreGraphics)
 import CoreGraphics
 #endif
@@ -256,9 +251,7 @@ import NeodiskKit
     }
 
     @Test func rendererHandlesEveryChunkBoundaryCellCount() {
-        // Regression: ceil-divided parallel chunks trapped (invalid range)
-        // for cell counts just above the core count, e.g. 10 cells on 8
-        // cores. Sweep small counts to cover every boundary on any machine.
+        // Regression: ceil-divided chunks trapped just above the core count (10 cells on 8 cores).
         let rootURL = URL(filePath: "/chunk", directoryHint: .isDirectory)
         for count in 1...40 {
             var children: [FileNodeRecord] = []
@@ -501,17 +494,13 @@ import NeodiskKit
         )
         let cloud = try #require(on.cells.first { $0.nodeID == "/cloud/remote.mov" })
         let local = try #require(on.cells.first { $0.nodeID == "/cloud/local.bin" })
-        // Same kind, so both resolve the same base color; the dataless cell
-        // carries the muted variant — and the muted variant stays gentler
-        // than the kind-highlight dim of the same base.
+        // The muted dataless variant stays gentler than the kind-highlight dim of the same base.
         #expect(cloud.rgb == TreemapScene.datalessRGB(local.rgb))
         let asHighlightDim = TreemapScene.dimmedRGB(local.rgb)
         #expect(cloud.rgb.sum() > asHighlightDim.sum())
     }
 
-    /// Files whose display weight ranks differently from their on-disk size:
-    /// two cloud-only files (no bytes on disk, large logical size) interleaved
-    /// with two on-disk files, named so weight order differs from name order.
+    /// Named so weight order differs from both on-disk size order and name order.
     private func makeMixedCloudChildren() -> [FileNodeRecord] {
         let rootURL = URL(filePath: "/mix", directoryHint: .isDirectory)
         func file(_ name: String, alloc: Int64, logical: Int64, dataless: Bool) -> FileNodeRecord {
@@ -559,9 +548,7 @@ import NeodiskKit
             includingCloudOnly: true
         )
 
-        // All four weigh enough to render individually (no aggregation), and
-        // the biggest tile is the large cloud-only file, proving the reorder
-        // reached squarify.
+        // The biggest tile is the large cloud-only file, proving the reorder reached squarify.
         #expect(scene.cells.count == 4)
         let largest = try #require(scene.cells.max(by: { $0.rect.width * $0.rect.height < $1.rect.width * $1.rect.height }))
         #expect(largest.nodeID == "/mix/a.mov")
@@ -585,10 +572,7 @@ import NeodiskKit
             catalog: .empty, colorMode: .branch
         )
 
-        // The nested file: the raw resolver color at its global interval
-        // midpoint. /scan/sub spans [0.9, 1.0] (after a.mov's 0.6 and
-        // b.jpg's 0.3) and c.txt fills it, two levels below the scan root.
-        // Files carry the folder formula in the treemap (role .normal).
+        // /scan/sub spans [0.9, 1.0] after a.mov's 0.6 and b.jpg's 0.3; files use the folder formula here.
         let subStart = 600.0 / 1000.0 + 300.0 / 1000.0
         let subSpan = 100.0 / 1000.0
         let token = SunburstColorToken(
@@ -610,9 +594,7 @@ import NeodiskKit
     }
 
     @Test func branchModeColorsNestedAggregatesAndKeepsRootMergeGray() throws {
-        // Root: one big file plus a tail of tiny files (merges at the scan
-        // root), and a folder with the same shape (its tail merges inside
-        // the folder's branch).
+        // A tail of tiny files merges at the root, and the same shape merges inside the folder.
         let rootURL = URL(filePath: "/agg", directoryHint: .isDirectory)
         func file(_ path: String, _ size: Int64) -> FileNodeRecord {
             FileNodeRecord(
@@ -650,10 +632,7 @@ import NeodiskKit
             catalog: .empty, colorMode: .branch
         )
 
-        // The folder's merged tail colors from the tail slice of the
-        // folder's global interval, one level below the folder. sub is the
-        // largest root child, so its interval starts at 0; the tail sits at
-        // the interval's end (children are size-sorted).
+        // sub is the largest root child, so its interval starts at 0; the tail sits at its end.
         let subAggregate = try #require(scene.cells.first {
             $0.aggregate != nil && $0.nodeID == "/agg/sub"
         })
@@ -677,10 +656,7 @@ import NeodiskKit
     }
 
     @Test func cushionLabelsUndividedDirectoriesLikeFiles() {
-        // Packages scanned as childless leaves (app bundles) and
-        // auto-summarized folders render as one solid cushion cell; big
-        // enough on screen they carry their name like a file. A subdivided
-        // directory still never labels — its area belongs to its children.
+        // Packages and summarized folders label like files when big enough; subdivided directories never label.
         let rootURL = URL(filePath: "/apps", directoryHint: .isDirectory)
         let app = FileNodeRecord(
             id: "/apps/Big.app", url: rootURL.appending(path: "Big.app"), name: "Big.app",
@@ -803,9 +779,7 @@ import NeodiskKit
         #expect(categories.stats.contains { $0.kind.id == "cat-video" })
     }
 
-    /// Once "Show Package Contents" splices a package's children into the
-    /// store, the files inside are counted individually and the package
-    /// itself no longer is — counting both would double its size.
+    /// Counting both the package and its spliced contents would double its size.
     @Test func expandedPackagesCountTheirContentsInstead() {
         let binary = FileNodeRecord(
             id: "/c/Word.app/Contents", url: URL(filePath: "/c/Word.app/Contents"), name: "Contents",

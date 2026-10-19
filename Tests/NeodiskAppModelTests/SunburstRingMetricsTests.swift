@@ -1,12 +1,4 @@
-//
-//  SunburstRingMetricsTests.swift
-//  Neodisk
-//
-//  The tapered ring radii: the single source of truth for how deep the
-//  sunburst's rings sit. Deeper rings are thinner bands,
-//  floored so they stay clickable, normalized to fill the same outer radius
-//  no matter the ring count.
-//
+// Tapered ring radii: deeper rings are thinner, floored so they stay clickable, and fill the same outer radius.
 
 import SunburstCore
 import Testing
@@ -53,10 +45,7 @@ import Testing
     }
 
     @Test func layersPastTheBodyAreFixedThinSlivers() {
-        // The pane's actual configuration: a 6-ring body plus 2 fixed thin
-        // detail rings. The body keeps its full/taper composition over the
-        // span the slivers leave behind; the slivers sit at exactly the
-        // published thickness.
+        // The pane's real configuration: a 6-ring body plus 2 thin detail rings at the published thickness.
         let metrics = SunburstRingMetrics(depthLimit: 8)
         let full = metrics.thickness(depth: 0)
         for depth in 1...3 {
@@ -77,9 +66,7 @@ import Testing
     }
 
     @Test func floorKeepsDeepRingsClickable() {
-        // Enough rings that the tapered outer rings dip under the floor while
-        // the floor still fits: every ring stays at least the floor thick, and
-        // the total never overruns.
+        // Tapered rings dip under the floor while it still fits: all stay at least the floor, total never overruns.
         let metrics = SunburstRingMetrics(depthLimit: 20)
         var total = 0.0
         for depth in 0..<20 {
@@ -91,9 +78,7 @@ import Testing
     }
 
     @Test func infeasibleFloorFallsBackToEqualSplitThatStillFits() {
-        // So many rings that even an all-floor stack would overrun the span:
-        // the floor is abandoned for an equal split, but the total still fills
-        // exactly (correctness of the total wins over the clickability floor).
+        // Even all-floor would overrun: the floor yields to an equal split, since the total wins over clickability.
         let depthLimit = 40
         let metrics = SunburstRingMetrics(depthLimit: depthLimit)
         #expect(Double(depthLimit) * SunburstRingMetrics.minThicknessFraction > available)
@@ -119,9 +104,7 @@ import Testing
     }
 
     @Test func boundaryRadiusExtrapolatesBelowCenterForCollapsingShell() {
-        // The zoom remap asks for negative ring indices (an ancestor shell
-        // collapsing through the center). They extrapolate monotonically past
-        // the center hole so the morph stays continuous.
+        // Negative indices (an ancestor shell collapsing through the center) extrapolate so the morph stays smooth.
         let metrics = SunburstRingMetrics(depthLimit: 6)
         #expect(metrics.boundaryRadius(ringIndex: 0) == SunburstLayout.centerRadius)
         #expect(metrics.boundaryRadius(ringIndex: -1) < SunburstLayout.centerRadius)

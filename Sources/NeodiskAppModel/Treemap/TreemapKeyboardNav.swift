@@ -1,12 +1,4 @@
-//
-//  TreemapKeyboardNav.swift
-//  Neodisk
-//
-//  Pure arrow-key resolution for the treemap: which tile the selection
-//  moves to from the current selection's center. The candidate tiles are
-//  derived once per scene (scenes are immutable), so a key press is one
-//  pass over precomputed centers instead of refiltering every cell.
-//
+// Candidates are derived once per immutable scene, so a key press is one pass over precomputed centers.
 
 #if canImport(CoreGraphics)
 import CoreGraphics
@@ -25,11 +17,8 @@ package enum TreemapKeyboardNav {
         package let area: CGFloat
     }
 
-    /// Free-space, hidden-space, and "smaller items" aggregate tiles aren't
-    /// real files; navigate only among concrete file/folder tiles. Flat-style
-    /// containers are excluded too — their centers sit on top of their
-    /// children, which would make spatial movement erratic. Scene order is
-    /// kept, so every tie resolves exactly as it did over the cells.
+    /// Flat containers are excluded because their centers sit on their children. Scene order is kept
+    /// so ties resolve as they did over the cells.
     package nonisolated static func candidates(in cells: [TreemapCell]) -> [Candidate] {
         var candidates: [Candidate] = []
         for cell in cells
@@ -49,10 +38,8 @@ package enum TreemapKeyboardNav {
         candidates.max { $0.area < $1.area }?.nodeID
     }
 
-    /// Nearest tile whose center lies in `direction` from `origin`, biased
-    /// toward small perpendicular offset so movement tracks the visual
-    /// row/column. The view is flipped, so up = smaller y, down = larger y.
-    /// Nil when nothing lies that way (caller beeps).
+    /// Biased toward small perpendicular offset to track the visual row or column. Flipped view: up is
+    /// smaller y.
     package nonisolated static func target(
         from origin: CGPoint,
         direction: Direction,

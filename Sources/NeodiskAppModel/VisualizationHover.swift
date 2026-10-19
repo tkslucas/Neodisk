@@ -1,11 +1,4 @@
-//
-//  VisualizationHover.swift
-//  Neodisk
-//
-//  One atomic hover identity shared by the treemap, sunburst, tooltip, and
-//  status bar. Keeping the semantic swatch with the identity makes hover
-//  publication O(1) and prevents partially updated hover combinations.
-//
+// Keeping the swatch with the hover identity makes publication O(1) and avoids half-updated combinations.
 
 import Foundation
 
@@ -31,9 +24,7 @@ package enum VisualizationHover: Equatable, Sendable {
     }
 }
 
-/// Edge detector for high-frequency pointer streams. `nil` is the initial
-/// off-target state, so repeated exits are no-ops just like repeated motion
-/// within one identity.
+/// `nil` is the initial off-target state, so repeated exits are no-ops like repeated motion.
 package struct HoverIdentityGate<ID: Equatable>: Equatable {
     package private(set) var current: ID?
 

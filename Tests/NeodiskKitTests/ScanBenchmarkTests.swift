@@ -2,38 +2,13 @@ import Testing
 import Foundation
 @testable import NeodiskKit
 
-// Opt-in scan benchmarks. These are ordinary swift-testing tests that stay
-// disabled unless `NEODISK_BENCH=1` is set, so a normal `swift test` run never
-// pays their cost. They print greppable, machine-readable result lines rather
-// than asserting on timing:
-//
-//   NEODISK_BENCH result name=<bench> iteration=<i> elapsed=<s> files=<n> folders=<n> bytes=<n>
-//   NEODISK_BENCH best   name=<bench> elapsed=<s> files=<n> folders=<n> bytes=<n> iterations=<n> ...
-//
-// Grep for `NEODISK_BENCH result` / `NEODISK_BENCH best` to collect numbers.
-//
-// Collect numbers in RELEASE configuration — the shipped app builds
-// `-c release`, and `swift test`'s default debug (-Onone) inflates the
-// CPU-heavy scan phases 1.5-2.2x non-uniformly across fixtures (measured
-// 2026-07-17), so debug timings can show phantom regressions or hide real
-// wins. The canonical run:
-//
-//   NEODISK_BENCH=1 swift test -c release --filter ScanBenchmarkTests
-//
-// (The CLT lib_TestingInterop linker flags in Package.swift apply to every
-// configuration, so release test runs link fine.) Debug runs stay useful
-// for correctness iteration, just not for numbers anyone quotes.
-//
-// The suite is `.serialized` so concurrently running benchmarks never contend
-// for the same cores while being timed (see AGENTS.md: timing-sensitive suites
-// run serialized).
+// Opt-in (`NEODISK_BENCH=1`); prints greppable `NEODISK_BENCH result|best` lines. Quote release numbers:
+// debug inflates scan phases 1.5-2.2x (`swift test -c release --filter ScanBenchmarkTests`).
 @Suite(.serialized)
 struct ScanBenchmarkTests {
     // MARK: - Real-world path
 
-    /// Scans an arbitrary on-disk tree named by `NEODISK_BENCH_PATH`. Disabled
-    /// unless both `NEODISK_BENCH=1` and `NEODISK_BENCH_PATH` are set, since
-    /// there is no sensible default target to benchmark.
+    /// Needs `NEODISK_BENCH_PATH` too, since there is no sensible default target.
     @Test(.enabled(if: ScanBenchmarkEnvironment.realWorldEnabled))
     func realWorldScanBenchmark() async throws {
         let environment = ProcessInfo.processInfo.environment
@@ -57,9 +32,7 @@ struct ScanBenchmarkTests {
 
     // MARK: - Synthetic fixtures
 
-    /// One directory holding many files. Stresses single-directory enumeration
-    /// and immediate-child classification. Size via `NEODISK_BENCH_FILES`
-    /// (default 2,000).
+    /// Stresses single-directory enumeration. Size via `NEODISK_BENCH_FILES` (default 2,000).
     @Test(.enabled(if: ScanBenchmarkEnvironment.benchmarksEnabled))
     func wideDirectoryScanBenchmark() async throws {
         let fileCount = ScanBenchmarkEnvironment.int("NEODISK_BENCH_FILES", default: 2_000, minimum: 1)
@@ -76,9 +49,7 @@ struct ScanBenchmarkTests {
         )
     }
 
-    /// A single deep chain of directories, one small file per level. Stresses
-    /// traversal depth rather than fan-out. Depth via `NEODISK_BENCH_DEPTH`
-    /// (default 64, clamped to 512).
+    /// Stresses depth, not fan-out. Depth via `NEODISK_BENCH_DEPTH` (default 64, clamped to 512).
     @Test(.enabled(if: ScanBenchmarkEnvironment.benchmarksEnabled))
     func deepDirectoryScanBenchmark() async throws {
         let depth = ScanBenchmarkEnvironment.int(
@@ -97,9 +68,7 @@ struct ScanBenchmarkTests {
         )
     }
 
-    /// A balanced two-level tree: `NEODISK_BENCH_DIRS` directories (default 16),
-    /// each with `NEODISK_BENCH_FILES_PER_DIR` files (default 200). Exercises
-    /// parallel traversal across sibling directories.
+    /// `NEODISK_BENCH_DIRS` dirs (default 16) × `NEODISK_BENCH_FILES_PER_DIR` files (default 200).
     @Test(.enabled(if: ScanBenchmarkEnvironment.benchmarksEnabled))
     func fanoutDirectoryScanBenchmark() async throws {
         let directoryCount = ScanBenchmarkEnvironment.int("NEODISK_BENCH_DIRS", default: 16, minimum: 1)
@@ -229,9 +198,7 @@ private enum ScanBenchmarkEnvironment {
         benchmarksEnabled && ProcessInfo.processInfo.environment["NEODISK_BENCH_PATH"] != nil
     }
 
-    /// Builds the engine worker-limit overrides from the environment. Each knob
-    /// stays nil (the engine's hardware-aware default) unless its variable is
-    /// set to a positive integer.
+    /// Each knob stays nil (the hardware-aware default) unless its variable is a positive integer.
     static func workerTuning() -> ScanOptions.Tuning {
         ScanOptions.Tuning(
             atomicSummaryWorkerLimit: optionalInt("NEODISK_BENCH_SUMMARY_WORKERS"),

@@ -1,14 +1,5 @@
-//
-//  BottomOutline.swift
-//  Neodisk
-//
-//  The wide, multi-column file list shown below the treemap when the
-//  outline docks at the bottom: name, subtree-percentage bar, size, file
-//  count, and modified date, with sortable column headers. Consumes the
-//  same flattened rows, expansion state, and selection as the left column,
-//  so treemap auto-reveal, search, and file actions behave identically —
-//  only the rendering differs.
-//
+// The multi-column file list docked below the treemap. Same rows, expansion and selection as the left column,
+// so auto-reveal, search and file actions behave identically.
 
 import AppKit
 import SwiftUI
@@ -17,9 +8,6 @@ import NeodiskAppModel
 
 // MARK: - Pane
 
-/// Search field on top (shared with the left layout), the multi-column
-/// table underneath; search results replace the table exactly like they
-/// replace the left column's tree.
 struct BottomOutlinePane: View {
     let model: NeodiskViewModel
 
@@ -44,12 +32,8 @@ struct BottomOutlinePane: View {
 
 // MARK: - Table
 
-/// Multi-column view-based NSTableView over the flattened outline rows.
-/// AppKit rather than SwiftUI Table for the same reasons as the left
-/// column: reliable programmatic scroll-to-row for treemap auto-reveal,
-/// mid-click reload protection, and row recycling that holds up on huge
-/// expanded trees. Header sorts persist through AppPreferences and reorder
-/// siblings in the model's flattening, never the store.
+/// AppKit, not SwiftUI Table, for reliable scroll-to-row, mid-click reload protection and recycling on huge
+/// trees. Header sorts reorder siblings in the model's flattening, never the store.
 struct BottomOutlineTable: NSViewRepresentable {
     let model: NeodiskViewModel
     let snapshot: NeodiskViewModel.OutlineRowsSnapshot
@@ -87,10 +71,8 @@ struct BottomOutlineTable: NSViewRepresentable {
         for spec in Self.columns {
             let column = NSTableColumn(identifier: .init(spec.identifier))
             column.title = spec.title
-            // The numeric columns hold text that must not clip, so they take
-            // the text scale outright. Name is the autoresizing column — it
-            // lives on whatever the others leave and middle-truncates — so
-            // scaling its width too would just push the numbers off-screen.
+            // Numeric columns must not clip, so they scale; Name autoresizes and middle-truncates, so scaling
+            // it too would push the numbers off-screen.
             column.width = spec.identifier == "name" ? spec.width : spec.width * textScale
             column.minWidth = spec.minWidth * textScale
             column.resizingMask = spec.identifier == "name"
@@ -212,10 +194,7 @@ struct BottomOutlineTable: NSViewRepresentable {
             self.model = model
         }
 
-        /// Follow a workspace text-size change: taller rows, and columns
-        /// rescaled by the same ratio. Widths scale from what is currently
-        /// there rather than from the spec, so a column the user widened
-        /// stays proportionally wide; the minimums come from the spec.
+        /// Scales current widths rather than the spec, so a column the user widened stays proportionally wide.
         func applyTextScale(columnMinimums: [String: CGFloat]) {
             guard let tableView else { return }
             let scale = OutlineRowMetrics.scale
@@ -525,9 +504,7 @@ private struct BottomDetailText: View {
 
 // MARK: - AppKit cell/row plumbing
 
-/// One recycled table cell hosting a SwiftUI view; the coordinator swaps
-/// the root view on reuse and the per-cell selection state flows in
-/// through OutlineRowSelectionState.
+/// The coordinator swaps the root view on reuse; selection state flows in through OutlineRowSelectionState.
 private final class BottomCellView<Content: View>: NSView, SelectionStateReceiving {
     let selectionState = OutlineRowSelectionState()
     let host: NSHostingView<Content?>

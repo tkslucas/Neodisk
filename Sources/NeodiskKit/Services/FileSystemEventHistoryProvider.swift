@@ -1,14 +1,5 @@
-//
-//  FileSystemEventHistoryProvider.swift
-//  Neodisk
-//
-//  Darwin implementation of `FileSystemEventHistoryProviding`. It reads the
-//  fseventsd journal for incremental rescans through a single transient
-//  device-relative stream per `history` call — never a persistent watcher.
-//  The FSEvents C API (CoreServices) is confined to this file; everything it
-//  produces is translated into the plain Swift `FileSystemChangeEvent` before
-//  leaving, so the planner and scan service stay CoreServices-free.
-//
+// Reads the fseventsd journal through one transient stream per call, never a persistent watcher. CoreServices
+// stays confined here: events leave as plain `FileSystemChangeEvent`s.
 
 #if canImport(CoreServices)
 import CoreServices
@@ -18,16 +9,10 @@ import Foundation
 
 struct DarwinFileSystemEventHistoryProvider: FileSystemEventHistoryProviding {
     private let latency: CFTimeInterval
-    /// How long the replay may run before we give up and force a full scan.
-    /// This bounds the time a user waits on a failed incremental gamble, so
-    /// it must stay a small fraction of a full scan: replay drains at roughly
-    /// 50k delivered events/s, so 3s covers ~150k events — weeks of typical
-    /// churn even for a whole-volume window — while a stalled fseventsd (a
-    /// latent hang this timeout contains) costs 3s, not 15.
+    /// Bounds the wait on a failed incremental gamble: at ~50k events/s, 3s covers weeks of churn, and a stalled
+    /// fseventsd costs 3s, not 15.
     private let replayTimeout: DispatchTimeInterval
-    /// Cap on distinct in-window changed paths retained before bailing to a
-    /// full scan — a memory bound, since repeated events on the same path
-    /// coalesce. Wall-clock is `replayTimeout`'s job.
+    /// A memory bound on distinct paths (repeats coalesce); wall-clock is `replayTimeout`'s job.
     private let eventBudget: Int
     private let firmlinkTranslator: FirmlinkPathTranslator
 
@@ -45,12 +30,8 @@ struct DarwinFileSystemEventHistoryProvider: FileSystemEventHistoryProviding {
 
     func currentCheckpoint(for target: ScanTarget) throws -> FSEventsCheckpoint {
         let volume = try volumeContext(for: target)
-        // Event IDs come from one host-global counter that device-relative
-        // streams share, so the global current ID is a valid — and, unlike
-        // `FSEventsGetLastEventIdForDeviceBeforeTime`, a FRESH — journal
-        // position: the before-time lookup only consults flushed journal
-        // records and lags live events by minutes, which made a rescan's
-        // `(since, through]` window silently exclude everything recent.
+        // Device streams share one host-global counter, so this is valid and fresh, unlike the before-time
+        // lookup, which lags live events by minutes and silently emptied recent windows.
         let eventID = FSEventsGetCurrentEventId()
         guard eventID > 0 else {
             throw FileSystemEventHistoryError.eventIDUnavailable
@@ -108,11 +89,8 @@ struct DarwinFileSystemEventHistoryProvider: FileSystemEventHistoryProviding {
             copyDescription: nil
         )
         let paths = [volume.relativeTargetPath] as CFArray
-        // Deliberately NOT kFSEventStreamCreateFlagFullHistory: fseventsd may
-        // then coalesce older journal chunks (fewer events, some flagged
-        // MustScanSubDirs), which is exactly what the planner wants — events
-        // are hints for WHERE to look, and coarser hints just widen the
-        // rescan. Full granular history only slows the drain.
+        // Not FullHistory: coalesced older chunks just widen the rescan (events are only hints), and full
+        // granular history only slows the drain.
         let createFlags = UInt32(
             kFSEventStreamCreateFlagFileEvents |
             kFSEventStreamCreateFlagWatchRoot |
@@ -139,9 +117,7 @@ struct DarwinFileSystemEventHistoryProvider: FileSystemEventHistoryProviding {
             throw FileSystemEventHistoryError.streamStartFailed
         }
 
-        // Safety net: resume the continuation even if HistoryDone never
-        // arrives (a stalled fseventsd, or the stream being invalidated
-        // externally). Idempotent with the HistoryDone/cancel/budget paths.
+        // Resumes even if HistoryDone never arrives; idempotent with the other finish paths.
         let timeout = DispatchWorkItem { collector.timeOut() }
         queue.asyncAfter(deadline: .now() + replayTimeout, execute: timeout)
 
@@ -162,9 +138,7 @@ struct DarwinFileSystemEventHistoryProvider: FileSystemEventHistoryProviding {
     private struct VolumeContext {
         let deviceID: dev_t
         let uuid: String
-        /// The device/volume mount point events are reported relative to. For
-        /// a `/` target this is the Data volume mount, not `/`, because the
-        /// root namespace's `st_dev` is the Data device.
+        /// For a `/` target this is the Data volume mount, since the root namespace's `st_dev` is the Data device.
         let mountPoint: String
         let relativeTargetPath: String
     }
@@ -202,11 +176,7 @@ struct DarwinFileSystemEventHistoryProvider: FileSystemEventHistoryProviding {
         }
 
         let targetPath = targetURL.path
-        // `statfs("/")` reports the sealed system volume mounted at "/", but
-        // `stat("/")` — and thus the FSEvents device — is the Data volume, so
-        // events are reported relative to the Data root. Pin the mount point
-        // to the Data volume for a root scan; every firmlinked target already
-        // resolves to the Data mount through statfs.
+        // statfs("/") reports the sealed system volume, but stat("/"), and so FSEvents, uses the Data volume.
         let mountPoint: String
         if targetPath == "/" {
             mountPoint = FirmlinkPathTranslator.dataVolumeMountPoint
@@ -264,16 +234,8 @@ private nonisolated let neodiskFSEventHistoryCallback: FSEventStreamCallback = {
     )
 }
 
-/// Accumulates one replay's events and hands them back through a single
-/// checked continuation. Resumes on exactly one of: HistoryDone (success),
-/// cancellation, the replay deadline, or the event budget being exceeded —
-/// `finish` is idempotent, so whichever fires first wins.
-///
-/// Events coalesce per path (flags unioned, latest event ID kept): the
-/// planner is order-insensitive and re-enumeration is the source of truth,
-/// so a burst naming one path thousands of times carries no more information
-/// than a single merged event — and only distinct paths count against the
-/// budget, so churn concentrated in a few directories can't exhaust it.
+/// Resumes once on HistoryDone, cancellation, deadline or budget, whichever comes first. Events coalesce per
+/// path (order doesn't matter to the planner), so only distinct paths count against the budget.
 final class FSEventHistoryCollector: @unchecked Sendable {
     private let lock = NSLock()
     private let since: FSEventsCheckpoint
@@ -341,10 +303,8 @@ final class FSEventHistoryCollector: @unchecked Sendable {
             }
 
             let eventID = eventIDs[index]
-            // Escalation sentinels (RootChanged, dropped events, wrapped IDs,
-            // volume changes) can carry event ID 0 or fall past the window
-            // and must never be filtered out — losing one turns a truncated
-            // replay into a clean-looking one.
+            // Escalation sentinels can carry ID 0 or fall outside the window; dropping one would make a
+            // truncated replay look clean.
             guard mappedFlags.demandsFullScan ||
                     (eventID > since.eventID && eventID <= through.eventID) else {
                 continue
@@ -433,9 +393,7 @@ final class FSEventHistoryCollector: @unchecked Sendable {
     }
 }
 
-/// Idempotent teardown of a single transient stream. Stop → detach queue →
-/// invalidate → release, guarded so repeated calls (deadline plus the awaiting
-/// task's `defer`) are harmless.
+/// Guarded so repeated calls (deadline plus the awaiting task's `defer`) are harmless.
 private final class FSEventStreamLifetime: @unchecked Sendable {
     private let lock = NSLock()
     private var stream: FSEventStreamRef?

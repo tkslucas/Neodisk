@@ -1,14 +1,7 @@
-//
-//  AtomicDirectorySummaryWalker.swift
-//  Neodisk
-//
-
 import Foundation
 
 extension AtomicDirectorySummarizer {
-    /// Performs a fast recursive summary of a directory's size and file count.
-    /// Reuses the directory's already-enumerated immediate children to avoid a second full
-    /// pass over flat cache-like directories.
+    /// Reuses the already-enumerated children to avoid a second pass over flat cache-like directories.
     nonisolated func summarizeReusingImmediateChildren(
         at url: URL,
         childEntries: [DirectoryEntry],
@@ -161,9 +154,7 @@ extension AtomicDirectorySummarizer {
         continuation: AsyncThrowingStream<ScanProgressEvent, Error>.Continuation,
         emissionState: inout ScanEmissionState
     ) {
-        // Under a pool (probe running alongside pooled summaries), route through
-        // the shared heartbeat so emissions carry the scan loop's fresh,
-        // monotonic metrics instead of this task's stale local snapshot.
+        // Under a pool the shared heartbeat emits the scan loop's fresh metrics, not this task's stale ones.
         if let summaryPool {
             summaryPool.emit(currentPath: currentPath)
             return

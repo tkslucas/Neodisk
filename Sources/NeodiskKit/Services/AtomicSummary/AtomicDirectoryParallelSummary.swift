@@ -1,17 +1,8 @@
-//
-//  AtomicDirectoryParallelSummary.swift
-//  Neodisk
-//
-
 import Foundation
 
 extension AtomicDirectorySummarizer {
-    /// Processes ONE directory level. Every child is reported to `sink`: files
-    /// fold into the caller's partial/accumulator, subdirectories become new work
-    /// items. Tries the getattrlistbulk reader first and, on any non-cancellation
-    /// failure, restarts the level cleanly on the FileManager path — which owns
-    /// the warning semantics for unreadable directories. Bulk reads a directory's
-    /// full child list before folding any of it, so a fallback never double-counts.
+    /// Any non-cancellation bulk failure restarts the level on the FileManager path, which owns warning
+    /// semantics. Bulk reads the full child list before folding any of it, so a fallback never double-counts.
     nonisolated static func processDirectoryLevel(
         _ item: AtomicSummaryWorkItem,
         includeHiddenFiles: Bool,

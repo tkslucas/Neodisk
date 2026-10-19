@@ -1,13 +1,5 @@
-//
-//  Locations.swift
-//  NeodiskGTK
-//
-//  What the sidebar offers to scan: Home, the root filesystem, and the other
-//  mounted volumes a person would recognize — disks, USB drives, network
-//  shares — read from the mount table. Kernel interfaces (proc, sysfs,
-//  cgroups), snap squashfs images, container layers, and boot partitions
-//  stay out, the way GNOME Files' sidebar leaves them out.
-//
+// Volumes a person would recognize from the mount table; kernel interfaces, snap images, container
+// layers and boot partitions stay out.
 
 import Foundation
 import NeodiskKit

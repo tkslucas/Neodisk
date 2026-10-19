@@ -4,10 +4,7 @@ import NeodiskKit
 @testable import NeodiskUI
 @testable import NeodiskAppModel
 
-/// The tooltip content model is view-model-free, so its primary/secondary
-/// lines can be exercised directly. `swift test` has no `.lproj` in
-/// `Bundle.main`, so `NSLocalizedString` returns the English key templates —
-/// which is exactly the source phrasing being checked here.
+/// `swift test` has no `.lproj` in `Bundle.main`, so `NSLocalizedString` returns the English keys checked here.
 @Suite struct VizHoverTooltipTests {
     @Test func hoverIdentityGatePublishesOnlyTargetEdges() {
         var gate = HoverIdentityGate<String>()

@@ -1,22 +1,5 @@
-//
-//  TreemapView.swift
-//  NeodiskGTK
-//
-//  The treemap on a NeodiskCanvas. Scene building (the shared
-//  TreemapScene: squarified layout, cushion coefficients, small-item
-//  aggregation, labels) and rasterization (TreemapKit) run off the main
-//  actor; the finished RGBA raster becomes one GPU texture, and labels,
-//  hover, and selection are drawn over it per frame from cached Pango
-//  layouts — so moving the pointer never re-rasterizes the map.
-//
-//  The cushion map zooms like an image, as on the Mac: pinch or Ctrl+scroll
-//  at the pointer (a mouse wheel's steps glide instead of jumping), then
-//  drag or scroll to pan. While a crisp re-render is in flight the previous
-//  texture is stretched through the shared resize mapping, exactly as the
-//  macOS layer transform does. Zooming out past the whole map steps up one
-//  folder. The flat map doesn't zoom: a pinch or Ctrl+scroll drills one
-//  level instead, like the sunburst.
-//
+// Scene building and rasterization run off the main actor into one GPU texture; labels, hover and
+// selection draw over it per frame, so pointer motion never re-rasterizes. Cushion zooms like an image.
 
 import CGtk
 import Foundation
@@ -69,9 +52,7 @@ final class TreemapView: CanvasDelegate {
     private var selectionRect: (key: String, rect: CGRect)?
     /// The cell under the pointer, in scene coordinates.
     private var hoveredRect: CGRect?
-    /// Last pointer position in view coordinates, nil once it leaves the
-    /// map. Kept so the hover can re-resolve when a drill or zoom moves the
-    /// cells under a pointer that hasn't moved.
+    /// Kept so hover can re-resolve when a drill or zoom moves cells under a still pointer.
     private var hoverPoint: CGPoint?
     private var zoomGestureStart: TreemapViewport?
     /// The pinch's accumulated magnification, to tell a squeeze at 1:1.
@@ -155,9 +136,7 @@ final class TreemapView: CanvasDelegate {
         )
     }
 
-    /// Starts a render for the current inputs unless one for them is
-    /// already on screen or in flight; a render that finishes stale starts
-    /// the next one itself.
+    /// A render that finishes stale starts the next one itself.
     func requestRender() {
         guard let inputs = currentInputs() else {
             if model.store == nil {
@@ -462,9 +441,8 @@ final class TreemapView: CanvasDelegate {
             model.select(cell.nodeID)
             showContextMenu(at: point)
         case 1 where presses >= 2:
-            // As on the Mac: flat folders are first-class targets and drill
-            // in; cushion cells (and files) keep the reveal-in-file-manager
-            // contract — the mouse never drills a cushion map.
+            // As on the Mac: flat folders drill in; cushion cells keep reveal-in-file-manager and never drill
+            // by mouse.
             if model.preferences.treemapStyle == .flat, cell.isDirectory {
                 model.drillIn(to: cell.nodeID)
             } else if let node = model.store?.node(id: cell.nodeID) {
@@ -613,9 +591,7 @@ final class TreemapView: CanvasDelegate {
         }
     }
 
-    /// Flat pinch-in target: the deepest folder-backed cell under the point
-    /// (a container, an undivided folder, or a "smaller items" cell, whose
-    /// ID is its folder's), so the drill lands where the pointer is.
+    /// The deepest folder-backed cell under the point (a "smaller items" cell's ID is its folder's).
     private func drillIntoFolder(at point: CGPoint) {
         guard let frame else { return }
         let mapping = displayMapping(for: frame)

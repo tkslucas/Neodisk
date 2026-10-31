@@ -76,6 +76,26 @@ enum DevLaunchHooks {
                 }
             }
         }
+
+        // NEODISK_AUTOCOLLECT=<path>[:<path>...] adds those items to Cleanup once the scan finishes, so a
+        // headless snapshot shows the marks. Nothing moves: only the pile changes.
+        if let rawPaths = environment["NEODISK_AUTOCOLLECT"] {
+            let paths = rawPaths.split(separator: ":").map(String.init)
+            Task { @MainActor in
+                for _ in 0..<120 {
+                    try? await Task.sleep(for: .milliseconds(500))
+                    guard !model.coordinator.isScanning, model.coordinator.snapshot?.isComplete == true else {
+                        continue
+                    }
+                    let nodes = paths.compactMap { findNode(at: $0, in: model) }
+                    model.cleanup.add(nodes)
+                    FileHandle.standardError.write(Data(
+                        "NEODISK_AUTOCOLLECT: found \(nodes.count) of \(paths.count), collected \(model.cleanup.itemIDs.count)\n".utf8
+                    ))
+                    break
+                }
+            }
+        }
     }
 
     /// Walks the scanned tree down to the node whose path matches, for the

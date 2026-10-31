@@ -190,6 +190,8 @@ import NeodiskKit
         let mergedRect = try #require(scene.rect(forNodeID: "/agg/tiny5.txt", in: store))
         #expect(abs(mergedRect.minX - aggregateCell.rect.minX) < 0.001)
         #expect(abs(mergedRect.width - aggregateCell.rect.width) < 0.001)
+        // Exact asks for the node's own rect: a merged node has none (Cleanup draws nothing for it).
+        #expect(scene.rect(forNodeID: "/agg/tiny5.txt", in: store, exact: true) == nil)
     }
 
     @Test func zoomedViewportPrunesAndStaysConsistent() throws {

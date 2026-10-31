@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 import NeodiskKit
@@ -106,6 +107,35 @@ import NeodiskAppModel
         #expect(model.cleanup.isEmpty)
         #expect(model.selectedNodeID == model.store?.root.id)
         #expect(model.cleanup.notice?.kind == .moved)
+    }
+
+    @Test func marksTellTheItemFromWhatIsInsideItAndDragsOnlyRealItems() async throws {
+        let environment = try Environment()
+        defer { environment.tearDown() }
+        try environment.write("Old/Deep/b.bin", bytes: 3_000)
+        try environment.write("keep.txt", bytes: 1_000)
+        let model = environment.makeModel()
+        model.coordinator.replaceCurrentSnapshot(try await environment.scan())
+        let store = try #require(model.store)
+        let old = try #require(store.node(id: environment.path("Old")))
+
+        model.cleanup.add([old])
+        #expect(model.cleanup.mark(for: old.id) == .collected)
+        #expect(model.cleanup.mark(for: environment.path("Old/Deep/b.bin")) == .inside)
+        #expect(model.cleanup.mark(for: environment.path("keep.txt")) == .none)
+        #expect(model.cleanup.mark(for: old.id).hoverText != nil)
+        #expect(CleanupModel.Mark.none.hoverText == nil)
+
+        // A drag carries the node and its file URL, for the tree on screen only.
+        let item = try #require(NodeDragSource.pasteboardItem(forNodeID: environment.path("keep.txt"), model: model))
+        let snapshotID = try #require(model.coordinator.snapshot?.id)
+        let pasteboard = NSPasteboard(name: .init("NeodiskDragTest-\(UUID().uuidString)"))
+        defer { pasteboard.releaseGlobally() }
+        pasteboard.clearContents()
+        pasteboard.writeObjects([item])
+        #expect(NodeDragPayload.nodeIDs(on: pasteboard, snapshotID: snapshotID) == [environment.path("keep.txt")])
+        #expect(NodeDragPayload.nodeIDs(on: pasteboard, snapshotID: UUID()) == nil)
+        #expect(NodeDragSource.pasteboardItem(forNodeID: "/not/scanned", model: model) == nil)
     }
 
     @Test func refusedItemsNeverJoinAndExplainWhy() async throws {

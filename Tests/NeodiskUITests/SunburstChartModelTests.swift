@@ -333,6 +333,50 @@ private func makeRequest(layoutID: String) -> SunburstLayoutRequest {
     )
 }
 
+@Suite struct SunburstCleanupOverlayTests {
+    private func arc(_ id: String, _ start: Double, _ end: Double, ring: Int, aggregate: Bool = false) -> SunburstSegment {
+        SunburstSegment(
+            id: id, nodeID: aggregate ? nil : id, label: id,
+            startAngle: start, endAngle: end,
+            innerRadius: 0.2 + Double(ring) * 0.1, outerRadius: 0.3 + Double(ring) * 0.1,
+            depth: ring,
+            colorToken: SunburstColorToken(midpoint: 0.5, depth: ring, role: .normal),
+            totalSize: 1, isAggregate: aggregate
+        )
+    }
+
+    @Test func washCoversTheCollectedArcAndEverythingOutsideItsSpan() {
+        let segments = [
+            arc("/a", 0, 2, ring: 0), arc("/b", 2, 4, ring: 0),
+            arc("/a/x", 0, 1, ring: 1), arc("/a/pool", 1, 2, ring: 1, aggregate: true),
+            arc("/b/y", 2, 4, ring: 1),
+        ]
+        let byID = Dictionary(uniqueKeysWithValues: segments.map { ($0.id, $0) })
+        let overlay = SunburstCleanupOverlay(
+            segments: segments, marks: { byID[$0] }, collected: ["/a"], moving: [], rootIsInside: false
+        )
+        #expect(overlay.collected.map(\.id) == ["/a"])
+        #expect(Set(overlay.wash.map(\.id)) == ["/a", "/a/x", "/a/pool"])
+
+        let moving = SunburstCleanupOverlay(
+            segments: segments, marks: { byID[$0] }, collected: ["/a"], moving: ["/a"], rootIsInside: false
+        )
+        #expect(moving.collected.isEmpty)
+        #expect(moving.moving.map(\.id) == ["/a"])
+
+        let unrendered = SunburstCleanupOverlay(
+            segments: segments, marks: { byID[$0] }, collected: ["/gone"], moving: [], rootIsInside: false
+        )
+        #expect(unrendered.isEmpty)
+
+        let inside = SunburstCleanupOverlay(
+            segments: segments, marks: { byID[$0] }, collected: ["/elsewhere"], moving: [], rootIsInside: true
+        )
+        #expect(inside.wash.count == segments.count)
+        #expect(inside.collected.isEmpty)
+    }
+}
+
 private func makeSegment(id: String, depth: Int = 0) -> SunburstSegment {
     SunburstSegment(
         id: id,

@@ -39,7 +39,8 @@ final class CleanupModel {
     @ObservationIgnored private var moveTask: Task<Void, Never>?
     /// Test seams.
     @ObservationIgnored var trashItem: TrashMover.TrashItem = TrashMover.systemTrash
-    @ObservationIgnored var makePolicy: () -> TrashSafetyPolicy = { TrashSafetyPolicy.live() }
+    @ObservationIgnored var makePolicy: @Sendable () -> TrashSafetyPolicy = { TrashSafetyPolicy.live() }
+    @ObservationIgnored private var isConfirming = false
     @ObservationIgnored var confirm: @MainActor (TrashConfirmation) async -> Bool = CleanupModel.presentConfirmation
 
     init(coordinator: ScanCoordinator) {
@@ -211,12 +212,19 @@ final class CleanupModel {
         isReviewPresented = false
     }
 
-    /// Drops gone items after any tree change; a new tree of the same location keeps its pile.
+    /// Drops gone items after any tree change; a new tree of the same location keeps its pile, except items
+    /// whose path now holds something else.
     func snapshotDidChange(_ snapshot: ScanSnapshot?) {
         guard let snapshot, snapshot.isComplete, var current = piles[snapshot.target.id] else { return }
-        current.reconcile(with: snapshot.treeStore)
+        let changed = current.reconcile(with: snapshot.treeStore)
         piles[snapshot.target.id] = current.isEmpty ? nil : current
         failures = failures.filter { snapshot.treeStore.node(id: $0.key) != nil }
+        if changed > 0 {
+            show(Notice(kind: .info, text: changed == 1
+                ? NSLocalizedString("1 item changed since you collected it and left Cleanup.", comment: "Cleanup notice")
+                : String(format: NSLocalizedString("%lld items changed since you collected them and left Cleanup.", comment: "Cleanup notice"), changed)
+            ), for: 10)
+        }
     }
 
     func setEnabled(_ enabled: Bool) {
@@ -244,7 +252,7 @@ final class CleanupModel {
     // MARK: - Moving
 
     var canMoveToTrash: Bool {
-        !isEmpty && !isMoving && unavailableReason == nil
+        !isEmpty && !isMoving && !isConfirming && unavailableReason == nil
     }
 
     /// Asks once, then moves each item in turn. Failures stay in the pile with their reason.
@@ -255,23 +263,36 @@ final class CleanupModel {
         }
         let nodes = pile.nodes(in: snapshot.treeStore)
         guard !nodes.isEmpty else { return }
-        let confirmation = TrashConfirmation(nodes: nodes)
+        let confirmation = TrashConfirmation(nodes: nodes, scannedAt: snapshot.finishedAt)
+        isConfirming = true
+        // The question goes on the window, not on the review popover.
+        isReviewPresented = false
         moveTask = Task { [weak self] in
-            guard let self, await self.confirm(confirmation) else { return }
+            guard let self else { return }
+            let confirmed = await self.confirm(confirmation)
+            self.isConfirming = false
+            guard confirmed else { return }
             await self.move(nodes, from: snapshot)
         }
     }
 
-    private func move(_ nodes: [FileNodeRecord], from snapshot: ScanSnapshot) async {
-        // The confirmation was modal, but a scan could have started behind it.
+    private func move(_ confirmedNodes: [FileNodeRecord], from snapshot: ScanSnapshot) async {
+        // The confirmation was modal, but a scan could have started behind it, and only what's still collected
+        // and was asked about goes.
         guard canMoveToTrash, coordinator.snapshot?.id == snapshot.id else {
             NSSound.beep()
             return
         }
-        isReviewPresented = false
+        let stillCollected = Set(pile.itemIDs)
+        let nodes = confirmedNodes.filter { stillCollected.contains($0.id) }
+        guard !nodes.isEmpty else { return }
         notice = nil
         movingIDs = Set(nodes.map(\.id))
-        let mover = TrashMover(policy: policy, trashItem: trashItem)
+        // Built fresh, off the main thread: mounts can appear without a notification.
+        let makePolicy = makePolicy
+        let freshPolicy = await Task.detached(priority: .userInitiated) { makePolicy() }.value
+        cachedPolicy = freshPolicy
+        let mover = TrashMover(policy: freshPolicy, trashItem: trashItem)
         let rootID = snapshot.root.id
         var gone: [FileNodeRecord] = []
         var movedCount = 0
@@ -301,9 +322,15 @@ final class CleanupModel {
         failures.merge(failed) { _, new in new }
 
         if !gone.isEmpty {
-            model?.prepareForRemoval(of: gone.map(\.id), in: snapshot.treeStore)
-            if await coordinator.removeNodes(ids: gone.map(\.id), fromTargetID: targetID) {
+            let goneIDs = gone.map(\.id)
+            if coordinator.snapshot?.target.id == targetID {
+                model?.prepareForRemoval(of: goneIDs, in: snapshot.treeStore)
+            }
+            if await coordinator.removeNodes(ids: goneIDs, fromTargetID: targetID) {
                 model?.session.persistSplicedSnapshot(rotatesPrevious: false)
+            } else {
+                // Another location is on screen now: its saved scan still gets the cut.
+                await model?.session.removeNodesFromStoredScan(of: snapshot.target, ids: goneIDs)
             }
         }
         movingIDs = []
@@ -343,7 +370,7 @@ final class CleanupModel {
         let move = alert.addButton(withTitle: NSLocalizedString("Move to Trash", comment: "Trash confirmation button"))
         move.hasDestructiveAction = true
         alert.addButton(withTitle: NSLocalizedString("Cancel", comment: "Trash confirmation button"))
-        guard let window = NSApp.keyWindow ?? NSApp.mainWindow else {
+        guard let window = NSApp.mainWindow ?? NSApp.keyWindow else {
             return alert.runModal() == .alertFirstButtonReturn
         }
         return await withCheckedContinuation { continuation in

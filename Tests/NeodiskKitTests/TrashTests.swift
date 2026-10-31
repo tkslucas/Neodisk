@@ -77,6 +77,43 @@ import Testing
     }
 }
 
+@Suite struct TrashSafetyPolicyEdgeTests {
+    @Test func unreadableFoldersAndUndecodableNamesAreRefused() {
+        let policy = TrashSafetyPolicy(protectedPaths: [])
+        let locked = FileNodeRecord(
+            id: "/data/locked", url: URL(filePath: "/data/locked"), name: "locked", isDirectory: true,
+            isSymbolicLink: false, allocatedSize: 0, logicalSize: 0, descendantFileCount: 0, lastModified: nil,
+            isPackage: false, isAccessible: false, isSelfAccessible: false, isSynthetic: false, isAutoSummarized: false
+        )
+        #expect(policy.refusal(for: locked, scanRootID: "/data") == .unreadableFolder)
+        let garbled = makeTestFileNode(id: "/data/caf\u{FFFD}.txt", name: "caf\u{FFFD}.txt")
+        #expect(policy.refusal(for: garbled, scanRootID: "/data") == .undecodableName)
+    }
+
+    @Test func localizedUserFoldersComeFromUserDirs() {
+        let contents = """
+        # comment
+        XDG_DESKTOP_DIR="$HOME/Schreibtisch"
+        XDG_PICTURES_DIR="$HOME/Bilder"
+        XDG_MUSIC_DIR="/srv/music"
+        """
+        let folders = TrashSafetyPolicy.xdgUserDirectories(homeDirectory: "/home/me", contents: contents)
+        #expect(folders == ["/home/me/Schreibtisch", "/home/me/Bilder", "/srv/music"])
+    }
+
+    @Test func secretsAndCloudRootsAreProtected() {
+        let live = TrashSafetyPolicy.live()
+        let home = NSHomeDirectory()
+        #expect(live.refusal(forPath: home + "/.ssh", identity: nil) == .protectedLocation)
+        #if os(macOS)
+        #expect(live.refusal(forPath: home + "/Library/Keychains", identity: nil) == .protectedLocation)
+        #expect(live.refusal(
+            forPath: home + "/Library/Mobile Documents/com~apple~CloudDocs", identity: nil
+        ) == .protectedLocation)
+        #endif
+    }
+}
+
 @Suite struct TrashMoverTests {
     private func makeTemporaryDirectory() throws -> URL {
         let url = FileManager.default.temporaryDirectory
@@ -219,6 +256,42 @@ import Testing
         }
         #expect(FileManager.default.fileExists(atPath: file.path))
     }
+}
+
+@Suite struct TrashMoverLinkTests {
+    /// A symlink goes to the Trash as the link itself; what it points at stays.
+    @Test func aSymlinkIsTrashedAsTheLinkNotItsTarget() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: "neodisk-link-\(UUID().uuidString)", directoryHint: .isDirectory)
+            .resolvingSymlinksInPath()
+        try FileManager.default.createDirectory(at: root.appending(path: "Real"), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data(count: 10).write(to: root.appending(path: "Real/keep.txt"))
+        try FileManager.default.createSymbolicLink(
+            at: root.appending(path: "link"), withDestinationURL: root.appending(path: "Real")
+        )
+        var finished: ScanSnapshot?
+        for try await event in ScanEngine().scan(target: ScanTarget(url: root), options: ScanOptions()) {
+            if case .finished(let snapshot) = event { finished = snapshot }
+        }
+        let snapshot = try #require(finished)
+        let link = try #require(snapshot.treeStore.node(id: root.appending(path: "link").path))
+        #expect(link.isSymbolicLink)
+
+        let received = PathBox()
+        let mover = TrashMover(policy: TrashSafetyPolicy(protectedPaths: [])) { url in
+            received.path = url.path
+            try FileManager.default.removeItem(at: url)
+            return nil
+        }
+        #expect(mover.move(link, scanRootID: snapshot.root.id) == .success(nil))
+        #expect(received.path == root.appending(path: "link").path)
+        #expect(FileManager.default.fileExists(atPath: root.appending(path: "Real/keep.txt").path))
+    }
+}
+
+private final class PathBox: @unchecked Sendable {
+    var path: String?
 }
 
 @Suite struct SnapshotRemovalTests {

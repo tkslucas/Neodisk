@@ -500,3 +500,9 @@
 "This scan was opened from a file, so its items can't be moved." = "此扫描是从文件打开的，因此无法移动其中的项目。";
 "In Cleanup" = "在清理中";
 "In a folder in Cleanup" = "在清理中的文件夹内";
+"Neodisk couldn't look inside this folder, so it can't tell what it holds." = "Neodisk 无法查看此文件夹的内容，因此无法确定其中有什么。";
+"This name couldn't be read correctly, so Neodisk can't move it safely." = "无法正确读取此名称，因此 Neodisk 无法安全地移动它。";
+"Neodisk couldn't read everything inside some of this, so it may hold more than shown." = "Neodisk 无法读取其中的全部内容，因此实际可能比显示的更多。";
+"This scan is from %@: folders may have changed since. Rescan to be sure." = "此扫描来自%@：文件夹可能已有变化。请重新扫描以确保准确。";
+"1 item changed since you collected it and left Cleanup." = "1 个项目在收集后发生了变化，已移出清理。";
+"%lld items changed since you collected them and left Cleanup." = "%lld 个项目在收集后发生了变化，已移出清理。";

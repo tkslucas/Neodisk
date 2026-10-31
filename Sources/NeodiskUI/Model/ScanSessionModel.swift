@@ -665,6 +665,40 @@ final class ScanSessionModel {
         saveSnapshotToCache(snapshot, rotatesPrevious: rotatesPrevious)
     }
 
+    /// Items left a location that's no longer on screen (the user switched mid-move): cut them from its stored
+    /// scan, in memory and on disk, so going back doesn't show them.
+    func removeNodesFromStoredScan(of target: ScanTarget, ids: [String]) async {
+        let stored: ScanSnapshot?
+        if let recent = coordinator.recentSnapshot(forTargetID: target.id) {
+            stored = recent
+        } else {
+            stored = await snapshotCache.loadSnapshot(for: target)
+        }
+        guard let stored, stored.isComplete, stored.source.isPersistable,
+              let updated = try? await Task.detached(priority: .userInitiated, operation: {
+                  try stored.removingNodes(ids: ids)
+              }).value else { return }
+        // The location may have come back on screen while the cut ran; the on-screen path owns it then.
+        guard coordinator.snapshot?.target.id != target.id else {
+            await coordinator.removeNodes(ids: ids, fromTargetID: target.id)
+            persistSplicedSnapshot(rotatesPrevious: false)
+            return
+        }
+        if coordinator.recentSnapshot(forTargetID: target.id) != nil {
+            coordinator.forgetRecentSnapshot(forTargetID: target.id)
+        }
+        let existing = cachedScanInfo[target.id]
+        cachedScanInfo[target.id] = CachedScanInfo(
+            lastScanDate: existing?.lastScanDate ?? (updated.finishedAt ?? Date()),
+            lastScanDuration: existing?.lastScanDuration,
+            nodeCount: updated.treeStore.nodeCount,
+            hasPreviousSnapshot: existing?.hasPreviousSnapshot ?? false,
+            totalAllocatedSize: updated.aggregateStats.totalAllocatedSize,
+            cloudOnlyLogicalSize: Self.cloudOnlyBytes(of: updated)
+        )
+        saveSnapshotToCache(updated, rotatesPrevious: false)
+    }
+
     private func saveSnapshotToCache(_ snapshot: ScanSnapshot, rotatesPrevious: Bool = true) {
         Task { [weak self, snapshotCache] in
             // Signals the end of the persistence pipeline (success or failure)

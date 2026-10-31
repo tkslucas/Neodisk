@@ -66,6 +66,8 @@ final class TreemapView: CanvasDelegate {
     private var dragStart: TreemapViewport?
     private var isPanning = false
     private var contextMenu: GPtr?
+    /// The "smaller items" cells' menu: the same without Move to Trash (each menu is built once and kept).
+    private var aggregateContextMenu: GPtr?
     private var tokens: [ObservationToken] = []
 
     init(model: AppModel) {
@@ -439,7 +441,8 @@ final class TreemapView: CanvasDelegate {
         switch button {
         case 3:
             model.select(cell.nodeID)
-            showContextMenu(at: point)
+            // A "smaller items" cell stands for its folder: no offer to trash the whole folder from it.
+            showContextMenu(at: point, includeTrash: cell.aggregate == nil)
         case 1 where presses >= 2:
             // As on the Mac: flat folders drill in; cushion cells keep reveal-in-file-manager and never drill
             // by mouse.
@@ -662,11 +665,18 @@ final class TreemapView: CanvasDelegate {
         return "\(node.name)\n\(NeodiskFormatters.size(node.allocatedSize)) · \(node.path)"
     }
 
-    private func showContextMenu(at point: CGPoint) {
-        Widgets.popupMenu(&contextMenu, sections: [
+    private func showContextMenu(at point: CGPoint, includeTrash: Bool) {
+        var sections: [[(String, String)]] = [
             [(L("Open"), "win.open-item"), (L("Show in Files"), "win.show-in-files"), (L("Copy Path"), "win.copy-path")],
             [(L("Zoom In"), "win.focus-in"), (L("Zoom Out"), "win.focus-out")],
-            [(L("Move to Trash…"), "win.move-to-trash")],
-        ], on: canvas.widget, at: point)
+        ]
+        if includeTrash {
+            sections.append([(L("Move to Trash…"), "win.move-to-trash")])
+        }
+        if includeTrash {
+            Widgets.popupMenu(&contextMenu, sections: sections, on: canvas.widget, at: point)
+        } else {
+            Widgets.popupMenu(&aggregateContextMenu, sections: sections, on: canvas.widget, at: point)
+        }
     }
 }

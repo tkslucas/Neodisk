@@ -10,6 +10,10 @@ public enum TrashRefusal: Sendable, Equatable {
     case protectedLocation
     /// Already in a Trash; emptying it is the Trash's job.
     case alreadyInTrash
+    /// A folder the scan couldn't look inside: what it holds, and how much, is unknown.
+    case unreadableFolder
+    /// A name the scan couldn't decode (not UTF-8 on Linux), so its path doesn't lead back to it.
+    case undecodableName
 }
 
 /// The locations Neodisk never moves to the Trash. Only these exact folders and the folders that hold them are
@@ -42,6 +46,10 @@ public struct TrashSafetyPolicy: Sendable {
         paths += homeFolderNames.map { (homeDirectory as NSString).appendingPathComponent($0) }
         paths += mountedVolumePaths()
         #if os(macOS)
+        // Each cloud provider's root (iCloud Drive, and every File Provider folder).
+        let library = (homeDirectory as NSString).appendingPathComponent("Library")
+        paths += childPaths(of: (library as NSString).appendingPathComponent("CloudStorage"))
+        paths.append((library as NSString).appendingPathComponent("Mobile Documents/com~apple~CloudDocs"))
         // Firmlinked folders also live at their Data-volume path.
         let firmlinked = firmlinkPaths()
         paths += firmlinked
@@ -52,6 +60,7 @@ public struct TrashSafetyPolicy: Sendable {
         paths += childPaths(of: "/Volumes")
         #else
         paths += childPaths(of: "/home")
+        paths += xdgUserDirectories(homeDirectory: homeDirectory)
         #endif
         // The system's own top-level folders, whatever they're called on this machine.
         for directory in systemFoldersWithProtectedChildren {
@@ -76,6 +85,8 @@ public struct TrashSafetyPolicy: Sendable {
     public func refusal(for node: FileNodeRecord, scanRootID: String) -> TrashRefusal? {
         if node.isSynthetic { return .notAFile }
         if node.id == scanRootID { return .scanRoot }
+        if node.path.contains("\u{FFFD}") { return .undecodableName }
+        if node.isDirectory, !node.isSelfAccessible { return .unreadableFolder }
         return refusal(forPath: node.path, identity: node.isDirectory ? node.fileIdentity : nil)
     }
 
@@ -105,7 +116,8 @@ public struct TrashSafetyPolicy: Sendable {
     static let homeFolderNames = [
         "Applications", "Desktop", "Documents", "Downloads", "Library", "Movies", "Music", "Pictures", "Public",
         "Library/Application Support", "Library/Caches", "Library/CloudStorage", "Library/Containers",
-        "Library/Group Containers", "Library/Mobile Documents", "Library/Preferences",
+        "Library/Group Containers", "Library/Keychains", "Library/Mobile Documents", "Library/Preferences",
+        ".ssh", ".gnupg",
     ]
     #else
     static let systemPaths = [
@@ -115,9 +127,27 @@ public struct TrashSafetyPolicy: Sendable {
     static let systemFoldersWithProtectedChildren = ["/", "/usr", "/var"]
     static let homeFolderNames = [
         "Desktop", "Documents", "Downloads", "Music", "Pictures", "Public", "Templates", "Videos",
-        ".cache", ".config", ".local", ".local/share",
+        ".cache", ".config", ".local", ".local/share", ".local/share/keyrings", ".ssh", ".gnupg",
     ]
     #endif
+
+    /// The user's own folder names (`~/Bilder`, `~/Documentos`), from `~/.config/user-dirs.dirs`.
+    static func xdgUserDirectories(homeDirectory: String, contents: String? = nil) -> [String] {
+        let file = (homeDirectory as NSString).appendingPathComponent(".config/user-dirs.dirs")
+        guard let text = contents ?? (try? String(contentsOfFile: file, encoding: .utf8)) else { return [] }
+        return text.split(whereSeparator: \.isNewline).compactMap { line in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard trimmed.hasPrefix("XDG_"), let equals = trimmed.firstIndex(of: "=") else { return nil }
+            var value = trimmed[trimmed.index(after: equals)...].trimmingCharacters(in: .whitespaces)
+            if value.hasPrefix("\""), value.hasSuffix("\""), value.count >= 2 {
+                value = String(value.dropFirst().dropLast())
+            }
+            if value.hasPrefix("$HOME") {
+                value = homeDirectory + value.dropFirst("$HOME".count)
+            }
+            return value.hasPrefix("/") ? value : nil
+        }
+    }
 
     static func isInsideTrash(_ path: String) -> Bool {
         let components = path.split(separator: "/", omittingEmptySubsequences: true)

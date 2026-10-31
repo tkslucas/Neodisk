@@ -15,6 +15,10 @@ package extension TrashRefusal {
             AppStrings.localized("This location is protected: the system or your account needs it. What's inside it can go.", comment: "Trash refusal")
         case .alreadyInTrash:
             AppStrings.localized("This is already in the Trash.", comment: "Trash refusal")
+        case .unreadableFolder:
+            AppStrings.localized("Neodisk couldn't look inside this folder, so it can't tell what it holds.", comment: "Trash refusal")
+        case .undecodableName:
+            AppStrings.localized("This name couldn't be read correctly, so Neodisk can't move it safely.", comment: "Trash refusal")
         }
     }
 }
@@ -44,7 +48,13 @@ package struct TrashConfirmation: Sendable, Equatable {
         ([paths] + notes).joined(separator: "\n\n")
     }
 
-    package init(nodes: [FileNodeRecord], homeDirectory: String = NSHomeDirectory()) {
+    /// `scannedAt`: when the tree was scanned; an old one gets a note, since folders may have changed since.
+    package init(
+        nodes: [FileNodeRecord],
+        scannedAt: Date? = nil,
+        now: Date = Date(),
+        homeDirectory: String = NSHomeDirectory()
+    ) {
         let total = nodes.reduce(Int64(0)) { $0 &+ $1.allocatedSize }
         title = nodes.count == 1
             ? String(format: AppStrings.localized("Move “%@” to the Trash?", comment: "Trash confirmation title"), nodes[0].name)
@@ -61,11 +71,13 @@ package struct TrashConfirmation: Sendable, Equatable {
         paths = lines.joined(separator: "\n")
 
         var notes: [String] = []
-        let cloudRoots = ["Library/Mobile Documents", "Library/CloudStorage"].map {
-            (homeDirectory as NSString).appendingPathComponent($0)
+        let cloudRoots = ["Library/Mobile Documents", "Library/CloudStorage"].flatMap { relative in
+            let path = (homeDirectory as NSString).appendingPathComponent(relative)
+            return [path, "/System/Volumes/Data" + path]
         }
+        // Under a cloud root, holding one, or holding files whose content lives only in a cloud.
         let touchesCloud = nodes.contains { node in
-            cloudRoots.contains { root in
+            node.isDataless || node.cloudOnlyLogicalSize > 0 || cloudRoots.contains { root in
                 node.path == root || node.path.hasPrefix(root + "/") || root.hasPrefix(node.path + "/")
             }
         }
@@ -74,6 +86,15 @@ package struct TrashConfirmation: Sendable, Equatable {
         }
         if nodes.contains(where: { $0.linkCount > 1 || $0.cloneInfo != nil || $0.summarizedClones != nil }) {
             notes.append(AppStrings.localized("Some of this shares storage with other files (hard links or clones), so less space may come back.", comment: "Trash confirmation note"))
+        }
+        if nodes.contains(where: { $0.isDirectory && !$0.isAccessible }) {
+            notes.append(AppStrings.localized("Neodisk couldn't read everything inside some of this, so it may hold more than shown.", comment: "Trash confirmation note"))
+        }
+        if let scannedAt, now.timeIntervalSince(scannedAt) > 3600 {
+            notes.append(String(
+                format: AppStrings.localized("This scan is from %@: folders may have changed since. Rescan to be sure.", comment: "Trash confirmation note"),
+                scannedAt.formatted(.relative(presentation: .named, unitsStyle: .wide))
+            ))
         }
         notes.append(AppStrings.localized("The space comes back when you empty the Trash.", comment: "Trash confirmation note"))
         self.notes = notes

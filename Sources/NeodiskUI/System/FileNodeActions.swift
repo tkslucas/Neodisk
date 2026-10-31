@@ -64,19 +64,24 @@ final class ClosureMenuItem: NSMenuItem {
 
 extension NSMenu {
     /// Keep in lockstep with the SwiftUI `fileNodeActions` above. Nil for nodes without file actions.
+    /// `includeCleanup: false` for a "smaller items" cell, which stands for its folder in the menu but shouldn't
+    /// offer to collect the whole folder.
     @MainActor
-    static func fileNodeActions(for node: FileNodeRecord, model: NeodiskViewModel) -> NSMenu? {
+    static func fileNodeActions(
+        for node: FileNodeRecord, model: NeodiskViewModel, includeCleanup: Bool = true
+    ) -> NSMenu? {
         guard model.supportsFileActions(node) else { return nil }
         let menu = NSMenu()
         menu.autoenablesItems = false
-        menu.addFileNodeActionItems(for: node, model: model)
+        menu.addFileNodeActionItems(for: node, model: model, includeCleanup: includeCleanup)
         return menu
     }
 
     /// The flat statistics lists leave out the contents-expansion item, as their SwiftUI predecessors did.
     @MainActor
     func addFileNodeActionItems(
-        for node: FileNodeRecord, model: NeodiskViewModel, includeExpandContents: Bool = true
+        for node: FileNodeRecord, model: NeodiskViewModel, includeExpandContents: Bool = true,
+        includeCleanup: Bool = true
     ) {
         addItem(ClosureMenuItem(title: NSLocalizedString("Reveal in Finder", comment: "File node context menu")) { model.reveal(node) })
         addItem(ClosureMenuItem(title: NSLocalizedString("Open", comment: "File node context menu")) { model.open(node) })
@@ -87,7 +92,7 @@ extension NSMenu {
             item.isEnabled = model.canRefreshSubtree
             addItem(item)
         }
-        addCleanupItem(for: node, model: model)
+        if includeCleanup { addCleanupItem(for: node, model: model) }
     }
 
     /// "Add to Cleanup" / "Remove from Cleanup"; a refused item stays disabled with its reason as the tooltip.

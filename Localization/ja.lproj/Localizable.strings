@@ -500,3 +500,9 @@
 "This scan was opened from a file, so its items can't be moved." = "このスキャンはファイルから開かれたため、項目を移動できません。";
 "In Cleanup" = "クリーンアップ内";
 "In a folder in Cleanup" = "クリーンアップ内のフォルダ内";
+"Neodisk couldn't look inside this folder, so it can't tell what it holds." = "Neodisk はこのフォルダの中を確認できなかったため、何が入っているかわかりません。";
+"This name couldn't be read correctly, so Neodisk can't move it safely." = "この名前を正しく読み取れなかったため、Neodisk は安全に移動できません。";
+"Neodisk couldn't read everything inside some of this, so it may hold more than shown." = "Neodisk は中身をすべて読み取れなかったため、表示より多く含まれている可能性があります。";
+"This scan is from %@: folders may have changed since. Rescan to be sure." = "このスキャンは%@のものです。フォルダが変更されている可能性があります。確実にするには再スキャンしてください。";
+"1 item changed since you collected it and left Cleanup." = "1 項目が集めた後に変更されたため、クリーンアップから外しました。";
+"%lld items changed since you collected them and left Cleanup." = "%lld 項目が集めた後に変更されたため、クリーンアップから外しました。";

@@ -501,3 +501,9 @@
 "This scan was opened from a file, so its items can't be moved." = "Este análisis se abrió desde un archivo, así que sus elementos no se pueden mover.";
 "In Cleanup" = "En Limpieza";
 "In a folder in Cleanup" = "En una carpeta de Limpieza";
+"Neodisk couldn't look inside this folder, so it can't tell what it holds." = "Neodisk no pudo mirar dentro de esta carpeta, así que no sabe qué contiene.";
+"This name couldn't be read correctly, so Neodisk can't move it safely." = "Este nombre no se pudo leer correctamente, así que Neodisk no puede moverlo con seguridad.";
+"Neodisk couldn't read everything inside some of this, so it may hold more than shown." = "Neodisk no pudo leer todo lo que hay dentro, así que puede contener más de lo que se muestra.";
+"This scan is from %@: folders may have changed since. Rescan to be sure." = "Este análisis es de %@: las carpetas pueden haber cambiado desde entonces. Vuelve a analizar para asegurarte.";
+"1 item changed since you collected it and left Cleanup." = "1 elemento cambió desde que lo recogiste y salió de Limpieza.";
+"%lld items changed since you collected them and left Cleanup." = "%lld elementos cambiaron desde que los recogiste y salieron de Limpieza.";

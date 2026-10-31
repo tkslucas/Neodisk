@@ -83,6 +83,8 @@ public actor ScanSnapshotCache {
     /// Saves still encoding off the actor, so a finished scan is never invisible mid-save. Also gates the
     /// write: a removal or newer save while the encode ran drops the stale bytes.
     private var savingByTargetID: [String: ScanSnapshot] = [:]
+    /// Targets whose rotating save was superseded before it wrote; the next save that writes rotates for it.
+    private var pendingRotationTargetIDs: Set<String> = []
     private struct ComparisonBuild {
         let id: UUID
         let key: ScanChangeCacheKey
@@ -139,6 +141,9 @@ public actor ScanSnapshotCache {
         // gates the write below.
         invalidateComparison(forTargetID: targetID)
         savingByTargetID[targetID] = snapshot
+        // A rotating save superseded mid-encode never rotates; the save that supersedes it does it instead, or
+        // a removal right after a rescan would overwrite the scan before with no previous kept.
+        if rotatesPrevious { pendingRotationTargetIDs.insert(targetID) }
         defer {
             if savingByTargetID[targetID]?.id == snapshot.id {
                 savingByTargetID.removeValue(forKey: targetID)
@@ -177,7 +182,7 @@ public actor ScanSnapshotCache {
         let previousURL = previousFileURL(forTargetID: snapshot.target.id)
         var rotatedPrevious = false
         if FileManager.default.fileExists(atPath: latestURL.path) {
-            if !rotatesPrevious {
+            if !rotatesPrevious, !pendingRotationTargetIDs.contains(targetID) {
                 log("replacing latest in place for \(snapshot.target.id)")
             } else if latestMatches(digest: digest, targetID: snapshot.target.id, at: latestURL) {
                 log("content unchanged for \(snapshot.target.id); keeping previous baseline")
@@ -189,6 +194,7 @@ public actor ScanSnapshotCache {
         }
 
         try data.write(to: latestURL, options: .atomic)
+        pendingRotationTargetIDs.remove(targetID)
         log(
             "saved \(snapshot.treeStore.nodeCount) nodes (\(data.count) bytes) for "
             + "\(snapshot.target.id) in \(elapsedDescription(since: start))"

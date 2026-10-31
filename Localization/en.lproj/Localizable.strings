@@ -500,3 +500,9 @@
 "This scan was opened from a file, so its items can't be moved." = "This scan was opened from a file, so its items can't be moved.";
 "In Cleanup" = "In Cleanup";
 "In a folder in Cleanup" = "In a folder in Cleanup";
+"Neodisk couldn't look inside this folder, so it can't tell what it holds." = "Neodisk couldn't look inside this folder, so it can't tell what it holds.";
+"This name couldn't be read correctly, so Neodisk can't move it safely." = "This name couldn't be read correctly, so Neodisk can't move it safely.";
+"Neodisk couldn't read everything inside some of this, so it may hold more than shown." = "Neodisk couldn't read everything inside some of this, so it may hold more than shown.";
+"This scan is from %@: folders may have changed since. Rescan to be sure." = "This scan is from %@: folders may have changed since. Rescan to be sure.";
+"1 item changed since you collected it and left Cleanup." = "1 item changed since you collected it and left Cleanup.";
+"%lld items changed since you collected them and left Cleanup." = "%lld items changed since you collected them and left Cleanup.";

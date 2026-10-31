@@ -236,4 +236,65 @@ import NeodiskAppModel
         // The scan saved before stays the latest's baseline: nothing rotated into the previous slot.
         #expect(await environment.cache.loadPreviousSnapshot(for: snapshot.target) == nil)
     }
+
+    @Test func aSystemErrorMidBatchKeepsThatItemAndMovesTheRest() async throws {
+        let environment = try Environment()
+        defer { environment.tearDown() }
+        for name in ["a.bin", "locked.bin", "c.bin"] { try environment.write(name, bytes: 100) }
+        let model = environment.makeModel()
+        let trash = environment.fakeTrash
+        let lockedPath = environment.path("locked.bin")
+        model.cleanup.trashItem = { url in
+            if url.path == lockedPath { throw CocoaError(.fileWriteNoPermission) }
+            let destination = trash.appending(path: url.lastPathComponent)
+            try FileManager.default.moveItem(at: url, to: destination)
+            return destination
+        }
+        model.coordinator.replaceCurrentSnapshot(try await environment.scan())
+        let store = try #require(model.store)
+        model.cleanup.add(try ["a.bin", "locked.bin", "c.bin"].map { try #require(store.node(id: environment.path($0))) })
+
+        model.cleanup.moveAllToTrash()
+        try await waitUntil("batch finished") {
+            model.store?.node(id: environment.path("c.bin")) == nil && !model.cleanup.isMoving
+        }
+        #expect(model.store?.node(id: environment.path("a.bin")) == nil)
+        #expect(model.store?.node(id: lockedPath) != nil)
+        #expect(FileManager.default.fileExists(atPath: lockedPath))
+        #expect(model.cleanup.itemIDs == [lockedPath])
+        #expect(model.cleanup.failures[lockedPath] != nil)
+    }
+
+    @Test func aRescanThatReplacesACollectedItemDropsIt() async throws {
+        let environment = try Environment()
+        defer { environment.tearDown() }
+        try environment.write("a.bin", bytes: 100)
+        try environment.write("b.bin", bytes: 100)
+        let model = environment.makeModel()
+        model.coordinator.replaceCurrentSnapshot(try await environment.scan())
+        let store = try #require(model.store)
+        model.cleanup.add(try ["a.bin", "b.bin"].map { try #require(store.node(id: environment.path($0))) })
+
+        try FileManager.default.removeItem(atPath: environment.path("a.bin"))
+        try FileManager.default.createDirectory(atPath: environment.path("a.bin"), withIntermediateDirectories: true)
+        try environment.write("a.bin/huge.bin", bytes: 4_000_000)
+        model.coordinator.replaceCurrentSnapshot(try await environment.scan())
+
+        #expect(model.cleanup.itemIDs == [environment.path("b.bin")])
+        #expect(model.cleanup.notice?.kind == .info)
+    }
+
+    @Test func smallerItemsCellsDontOfferToCollectTheirFolder() async throws {
+        let environment = try Environment()
+        defer { environment.tearDown() }
+        try environment.write("Folder/a.bin", bytes: 100)
+        let model = environment.makeModel()
+        model.coordinator.replaceCurrentSnapshot(try await environment.scan())
+        let folder = try #require(model.store?.node(id: environment.path("Folder")))
+        let title = NSLocalizedString("Add to Cleanup", comment: "")
+        let full = try #require(NSMenu.fileNodeActions(for: folder, model: model))
+        let aggregate = try #require(NSMenu.fileNodeActions(for: folder, model: model, includeCleanup: false))
+        #expect(full.items.contains { $0.title == title })
+        #expect(!aggregate.items.contains { $0.title == title })
+    }
 }

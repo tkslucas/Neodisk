@@ -6,10 +6,33 @@ import NeodiskKit
 
 package struct CleanupPile: Equatable, Sendable {
     package private(set) var itemIDs: [String] = []
+    /// What each item was when it was collected. Ids are paths, so after a rescan the same path may hold
+    /// something else: that item leaves the pile instead of standing in for the one the user picked.
+    private var fingerprints: [String: Fingerprint] = [:]
 
-    package init(itemIDs: [String] = []) {
-        self.itemIDs = itemIDs
+    private struct Fingerprint: Equatable, Sendable {
+        let isDirectory: Bool
+        let identity: FileIdentity?
+        /// Files only: a folder's size changes with its contents and it's still the same folder.
+        let fileSize: Int64?
+
+        init(_ node: FileNodeRecord) {
+            isDirectory = node.isDirectory
+            identity = node.fileIdentity
+            fileSize = node.isDirectory ? nil : node.logicalSize
+        }
+
+        func matches(_ node: FileNodeRecord) -> Bool {
+            let current = Fingerprint(node)
+            guard current.isDirectory == isDirectory, current.fileSize == fileSize else { return false }
+            if let identity, let currentIdentity = current.identity {
+                return identity == currentIdentity
+            }
+            return true
+        }
     }
+
+    package init() {}
 
     package var isEmpty: Bool { itemIDs.isEmpty }
 
@@ -33,9 +56,11 @@ package struct CleanupPile: Equatable, Sendable {
     @discardableResult
     package mutating func add(_ ids: [String], in store: FileTreeStore) -> [String] {
         var added: [String] = []
-        for id in ids where store.node(id: id) != nil && collectedItem(containing: id, in: store) == nil {
-            itemIDs.removeAll { store.isNodeOrDescendant($0, of: [id]) }
+        for id in ids {
+            guard let node = store.node(id: id), collectedItem(containing: id, in: store) == nil else { continue }
+            remove(Set(itemIDs.filter { store.isNodeOrDescendant($0, of: [id]) }))
             itemIDs.append(id)
+            fingerprints[id] = Fingerprint(node)
             added.append(id)
         }
         return added
@@ -43,17 +68,33 @@ package struct CleanupPile: Equatable, Sendable {
 
     package mutating func remove(_ ids: Set<String>) {
         itemIDs.removeAll { ids.contains($0) }
+        for id in ids { fingerprints[id] = nil }
     }
 
     package mutating func removeAll() {
         itemIDs.removeAll()
+        fingerprints.removeAll()
     }
 
-    /// After the tree changed (a rescan, an expansion, a move): drops what's gone and re-collapses nesting.
-    package mutating func reconcile(with store: FileTreeStore) {
+    /// After the tree changed (a rescan, an expansion, a move): drops what's gone or became something else,
+    /// and re-collapses nesting. Returns how many items were dropped because they changed.
+    @discardableResult
+    package mutating func reconcile(with store: FileTreeStore) -> Int {
         let previous = itemIDs
-        itemIDs = []
-        add(previous, in: store)
+        let previousFingerprints = fingerprints
+        removeAll()
+        var changed = 0
+        var kept: [String] = []
+        for id in previous {
+            guard let node = store.node(id: id) else { continue }
+            if let fingerprint = previousFingerprints[id], !fingerprint.matches(node) {
+                changed += 1
+                continue
+            }
+            kept.append(id)
+        }
+        add(kept, in: store)
+        return changed
     }
 
     package func nodes(in store: FileTreeStore) -> [FileNodeRecord] {

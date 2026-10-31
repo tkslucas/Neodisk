@@ -460,6 +460,26 @@ final class ScanCoordinator {
         expandTask = nil
     }
 
+    /// Cuts items that went to the Trash out of the snapshot on screen. Off the main actor; a newer snapshot
+    /// of the same location (an expansion landed meanwhile) gets the same cut, another location's is left alone.
+    /// Returns whether the screen now shows the cut.
+    @discardableResult
+    func removeNodes(ids nodeIDs: [String], fromTargetID targetID: String) async -> Bool {
+        for _ in 0..<3 {
+            guard let current = snapshot, current.target.id == targetID, current.isComplete else { return false }
+            let liveIDs = nodeIDs.filter { current.treeStore.node(id: $0) != nil }
+            guard !liveIDs.isEmpty else { return true }
+            guard let updated = try? await snapshotTransformService.removingNodes(in: current, ids: liveIDs) else {
+                return false
+            }
+            if snapshot?.id == current.id {
+                snapshot = updated
+                return true
+            }
+        }
+        return false
+    }
+
     @discardableResult
     private func replaceNodeInTree(
         _ oldNode: FileNodeRecord,

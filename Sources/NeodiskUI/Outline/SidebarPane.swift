@@ -98,12 +98,17 @@ struct SidebarPane: View {
             model.addDroppedFolders(urls)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            Text("v\(AppVersion.display)")
-                .neoFont(9)
-                .foregroundStyle(.tertiary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 4)
+            VStack(spacing: 2) {
+                if model.cleanup.isEnabled, model.coordinator.snapshot != nil {
+                    CleanupPanel(model: model)
+                }
+                Text("v\(AppVersion.display)")
+                    .neoFont(9)
+                    .foregroundStyle(.tertiary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 4)
+            }
         }
         .onDeleteCommand {
             removeSelectedFolders()

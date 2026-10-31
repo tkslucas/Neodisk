@@ -1,4 +1,4 @@
-// First-launch onboarding: what the map is, the read-only guarantee, and
+// First-launch onboarding: what the map is, how Cleanup keeps removal safe, and
 // Full Disk Access status with instructions.
 
 import AppKit
@@ -25,7 +25,7 @@ struct WelcomeSheet: View {
                     .foregroundStyle(.blue)
                 Text("Welcome to Neodisk")
                     .font(.title.weight(.semibold))
-                Text("Scan folders and disks to see where space is going.\nNeodisk is read-only: it never modifies or deletes files.")
+                Text("Scan folders and disks to see where space is going,\nthen clear out what you don't need.")
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.secondary)
             }
@@ -45,12 +45,12 @@ struct WelcomeSheet: View {
 
             Label {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Read-only access").fontWeight(.semibold)
-                    Text("Neodisk is purely a visualizer: it only ever reads your disk and cannot delete files or move them to the Trash — by design. To clean something up, right-click it, Reveal in Finder, and delete it there.")
+                    Text("Clean up safely").fontWeight(.semibold)
+                    Text("Drag items to Cleanup at the bottom of the sidebar, or press ⌘⌫. Nothing moves until you confirm, items go to the Trash where you can put them back, and system folders are off limits. You can turn this off in Settings.")
                         .foregroundStyle(.secondary)
                 }
             } icon: {
-                Image(systemName: "lock.shield").foregroundStyle(.blue)
+                Image(systemName: "trash").foregroundStyle(.blue)
             }
 
             Divider()

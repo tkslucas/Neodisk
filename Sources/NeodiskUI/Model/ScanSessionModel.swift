@@ -648,8 +648,9 @@ final class ScanSessionModel {
     }
 
     /// After a subtree splice. The index keeps the last full scan's date and duration (they drive auto-rescan);
-    /// only the node count updates. The pre-splice snapshot still rotates into the previous slot.
-    func persistSplicedSnapshot() {
+    /// only the node count updates. An expansion rotates the pre-splice snapshot into the previous slot; a
+    /// removal (`rotatesPrevious: false`) keeps the previous scan as the baseline.
+    func persistSplicedSnapshot(rotatesPrevious: Bool = true) {
         guard let snapshot = coordinator.snapshot,
               snapshot.isComplete, snapshot.source.isPersistable else { return }
         let existing = cachedScanInfo[snapshot.target.id]
@@ -661,16 +662,16 @@ final class ScanSessionModel {
             totalAllocatedSize: snapshot.aggregateStats.totalAllocatedSize,
             cloudOnlyLogicalSize: Self.cloudOnlyBytes(of: snapshot)
         )
-        saveSnapshotToCache(snapshot)
+        saveSnapshotToCache(snapshot, rotatesPrevious: rotatesPrevious)
     }
 
-    private func saveSnapshotToCache(_ snapshot: ScanSnapshot) {
+    private func saveSnapshotToCache(_ snapshot: ScanSnapshot, rotatesPrevious: Bool = true) {
         Task { [weak self, snapshotCache] in
             // Signals the end of the persistence pipeline (success or failure)
             // for the test seam; runs after every await below completes.
             defer { self?.onSnapshotPersistedForTesting?(snapshot) }
             do {
-                let outcome = try await snapshotCache.save(snapshot)
+                let outcome = try await snapshotCache.save(snapshot, rotatesPrevious: rotatesPrevious)
                 // The save knows the truth: an unchanged rescan skips the rotation.
                 self?.setHasPreviousSnapshot(
                     outcome.hasPreviousSnapshot, forTargetID: snapshot.target.id

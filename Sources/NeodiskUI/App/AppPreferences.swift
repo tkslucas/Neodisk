@@ -58,6 +58,8 @@ final class AppPreferences: ObservableObject {
     /// Display only: weights dataless files by cloud size instead of their ~0 on-disk size.
     @AppStorage("showCloudOnlyFiles") var showCloudOnlyFiles = true
     @AppStorage("showFreeSpace") var showFreeSpace = false
+    /// Off: Neodisk only looks, as before Cleanup existed.
+    @AppStorage("allowsMovingToTrash") var allowsMovingToTrash = true
     /// The visualization color palette, by VizPalette id. Applies
     /// immediately; unknown ids fall back to the default (see VizPalette).
     @AppStorage("vizPalette") var vizPaletteID = VizPalette.standard.id
@@ -271,6 +273,7 @@ final class AppPreferences: ObservableObject {
         includeCloudStorage = true
         showCloudOnlyFiles = true
         showFreeSpace = false
+        allowsMovingToTrash = true
         vizPaletteID = VizPalette.standard.id
         useScanExclusions = false
         exclusionPatternsText = ScanExclusionMatcher.commonPresetPatterns.joined(separator: "\n")

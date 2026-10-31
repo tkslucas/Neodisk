@@ -55,6 +55,30 @@ extension NeodiskViewModel {
         copyPath(node)
     }
 
+    // MARK: - Cleanup
+
+    func cleanupMenuTitle(for node: FileNodeRecord) -> String {
+        cleanup.isCollected(node.id) ? "Remove from Cleanup" : "Add to Cleanup"
+    }
+
+    func canToggleCleanup(for node: FileNodeRecord) -> Bool {
+        cleanup.isCollected(node.id) ? !cleanup.isMoving : cleanup.canCollect(node)
+    }
+
+    /// Inspect > Add to Cleanup (⌘⌫). While a text field is being edited the key keeps its text meaning
+    /// (delete to the start of the line), since menu shortcuts run before the field sees the key.
+    func toggleCleanupForSelection() {
+        if let editor = NSApp.keyWindow?.firstResponder as? NSTextView, editor.isEditable {
+            editor.deleteToBeginningOfLine(nil)
+            return
+        }
+        guard let node = selectedNode else {
+            NSSound.beep()
+            return
+        }
+        cleanup.toggle(node)
+    }
+
     func reveal(_ node: FileNodeRecord) {
         SystemIntegration.reveal(node.url)
     }

@@ -119,6 +119,11 @@ final class NeodiskViewModel {
     /// their own text (outline table, treemap labels) read it from here.
     var textScale: Double = TextScale.standard
 
+    // MARK: Cleanup
+
+    /// Items collected for the Trash; see CleanupModel.
+    let cleanup: CleanupModel
+
     // MARK: Kind statistics
 
     /// Kind catalog, display mode, and drill-in file list; see
@@ -263,6 +268,7 @@ final class NeodiskViewModel {
         self.sidebarFolderStore = sidebarFolderStore
         self.warnings = ScanWarningsModel(coordinator: coordinator)
         self.freeSpace = FreeSpaceModel(coordinator: coordinator)
+        self.cleanup = CleanupModel(coordinator: coordinator)
         self.search = SearchModel(coordinator: coordinator, indexService: searchIndexService)
         self.kinds = KindStatsModel(coordinator: coordinator, indexService: searchIndexService)
         self.largest = LargestFilesModel(coordinator: coordinator, indexService: searchIndexService)
@@ -282,6 +288,7 @@ final class NeodiskViewModel {
         diff.model = self
         changes.model = self
         session.model = self
+        cleanup.model = self
 
         // The coordinator is @Observable, so views track its properties
         // (phase, snapshot, …) directly; the model only needs the snapshot
@@ -443,6 +450,7 @@ final class NeodiskViewModel {
                 self?.syncOutlinePreferences()
                 self?.syncTextScale()
                 self?.syncFileCategories()
+                self?.syncCleanupPreference()
             }
         freeSpace.update()
         syncVizPalette()
@@ -452,6 +460,32 @@ final class NeodiskViewModel {
         syncOutlinePreferences()
         syncTextScale()
         syncFileCategories()
+        syncCleanupPreference()
+    }
+
+    private func syncCleanupPreference() {
+        guard let preferences else { return }
+        cleanup.setEnabled(preferences.allowsMovingToTrash)
+    }
+
+    /// Before items leave the tree: a selection or drill root inside one moves to the folder that held it, so
+    /// the views land somewhere that still exists.
+    func prepareForRemoval(of removedIDs: [String], in store: FileTreeStore) {
+        let removed = Set(removedIDs)
+        func survivor(of id: String) -> String? {
+            var cursor: FileNodeRecord? = store.node(id: id)
+            while let node = cursor, store.isNodeOrDescendant(node.id, of: removed) {
+                cursor = store.parent(of: node.id)
+            }
+            return cursor?.id
+        }
+        if let zoomRootID, store.isNodeOrDescendant(zoomRootID, of: removed) {
+            let fallback = survivor(of: zoomRootID)
+            self.zoomRootID = fallback == store.root.id ? nil : fallback
+        }
+        if let selectedNodeID, store.isNodeOrDescendant(selectedNodeID, of: removed) {
+            self.selectedNodeID = survivor(of: selectedNodeID)
+        }
     }
 
     /// Mirror the persisted text scale onto the model, and push it into the
@@ -680,6 +714,7 @@ final class NeodiskViewModel {
         duplicates.snapshotDidChange()
         changes.snapshotDidChange()
         search.snapshotDidChange()
+        cleanup.snapshotDidChange(snapshot)
 
         guard let snapshot else { return }
 

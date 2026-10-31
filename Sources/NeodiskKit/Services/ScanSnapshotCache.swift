@@ -125,8 +125,10 @@ public actor ScanSnapshotCache {
 
     /// Saves a complete snapshot as the latest; the prior latest rotates to "previous" unless its tree content
     /// matches, since rotating an identical tree would make every diff empty.
+    /// `rotatesPrevious: false` overwrites the latest in place (after moving items to the Trash): the previous
+    /// scan stays the baseline, so Changes still compares against it.
     @discardableResult
-    public func save(_ snapshot: ScanSnapshot) async throws -> SnapshotSaveOutcome {
+    public func save(_ snapshot: ScanSnapshot, rotatesPrevious: Bool = true) async throws -> SnapshotSaveOutcome {
         guard snapshot.isComplete else {
             throw ScanSnapshotCacheError.incompleteSnapshot
         }
@@ -175,7 +177,9 @@ public actor ScanSnapshotCache {
         let previousURL = previousFileURL(forTargetID: snapshot.target.id)
         var rotatedPrevious = false
         if FileManager.default.fileExists(atPath: latestURL.path) {
-            if latestMatches(digest: digest, targetID: snapshot.target.id, at: latestURL) {
+            if !rotatesPrevious {
+                log("replacing latest in place for \(snapshot.target.id)")
+            } else if latestMatches(digest: digest, targetID: snapshot.target.id, at: latestURL) {
                 log("content unchanged for \(snapshot.target.id); keeping previous baseline")
             } else {
                 try? FileManager.default.removeItem(at: previousURL)

@@ -22,6 +22,12 @@ extension View {
                     Button(LocalizedStringKey(expansion.menuTitleKey)) { model.expandNodeContents(node) }
                         .disabled(!model.canRefreshSubtree)
                 }
+                if model.cleanup.isEnabled {
+                    Divider()
+                    Button(LocalizedStringKey(model.cleanupMenuTitle(for: node))) { model.cleanup.toggle(node) }
+                        .disabled(!model.canToggleCleanup(for: node))
+                        .help(model.cleanup.refusalReason(for: node) ?? "")
+                }
             }
         } primaryAction: { ids in
             guard let id = ids.first,
@@ -81,5 +87,19 @@ extension NSMenu {
             item.isEnabled = model.canRefreshSubtree
             addItem(item)
         }
+        addCleanupItem(for: node, model: model)
+    }
+
+    /// "Add to Cleanup" / "Remove from Cleanup"; a refused item stays disabled with its reason as the tooltip.
+    @MainActor
+    func addCleanupItem(for node: FileNodeRecord, model: NeodiskViewModel) {
+        guard model.cleanup.isEnabled else { return }
+        addItem(.separator())
+        let item = ClosureMenuItem(
+            title: NSLocalizedString(model.cleanupMenuTitle(for: node), comment: "File node context menu")
+        ) { model.cleanup.toggle(node) }
+        item.isEnabled = model.canToggleCleanup(for: node)
+        item.toolTip = model.cleanup.refusalReason(for: node)
+        addItem(item)
     }
 }

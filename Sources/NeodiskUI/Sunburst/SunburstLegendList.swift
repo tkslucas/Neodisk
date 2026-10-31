@@ -206,6 +206,11 @@ struct SunburstLegendList: View {
                 Button(LocalizedStringKey(expansion.menuTitleKey)) { model.expandNodeContents(node) }
                     .disabled(!model.canRefreshSubtree)
             }
+            if model.cleanup.isEnabled {
+                Divider()
+                Button(LocalizedStringKey(model.cleanupMenuTitle(for: node))) { model.cleanup.toggle(node) }
+                    .disabled(!model.canToggleCleanup(for: node))
+            }
         }
     }
 }

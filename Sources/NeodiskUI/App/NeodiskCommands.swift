@@ -222,7 +222,6 @@ struct NeodiskCommands: Commands {
             .disabled(model.selectedNodeID == nil)
         }
 
-        // No Move to Trash: Neodisk is read-only by design.
         CommandMenu("Inspect") {
             Button {
                 model.quickLookSelection()
@@ -257,6 +256,28 @@ struct NeodiskCommands: Commands {
             }
             .keyboardShortcut("c", modifiers: [.command, .option])
             .disabled(!model.selectionSupportsFileActions)
+
+            if model.cleanup.isEnabled {
+                Divider()
+
+                Button {
+                    model.toggleCleanupForSelection()
+                } label: {
+                    Label(
+                        LocalizedStringKey(model.selectedNode.map(model.cleanupMenuTitle(for:)) ?? "Add to Cleanup"),
+                        systemImage: "trash"
+                    )
+                }
+                .keyboardShortcut(.delete, modifiers: .command)
+                .disabled(model.selectedNode == nil)
+
+                Button {
+                    model.cleanup.moveAllToTrash()
+                } label: {
+                    Label("Move Cleanup to Trash…", systemImage: "trash.fill")
+                }
+                .disabled(!model.cleanup.canMoveToTrash)
+            }
         }
 
         // No help book; the app is meant to be self-explanatory. Help

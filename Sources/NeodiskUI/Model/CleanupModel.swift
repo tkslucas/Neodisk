@@ -99,6 +99,35 @@ final class CleanupModel {
             || store.isNodeOrDescendant(id, of: movingIDs)
     }
 
+    /// How the views mark an item: lists dim `.inside` and up, maps outline the item itself.
+    enum Mark: Equatable {
+        case none
+        /// Inside a collected (or moving) folder.
+        case inside
+        case collected
+        case moving
+
+        var isMarked: Bool { self != .none }
+        /// The item itself, not something inside it.
+        var isItem: Bool { self == .collected || self == .moving }
+
+        /// The hover line for it, or nil.
+        var hoverText: String? {
+            switch self {
+            case .none: nil
+            case .inside: NSLocalizedString("In a folder in Cleanup", comment: "Hover line for an item inside a collected folder")
+            case .collected: NSLocalizedString("In Cleanup", comment: "Hover line for a collected item")
+            case .moving: NSLocalizedString("Moving to the Trash…", comment: "Hover line for an item being moved")
+            }
+        }
+    }
+
+    func mark(for id: String) -> Mark {
+        if movingIDs.contains(id) { return .moving }
+        if pile.contains(id) { return .collected }
+        return isInsideCollected(id) ? .inside : .none
+    }
+
     // MARK: - Eligibility
 
     /// Why nothing can be collected right now, or nil.

@@ -18,6 +18,7 @@ struct OutlineNameSection: View {
     var scale = OutlineRowMetrics.scale
 
     var body: some View {
+        let cleanupMark = model.cleanup.mark(for: row.node.id)
         // Slot widths and glyph sizes come from OutlineRowMetrics, which the
         // AppKit table also measures against — see the mirror note there.
         HStack(spacing: OutlineRowMetrics.rowSpacing) {
@@ -58,9 +59,14 @@ struct OutlineNameSection: View {
                     ? AnyShapeStyle(.white)
                     : AnyShapeStyle(.primary))
 
+            if cleanupMark.isItem {
+                CleanupRowGlyph(pointSize: OutlineRowMetrics.fontSize, onAccent: state.showsAccentSelection)
+            }
+
             Spacer(minLength: 0)
         }
         .font(.system(size: OutlineRowMetrics.fontSize))
+        .cleanupDimmed(cleanupMark.isMarked, onAccent: state.showsAccentSelection)
         .padding(.leading, OutlineRowMetrics.contentInset)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
@@ -112,8 +118,49 @@ struct OutlineTrailingSection: View {
                 .fixedSize(horizontal: true, vertical: false)
         }
         .font(.system(size: OutlineRowMetrics.fontSize))
+        .cleanupDimmed(model.cleanup.isInsideCollected(row.node.id), onAccent: state.showsAccentSelection)
         .padding(.trailing, trailingPadding)
         .frame(maxHeight: .infinity)
+    }
+}
+
+// MARK: - Cleanup marks
+
+/// The small trash after a collected item's name, in every list.
+struct CleanupRowGlyph: View {
+    /// The outline's AppKit-hosted rows pass their scaled point size; other rows scale through `.neoFont`.
+    var pointSize: CGFloat? = nil
+    var onAccent = false
+
+    var body: some View {
+        Group {
+            if let pointSize {
+                Image(systemName: "trash").font(.system(size: (pointSize * 0.85).rounded(), weight: .medium))
+            } else {
+                Image(systemName: "trash").neoFont(10, weight: .medium)
+            }
+        }
+        .foregroundStyle(onAccent ? AnyShapeStyle(.white) : AnyShapeStyle(.secondary))
+        .accessibilityLabel(Text("In Cleanup"))
+    }
+}
+
+/// Dims a cell that has no Cleanup awareness of its own (the bottom table's detail columns).
+struct CleanupDimming<Content: View>: View {
+    let cleanup: CleanupModel
+    let nodeID: String
+    let state: OutlineRowSelectionState
+    let content: Content
+
+    var body: some View {
+        content.cleanupDimmed(cleanup.isInsideCollected(nodeID), onAccent: state.showsAccentSelection)
+    }
+}
+
+extension View {
+    /// Rows in Cleanup (or inside a collected folder) recede; on the accent selection they stay legible.
+    func cleanupDimmed(_ dimmed: Bool, onAccent: Bool = false) -> some View {
+        opacity(dimmed ? (onAccent ? 0.7 : 0.45) : 1)
     }
 }
 
@@ -125,11 +172,6 @@ struct OutlineSearchResultsList: View {
     let results: SearchModel.Results
 
     var body: some View {
-        let selection = Binding<String?>(
-            get: { model.selectedNodeID },
-            set: { if let id = $0 { model.select(id) } }
-        )
-
         if results.ids.isEmpty {
             Spacer()
             Text("No matches")
@@ -138,19 +180,22 @@ struct OutlineSearchResultsList: View {
                 .frame(maxWidth: .infinity)
             Spacer()
         } else {
-            List(results.ids, id: \.self, selection: selection) { nodeID in
-                if let node = model.store?.node(id: nodeID) {
-                    FileResultRow(
-                        node: node,
-                        palette: model.vizPalette,
-                        includeCloudOnly: model.showsCloudOnlyFiles
-                    )
-                    .listRowSeparator(.hidden)
-                }
+            // The same AppKit list as the statistics tabs: rows drag out and onto Cleanup, and long result
+            // lists never re-measure.
+            StatsListTable(
+                model: model,
+                rows: results.ids.compactMap { model.store?.node(id: $0) },
+                click: .selectsNode { model.select($0) },
+                selectedID: model.selectedNodeID,
+                keepsLeaderInView: true
+            ) { node in
+                FileResultRow(
+                    node: node,
+                    palette: model.vizPalette,
+                    includeCloudOnly: model.showsCloudOnlyFiles,
+                    cleanup: model.cleanup
+                )
             }
-            .fileNodeActions(model: model)
-            .environment(\.defaultMinListRowHeight, 20)
-            .quickLookOnSpace(model: model)
 
             if results.ids.count < results.totalMatches {
                 Divider()

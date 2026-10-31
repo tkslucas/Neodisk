@@ -36,15 +36,26 @@ struct FileResultRow: View {
     /// The active palette, so tints follow the colorblind Settings toggle.
     var palette: VizPalette = .standard
     var includeCloudOnly: Bool = false
+    /// Read in the body, so the row dims the moment its item joins or leaves Cleanup.
+    var cleanup: CleanupModel? = nil
+
+    @Environment(\.backgroundProminence) private var backgroundProminence
 
     var body: some View {
+        let cleanupMark = cleanup?.mark(for: node.id) ?? .none
+        let onAccent = backgroundProminence == .increased
         HStack(spacing: 6) {
             FileCategoryIcon(node: node, palette: palette)
 
             VStack(alignment: .leading, spacing: 1) {
-                Text(node.name)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                HStack(spacing: 4) {
+                    Text(node.name)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    if cleanupMark.isItem {
+                        CleanupRowGlyph(onAccent: onAccent)
+                    }
+                }
                 Text(containingFolder)
                     .foregroundStyle(.secondary)
                     .neoFont(10)
@@ -61,6 +72,7 @@ struct FileResultRow: View {
                 .fixedSize(horizontal: true, vertical: false)
         }
         .neoFont(12)
+        .cleanupDimmed(cleanupMark.isMarked, onAccent: onAccent)
         .help(node.path)
     }
 

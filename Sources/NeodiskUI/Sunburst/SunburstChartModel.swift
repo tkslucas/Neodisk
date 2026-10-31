@@ -54,6 +54,7 @@ final class SunburstChartModel: ObservableObject {
     private var activeLayoutID: String?
     private var layoutTask: Task<[SunburstSegment], Error>?
     private var selectionOverlayCache = SunburstSelectionOverlayCache(capacity: 8)
+    private var cleanupOverlayCache: (key: SunburstCleanupOverlayKey, overlay: SunburstCleanupOverlay)?
     private var legendPresentationCache = SunburstLegendPresentationCache()
     /// The rendered layout before fills, kept so a style change re-resolves
     /// colors over the finished geometry instead of re-laying out.
@@ -170,6 +171,23 @@ final class SunburstChartModel: ObservableObject {
         }
     }
 
+    /// The arcs Cleanup marks over the finished layout (never a re-layout): memoized per layout and pile.
+    func cleanupOverlay(collected: [String], moving: Set<String>, rootIsInside: Bool) -> SunburstCleanupOverlay {
+        let key = SunburstCleanupOverlayKey(
+            renderVersion: renderedLayoutVersion, collected: collected, moving: moving, rootIsInside: rootIsInside
+        )
+        if let cached = cleanupOverlayCache, cached.key == key { return cached.overlay }
+        let overlay = SunburstCleanupOverlay(
+            segments: renderedSegments,
+            marks: { renderState.segment(forNodeID: $0) },
+            collected: collected,
+            moving: moving,
+            rootIsInside: rootIsInside
+        )
+        cleanupOverlayCache = (key, overlay)
+        return overlay
+    }
+
     /// O(segments), never a re-layout. A load in flight picks up the latest style when it completes.
     func applyStyle(_ style: SunburstColorStyle, in treeStore: FileTreeStore) {
         guard style != currentStyle else { return }
@@ -256,6 +274,52 @@ final class SunburstChartModel: ObservableObject {
     private func setIsLayoutPending(_ isPending: Bool) {
         guard isLayoutPending != isPending else { return }
         isLayoutPending = isPending
+    }
+}
+
+private struct SunburstCleanupOverlayKey: Equatable {
+    let renderVersion: Int
+    let collected: [String]
+    let moving: Set<String>
+    let rootIsInside: Bool
+}
+
+/// Collected arcs get an outline; they and every arc inside them (by angle and ring, so pooled arcs too) get
+/// the wash. A collected item the layout pooled or dropped has no arc and draws nothing.
+struct SunburstCleanupOverlay: Equatable {
+    var wash: [SunburstSegment] = []
+    var collected: [SunburstSegment] = []
+    var moving: [SunburstSegment] = []
+
+    var isEmpty: Bool { wash.isEmpty }
+
+    init() {}
+
+    init(
+        segments: [SunburstSegment],
+        marks segment: (String) -> SunburstSegment?,
+        collected collectedIDs: [String],
+        moving movingIDs: Set<String>,
+        rootIsInside: Bool
+    ) {
+        guard !segments.isEmpty, !(collectedIDs.isEmpty && movingIDs.isEmpty) else { return }
+        if rootIsInside {
+            // Drilled into a collected folder: everything on screen is in Cleanup.
+            wash = segments
+            return
+        }
+        moving = movingIDs.sorted().compactMap(segment)
+        collected = collectedIDs.filter { !movingIDs.contains($0) }.compactMap(segment)
+        let marked = moving + collected
+        guard !marked.isEmpty else { return }
+        let epsilon = 1e-9
+        wash = segments.filter { candidate in
+            marked.contains { mark in
+                candidate.innerRadius >= mark.innerRadius - epsilon
+                    && candidate.startAngle >= mark.startAngle - epsilon
+                    && candidate.endAngle <= mark.endAngle + epsilon
+            }
+        }
     }
 }
 

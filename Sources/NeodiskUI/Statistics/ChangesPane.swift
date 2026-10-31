@@ -194,7 +194,10 @@ private struct ChangeEntryRow: View {
     let model: NeodiskViewModel
     let entry: ScanChangeEntry
 
+    @Environment(\.backgroundProminence) private var backgroundProminence
+
     var body: some View {
+        let cleanupMark = entry.nodeID.map { model.cleanup.mark(for: $0) } ?? .none
         HStack(spacing: 6) {
             Image(systemName: kindSymbol)
                 .neoFont(11, weight: .medium)
@@ -202,9 +205,14 @@ private struct ChangeEntryRow: View {
                 .frame(width: 16)
 
             VStack(alignment: .leading, spacing: 1) {
-                Text(entry.name)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                HStack(spacing: 4) {
+                    Text(entry.name)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    if cleanupMark.isItem {
+                        CleanupRowGlyph(onAccent: backgroundProminence == .increased)
+                    }
+                }
                 Text(subtitleText)
                     .foregroundStyle(.secondary)
                     .neoFont(10)
@@ -226,6 +234,7 @@ private struct ChangeEntryRow: View {
             }
         }
         .neoFont(12)
+        .cleanupDimmed(cleanupMark.isMarked, onAccent: backgroundProminence == .increased)
         .help(helpText)
     }
 

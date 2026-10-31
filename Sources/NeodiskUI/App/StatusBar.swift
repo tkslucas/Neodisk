@@ -51,6 +51,12 @@ struct StatusBar: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer(minLength: 12)
+                if let cleanupText = model.cleanup.mark(for: node.id).hoverText {
+                    Label(cleanupText, systemImage: "trash")
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .fixedSize()
+                }
                 Text(LocalizedStringKey(FileKindClassifier.kind(for: node, mode: model.kinds.displayMode).displayName))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)

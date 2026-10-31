@@ -772,8 +772,10 @@ package struct TreemapScene: Sendable {
     }
 
     /// The on-screen rect of an arbitrary node (not just rendered leaves),
-    /// recomputed by re-running the layout along the path from the root.
-    package nonisolated func rect(forNodeID nodeID: String, in store: FileTreeStore) -> CGRect? {
+    /// recomputed by re-running the layout along the path from the root. A node the map doesn't draw on its own
+    /// (merged into "smaller items", or inside a flat container too small to nest) gets the nearest drawn rect,
+    /// unless `exact`, which returns nil for it.
+    package nonisolated func rect(forNodeID nodeID: String, in store: FileTreeStore, exact: Bool = false) -> CGRect? {
         guard size.width >= 1, size.height >= 1 else { return nil }
         let fullChain = store.path(to: nodeID)
         guard let startIndex = fullChain.firstIndex(where: { $0.id == rootID }) else { return nil }
@@ -804,7 +806,7 @@ package struct TreemapScene: Sendable {
                 // Mirror the flat build: a container too small to nest, or past the depth cap, is the best rect on offer.
                 guard depth < Self.flatMaxContainerDepth,
                       let content = Self.flatContentBounds(of: rect, scale: labelScale) else {
-                    return rect
+                    return exact ? nil : rect
                 }
                 layoutRect = content
             }
@@ -820,7 +822,7 @@ package struct TreemapScene: Sendable {
             } else if let aggregateRect = layout.aggregateRect {
                 // The node was merged into the "smaller items" cell; the best
                 // rect we can offer is the aggregate itself.
-                return aggregateRect
+                return exact ? nil : aggregateRect
             } else {
                 return nil
             }

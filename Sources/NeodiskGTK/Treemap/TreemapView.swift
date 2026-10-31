@@ -403,8 +403,8 @@ final class TreemapView: CanvasDelegate {
         gtk_widget_add_controller(ptr(widget), ptr(drag))
 
         let keys = raw(gtk_event_controller_key_new())!
-        connectKey(keys) { [unowned self] keyval, _ in
-            self.handleKey(keyval)
+        connectKey(keys) { [unowned self] keyval, state in
+            MainWindow.handleTrashKey(keyval, state: state, from: self.canvas.widget) || self.handleKey(keyval)
         }
         gtk_widget_add_controller(ptr(widget), ptr(keys))
 
@@ -666,6 +666,7 @@ final class TreemapView: CanvasDelegate {
         Widgets.popupMenu(&contextMenu, sections: [
             [(L("Open"), "win.open-item"), (L("Show in Files"), "win.show-in-files"), (L("Copy Path"), "win.copy-path")],
             [(L("Zoom In"), "win.focus-in"), (L("Zoom Out"), "win.focus-out")],
+            [(L("Move to Trash…"), "win.move-to-trash")],
         ], on: canvas.widget, at: point)
     }
 }

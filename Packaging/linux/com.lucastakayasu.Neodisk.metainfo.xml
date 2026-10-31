@@ -15,9 +15,10 @@
       folders and files.
     </p>
     <p>
-      Scanning only reads. When you find something to clear out, move it to
-      the Trash from its menu: Neodisk refuses system folders and checks that
-      the item is unchanged since the scan, and never deletes anything itself.
+      Open what you find, show it in your file manager, or move it to the
+      Trash after one confirmation. Neodisk never deletes anything itself,
+      keeps system folders and your home folder off-limits, and can be set
+      to only look.
     </p>
     <ul>
       <li>Fast parallel scanning with live progress</li>

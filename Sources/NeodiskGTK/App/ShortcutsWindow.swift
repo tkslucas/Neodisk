@@ -33,6 +33,7 @@ enum ShortcutsWindow {
         (L("Selection"), [
             Shortcut(title: L("Open"), accelerator: "<Control>Return"),
             Shortcut(title: L("Copy Path"), accelerator: "<Control><Shift>c"),
+            Shortcut(title: L("Move to Trash"), accelerator: "Delete"),
         ]),
     ]
 

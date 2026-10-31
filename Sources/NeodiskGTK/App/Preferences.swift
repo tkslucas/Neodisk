@@ -18,6 +18,8 @@ final class Preferences {
     var includeHiddenFiles = true { didSet { scheduleSave() } }
     var autoSummarizeDirectories = true { didSet { scheduleSave() } }
     var showFreeSpace = false { didSet { scheduleSave() } }
+    /// Off: Neodisk only looks, and Move to Trash leaves the menus.
+    var allowsMovingToTrash = true { didSet { scheduleSave() } }
     var paletteID = VizPalette.standard.id { didSet { scheduleSave() } }
     // A same-value write (a toggle echoing the model back) isn't a choice,
     // so only a real change ends a session override.
@@ -97,6 +99,7 @@ final class Preferences {
         var includeHiddenFiles: Bool?
         var autoSummarizeDirectories: Bool?
         var showFreeSpace: Bool?
+        var allowsMovingToTrash: Bool?
         var paletteID: String?
         var vizMode: String?
         var treemapStyle: String?
@@ -118,6 +121,7 @@ final class Preferences {
         if let value = stored.includeHiddenFiles { includeHiddenFiles = value }
         if let value = stored.autoSummarizeDirectories { autoSummarizeDirectories = value }
         if let value = stored.showFreeSpace { showFreeSpace = value }
+        if let value = stored.allowsMovingToTrash { allowsMovingToTrash = value }
         if let value = stored.paletteID { paletteID = value }
         if let value = stored.vizMode.flatMap(VizViewMode.init(rawValue:)) { vizMode = value }
         if let value = stored.treemapStyle.flatMap(TreemapStyle.init(rawValue:)) { treemapStyle = value }
@@ -146,6 +150,7 @@ final class Preferences {
             includeHiddenFiles: includeHiddenFiles,
             autoSummarizeDirectories: autoSummarizeDirectories,
             showFreeSpace: showFreeSpace,
+            allowsMovingToTrash: allowsMovingToTrash,
             paletteID: paletteID,
             vizMode: (savedVizMode ?? vizMode).rawValue,
             treemapStyle: (savedTreemapStyle ?? treemapStyle).rawValue,

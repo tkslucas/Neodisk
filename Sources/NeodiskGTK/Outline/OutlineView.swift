@@ -54,6 +54,12 @@ final class OutlineView {
         })
         secondaryColumns = [files, modified]
 
+        let keys = raw(gtk_event_controller_key_new())!
+        connectKey(keys) { [unowned self] keyval, state in
+            MainWindow.handleTrashKey(keyval, state: state, from: self.columnView)
+        }
+        gtk_widget_add_controller(ptr(columnView), ptr(keys))
+
         connectPosition(columnView, "activate") { [unowned self] position in
             guard let node = self.node(atPosition: position), node.isDirectory else { return }
             self.model.drillIn(to: node.id)
@@ -365,6 +371,7 @@ final class OutlineView {
         Widgets.popupMenu(&contextMenu, sections: [
             [(L("Open"), "win.open-item"), (L("Show in Files"), "win.show-in-files"), (L("Copy Path"), "win.copy-path")],
             [(L("Zoom In"), "win.focus-in")],
+            [(L("Move to Trash…"), "win.move-to-trash")],
         ], on: columnView, at: point)
     }
 }

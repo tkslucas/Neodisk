@@ -55,6 +55,11 @@ final class AppModel {
     @ObservationIgnored private var minuteTimer: Task<Void, Never>?
     @ObservationIgnored private var memoryReleaseTask: Task<Void, Never>?
     @ObservationIgnored private var searchIndexIdleTask: Task<Void, Never>?
+    /// True while an item is on its way to the Trash; the action stays off until it lands.
+    private(set) var isMovingToTrash = false
+    /// What may go to the Trash, for the menus' enabled state. Reads the mount table, so it's built on first
+    /// use and again per location; each move checks against a fresh one.
+    @ObservationIgnored private var cachedTrashPolicy: TrashSafetyPolicy?
 
     /// The statistics tab on screen; it decides what map color means.
     var analysisTab: AnalysisTab = .largest
@@ -160,6 +165,7 @@ final class AppModel {
     func open(_ target: ScanTarget) {
         cancelScan()
         self.target = target
+        cachedTrashPolicy = nil
         resetPerTargetState()
         if target.kind == .folder {
             preferences.noteRecentFolder(target.id)
@@ -334,9 +340,10 @@ final class AppModel {
         searchIndexIdleTask = nil
     }
 
-    private func persist(_ snapshot: ScanSnapshot) async {
+    /// `rotatesPrevious: false` after a move to the Trash: the last full scan stays the baseline.
+    private func persist(_ snapshot: ScanSnapshot, rotatesPrevious: Bool = true) async {
         do {
-            try await snapshotCache.save(snapshot)
+            try await snapshotCache.save(snapshot, rotatesPrevious: rotatesPrevious)
         } catch {
             DiagnosticLog.cache.error("could not cache the scan: \(error)")
         }
@@ -564,6 +571,121 @@ final class AppModel {
             }
         }
         return true
+    }
+}
+
+// MARK: - Moving to the Trash
+
+/// How one move went, for the window to report.
+enum TrashOutcome {
+    case moved(bytes: Int64)
+    /// Gone before the move (deleted some other way): the tree drops it too.
+    case alreadyGone
+    case failed(String)
+}
+
+extension AppModel {
+    /// Why nothing on screen can go to the Trash right now, or nil.
+    var trashUnavailableReason: String? {
+        if !preferences.allowsMovingToTrash {
+            return L("Moving items to the Trash is turned off in Preferences.")
+        }
+        if let snapshot, !snapshot.source.isPersistable {
+            return L("This scan was opened from a file, so its items can't be moved.")
+        }
+        if isScanning || phase == .restoring {
+            return L("Wait for the scan to finish.")
+        }
+        if phase != .displaying || snapshot?.isComplete != true {
+            return L("This scan was stopped early. Rescan to move items to the Trash.")
+        }
+        return nil
+    }
+
+    /// Why `node` can't go to the Trash, or nil when it can.
+    func trashRefusalReason(for node: FileNodeRecord) -> String? {
+        if let trashUnavailableReason { return trashUnavailableReason }
+        guard let snapshot else { return nil }
+        return trashPolicy.refusal(for: node, scanRootID: snapshot.root.id)?.localizedReason
+    }
+
+    func canMoveToTrash(_ node: FileNodeRecord) -> Bool {
+        !isMovingToTrash && trashRefusalReason(for: node) == nil
+    }
+
+    /// Moves one confirmed item, re-checked right before the move, then cuts it out of the tree on screen and
+    /// the cache: no rescan. Nil when another move is still running.
+    func moveToTrash(_ node: FileNodeRecord) async -> TrashOutcome? {
+        guard !isMovingToTrash else { return nil }
+        // The confirmation was modal, but a scan or another location could have started behind it.
+        if let reason = trashRefusalReason(for: node) {
+            return .failed(reason)
+        }
+        guard let snapshot, snapshot.treeStore.node(id: node.id) != nil else {
+            return .failed(TrashFailure.changedSinceScan.localizedReason)
+        }
+        isMovingToTrash = true
+        defer { isMovingToTrash = false }
+        let rootID = snapshot.root.id
+        let result = await Task.detached(priority: .userInitiated) {
+            TrashMover(policy: .live(), trashItem: GioTrash.trashItem).move(node, scanRootID: rootID)
+        }.value
+        let outcome: TrashOutcome
+        switch result {
+        case .success:
+            outcome = .moved(bytes: node.allocatedSize)
+        case .failure(.missing):
+            outcome = .alreadyGone
+        case .failure(let failure):
+            return .failed(failure.localizedReason)
+        }
+        // A mount may have come or gone with the move.
+        cachedTrashPolicy = nil
+        await removeFromTree(node.id, of: snapshot)
+        return outcome
+    }
+
+    private var trashPolicy: TrashSafetyPolicy {
+        if let cachedTrashPolicy { return cachedTrashPolicy }
+        let built = TrashSafetyPolicy.live()
+        cachedTrashPolicy = built
+        return built
+    }
+
+    /// Splices the moved item out off the main actor and shows the result the way a finished scan is shown.
+    /// A scan or another location that took over meanwhile wins: what it lands is the truth.
+    private func removeFromTree(_ nodeID: String, of snapshot: ScanSnapshot) async {
+        guard self.snapshot?.id == snapshot.id, !isScanning else { return }
+        let updated = await Task.detached(priority: .userInitiated) {
+            try? snapshot.removingNodes(ids: [nodeID])
+        }.value
+        guard let updated, self.snapshot?.id == snapshot.id, !isScanning else { return }
+        moveOffRemoved(nodeID, in: snapshot.treeStore)
+        display(updated)
+        await persist(updated, rotatesPrevious: false)
+    }
+
+    /// A selection, hover or drill root inside the removed item moves to the folder that held it, so the views
+    /// land somewhere that still exists (`display` keeps them when they do).
+    private func moveOffRemoved(_ nodeID: String, in store: FileTreeStore) {
+        let removed: Set<String> = [nodeID]
+        func survivor(of id: String) -> String? {
+            var cursor = store.node(id: id)
+            while let node = cursor, store.isNodeOrDescendant(node.id, of: removed) {
+                cursor = store.parent(of: node.id)
+            }
+            return cursor?.id
+        }
+        if let focusID, store.isNodeOrDescendant(focusID, of: removed) {
+            let fallback = survivor(of: focusID)
+            self.focusID = fallback == store.rootID ? nil : fallback
+        }
+        if let selectedNodeID, store.isNodeOrDescendant(selectedNodeID, of: removed) {
+            self.selectedNodeID = survivor(of: selectedNodeID)
+        }
+        if let hoveredNodeID, store.isNodeOrDescendant(hoveredNodeID, of: removed) {
+            self.hoveredNodeID = nil
+        }
     }
 }
 

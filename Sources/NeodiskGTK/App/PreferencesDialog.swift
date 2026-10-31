@@ -73,6 +73,14 @@ enum PreferencesDialog {
         adw_action_row_add_suffix(ptr(cacheRow), ptr(clearButton))
         adw_preferences_group_add(ptr(storage), ptr(cacheRow))
         adw_preferences_page_add(ptr(scanPage), ptr(storage))
+
+        let trash = group(
+            L("Moving to the Trash"),
+            description: L("Neodisk asks before each move and never deletes anything itself. System folders and your home folder are off limits. Turn this off to only look.")
+        )
+        addSwitch(to: trash, title: L("Allow moving items to the Trash"),
+                  isOn: preferences.allowsMovingToTrash) { preferences.allowsMovingToTrash = $0 }
+        adw_preferences_page_add(ptr(scanPage), ptr(trash))
         adw_preferences_dialog_add(ptr(dialog), ptr(scanPage))
 
         let cache = model.snapshotCache

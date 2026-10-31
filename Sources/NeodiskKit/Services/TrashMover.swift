@@ -98,9 +98,10 @@ public struct TrashMover: Sendable {
         }
     }
 
-    /// Nil when the path still holds the scanned item. Folders and big or hard-linked files carry a device and
-    /// inode, compared exactly; small files carry none, so their kind, size and modification date must match.
-    /// Edited in place is still the same file; replaced (a new inode) is not.
+    /// Nil when the path still holds the scanned item, unchanged. Folders and big or hard-linked files carry a
+    /// device and inode, compared exactly (a folder's contents may change; it's still the folder). A file must
+    /// also keep its size and modification date: an inode can be reused by a replacement (Linux does it at
+    /// once), and a file edited since the scan isn't what the user saw.
     public static func verify(_ node: FileNodeRecord) -> TrashFailure? {
         let current: CurrentFile
         switch CurrentFileState.read(atPath: node.path) {
@@ -118,14 +119,15 @@ public struct TrashMover: Sendable {
 
         switch node.fileIdentity {
         case .fileSystem(let device, let inode):
-            return current.identity == .fileSystem(device: device, inode: inode) ? nil : .changedSinceScan
+            guard current.identity == .fileSystem(device: device, inode: inode) else { return .changedSinceScan }
+            return node.isDirectory ? nil : unchangedFile(node, current)
         case .resourceIdentifier(let scanned):
             #if canImport(Darwin)
             let values = try? node.url.resourceValues(forKeys: [.fileResourceIdentifierKey])
             guard let identifier = values?.fileResourceIdentifier as? Data, identifier == scanned else {
                 return .changedSinceScan
             }
-            return nil
+            return node.isDirectory ? nil : unchangedFile(node, current)
             #else
             _ = scanned
             return .changedSinceScan
@@ -133,14 +135,19 @@ public struct TrashMover: Sendable {
         case nil:
             // Folders always carry an identity; one without can't be confirmed.
             guard !node.isDirectory else { return .changedSinceScan }
-            if current.kind == .file, current.size != node.logicalSize {
-                return .changedSinceScan
-            }
-            if let scanned = node.lastModified?.timeIntervalSince1970,
-               abs(scanned - current.modifiedSince1970) > 1 {
-                return .changedSinceScan
-            }
-            return nil
+            return unchangedFile(node, current)
         }
+    }
+
+    /// Same size (files; a symlink's is its target path) and modification date, within a second.
+    private static func unchangedFile(_ node: FileNodeRecord, _ current: CurrentFile) -> TrashFailure? {
+        if current.kind == .file, current.size != node.logicalSize {
+            return .changedSinceScan
+        }
+        if let scanned = node.lastModified?.timeIntervalSince1970,
+           abs(scanned - current.modifiedSince1970) > 1 {
+            return .changedSinceScan
+        }
+        return nil
     }
 }

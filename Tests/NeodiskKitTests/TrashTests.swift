@@ -135,12 +135,25 @@ import Testing
         let goneNode = try #require(store.node(id: gone.path))
         let folderNode = try #require(store.node(id: folder.path))
 
+        // A big file edited in place keeps its inode but isn't what the scan saw.
+        let edited = root.appending(path: "edited.bin")
+        try Data(count: 3_000_000).write(to: edited)
+        let rescanned = try await scan(root)
+        let editedNode = try #require(rescanned.treeStore.node(id: edited.path))
+        #expect(TrashMover.verify(editedNode) == nil)
+        let handle = try FileHandle(forWritingTo: edited)
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data(count: 10))
+        try handle.close()
+        #expect(TrashMover.verify(editedNode) == .changedSinceScan)
+
         // A small file rewritten with other content.
         try Data(count: 20).write(to: small)
         #expect(TrashMover.verify(smallNode) == .changedSinceScan)
-        // A big file replaced by a new one at the same path (an atomic save).
+        // A big file replaced by a new one at the same path (an atomic save); Linux may hand the new file the
+        // old inode, so its size and date catch it.
         try FileManager.default.removeItem(at: big)
-        try Data(count: 3_000_000).write(to: big)
+        try Data(count: 3_100_000).write(to: big)
         #expect(TrashMover.verify(bigNode) == .changedSinceScan)
         // A folder replaced by a file.
         try FileManager.default.removeItem(at: folder)

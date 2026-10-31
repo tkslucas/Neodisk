@@ -12,6 +12,7 @@ final class MainWindow {
     let model: AppModel
 
     private let splitView: GPtr
+    private let toastOverlay: GPtr
     private let restoreLabel: GPtr
     private let titleLabel: GPtr
     private let subtitleLabel: GPtr
@@ -36,6 +37,8 @@ final class MainWindow {
     private let search: OutlineSearch
 
     private var actions: [String: GPtr] = [:]
+    /// Kept while it's out of the window (turned off in Preferences), so it can come back.
+    private var trashAction: GObjectRef?
     private var tokens: [ObservationToken] = []
 
     init(application: GPtr, model: AppModel) {
@@ -141,7 +144,7 @@ final class MainWindow {
         adw_status_page_set_title(ptr(emptyState), L("Choose a Location to Scan"))
         adw_status_page_set_description(
             ptr(emptyState),
-            L("Pick a disk or folder in the sidebar to see what takes up space. Neodisk only reads your files; it never changes or deletes them.")
+            L("Scan folders and disks to see where space is going,\nthen clear out what you don't need.")
         )
         let openButton = raw(gtk_button_new_with_label(L("Choose Folder…")))!
         Widgets.addClasses(openButton, ["pill", "suggested-action"])
@@ -182,7 +185,9 @@ final class MainWindow {
             splitView, "show-sidebar", sidebarToggle, "active",
             GBindingFlags(rawValue: 1 | 2)  // G_BINDING_BIDIRECTIONAL | G_BINDING_SYNC_CREATE
         )
-        adw_application_window_set_content(ptr(window), ptr(splitView))
+        toastOverlay = raw(adw_toast_overlay_new())!
+        adw_toast_overlay_set_child(ptr(toastOverlay), ptr(splitView))
+        adw_application_window_set_content(ptr(window), ptr(toastOverlay))
 
         // Collapse the sidebar into an overlay on narrow windows.
         if let condition = adw_breakpoint_condition_parse("max-width: 760sp") {
@@ -212,7 +217,7 @@ final class MainWindow {
             adw_application_window_add_breakpoint(ptr(window), breakpoint)
         }
 
-        attach(self, to: window, key: "neodisk-main-window")
+        attach(self, to: window, key: Self.attachmentKey)
         installActions()
         bindModel()
 
@@ -235,6 +240,8 @@ final class MainWindow {
         connectNotify(window, "default-width") { [unowned self] in self.rememberSize() }
         connectNotify(window, "default-height") { [unowned self] in self.rememberSize() }
     }
+
+    private static let attachmentKey = "neodisk-main-window"
 
     private static func viewToggle(_ iconName: String, tooltip: String) -> GPtr {
         let toggle = raw(gtk_toggle_button_new())!
@@ -311,6 +318,13 @@ final class MainWindow {
             for name in ["open-item", "show-in-files", "copy-path"] {
                 setActionEnabled(self.actions[name], hasSelection)
             }
+        })
+        tokens.append(track { [unowned self] in
+            let canMove = self.model.selectedNode.map { self.model.canMoveToTrash($0) } ?? false
+            setActionEnabled(self.trashAction?.pointer, canMove)
+        })
+        tokens.append(track { [unowned self] in
+            self.setTrashActionInstalled(self.model.preferences.allowsMovingToTrash)
         })
         tokens.append(track { [unowned self] in
             let mode = self.model.preferences.vizMode
@@ -417,6 +431,11 @@ final class MainWindow {
             guard let path = self.model.selectedNode?.path else { return }
             FileActions.copyPath(path, from: self.window)
         }
+        if let action = addAction(to: window, "move-to-trash", { [unowned self] _ in
+            self.moveSelectionToTrash()
+        }) {
+            trashAction = GObjectRef(retaining: action)
+        }
         actions["scan-location"] = addAction(to: window, "scan-location", stringParameter: true) { [unowned self] path in
             guard let path else { return }
             self.model.open(ScanTarget(url: URL(filePath: path, directoryHint: .isDirectory)))
@@ -424,6 +443,93 @@ final class MainWindow {
         addAction(to: window, "show-help-overlay") { [unowned self] _ in
             ShortcutsWindow.present(from: self.window)
         }
+    }
+
+    // MARK: - Moving to the Trash
+
+    /// Off in Preferences, the action leaves the window and its menu items hide with it.
+    private func setTrashActionInstalled(_ installed: Bool) {
+        guard let action = trashAction?.pointer else { return }
+        let isInstalled = g_action_map_lookup_action(ptr(window), "move-to-trash") != nil
+        if installed, !isInstalled {
+            g_action_map_add_action(ptr(window), ptr(action))
+        } else if !installed, isInstalled {
+            g_action_map_remove_action(ptr(window), "move-to-trash")
+        }
+    }
+
+    /// Delete in the map or the outline. A plain key the focused view handles, not an app accelerator, which
+    /// would take Delete from the search field. Shift+Delete means "delete for good" elsewhere: not here.
+    static func handleTrashKey(_ keyval: UInt32, state: UInt32, from widget: GPtr?) -> Bool {
+        let modifiers: UInt32 = 1 | 4 | 8  // GDK_SHIFT_MASK | GDK_CONTROL_MASK | GDK_ALT_MASK
+        guard Int32(keyval) == GDK_KEY_Delete || Int32(keyval) == GDK_KEY_KP_Delete, state & modifiers == 0,
+              let root = raw(gtk_widget_get_root(ptr(widget))),
+              let window = attached(MainWindow.self, to: root, key: attachmentKey) else { return false }
+        window.moveSelectionToTrash()
+        return true
+    }
+
+    /// Explains a refusal instead of doing nothing; otherwise asks, then moves.
+    func moveSelectionToTrash() {
+        guard let node = model.selectedNode, !model.isMovingToTrash else {
+            gtk_widget_error_bell(ptr(window))
+            return
+        }
+        if let reason = model.trashUnavailableReason {
+            showToast(reason)
+            return
+        }
+        if let reason = model.trashRefusalReason(for: node) {
+            showAlert(heading: L("Can't Move “%@” to the Trash", node.name), body: reason)
+            return
+        }
+        let confirmation = TrashConfirmation(nodes: [node])
+        let dialog = raw(adw_alert_dialog_new(confirmation.title, confirmation.message))!
+        adw_alert_dialog_add_response(ptr(dialog), "cancel", L("Cancel"))
+        adw_alert_dialog_add_response(ptr(dialog), "trash", L("Move to Trash"))
+        adw_alert_dialog_set_response_appearance(ptr(dialog), "trash", ADW_RESPONSE_DESTRUCTIVE)
+        // GNOME's rule for destructive responses: Return and Escape both cancel.
+        adw_alert_dialog_set_default_response(ptr(dialog), "cancel")
+        adw_alert_dialog_set_close_response(ptr(dialog), "cancel")
+        connectPointer(dialog, "response") { [unowned self] response in
+            guard string(from: response?.assumingMemoryBound(to: CChar.self)) == "trash" else { return }
+            self.move(node)
+        }
+        adw_dialog_present(ptr(dialog), ptr(window))
+    }
+
+    private func move(_ node: FileNodeRecord) {
+        Task { [weak self] in
+            guard let self else { return }
+            guard let outcome = await self.model.moveToTrash(node) else {
+                gtk_widget_error_bell(ptr(self.window))
+                return
+            }
+            switch outcome {
+            case .moved(let bytes):
+                self.showToast(L("Moved 1 item (%@) to the Trash.", NeodiskFormatters.size(bytes)))
+            case .alreadyGone:
+                self.showToast(L("1 item was already gone."))
+            case .failed(let reason):
+                self.showAlert(heading: L("Couldn't Move “%@” to the Trash", node.name), body: reason)
+            }
+        }
+    }
+
+    /// Plain text: names and paths may hold markup characters.
+    private func showToast(_ text: String) {
+        guard let toast = adw_toast_new(text) else { return }
+        adw_toast_set_use_markup(toast, gbool(false))
+        adw_toast_overlay_add_toast(ptr(toastOverlay), toast)
+    }
+
+    /// Reasons run longer than a toast's single line.
+    private func showAlert(heading: String, body: String) {
+        let dialog = raw(adw_alert_dialog_new(heading, body))!
+        adw_alert_dialog_add_response(ptr(dialog), "close", L("OK"))
+        adw_alert_dialog_set_default_response(ptr(dialog), "close")
+        adw_alert_dialog_set_close_response(ptr(dialog), "close")
+        adw_dialog_present(ptr(dialog), ptr(window))
     }
 
     private func chooseFolder() {

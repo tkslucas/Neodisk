@@ -128,12 +128,24 @@ enum Widgets {
         gtk_popover_popup(ptr(cache))
     }
 
+    /// Menu item attributes beyond label and action, by action. Delete is a key the focused map or outline
+    /// handles itself (an app accelerator would take it from text fields), shown the way real accelerators are.
+    /// Move to Trash leaves the window when turned off in Preferences, and its items leave with it.
+    private static let itemAttributes: [String: [(String, String)]] = [
+        "win.move-to-trash": [("accel", "Delete"), ("hidden-when", "action-missing")],
+    ]
+
     static func menu(_ sections: [[(String, String)]]) -> GObjectRef {
         let menu = raw(g_menu_new())!
         for items in sections {
             let section = g_menu_new()
             for (label, action) in items {
-                g_menu_append(section, label, action)
+                let item = g_menu_item_new(label, action)
+                for (name, value) in itemAttributes[action] ?? [] {
+                    g_menu_item_set_attribute_value(item, name, g_variant_new_string(value))
+                }
+                g_menu_append_item(section, item)
+                g_object_unref(raw(item))
             }
             g_menu_append_section(ptr(menu), nil, ptr(raw(section)))
             g_object_unref(raw(section))

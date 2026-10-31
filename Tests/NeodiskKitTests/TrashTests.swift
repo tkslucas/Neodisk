@@ -64,8 +64,14 @@ import Testing
         #expect(live.refusal(forPath: home + "/Documents/report.pdf", identity: nil) == nil)
         #expect(live.refusal(forPath: "/usr", identity: nil) == .protectedLocation)
         #expect(live.refusal(forPath: "/tmp", identity: nil) == .protectedLocation)
+        #expect(live.refusal(forPath: "/usr/lib", identity: nil) == .protectedLocation)
         #if os(macOS)
         #expect(live.refusal(forPath: "/private/tmp", identity: nil) == .protectedLocation)
+        #expect(live.refusal(forPath: "/private/var/folders", identity: nil) == .protectedLocation)
+        #expect(live.refusal(forPath: "/System/Library", identity: nil) == .protectedLocation)
+        for volume in (try? FileManager.default.contentsOfDirectory(atPath: "/Volumes")) ?? [] {
+            #expect(live.refusal(forPath: "/Volumes/" + volume, identity: nil) == .protectedLocation)
+        }
         #expect(live.refusal(forPath: "/System/Volumes/Data" + home, identity: nil) == .protectedLocation)
         #endif
     }

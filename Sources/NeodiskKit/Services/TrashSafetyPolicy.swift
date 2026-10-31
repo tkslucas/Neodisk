@@ -47,11 +47,16 @@ public struct TrashSafetyPolicy: Sendable {
         paths += firmlinked
         paths += firmlinked.map { "/System/Volumes/Data" + $0 }
         paths.append("/System/Volumes/Data" + homeDirectory)
-        // Every account's home folder.
+        // Every account's home folder, and every mount point and its alias.
         paths += childPaths(of: "/Users")
+        paths += childPaths(of: "/Volumes")
         #else
         paths += childPaths(of: "/home")
         #endif
+        // The system's own top-level folders, whatever they're called on this machine.
+        for directory in systemFoldersWithProtectedChildren {
+            paths += childPaths(of: directory)
+        }
         if let appBundlePath, appBundlePath.hasSuffix(".app") {
             paths.append(appBundlePath)
         }
@@ -96,6 +101,7 @@ public struct TrashSafetyPolicy: Sendable {
         "/private/etc", "/private/tmp", "/private/var", "/sbin", "/tmp", "/usr", "/usr/local", "/var",
         "/Library/Application Support", "/Library/Caches", "/Library/Preferences",
     ]
+    static let systemFoldersWithProtectedChildren = ["/", "/System", "/private", "/private/var", "/usr"]
     static let homeFolderNames = [
         "Applications", "Desktop", "Documents", "Downloads", "Library", "Movies", "Music", "Pictures", "Public",
         "Library/Application Support", "Library/Caches", "Library/CloudStorage", "Library/Containers",
@@ -106,6 +112,7 @@ public struct TrashSafetyPolicy: Sendable {
         "/", "/bin", "/boot", "/dev", "/etc", "/home", "/lib", "/lib32", "/lib64", "/libx32", "/media", "/mnt",
         "/opt", "/proc", "/root", "/run", "/sbin", "/snap", "/srv", "/sys", "/tmp", "/usr", "/usr/local", "/var",
     ]
+    static let systemFoldersWithProtectedChildren = ["/", "/usr", "/var"]
     static let homeFolderNames = [
         "Desktop", "Documents", "Downloads", "Music", "Pictures", "Public", "Templates", "Videos",
         ".cache", ".config", ".local", ".local/share",

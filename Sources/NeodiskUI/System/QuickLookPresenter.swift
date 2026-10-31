@@ -10,8 +10,8 @@ import NeodiskKit
 final class QuickLookPresenter: NSObject {
     static let shared = QuickLookPresenter()
 
-    /// Real, existing, not cloud-only: previewing a dataless file would force a download, which the
-    /// read-only promise forbids.
+    /// Real, existing, not cloud-only: previewing a dataless file would force a download, and looking
+    /// never changes what is on disk.
     nonisolated static func canPreview(
         _ node: FileNodeRecord,
         fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }

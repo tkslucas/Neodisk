@@ -43,7 +43,7 @@ import NeodiskKit
 
     @Test func datalessFileIsNeverPreviewableEvenIfPathExists() {
         // A cloud-only (dataless) file exists on disk as a stub; previewing
-        // it would force a download, which the read-only promise forbids.
+        // it would force a download, and looking never changes what is on disk.
         let node = FileNodeRecord(
             id: "/tmp/cloud-only.mov",
             path: "/tmp/cloud-only.mov",

@@ -54,8 +54,10 @@ The most used ones; the rest live in `Sources/NeodiskUI/Dev/`.
 
 ## Product constraints
 
-- **Read-only.** The app never modifies or deletes user files; it writes only its preferences and snapshot
-  cache. Move-to-Trash was removed on purpose: don't reintroduce it.
+- **Scanning is read-only; removal is the Trash only.** Besides its preferences and snapshot cache, the only
+  change the app makes is moving items the user collected in Cleanup and confirmed to the Trash, each re-checked
+  by `TrashSafetyPolicy` and `TrashMover` right before its move. Never delete permanently, never skip the checks,
+  and never let a drag move or trash files behind the scan (drags out of the app only copy).
 - Scans stream partial trees, then a final snapshot. The treemap and outline are primary navigation, not extras.
 - Toolbar buttons stay persistent and disable when unusable; they never appear and disappear.
 - The scan progress bar is always determinate, never moves backward within a session (fallbacks and phase

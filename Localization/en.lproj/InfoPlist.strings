@@ -3,9 +3,9 @@
 
 "CFBundleDisplayName" = "Neodisk";
 "NSHumanReadableCopyright" = "© 2026 Neodisk contributors. GPLv3 License.";
-"NSDesktopFolderUsageDescription" = "Neodisk measures how much disk space files use. It never modifies or deletes anything.";
-"NSDocumentsFolderUsageDescription" = "Neodisk measures how much disk space files use. It never modifies or deletes anything.";
-"NSDownloadsFolderUsageDescription" = "Neodisk measures how much disk space files use. It never modifies or deletes anything.";
-"NSRemovableVolumesUsageDescription" = "Neodisk measures disk usage on removable volumes. It never modifies or deletes anything.";
-"NSNetworkVolumesUsageDescription" = "Neodisk measures disk usage on network volumes. It never modifies or deletes anything.";
-"NSSystemAdministrationUsageDescription" = "Full Disk Access lets Neodisk measure protected locations. It never modifies or deletes anything.";
+"NSDesktopFolderUsageDescription" = "Neodisk measures how much disk space files use. It changes nothing unless you move items to the Trash.";
+"NSDocumentsFolderUsageDescription" = "Neodisk measures how much disk space files use. It changes nothing unless you move items to the Trash.";
+"NSDownloadsFolderUsageDescription" = "Neodisk measures how much disk space files use. It changes nothing unless you move items to the Trash.";
+"NSRemovableVolumesUsageDescription" = "Neodisk measures disk usage on removable volumes. It changes nothing unless you move items to the Trash.";
+"NSNetworkVolumesUsageDescription" = "Neodisk measures disk usage on network volumes. It changes nothing unless you move items to the Trash.";
+"NSSystemAdministrationUsageDescription" = "Full Disk Access lets Neodisk measure protected locations. It changes nothing unless you move items to the Trash.";

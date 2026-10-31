@@ -15,9 +15,9 @@
       folders and files.
     </p>
     <p>
-      Neodisk is read-only by design: it never changes or deletes your files.
-      Open them, show them in your file manager, or copy their path, then
-      clean up with the tools you already trust.
+      Scanning only reads. When you find something to clear out, move it to
+      the Trash from its menu: Neodisk refuses system folders and checks that
+      the item is unchanged since the scan, and never deletes anything itself.
     </p>
     <ul>
       <li>Fast parallel scanning with live progress</li>

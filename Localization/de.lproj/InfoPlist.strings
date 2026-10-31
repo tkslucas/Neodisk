@@ -3,9 +3,9 @@
 
 "CFBundleDisplayName" = "Neodisk";
 "NSHumanReadableCopyright" = "© 2026 Neodisk contributors. GPLv3 License.";
-"NSDesktopFolderUsageDescription" = "Neodisk misst, wie viel Speicherplatz Dateien belegen. Es verändert oder löscht niemals etwas.";
-"NSDocumentsFolderUsageDescription" = "Neodisk misst, wie viel Speicherplatz Dateien belegen. Es verändert oder löscht niemals etwas.";
-"NSDownloadsFolderUsageDescription" = "Neodisk misst, wie viel Speicherplatz Dateien belegen. Es verändert oder löscht niemals etwas.";
-"NSRemovableVolumesUsageDescription" = "Neodisk misst den Speicherplatzbedarf auf Wechseldatenträgern. Es verändert oder löscht niemals etwas.";
-"NSNetworkVolumesUsageDescription" = "Neodisk misst den Speicherplatzbedarf auf Netzwerklaufwerken. Es verändert oder löscht niemals etwas.";
-"NSSystemAdministrationUsageDescription" = "Vollständiger Festplattenzugriff ermöglicht es Neodisk, geschützte Orte zu messen. Es verändert oder löscht niemals etwas.";
+"NSDesktopFolderUsageDescription" = "Neodisk misst, wie viel Speicherplatz Dateien belegen. Es ändert nichts, solange du keine Objekte in den Papierkorb legst.";
+"NSDocumentsFolderUsageDescription" = "Neodisk misst, wie viel Speicherplatz Dateien belegen. Es ändert nichts, solange du keine Objekte in den Papierkorb legst.";
+"NSDownloadsFolderUsageDescription" = "Neodisk misst, wie viel Speicherplatz Dateien belegen. Es ändert nichts, solange du keine Objekte in den Papierkorb legst.";
+"NSRemovableVolumesUsageDescription" = "Neodisk misst den Speicherplatzbedarf auf Wechseldatenträgern. Es ändert nichts, solange du keine Objekte in den Papierkorb legst.";
+"NSNetworkVolumesUsageDescription" = "Neodisk misst den Speicherplatzbedarf auf Netzwerklaufwerken. Es ändert nichts, solange du keine Objekte in den Papierkorb legst.";
+"NSSystemAdministrationUsageDescription" = "Vollständiger Festplattenzugriff ermöglicht es Neodisk, geschützte Orte zu messen. Es ändert nichts, solange du keine Objekte in den Papierkorb legst.";

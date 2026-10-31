@@ -3,9 +3,9 @@
 
 "CFBundleDisplayName" = "Neodisk";
 "NSHumanReadableCopyright" = "© 2026 Neodisk contributors. GPLv3 License.";
-"NSDesktopFolderUsageDescription" = "Neodiskはファイルが使用するディスク容量を測定します。変更や削除は一切行いません。";
-"NSDocumentsFolderUsageDescription" = "Neodiskはファイルが使用するディスク容量を測定します。変更や削除は一切行いません。";
-"NSDownloadsFolderUsageDescription" = "Neodiskはファイルが使用するディスク容量を測定します。変更や削除は一切行いません。";
-"NSRemovableVolumesUsageDescription" = "Neodiskはリムーバブルボリュームのディスク使用量を測定します。変更や削除は一切行いません。";
-"NSNetworkVolumesUsageDescription" = "Neodiskはネットワークボリュームのディスク使用量を測定します。変更や削除は一切行いません。";
-"NSSystemAdministrationUsageDescription" = "フルディスクアクセスにより、Neodiskは保護された場所を測定できます。変更や削除は一切行いません。";
+"NSDesktopFolderUsageDescription" = "Neodiskはファイルが使用するディスク容量を測定します。項目をゴミ箱に入れない限り、何も変更しません。";
+"NSDocumentsFolderUsageDescription" = "Neodiskはファイルが使用するディスク容量を測定します。項目をゴミ箱に入れない限り、何も変更しません。";
+"NSDownloadsFolderUsageDescription" = "Neodiskはファイルが使用するディスク容量を測定します。項目をゴミ箱に入れない限り、何も変更しません。";
+"NSRemovableVolumesUsageDescription" = "Neodiskはリムーバブルボリュームのディスク使用量を測定します。項目をゴミ箱に入れない限り、何も変更しません。";
+"NSNetworkVolumesUsageDescription" = "Neodiskはネットワークボリュームのディスク使用量を測定します。項目をゴミ箱に入れない限り、何も変更しません。";
+"NSSystemAdministrationUsageDescription" = "フルディスクアクセスにより、Neodiskは保護された場所を測定できます。項目をゴミ箱に入れない限り、何も変更しません。";

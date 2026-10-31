@@ -116,6 +116,7 @@ final class AppPreferences: ObservableObject {
         _includeCloudStorage = AppStorage(wrappedValue: true, "includeCloudStorage", store: defaults)
         _showCloudOnlyFiles = AppStorage(wrappedValue: true, "showCloudOnlyFiles", store: defaults)
         _showFreeSpace = AppStorage(wrappedValue: false, "showFreeSpace", store: defaults)
+        _allowsMovingToTrash = AppStorage(wrappedValue: true, "allowsMovingToTrash", store: defaults)
         _vizPaletteID = AppStorage(
             wrappedValue: VizPalette.standard.id, "vizPalette", store: defaults
         )

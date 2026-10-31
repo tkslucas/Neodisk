@@ -345,7 +345,8 @@ private struct DuplicateGroupDetailView: View {
                 FileResultRow(
                     node: node,
                     palette: model.vizPalette,
-                    includeCloudOnly: model.showsCloudOnlyFiles
+                    includeCloudOnly: model.showsCloudOnlyFiles,
+                    cleanup: model.cleanup
                 )
             }
         }

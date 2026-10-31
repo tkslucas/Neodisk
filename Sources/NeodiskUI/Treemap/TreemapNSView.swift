@@ -5,7 +5,7 @@ import AppKit
 import TreemapKit
 import NeodiskAppModel
 
-final class TreemapNSView: NSView {
+final class TreemapNSView: NSView, NSDraggingSource {
     let controller: TreemapController
 
     /// Carries the image, labels, and selection in rendered-scene
@@ -15,6 +15,21 @@ final class TreemapNSView: NSView {
     private let labelContainerLayer = CALayer()
     private let selectionLayer = CALayer()
     private let hoverLayer = CALayer()
+    /// Cleanup marks: a wash over collected items, then a halo and a dashed (or, while moving, solid) outline.
+    private let cleanupWashLayer = CAShapeLayer()
+    private let cleanupHaloLayer = CAShapeLayer()
+    private let cleanupOutlineLayer = CAShapeLayer()
+    private let cleanupMovingLayer = CAShapeLayer()
+    /// A press that may become a drag once it travels `dragThreshold`.
+    private var pendingDrag: PendingDrag?
+    private static let dragThreshold: CGFloat = 4
+
+    private struct PendingDrag {
+        let start: CGPoint
+        let nodeID: String
+        /// The press landed inside the selected folder: its click waits for mouse-up (see dragCandidate).
+        let defersClick: Bool
+    }
     /// Identity of the scene whose labels are currently materialized.
     private var labeledSceneViewport: TreemapViewport?
     private let debugSnapshotter = DebugSnapshotter.shared
@@ -43,8 +58,19 @@ final class TreemapNSView: NSView {
         selectionLayer.isHidden = true
         hoverLayer.isHidden = true
 
+        for layer in [cleanupWashLayer, cleanupHaloLayer, cleanupOutlineLayer, cleanupMovingLayer] {
+            layer.isHidden = true
+            layer.fillColor = nil
+            layer.lineJoin = .round
+        }
+
         contentLayer.addSublayer(imageLayer)
         contentLayer.addSublayer(labelContainerLayer)
+        // Over the labels so a collected item's name dims with it; under hover and selection.
+        contentLayer.addSublayer(cleanupWashLayer)
+        contentLayer.addSublayer(cleanupHaloLayer)
+        contentLayer.addSublayer(cleanupOutlineLayer)
+        contentLayer.addSublayer(cleanupMovingLayer)
         // Hover under selection, so the selection ring stays on top when
         // both land on the same cell.
         contentLayer.addSublayer(hoverLayer)
@@ -78,6 +104,7 @@ final class TreemapNSView: NSView {
             labeledSceneViewport = nil
             selectionLayer.isHidden = true
             hoverLayer.isHidden = true
+            hideCleanupLayers()
             contentLayer.setAffineTransform(.identity)
             return
         }
@@ -99,6 +126,85 @@ final class TreemapNSView: NSView {
 
         place(selectionLayer, over: controller.selectionRect, borderWidth: 2)
         refreshHoverLayer()
+        refreshCleanupLayers()
+    }
+
+    /// Redraws only the Cleanup overlay; the marks themselves are memoized per scene and pile.
+    func refreshCleanupLayers() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
+
+        guard let scene = controller.scene, controller.image != nil else {
+            hideCleanupLayers()
+            return
+        }
+        let marks = controller.cleanupMarks
+        guard !marks.isEmpty else {
+            hideCleanupLayers()
+            return
+        }
+        // Strokes keep their on-screen width under the zoom transform, like the selection ring.
+        let unit = 1 / max(controller.displayTransform.a, 0.001)
+        let radius: CGFloat = scene.style == .flat ? 4 : 0
+        let lineWidth = 2 * unit
+
+        func path(_ rects: [CGRect], inset: CGFloat) -> CGPath {
+            let path = CGMutablePath()
+            for rect in rects {
+                let inner = rect.insetBy(dx: inset, dy: inset)
+                guard inner.width > 0, inner.height > 0 else { continue }
+                let corner = min(max(radius - inset, 0), inner.width / 2, inner.height / 2)
+                path.addRoundedRect(in: inner, cornerWidth: corner, cornerHeight: corner)
+            }
+            return path
+        }
+
+        var colors = CleanupColors()
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            colors = CleanupColors(
+                wash: NSColor.windowBackgroundColor.withAlphaComponent(0.6).cgColor,
+                halo: NSColor.windowBackgroundColor.withAlphaComponent(0.85).cgColor,
+                accent: NSColor.controlAccentColor.cgColor,
+                moving: NSColor.secondaryLabelColor.cgColor
+            )
+        }
+
+        cleanupWashLayer.path = marks.washesCanvas
+            ? CGPath(rect: marks.canvas, transform: nil)
+            : path(marks.collected + marks.moving, inset: 0)
+        cleanupWashLayer.fillColor = colors.wash
+        cleanupWashLayer.isHidden = false
+
+        let outlined = path(marks.collected, inset: lineWidth / 2)
+        cleanupHaloLayer.path = path(marks.collected + marks.moving, inset: lineWidth / 2)
+        cleanupHaloLayer.strokeColor = colors.halo
+        cleanupHaloLayer.lineWidth = lineWidth + unit
+        cleanupHaloLayer.isHidden = false
+
+        cleanupOutlineLayer.path = outlined
+        cleanupOutlineLayer.strokeColor = colors.accent
+        cleanupOutlineLayer.lineWidth = lineWidth
+        cleanupOutlineLayer.lineDashPattern = [NSNumber(value: Double(5 * unit)), NSNumber(value: Double(3 * unit))]
+        cleanupOutlineLayer.isHidden = marks.collected.isEmpty
+
+        cleanupMovingLayer.path = path(marks.moving, inset: lineWidth / 2)
+        cleanupMovingLayer.strokeColor = colors.moving
+        cleanupMovingLayer.lineWidth = lineWidth
+        cleanupMovingLayer.isHidden = marks.moving.isEmpty
+    }
+
+    private struct CleanupColors {
+        var wash: CGColor = .clear
+        var halo: CGColor = .clear
+        var accent: CGColor = .clear
+        var moving: CGColor = .clear
+    }
+
+    private func hideCleanupLayers() {
+        for layer in [cleanupWashLayer, cleanupHaloLayer, cleanupOutlineLayer, cleanupMovingLayer] {
+            layer.isHidden = true
+        }
     }
 
     /// Repositions only the hover ring, so pointer moves never pay for the
@@ -315,15 +421,62 @@ final class TreemapNSView: NSView {
         controller.hoverEnded()
     }
 
+    // The map has no press-and-drag gesture of its own (pan is scroll, zoom is pinch or ⌥-scroll), so a press
+    // that travels past the threshold always drags the item out. A click still selects on mouse-down.
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
+        pendingDrag = nil
         if event.clickCount == 2 {
             // Style-dependent: cushion reveals in Finder, flat drills into
             // folders (see TreemapController.doubleClick).
             controller.doubleClick(at: point)
-        } else {
+            return
+        }
+        let candidate = controller.dragCandidate(at: point)
+        if let candidate {
+            pendingDrag = PendingDrag(start: point, nodeID: candidate.nodeID, defersClick: candidate.isSelection)
+        }
+        if candidate?.isSelection != true {
             controller.click(at: point)
         }
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let pending = pendingDrag else { return }
+        let point = convert(event.locationInWindow, from: nil)
+        guard hypot(point.x - pending.start.x, point.y - pending.start.y) >= Self.dragThreshold else { return }
+        pendingDrag = nil
+        guard let model = controller.model,
+              let item = NodeDragSource.draggingItem(forNodeID: pending.nodeID, model: model, at: pending.start)
+        else { return }
+        beginDraggingSession(with: [item], event: event, source: self)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        if let pending = pendingDrag, pending.defersClick {
+            controller.click(at: pending.start)
+        }
+        pendingDrag = nil
+    }
+
+    // MARK: - Dragging source
+
+    func draggingSession(
+        _ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext
+    ) -> NSDragOperation {
+        NodeDragPayload.operationMask(for: context)
+    }
+
+    func draggingSession(_ session: NSDraggingSession, willBeginAt screenPoint: NSPoint) {
+        // The tooltip and hover ring would otherwise stay frozen under the drag image.
+        controller.hoverEnded()
+        if let model = controller.model { NodeDragSource.sessionDidBegin(model: model) }
+    }
+
+    func draggingSession(
+        _ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation
+    ) {
+        if let model = controller.model { NodeDragSource.sessionDidEnd(model: model) }
     }
 
     override func magnify(with event: NSEvent) {

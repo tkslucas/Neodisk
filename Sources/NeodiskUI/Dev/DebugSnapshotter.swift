@@ -56,9 +56,13 @@ final class DebugSnapshotter {
         Task { @MainActor [weak view] in
             try? await Task.sleep(for: .seconds(6))
             guard let view else { return }
-            let center = CGPoint(x: view.bounds.midX, y: view.bounds.midY)
-            view.controller.magnify(by: 3, anchor: center)
-            _ = view.controller.scroll(by: CGSize(width: -view.bounds.width, height: 0))
+            // NEODISK_UI_SNAPSHOT_ZOOM=<factor> (default 3; 1 captures the map at rest).
+            let zoom = ProcessInfo.processInfo.environment["NEODISK_UI_SNAPSHOT_ZOOM"].flatMap(Double.init) ?? 3
+            if zoom != 1 {
+                let center = CGPoint(x: view.bounds.midX, y: view.bounds.midY)
+                view.controller.magnify(by: zoom, anchor: center)
+                _ = view.controller.scroll(by: CGSize(width: -view.bounds.width, height: 0))
+            }
             try? await Task.sleep(for: .seconds(2))
             Self.writeWindowSnapshot(of: view, to: path)
         }

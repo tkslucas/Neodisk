@@ -71,6 +71,7 @@ struct StatsListTable<Row: Identifiable, RowContent: View>: NSViewRepresentable 
         tableView.target = coordinator
         tableView.action = #selector(StatsListCoordinator.didClick)
         tableView.doubleAction = #selector(StatsListCoordinator.didDoubleClick)
+        tableView.allowsNodeDrags()
 
         let scrollView = NSScrollView()
         scrollView.documentView = tableView
@@ -240,6 +241,28 @@ final class StatsListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDe
         isReportingSelection = true
         defer { isReportingSelection = false }
         select(id)
+    }
+
+    // MARK: Dragging
+
+    /// Only lists of items drag; rows that open a drill-in (kinds, duplicate groups) don't.
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> (any NSPasteboardWriting)? {
+        guard selectsNodes, row < current.ids.count else { return nil }
+        return NodeDragSource.pasteboardItem(forNodeID: current.ids[row], model: model)
+    }
+
+    func tableView(
+        _ tableView: NSTableView, draggingSession session: NSDraggingSession,
+        willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet
+    ) {
+        NodeDragSource.sessionDidBegin(model: model)
+    }
+
+    func tableView(
+        _ tableView: NSTableView, draggingSession session: NSDraggingSession,
+        endedAt screenPoint: NSPoint, operation: NSDragOperation
+    ) {
+        NodeDragSource.sessionDidEnd(model: model)
     }
 
     // MARK: Row actions

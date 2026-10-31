@@ -95,6 +95,7 @@ struct BottomOutlineTable: NSViewRepresentable {
         tableView.delegate = coordinator
         tableView.target = coordinator
         tableView.doubleAction = #selector(Coordinator.didDoubleClick)
+        tableView.allowsNodeDrags()
 
         let menu = NSMenu()
         menu.autoenablesItems = false
@@ -311,7 +312,10 @@ struct BottomOutlineTable: NSViewRepresentable {
                 }
             case "percent":
                 return hostedCell(tableView, reuse: "percent") { state in
-                    SubtreePercentCell(fraction: outlineRow.fractionOfParent, state: state)
+                    CleanupDimming(
+                        cleanup: model.cleanup, nodeID: outlineRow.node.id, state: state,
+                        content: SubtreePercentCell(fraction: outlineRow.fractionOfParent, state: state)
+                    )
                 }
             case "size":
                 return hostedCell(tableView, reuse: "size") { state in
@@ -326,13 +330,19 @@ struct BottomOutlineTable: NSViewRepresentable {
                     ? outlineRow.node.descendantFileCount.formatted()
                     : ""
                 return hostedCell(tableView, reuse: "files") { state in
-                    BottomDetailText(text: files, state: state)
+                    CleanupDimming(
+                        cleanup: model.cleanup, nodeID: outlineRow.node.id, state: state,
+                        content: BottomDetailText(text: files, state: state)
+                    )
                 }
             case "modified":
                 let modified = outlineRow.node.lastModified?
                     .formatted(date: .abbreviated, time: .omitted) ?? ""
                 return hostedCell(tableView, reuse: "modified") { state in
-                    BottomDetailText(text: modified, state: state)
+                    CleanupDimming(
+                        cleanup: model.cleanup, nodeID: outlineRow.node.id, state: state,
+                        content: BottomDetailText(text: modified, state: state)
+                    )
                 }
             default:
                 return nil
@@ -390,6 +400,27 @@ struct BottomOutlineTable: NSViewRepresentable {
             if let preferences = model.preferences, preferences.outlineSort != sort {
                 preferences.outlineSort = sort
             }
+        }
+
+        // MARK: Dragging
+
+        func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> (any NSPasteboardWriting)? {
+            guard row < rows.count else { return nil }
+            return NodeDragSource.pasteboardItem(forNodeID: rows[row].node.id, model: model)
+        }
+
+        func tableView(
+            _ tableView: NSTableView, draggingSession session: NSDraggingSession,
+            willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet
+        ) {
+            NodeDragSource.sessionDidBegin(model: model)
+        }
+
+        func tableView(
+            _ tableView: NSTableView, draggingSession session: NSDraggingSession,
+            endedAt screenPoint: NSPoint, operation: NSDragOperation
+        ) {
+            NodeDragSource.sessionDidEnd(model: model)
         }
 
         // MARK: Row actions (parity with `fileNodeActions`)

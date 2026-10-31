@@ -54,12 +54,15 @@ final class TreemapController {
     }
     private var catalog: FileKindCatalog = .empty
     private var selectedNodeID: String?
+    private var cleanupCollectedIDs: [String] = []
+    private var cleanupMovingIDs: Set<String> = []
 
     /// Memoized per scene and store (both immutable). `selectionRect` is read on every display refresh,
     /// so re-running the layout down the selection path each time was pure repeat work.
     private struct SceneQueries {
         var navigationCandidates: [TreemapKeyboardNav.Candidate]?
         var selectionRect: (nodeID: String, rect: CGRect?)?
+        var cleanupMarks: CleanupMarks?
     }
     private var sceneQueries = SceneQueries()
 
@@ -216,6 +219,15 @@ final class TreemapController {
         pushDisplay()
     }
 
+    /// Cleanup marks are drawn over the map, never baked into it: a change only redraws the overlay.
+    func setCleanupItems(collected: [String], moving: Set<String>) {
+        guard collected != cleanupCollectedIDs || moving != cleanupMovingIDs else { return }
+        cleanupCollectedIDs = collected
+        cleanupMovingIDs = moving
+        sceneQueries.cleanupMarks = nil
+        view?.refreshCleanupLayers()
+    }
+
     func setViewSize(_ size: CGSize) {
         guard size != viewSize else { return }
         if ScanProfile.isEnabled, FeltTiming.engineFinishedProfileSince != 0 {
@@ -303,6 +315,52 @@ final class TreemapController {
         return rect
     }
 
+    /// Collected items the scene draws on their own, in rendered-scene coordinates; memoized per scene and pile.
+    struct CleanupMarks {
+        var collected: [CGRect] = []
+        var moving: [CGRect] = []
+        /// The scene root itself sits inside a collected item, so the whole map is.
+        var washesCanvas = false
+        var canvas: CGRect = .null
+
+        var isEmpty: Bool { collected.isEmpty && moving.isEmpty && !washesCanvas }
+    }
+
+    var cleanupMarks: CleanupMarks {
+        if let memo = sceneQueries.cleanupMarks { return memo }
+        var marks = CleanupMarks()
+        guard let scene, let store, !(cleanupCollectedIDs.isEmpty && cleanupMovingIDs.isEmpty) else {
+            sceneQueries.cleanupMarks = marks
+            return marks
+        }
+        let canvas = CGRect(
+            x: -scene.viewport.origin.x,
+            y: -scene.viewport.origin.y,
+            width: scene.size.width * scene.viewport.scale,
+            height: scene.size.height * scene.viewport.scale
+        )
+        marks.canvas = canvas
+        let movingFirst = cleanupMovingIDs.sorted()
+        for (ids, isMoving) in [(movingFirst, true), (cleanupCollectedIDs, false)] {
+            // A moving item is also still in the pile until its move lands; it draws once, as moving.
+            for id in ids where isMoving || !cleanupMovingIDs.contains(id) {
+                if id == scene.rootID || store.isAncestor(id, of: scene.rootID) {
+                    marks.washesCanvas = true
+                    if id == scene.rootID {
+                        if isMoving { marks.moving.append(canvas) } else { marks.collected.append(canvas) }
+                    }
+                    continue
+                }
+                guard let rect = scene.rect(forNodeID: id, in: store, exact: true),
+                      rect.width >= 2, rect.height >= 2,
+                      rect.intersects(scene.renderBounds) else { continue }
+                if isMoving { marks.moving.append(rect) } else { marks.collected.append(rect) }
+            }
+        }
+        sceneQueries.cleanupMarks = marks
+        return marks
+    }
+
     /// Nil while a gesture moves the map (the ring hides with the tooltip).
     var hoverRect: CGRect? {
         guard !isGesturing else { return nil }
@@ -341,6 +399,26 @@ final class TreemapController {
     private func resolveHoverAfterDisplayChange() {
         guard let hoverPoint else { return }
         _ = setHoveredCell(cell(at: hoverPoint))
+    }
+
+    /// What a press at `point` would drag: the cell's item, or the selected folder when the press lands inside
+    /// it, so a folder the cushion style draws only as its files can still be dragged once selected. Nil for
+    /// synthetic blocks, "smaller items" cells and during a scan. `isSelection` defers the press's click to
+    /// mouse-up, so dragging the selection doesn't first select the file under the pointer.
+    func dragCandidate(at point: CGPoint) -> (nodeID: String, isSelection: Bool)? {
+        guard let model, !model.coordinator.isScanning, let store, let cell = cell(at: point),
+              !cell.isFreeSpace, !cell.isHiddenSpace else { return nil }
+        if let selectedNodeID, selectedNodeID != cell.nodeID,
+           let rootID = inputs.rootID, selectedNodeID != rootID,
+           !store.isAncestor(selectedNodeID, of: rootID),
+           store.isAncestor(selectedNodeID, of: cell.nodeID),
+           NodeDragSource.draggableNode(id: selectedNodeID, model: model) != nil {
+            return (selectedNodeID, true)
+        }
+        guard cell.aggregate == nil, NodeDragSource.draggableNode(id: cell.nodeID, model: model) != nil else {
+            return nil
+        }
+        return (cell.nodeID, false)
     }
 
     func click(at point: CGPoint) {

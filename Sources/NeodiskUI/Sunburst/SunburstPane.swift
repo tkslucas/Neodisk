@@ -75,6 +75,19 @@ struct SunburstPane: View {
                         onNavigateToParent: { model.zoomOut() },
                         onKeyDown: { handleKey($0) },
                         contextMenu: { contextMenu(for: $0) },
+                        cleanup: cleanupInput(rootID: rootID, in: store),
+                        cleanupHoverText: { model.cleanup.mark(for: $0).hoverText },
+                        dragItem: { segment, location in
+                            guard let nodeID = segment.nodeID, !segment.isAggregate else { return nil }
+                            return NodeDragSource.draggingItem(forNodeID: nodeID, model: model, at: location)
+                        },
+                        onDragSessionChange: { active in
+                            if active {
+                                NodeDragSource.sessionDidBegin(model: model)
+                            } else {
+                                NodeDragSource.sessionDidEnd(model: model)
+                            }
+                        },
                         chartModel: chartModel
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -168,6 +181,17 @@ struct SunburstPane: View {
     /// Hidden space follows the exact same volume/zoom gates as free space.
     private var gatedHiddenSpaceBytes: Int64? {
         model.zoomRootID == nil ? model.freeSpace.hiddenSpaceBytes : nil
+    }
+
+    /// Read in the body, so a pile change redraws the overlay (and only the overlay).
+    private func cleanupInput(rootID: String, in store: FileTreeStore) -> SunburstCleanupInput {
+        let cleanup = model.cleanup
+        guard !cleanup.isEmpty || cleanup.isMoving else { return SunburstCleanupInput() }
+        return SunburstCleanupInput(
+            collected: cleanup.itemIDs,
+            moving: cleanup.movingIDs,
+            rootIsInside: cleanup.isInsideCollected(rootID)
+        )
     }
 
     private func selectedAncestorIDs(in store: FileTreeStore) -> Set<String> {

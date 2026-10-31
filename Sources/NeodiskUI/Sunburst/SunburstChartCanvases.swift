@@ -77,3 +77,48 @@ struct SunburstHoverOverlay: View, Equatable {
         }
     }
 }
+
+/// Cleanup marks over the rings: a wash toward the window background on collected arcs and what's inside them,
+/// then a halo and a dashed accent outline (solid secondary while moving). The same language as the treemap's.
+struct SunburstCleanupOverlayCanvas: View, Equatable {
+    let overlay: SunburstCleanupOverlay
+
+    nonisolated static func == (lhs: SunburstCleanupOverlayCanvas, rhs: SunburstCleanupOverlayCanvas) -> Bool {
+        lhs.overlay == rhs.overlay
+    }
+
+    var body: some View {
+        Canvas { context, size in
+            guard !overlay.isEmpty else { return }
+            let background = Color(nsColor: .windowBackgroundColor)
+            var wash = Path()
+            for segment in overlay.wash {
+                wash.addPath(SunburstRenderer.path(for: segment, in: size))
+            }
+            context.fill(wash, with: .color(background.opacity(0.6)))
+
+            let outlined = overlay.moving + overlay.collected
+            for segment in outlined {
+                context.stroke(
+                    SunburstRenderer.path(for: segment, in: size),
+                    with: .color(background.opacity(0.85)),
+                    lineWidth: 3
+                )
+            }
+            for segment in overlay.collected {
+                context.stroke(
+                    SunburstRenderer.path(for: segment, in: size),
+                    with: .color(.accentColor),
+                    style: StrokeStyle(lineWidth: 2, lineJoin: .round, dash: [5, 3])
+                )
+            }
+            for segment in overlay.moving {
+                context.stroke(
+                    SunburstRenderer.path(for: segment, in: size),
+                    with: .color(.secondary),
+                    style: StrokeStyle(lineWidth: 2, lineJoin: .round)
+                )
+            }
+        }
+    }
+}

@@ -3,9 +3,9 @@
 
 "CFBundleDisplayName" = "Neodisk";
 "NSHumanReadableCopyright" = "© 2026 Neodisk contributors. GPLv3 License.";
-"NSDesktopFolderUsageDescription" = "Neodisk 用于测量文件占用的磁盘空间，绝不会修改或删除任何内容。";
-"NSDocumentsFolderUsageDescription" = "Neodisk 用于测量文件占用的磁盘空间，绝不会修改或删除任何内容。";
-"NSDownloadsFolderUsageDescription" = "Neodisk 用于测量文件占用的磁盘空间，绝不会修改或删除任何内容。";
-"NSRemovableVolumesUsageDescription" = "Neodisk 用于测量可移动卷上的磁盘使用情况，绝不会修改或删除任何内容。";
-"NSNetworkVolumesUsageDescription" = "Neodisk 用于测量网络卷上的磁盘使用情况，绝不会修改或删除任何内容。";
-"NSSystemAdministrationUsageDescription" = "完全磁盘访问权限让 Neodisk 能够测量受保护的位置，绝不会修改或删除任何内容。";
+"NSDesktopFolderUsageDescription" = "Neodisk 用于测量文件占用的磁盘空间。除非你将项目移到废纸篓，否则它不会更改任何内容。";
+"NSDocumentsFolderUsageDescription" = "Neodisk 用于测量文件占用的磁盘空间。除非你将项目移到废纸篓，否则它不会更改任何内容。";
+"NSDownloadsFolderUsageDescription" = "Neodisk 用于测量文件占用的磁盘空间。除非你将项目移到废纸篓，否则它不会更改任何内容。";
+"NSRemovableVolumesUsageDescription" = "Neodisk 用于测量可移动卷上的磁盘使用情况。除非你将项目移到废纸篓，否则它不会更改任何内容。";
+"NSNetworkVolumesUsageDescription" = "Neodisk 用于测量网络卷上的磁盘使用情况。除非你将项目移到废纸篓，否则它不会更改任何内容。";
+"NSSystemAdministrationUsageDescription" = "完全磁盘访问权限让 Neodisk 能够测量受保护的位置。除非你将项目移到废纸篓，否则它不会更改任何内容。";

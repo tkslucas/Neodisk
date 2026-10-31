@@ -46,7 +46,7 @@ struct WelcomeSheet: View {
             Label {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Clean up safely").fontWeight(.semibold)
-                    Text("Drag items to Cleanup at the bottom of the sidebar, or press ⌘⌫. Nothing moves until you confirm, items go to the Trash where you can put them back, and system folders are off limits. You can turn this off in Settings.")
+                    Text("Drag items to Cleanup at the bottom of the sidebar, or press ⌘⌫. Nothing moves until you confirm, items go to the Trash so you can still get them back, and system folders are off-limits. You can turn this off in Settings.")
                         .foregroundStyle(.secondary)
                 }
             } icon: {

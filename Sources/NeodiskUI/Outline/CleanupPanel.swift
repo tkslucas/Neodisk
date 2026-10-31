@@ -196,7 +196,7 @@ struct CleanupReviewList: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Cleanup")
                         .neoFont(13, weight: .semibold)
-                    Text("Nothing moves until you confirm. Items go to the Trash, where you can put them back.")
+                    Text("Nothing moves until you confirm. Items go to the Trash, so you can still get them back.")
                         .neoFont(10)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)

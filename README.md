@@ -52,8 +52,8 @@ later); the AppImage bundles them and needs a system as new as Ubuntu 24.04.
 **Careful cleanup.** Scanning only reads. To free space, collect items in
 Cleanup at the bottom of the sidebar (drag them there from any view, or press
 ⌘⌫), review them, and move them to the Trash after one confirmation. Neodisk
-never deletes anything itself: items go to the Trash, where you can put them
-back. It refuses system folders, volumes, your home folder and its standard
+never deletes anything itself: items go to the Trash, so you can still get
+them back. It refuses system folders, volumes, your home folder and its standard
 folders, and checks right before each move that the item is still the one it
 scanned. On Linux, Move to Trash is in the right-click menu. You can turn all
 of it off in Settings.

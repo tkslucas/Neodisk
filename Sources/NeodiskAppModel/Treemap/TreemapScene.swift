@@ -771,10 +771,8 @@ package struct TreemapScene: Sendable {
         return deepest.map { cells[Int($0)] }
     }
 
-    /// The on-screen rect of an arbitrary node (not just rendered leaves),
-    /// recomputed by re-running the layout along the path from the root. A node the map doesn't draw on its own
-    /// (merged into "smaller items", or inside a flat container too small to nest) gets the nearest drawn rect,
-    /// unless `exact`, which returns nil for it.
+    /// Any node's on-screen rect, re-running the layout along its path. A node not drawn on its own gets the
+    /// nearest drawn rect, or nil when `exact`.
     package nonisolated func rect(forNodeID nodeID: String, in store: FileTreeStore, exact: Bool = false) -> CGRect? {
         guard size.width >= 1, size.height >= 1 else { return nil }
         let fullChain = store.path(to: nodeID)

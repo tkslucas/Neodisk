@@ -647,9 +647,8 @@ final class ScanSessionModel {
         saveSnapshotToCache(snapshot)
     }
 
-    /// After a subtree splice. The index keeps the last full scan's date and duration (they drive auto-rescan);
-    /// only the node count updates. An expansion rotates the pre-splice snapshot into the previous slot; a
-    /// removal (`rotatesPrevious: false`) keeps the previous scan as the baseline.
+    /// After a splice: the index keeps the last full scan's date and duration (they drive auto-rescan). A removal
+    /// (`rotatesPrevious: false`) keeps the previous scan as the baseline.
     func persistSplicedSnapshot(rotatesPrevious: Bool = true) {
         guard let snapshot = coordinator.snapshot,
               snapshot.isComplete, snapshot.source.isPersistable else { return }

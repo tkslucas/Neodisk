@@ -210,9 +210,8 @@ public struct ScanSnapshot: Identifiable, Sendable {
         )
     }
 
-    /// The snapshot without the given subtrees (items moved to the Trash): ancestors shrink, shared hard-link
-    /// and clone charges rebalance, and warnings under removed paths go. Nil when nothing to remove exists or the
-    /// root is asked for (a scan never removes its own root).
+    /// Without the given subtrees (moved to the Trash): ancestors shrink, hard links and clones rebalance, their
+    /// warnings go. Nil when none exist or the root is asked for.
     public nonisolated func removingNodes(
         ids nodeIDs: [String],
         cancellationCheck: () throws -> Void = {}

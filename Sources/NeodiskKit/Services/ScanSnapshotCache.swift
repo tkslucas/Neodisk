@@ -125,10 +125,8 @@ public actor ScanSnapshotCache {
 
     // MARK: - Public API
 
-    /// Saves a complete snapshot as the latest; the prior latest rotates to "previous" unless its tree content
-    /// matches, since rotating an identical tree would make every diff empty.
-    /// `rotatesPrevious: false` overwrites the latest in place (after moving items to the Trash): the previous
-    /// scan stays the baseline, so Changes still compares against it.
+    /// Saves a complete snapshot as the latest; the prior latest rotates to "previous" unless identical, or unless
+    /// `rotatesPrevious` is false (after a move to the Trash: the previous scan stays the Changes baseline).
     @discardableResult
     public func save(_ snapshot: ScanSnapshot, rotatesPrevious: Bool = true) async throws -> SnapshotSaveOutcome {
         guard snapshot.isComplete else {

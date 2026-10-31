@@ -401,10 +401,8 @@ final class TreemapController {
         _ = setHoveredCell(cell(at: hoverPoint))
     }
 
-    /// What a press at `point` would drag: the cell's item, or the selected folder when the press lands inside
-    /// it, so a folder the cushion style draws only as its files can still be dragged once selected. Nil for
-    /// synthetic blocks, "smaller items" cells and during a scan. `isSelection` defers the press's click to
-    /// mouse-up, so dragging the selection doesn't first select the file under the pointer.
+    /// What a press would drag: the cell's item, or the selected folder when the press lands inside it (cushion
+    /// draws folders only as files). `isSelection` defers the click to mouse-up so the drag keeps the folder.
     func dragCandidate(at point: CGPoint) -> (nodeID: String, isSelection: Bool)? {
         guard let model, !model.coordinator.isScanning, let store, let cell = cell(at: point),
               !cell.isFreeSpace, !cell.isHiddenSpace else { return nil }

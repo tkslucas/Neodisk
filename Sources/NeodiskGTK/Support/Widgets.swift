@@ -128,9 +128,8 @@ enum Widgets {
         gtk_popover_popup(ptr(cache))
     }
 
-    /// Menu item attributes beyond label and action, by action. Delete is a key the focused map or outline
-    /// handles itself (an app accelerator would take it from text fields), shown the way real accelerators are.
-    /// Move to Trash leaves the window when turned off in Preferences, and its items leave with it.
+    /// Extra menu item attributes by action: Delete shows as an accelerator (the focused view handles the key),
+    /// and Move to Trash hides when its action leaves the window (turned off in Preferences).
     private static let itemAttributes: [String: [(String, String)]] = [
         "win.move-to-trash": [("accel", "Delete"), ("hidden-when", "action-missing")],
     ]

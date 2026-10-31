@@ -460,9 +460,8 @@ final class ScanCoordinator {
         expandTask = nil
     }
 
-    /// Cuts items that went to the Trash out of the snapshot on screen. Off the main actor; a newer snapshot
-    /// of the same location (an expansion landed meanwhile) gets the same cut, another location's is left alone.
-    /// Returns whether the screen now shows the cut.
+    /// Cuts trashed items out of the snapshot on screen, off the main actor, retrying on a newer one of the same
+    /// location. False when another location is on screen.
     @discardableResult
     func removeNodes(ids nodeIDs: [String], fromTargetID targetID: String) async -> Bool {
         for _ in 0..<3 {

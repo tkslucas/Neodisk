@@ -98,10 +98,8 @@ public struct TrashMover: Sendable {
         }
     }
 
-    /// Nil when the path still holds the scanned item, unchanged. Folders and big or hard-linked files carry a
-    /// device and inode, compared exactly (a folder's contents may change; it's still the folder). A file must
-    /// also keep its size and modification date: an inode can be reused by a replacement (Linux does it at
-    /// once), and a file edited since the scan isn't what the user saw.
+    /// Nil when the path still holds the scanned item: same device and inode when known, and for files also the
+    /// same size and date (inodes get reused, and an edited file isn't what the user saw).
     public static func verify(_ node: FileNodeRecord) -> TrashFailure? {
         let current: CurrentFile
         switch CurrentFileState.read(atPath: node.path) {

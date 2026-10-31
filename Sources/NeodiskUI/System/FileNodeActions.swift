@@ -63,9 +63,8 @@ final class ClosureMenuItem: NSMenuItem {
 }
 
 extension NSMenu {
-    /// Keep in lockstep with the SwiftUI `fileNodeActions` above. Nil for nodes without file actions.
-    /// `includeCleanup: false` for a "smaller items" cell, which stands for its folder in the menu but shouldn't
-    /// offer to collect the whole folder.
+    /// Keep in lockstep with the SwiftUI `fileNodeActions` above. `includeCleanup: false` for a "smaller items"
+    /// cell, which stands for its folder but mustn't offer to collect it.
     @MainActor
     static func fileNodeActions(
         for node: FileNodeRecord, model: NeodiskViewModel, includeCleanup: Bool = true

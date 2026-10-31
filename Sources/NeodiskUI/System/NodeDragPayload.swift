@@ -1,6 +1,5 @@
-// What a drag of scanned items carries: a private payload Cleanup accepts (only for the tree it was taken
-// from), and the file URL so other apps can take a copy. Outside the app a drag only ever copies: moving or
-// trashing a file behind the scan's back would leave the map wrong.
+// A drag of scanned items: a private payload Cleanup accepts (from the tree on screen only) and the file URL.
+// Outside the app it only copies: a move behind the scan's back would leave the map wrong.
 
 import AppKit
 import NeodiskKit

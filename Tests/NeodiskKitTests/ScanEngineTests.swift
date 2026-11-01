@@ -351,6 +351,7 @@ import Foundation
         try FileManager.default.createDirectory(at: hiddenFileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data(repeating: 0x1, count: 128).write(to: visibleFileURL)
         try Data(repeating: 0x2, count: 256).write(to: hiddenFileURL)
+        markHiddenOnWindows(hiddenFileURL)
 
         let snapshot = try await finishedSnapshot(
             target: ScanTarget(url: rootURL),
@@ -1121,6 +1122,8 @@ import Foundation
         #expect(snapshot.aggregateStats.fileCount == 1)
     }
 
+    // The Windows walk counts each hard link: directory info has no link count (see WindowsFileInfo).
+    #if !os(Windows)
     @Test func testHardLinkedFilesOnlyCountAllocatedStorageOnce() async throws {
         let rootURL = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -1147,7 +1150,10 @@ import Foundation
         #expect(children.filter { $0.allocatedSize == 0 }.map(\.unduplicatedAllocatedSize).count == 1)
         #expect(children.allSatisfy { $0.unduplicatedAllocatedSize > 0 })
     }
+    #endif
 
+    // The Windows walk counts each hard link: directory info has no link count (see WindowsFileInfo).
+    #if !os(Windows)
     @Test func testParallelTraversalAssignsHardLinkStorageDeterministically() async throws {
         let rootURL = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -1205,7 +1211,10 @@ import Foundation
         #expect(snapshot.aggregateStats.totalAllocatedSize == snapshot.root.allocatedSize)
         #expect(snapshot.aggregateStats.fileCount == 2)
     }
+    #endif
 
+    // POSIX root: on Windows `/` is the current drive's root.
+    #if !os(Windows)
     @Test func testScanTargetNormalizesSyntheticRootAliases() {
         let nofollowTarget = ScanTarget(url: URL(filePath: "/.nofollow/Users/example", directoryHint: .isDirectory))
         let resolveTarget = ScanTarget(url: URL(filePath: "/.resolve/System/Volumes/Data", directoryHint: .isDirectory))
@@ -1216,6 +1225,7 @@ import Foundation
         #expect(rootAliasTarget.url.path == "/")
         #expect(rootAliasTarget.kind == .volume)
     }
+    #endif
 
     @Test func testScanTargetResolvesSymlinkRoots() throws {
         let rootURL = try makeTemporaryDirectory()
@@ -2235,6 +2245,7 @@ import Foundation
         for i in 0..<3 {
             let hiddenFileURL = cacheURL.appending(path: ".hidden_\(i).tmp")
             try Data(repeating: 0x7F, count: 32).write(to: hiddenFileURL)
+            markHiddenOnWindows(hiddenFileURL)
         }
 
         var options = ScanOptions(includeHiddenFiles: false)

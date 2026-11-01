@@ -17,8 +17,32 @@ import Testing
     @Test func spellingsOfAProtectedPathAreRefused() {
         #expect(policy.refusal(forPath: "/applications", identity: nil) == .protectedLocation)
         #expect(policy.refusal(forPath: "/USERS/ME/library/", identity: nil) == .protectedLocation)
+        // On Windows a leading `//` starts a network share's path.
+        #if !os(Windows)
         #expect(policy.refusal(forPath: "//Users/./me/Library/../Library", identity: nil) == .protectedLocation)
+        #endif
     }
+
+    #if os(Windows)
+    @Test func windowsSpellingsOfAProtectedPathAreRefused() {
+        let windows = TrashSafetyPolicy(protectedPaths: ["C:\\", "C:\\Users\\Me\\Documents"])
+        for spelling in [
+            "C:/Users/Me/Documents", "c:\\users\\me\\documents\\", "/C:/Users/Me/Documents",
+            "C:\\Users\\Me\\.\\Pictures\\..\\Documents",
+        ] {
+            #expect(windows.refusal(forPath: spelling, identity: nil) == .protectedLocation, "\(spelling)")
+        }
+        // Drive roots and the folders that hold a protected one.
+        #expect(windows.refusal(forPath: "C:/", identity: nil) == .protectedLocation)
+        #expect(windows.refusal(forPath: "C:\\Users", identity: nil) == .protectedLocation)
+        // `..` never climbs out of a drive, and other drives and what's inside are fine.
+        #expect(windows.refusal(forPath: "C:/../../Users/Me/Documents", identity: nil) == .protectedLocation)
+        #expect(windows.refusal(forPath: "C:/Users/Me/Documents/report.pdf", identity: nil) == nil)
+        #expect(windows.refusal(forPath: "D:/Users/Me/Documents", identity: nil) == nil)
+        #expect(windows.refusal(forPath: "C:/$Recycle.Bin/S-1-5-21/$R1.txt", identity: nil) == .alreadyInTrash)
+        #expect(windows.refusal(forPath: "D:\\$RECYCLE.BIN", identity: nil) == .alreadyInTrash)
+    }
+    #endif
 
     @Test func whatsInsideProtectedLocationsIsAllowed() {
         #expect(policy.refusal(forPath: "/Applications/Some App.app", identity: nil) == nil)
@@ -62,9 +86,27 @@ import Testing
         #expect(live.refusal(forPath: home, identity: nil) == .protectedLocation)
         #expect(live.refusal(forPath: home + "/Documents", identity: nil) == .protectedLocation)
         #expect(live.refusal(forPath: home + "/Documents/report.pdf", identity: nil) == nil)
+        #if os(Windows)
+        let environment = ProcessInfo.processInfo.environment
+        let systemDrive = environment["SystemDrive"] ?? "C:"
+        #expect(live.refusal(forPath: systemDrive + "\\", identity: nil) == .protectedLocation)
+        for name in ["SystemRoot", "ProgramFiles", "ProgramData"] {
+            guard let path = environment[name] else {
+                Issue.record("%\(name)% is not set")
+                continue
+            }
+            #expect(live.refusal(forPath: path, identity: nil) == .protectedLocation, "\(name)")
+        }
+        let systemRoot = environment["SystemRoot"] ?? "C:\\Windows"
+        #expect(live.refusal(forPath: systemRoot + "\\System32", identity: nil) == .protectedLocation)
+        #expect(live.refusal(forPath: systemRoot + "\\System32\\drivers\\etc\\hosts", identity: nil) == nil)
+        #expect(live.refusal(forPath: home + "\\AppData\\Local", identity: nil) == .protectedLocation)
+        #expect(live.refusal(forPath: home + "\\AppData\\Local\\SomeApp", identity: nil) == nil)
+        #else
         #expect(live.refusal(forPath: "/usr", identity: nil) == .protectedLocation)
         #expect(live.refusal(forPath: "/tmp", identity: nil) == .protectedLocation)
         #expect(live.refusal(forPath: "/usr/lib", identity: nil) == .protectedLocation)
+        #endif
         #if os(macOS)
         #expect(live.refusal(forPath: "/private/tmp", identity: nil) == .protectedLocation)
         #expect(live.refusal(forPath: "/private/var/folders", identity: nil) == .protectedLocation)

@@ -255,6 +255,8 @@ struct IncrementalRescanPlannerTests {
         #expect(plan(events) == .relistDirectories(dirIDs: ["/scan/docs"], deepRescanRootIDs: []))
     }
 
+    // POSIX root: on Windows `/` is the current drive's root.
+    #if !os(Windows)
     @Test func rootVolumePrivateVarEventsRescanTheirSubtree() {
         // A "/" scan stores /private/var/... Regression: the stripped form missed the baseline, the walk
         // climbed to the root, and every Macintosh HD rescan fell back to a full scan via .changedScanRoot.
@@ -287,7 +289,10 @@ struct IncrementalRescanPlannerTests {
         )
         #expect(result == .relistDirectories(dirIDs: ["/private/var/folders"], deepRescanRootIDs: []))
     }
+    #endif
 
+    // POSIX root: on Windows `/` is the current drive's root.
+    #if !os(Windows)
     @Test func startupVolumeInternalsAreSkippedUnderRootBehavior() {
         let rootTarget = makeTestTarget("/", kind: .volume)
         let sub = makeTestDirectoryNode(id: "/Applications", name: "Applications", children: [])
@@ -314,4 +319,5 @@ struct IncrementalRescanPlannerTests {
         )
         #expect(result == .noChanges)
     }
+    #endif
 }

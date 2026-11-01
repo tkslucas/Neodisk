@@ -333,10 +333,16 @@ import Testing
             #expect(results.groups.count == 1)
             #expect(results.groups.first?.nodeIDs.count == 2)
             // The fifo survived size grouping but was skipped before hashing.
+            #if os(Windows)
+            #expect(results.unreadableCount == 0)
+            #else
             #expect(results.unreadableCount == 1)
+            #endif
         }
     }
 
+    // The Windows walk counts each hard link: directory info has no link count (see WindowsFileInfo).
+    #if !os(Windows)
     @Test func hardLinksCollapseToOneCopy() async throws {
         try await withTempDirectory { directory in
             let identical = bytes(seed: 0x7A, count: 2 * Self.megabyte)
@@ -395,6 +401,7 @@ import Testing
             #expect(group.nodeIDs.count == 2)
         }
     }
+    #endif
 
     @Test func vanishedFileCountsAsUnreadable() async throws {
         try await withTempDirectory { directory in

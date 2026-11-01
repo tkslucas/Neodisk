@@ -73,6 +73,8 @@ import Foundation
         #expect(folder.deviceID == folder.metadata?.fileIdentity?.fileSystemDeviceID)
     }
 
+    // The Windows reader covers every volume and reports open errors itself instead of falling back.
+    #if !os(Windows)
     @Test func bulkOpenFailureFallsBackToInjectedEnumerator() async throws {
         let missingURL = FileManager.default.temporaryDirectory
             .appending(path: "bulk-fallback-\(UUID().uuidString)", directoryHint: .isDirectory)
@@ -102,6 +104,7 @@ import Foundation
         #expect(result.entries.isEmpty)
         #expect(calls.value == 1)
     }
+    #endif
 
     @Test func dedicatedIOWorkerObservesTaskCancellation() async throws {
         let executor = DirectoryIOExecutor(workerCount: 1)
@@ -186,6 +189,8 @@ import Foundation
         #expect(small.fileIdentity == nil)
     }
 
+    // The Windows walk counts each hard link: directory info has no link count (see WindowsFileInfo).
+    #if !os(Windows)
     @Test func testHardLinkedFilesCarrySharedFileSystemIdentity() throws {
         let rootURL = try makeBulkTestDirectory()
         defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -207,6 +212,7 @@ import Foundation
         #expect(originalIdentity.isFileSystemIdentity)
         #expect(originalIdentity == hardlink.fileIdentity)
     }
+    #endif
 
     #if canImport(Darwin)
     @Test func testHiddenClassificationMatchesFileManager() throws {
@@ -390,9 +396,17 @@ import Foundation
     @Test func testMissingDirectoryThrowsOpenFailure() throws {
         let missingURL = FileManager.default.temporaryDirectory
             .appending(path: "bulk-missing-\(UUID().uuidString)", directoryHint: .isDirectory)
+        #if os(Windows)
+        // The Windows reader reports the system's error itself (see BulkDirectoryReader+Windows.swift).
+        let error = #expect(throws: NSError.self) {
+            _ = try BulkDirectoryReader.children(ofDirectory: missingURL, cancellationCheck: {})
+        }
+        #expect(error?.domain == NSPOSIXErrorDomain && error?.code == Int(ENOENT))
+        #else
         #expect(throws: BulkDirectoryReadError.self) {
             _ = try BulkDirectoryReader.children(ofDirectory: missingURL, cancellationCheck: {})
         }
+        #endif
     }
 
     @Test func testCancellationPropagates() throws {

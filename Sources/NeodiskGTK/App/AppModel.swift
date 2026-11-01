@@ -653,15 +653,29 @@ extension AppModel {
     }
 
     /// Splices the moved item out off the main actor and shows the result the way a finished scan is shown.
-    /// A scan or another location that took over meanwhile wins: what it lands is the truth.
+    /// A scan of the location that took over meanwhile wins: what it lands is the truth. Another location on
+    /// screen: the item leaves this one's saved scan, or reopening it would show it again.
     private func removeFromTree(_ nodeID: String, of snapshot: ScanSnapshot) async {
-        guard self.snapshot?.id == snapshot.id, !isScanning else { return }
+        guard let current = self.snapshot, current.target.id == snapshot.target.id else {
+            await removeFromSavedScan(nodeID, of: snapshot.target)
+            return
+        }
+        guard !isScanning else { return }
         let updated = await Task.detached(priority: .userInitiated) {
-            try? snapshot.removingNodes(ids: [nodeID])
+            try? current.removingNodes(ids: [nodeID])
         }.value
-        guard let updated, self.snapshot?.id == snapshot.id, !isScanning else { return }
-        moveOffRemoved(nodeID, in: snapshot.treeStore)
+        guard let updated, self.snapshot?.id == current.id, !isScanning else { return }
+        moveOffRemoved(nodeID, in: current.treeStore)
         display(updated)
+        await persist(updated, rotatesPrevious: false)
+    }
+
+    private func removeFromSavedScan(_ nodeID: String, of target: ScanTarget) async {
+        guard let saved = await snapshotCache.loadSnapshot(for: target) else { return }
+        let updated = await Task.detached(priority: .userInitiated) {
+            try? saved.removingNodes(ids: [nodeID])
+        }.value
+        guard let updated else { return }
         await persist(updated, rotatesPrevious: false)
     }
 

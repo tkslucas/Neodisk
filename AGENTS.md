@@ -33,6 +33,8 @@ The most used ones; the rest live in `Sources/NeodiskUI/Dev/`.
 - `NEODISK_HEADLESS=1` + `NEODISK_BENCH_AUTOQUIT=1` (+ `NEODISK_BENCH_RESCANS=<n>`): off-screen felt-time
   benchmark runs. A bench run that could draw on screen is a bug.
 - `NEODISK_SNAPSHOT_DIR=<dir>`: isolate the snapshot cache from the developer's real one.
+- `NEODISK_AUTOCOLLECT=<path>[:<path>…]`: collect those items in Cleanup after the scan; with
+  `NEODISK_AUTOTRASH=1`, then move them as if confirmed (really trashes: temp dirs only).
 - Headless runs share the `Neodisk` UserDefaults domain with your `swift run` sessions: check
   `defaults read Neodisk <key>` before concluding a feature regressed.
 - The sidebar's material background renders blank in offscreen captures: `NEODISK_SIDEBAR_SNAPSHOT=<out.png>`
@@ -49,7 +51,8 @@ The most used ones; the rest live in `Sources/NeodiskUI/Dev/`.
   means compiler warnings.
 - Static Swift runtime links need `--build-system native` for now.
 - Hooks: `NEODISK_AUTOSCAN`, `NEODISK_UI_SNAPSHOT` (GSK render to PNG, then quit; `NEODISK_SNAPSHOT_DELAY`),
-  `NEODISK_VIZ_MODE`, `NEODISK_TREEMAP_STYLE`, `NEODISK_ANALYSIS_TAB`, `NEODISK_SELECT`, `NEODISK_SCAN_TIMING`.
+  `NEODISK_VIZ_MODE`, `NEODISK_TREEMAP_STYLE`, `NEODISK_ANALYSIS_TAB`, `NEODISK_SELECT`, `NEODISK_SCAN_TIMING`,
+  `NEODISK_AUTOTRASH=<path>[:<path>…]` (moves them as if confirmed; really trashes: temp dirs only).
   `XDG_CONFIG_HOME` isolates settings. Example:
   `NEODISK_AUTOSCAN=/usr NEODISK_UI_SNAPSHOT=/tmp/shot.png xvfb-run -a -s "-screen 0 1600x1000x24" .build/debug/neodisk`
 

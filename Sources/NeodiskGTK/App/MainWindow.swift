@@ -483,7 +483,7 @@ final class MainWindow {
             showAlert(heading: L("Can't Move “%@” to the Trash", node.name), body: reason)
             return
         }
-        let confirmation = TrashConfirmation(nodes: [node])
+        let confirmation = TrashConfirmation(nodes: [node], scannedAt: model.snapshot?.finishedAt)
         let dialog = raw(adw_alert_dialog_new(confirmation.title, confirmation.message))!
         adw_alert_dialog_add_response(ptr(dialog), "cancel", L("Cancel"))
         adw_alert_dialog_add_response(ptr(dialog), "trash", L("Move to Trash"))

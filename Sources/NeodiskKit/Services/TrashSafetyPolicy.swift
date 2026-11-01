@@ -14,6 +14,8 @@ public enum TrashRefusal: Sendable, Equatable {
     case unreadableFolder
     /// A name the scan couldn't decode (not UTF-8 on Linux), so its path doesn't lead back to it.
     case undecodableName
+    /// Part of an app or plug-in (macOS): without it the bundle breaks, and its signature with it.
+    case insideAppBundle
 }
 
 /// The locations Neodisk never moves to the Trash. Only these exact folders and the folders that hold them are
@@ -61,6 +63,10 @@ public struct TrashSafetyPolicy: Sendable {
         #else
         paths += childPaths(of: "/home")
         paths += xdgUserDirectories(homeDirectory: homeDirectory)
+        // A data folder moved out of ~/.local/share, and the Trash inside it.
+        if let dataHome = ProcessInfo.processInfo.environment["XDG_DATA_HOME"], dataHome.hasPrefix("/") {
+            paths += [dataHome, (dataHome as NSString).appendingPathComponent("Trash")]
+        }
         #endif
         // The system's own top-level folders, whatever they're called on this machine.
         for directory in systemFoldersWithProtectedChildren {
@@ -93,7 +99,16 @@ public struct TrashSafetyPolicy: Sendable {
     /// The path-only part of `refusal(for:scanRootID:)`, also run right before each move.
     public func refusal(forPath rawPath: String, identity: FileIdentity?) -> TrashRefusal? {
         let path = Self.standardized(rawPath)
+        if let refusal = lexicalRefusal(path, identity: identity) { return refusal }
+        // A scan reached through a symlink (/tmp, a linked folder) spells paths unlike the mount table: check the
+        // item again under its parent's real path, or a folder holding a mounted volume would pass.
+        guard let resolved = Self.resolvingParent(of: path), resolved != path else { return nil }
+        return lexicalRefusal(resolved, identity: nil)
+    }
+
+    private func lexicalRefusal(_ path: String, identity: FileIdentity?) -> TrashRefusal? {
         if Self.isInsideTrash(path) { return .alreadyInTrash }
+        if Self.isInsideAppBundle(path) { return .insideAppBundle }
         let key = Self.key(path)
         if protectedPaths.contains(key) { return .protectedLocation }
         if let identity, protectedIdentities.contains(identity) { return .protectedLocation }
@@ -163,6 +178,22 @@ public struct TrashSafetyPolicy: Sendable {
         return false
     }
 
+    /// Code bundles: what's inside one goes with the whole bundle or not at all.
+    static let appBundleExtensions: Set<String> = [
+        "app", "appex", "bundle", "component", "framework", "kext", "plugin", "systemextension", "xpc",
+    ]
+
+    static func isInsideAppBundle(_ path: String) -> Bool {
+        #if os(macOS)
+        return path.split(separator: "/").dropLast().contains { component in
+            guard let dot = component.lastIndex(of: "."), dot != component.startIndex else { return false }
+            return appBundleExtensions.contains(component[component.index(after: dot)...].lowercased())
+        }
+        #else
+        return false
+        #endif
+    }
+
     private static func mountedVolumePaths() -> [String] {
         #if os(Linux)
         return LinuxMountTable.current().map(\.mountPoint)
@@ -205,6 +236,14 @@ public struct TrashSafetyPolicy: Sendable {
             }
         }
         return "/" + components.joined(separator: "/")
+    }
+
+    /// The item under its parent's real path; the item itself stays unresolved, since a symlink goes as itself.
+    static func resolvingParent(of path: String) -> String? {
+        guard path != "/" else { return nil }
+        let name = (path as NSString).lastPathComponent
+        guard let parent = realPath((path as NSString).deletingLastPathComponent) else { return nil }
+        return standardized((parent as NSString).appendingPathComponent(name))
     }
 
     private static func realPath(_ path: String) -> String? {

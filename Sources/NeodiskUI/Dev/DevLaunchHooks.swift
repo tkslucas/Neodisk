@@ -92,12 +92,33 @@ enum DevLaunchHooks {
                     FileHandle.standardError.write(Data(
                         "NEODISK_AUTOCOLLECT: found \(nodes.count) of \(paths.count), collected \(model.cleanup.itemIDs.count)\n".utf8
                     ))
+                    // NEODISK_AUTOTRASH=1 then moves the pile as if confirmed: every safety check still runs.
+                    if environment["NEODISK_AUTOTRASH"] == "1" {
+                        await autoTrash(model: model)
+                    }
                     break
                 }
             }
         }
 
         SidebarSnapshotter.scheduleIfRequested(model: model)
+    }
+
+    @MainActor
+    private static func autoTrash(model: NeodiskViewModel) async {
+        let before = model.coordinator.snapshot?.root.allocatedSize ?? 0
+        let earlierNotice = model.cleanup.notice?.id
+        model.cleanup.confirm = { _ in true }
+        model.cleanup.moveAllToTrash()
+        for _ in 0..<120 {
+            try? await Task.sleep(for: .milliseconds(250))
+            if !model.cleanup.isMoving, let notice = model.cleanup.notice, notice.id != earlierNotice { break }
+        }
+        let after = model.coordinator.snapshot?.root.allocatedSize ?? 0
+        FileHandle.standardError.write(Data((
+            "NEODISK_AUTOTRASH: \(model.cleanup.notice?.text ?? "no result"); root \(before) -> \(after); "
+            + "left in Cleanup \(model.cleanup.itemIDs.count)\n"
+        ).utf8))
     }
 
     /// Walks the scanned tree down to the node whose path matches, for the

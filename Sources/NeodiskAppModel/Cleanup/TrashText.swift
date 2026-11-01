@@ -19,6 +19,8 @@ package extension TrashRefusal {
             AppStrings.localized("Neodisk couldn't look inside this folder, so it can't tell what it holds.", comment: "Trash refusal")
         case .undecodableName:
             AppStrings.localized("This name couldn't be read correctly, so Neodisk can't move it safely.", comment: "Trash refusal")
+        case .insideAppBundle:
+            AppStrings.localized("This is part of an app or plug-in, which needs it to work. Move the whole app or plug-in instead.", comment: "Trash refusal")
         }
     }
 }

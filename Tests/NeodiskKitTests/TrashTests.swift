@@ -90,6 +90,44 @@ import Testing
         #expect(policy.refusal(for: garbled, scanRootID: "/data") == .undecodableName)
     }
 
+    /// The mount table spells a volume by its real path; a scan reached through a symlink (/tmp on macOS, a
+    /// linked folder) must still see that a folder holds it.
+    @Test func aHolderReachedThroughASymlinkIsStillRefused() throws {
+        let base = FileManager.default.temporaryDirectory
+            .appending(path: "neodisk-spelling-\(UUID().uuidString)", directoryHint: .isDirectory)
+            .resolvingSymlinksInPath()
+        defer { try? FileManager.default.removeItem(at: base) }
+        let real = base.appending(path: "real")
+        try FileManager.default.createDirectory(at: real.appending(path: "holder/volume"), withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: base.appending(path: "alias"), withDestinationURL: real)
+        // As the mount table has it: the real path (/private/var/..., not /var/...).
+        let volume = try #require(realpath(real.appending(path: "holder/volume").path, nil))
+        defer { free(volume) }
+        let policy = TrashSafetyPolicy(protectedPaths: [String(cString: volume)])
+
+        let alias = base.appending(path: "alias").path
+        #expect(policy.refusal(forPath: alias + "/holder", identity: nil) == .protectedLocation)
+        #expect(policy.refusal(forPath: alias + "/holder/volume", identity: nil) == .protectedLocation)
+        #expect(policy.refusal(forPath: alias + "/holder/volume/file", identity: nil) == nil)
+        // The link itself is an item of its own: it goes as the link, and holds nothing.
+        #expect(policy.refusal(forPath: alias, identity: nil) == nil)
+    }
+
+    @Test func partsOfAnAppAreRefusedButTheAppIsNot() {
+        let policy = TrashSafetyPolicy(protectedPaths: [])
+        #expect(policy.refusal(forPath: "/Users/me/Apps/Tool.app", identity: nil) == nil)
+        #expect(policy.refusal(forPath: "/Users/me/notes.app.txt", identity: nil) == nil)
+        #expect(policy.refusal(forPath: "/Users/me/.app/cache", identity: nil) == nil)
+        #if os(macOS)
+        #expect(policy.refusal(forPath: "/Users/me/Apps/Tool.app/Contents", identity: nil) == .insideAppBundle)
+        #expect(policy.refusal(
+            forPath: "/Library/Audio/Plug-Ins/Synth.COMPONENT/Contents/Resources/x.bin", identity: nil
+        ) == .insideAppBundle)
+        #else
+        #expect(policy.refusal(forPath: "/home/me/site.app/node_modules", identity: nil) == nil)
+        #endif
+    }
+
     @Test func localizedUserFoldersComeFromUserDirs() {
         let contents = """
         # comment

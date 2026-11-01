@@ -146,7 +146,6 @@
 "Filter by name" = "按名称过滤";
 "%@ files" = "%@ 个文件";
 "%@ file" = "%@ 个文件";
-"Largest %@ of %@ — search to narrow" = "%2$@ 个文件中最大的 %1$@ 个，可搜索以缩小范围";
 
 /* MARK: - Statistics panel tabs & age buckets */
 "Kinds" = "类型";
@@ -516,3 +515,4 @@
 "Move Left" = "左移";
 "Move Right" = "右移";
 "Statistics Tabs" = "统计标签页";
+"Top %@ of %@ files" = "已显示 %2$@ 个文件中的前 %1$@ 个";

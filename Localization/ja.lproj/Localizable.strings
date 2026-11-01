@@ -146,7 +146,6 @@
 "Filter by name" = "名前で絞り込む";
 "%@ files" = "%@個のファイル";
 "%@ file" = "%@個のファイル";
-"Largest %@ of %@ — search to narrow" = "%2$@件中サイズの大きい上位%1$@件 — 絞り込むには検索";
 
 /* MARK: - Statistics panel tabs & age buckets */
 "Kinds" = "種類";
@@ -516,3 +515,4 @@
 "Move Left" = "左へ移動";
 "Move Right" = "右へ移動";
 "Statistics Tabs" = "統計のタブ";
+"Top %@ of %@ files" = "%2$@件のファイルのうち上位%1$@件";

@@ -147,7 +147,6 @@
 "Filter by name" = "Filtrar por nome";
 "%@ files" = "%@ arquivos";
 "%@ file" = "%@ arquivo";
-"Largest %@ of %@ — search to narrow" = "Maiores %@ de %@ — busque para reduzir";
 
 /* MARK: - Statistics panel tabs & age buckets */
 "Kinds" = "Tipos";
@@ -517,3 +516,4 @@
 "Move Left" = "Mover para a Esquerda";
 "Move Right" = "Mover para a Direita";
 "Statistics Tabs" = "Abas de Estatísticas";
+"Top %@ of %@ files" = "Principais %@ de %@ arquivos";

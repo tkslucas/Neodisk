@@ -162,12 +162,18 @@ struct StatsFileListView: View {
         .padding(.top, 6)
     }
 
+    /// Plain counts, like the Changes tab's footer: the filter field is the way to narrow.
     private var footerText: String {
-        let shown = visibleIDs.count.formatted()
         let total = totalMatches.formatted()
-        let format = filterText.trimmingCharacters(in: .whitespaces).isEmpty
-            ? NSLocalizedString("Largest %@ of %@ — search to narrow", comment: "File list footer, no filter")
-            : NSLocalizedString("Top %@ of %@ matches — refine to narrow", comment: "File list footer, filtered")
-        return String(format: format, shown, total)
+        return filterText.trimmingCharacters(in: .whitespaces).isEmpty
+            ? String(
+                format: NSLocalizedString("Top %@ of %@ files", comment: "File list footer, no filter"),
+                visibleIDs.count.formatted(), total
+            )
+            : String(
+                format: NSLocalizedString("Top %lld of %@ matches", comment: "File list footer, filtered"),
+                Int64(visibleIDs.count), total
+            )
     }
+
 }

@@ -7,12 +7,7 @@ import NeodiskAppModel
 import NeodiskKit
 import WinSDK
 
-// A GUI process has no stderr unless it was redirected, and writing to the missing handle traps.
-let standardError = GetStdHandle(STD_ERROR_HANDLE)
-if standardError == nil || standardError == INVALID_HANDLE_VALUE {
-    _ = SetEnvironmentVariableW("NEODISK_LOG_STDERR".wide, "0".wide)
-}
-DiagnosticLog.persist(to: logDirectory())
+DiagnosticLog.persist(to: DiagnosticLog.defaultDirectory)
 DiagnosticLog.app.notice("launch \(AppChannel.current.appName) \(AppVersion.display), \(ProcessInfo.processInfo.operatingSystemVersionString)")
 
 // The canvas's own dev hooks: a demo window, a benchmark, headless renders.
@@ -33,13 +28,3 @@ let exitCode: Int32 = MainActor.assumeIsolated {
     return code
 }
 exit(exitCode)
-
-/// %LOCALAPPDATA%\Neodisk\Logs; NEODISK_LOG_DIR overrides.
-func logDirectory() -> URL {
-    let environment = ProcessInfo.processInfo.environment
-    if let override = environment["NEODISK_LOG_DIR"], !override.isEmpty {
-        return URL(filePath: override, directoryHint: .isDirectory)
-    }
-    guard let local = environment["LOCALAPPDATA"], !local.isEmpty else { return DiagnosticLog.defaultDirectory }
-    return URL(filePath: local, directoryHint: .isDirectory).appending(path: "\(AppChannel.current.appName)/Logs")
-}

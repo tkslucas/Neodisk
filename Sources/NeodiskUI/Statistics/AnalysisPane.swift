@@ -78,6 +78,8 @@ struct StatsFileListView: View {
     @Binding var filterText: String
     var onClose: (() -> Void)?
 
+    @FocusState private var isFilterFocused: Bool
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if let onClose {
@@ -91,6 +93,23 @@ struct StatsFileListView: View {
                 TextField("Filter by name", text: $filterText)
                     .textFieldStyle(.plain)
                     .neoFont(11)
+                    .focused($isFilterFocused)
+                    // Esc clears, as in the file list's search.
+                    .onExitCommand {
+                        filterText = ""
+                        isFilterFocused = false
+                    }
+                if !filterText.isEmpty {
+                    Button {
+                        filterText = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .neoFont(10)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Clear search")
+                }
             }
             .padding(.horizontal, StatsListMetrics.inset)
             .padding(.vertical, 6)

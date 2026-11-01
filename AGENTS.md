@@ -79,6 +79,20 @@ The most used ones; the rest live in `Sources/NeodiskUI/Dev/`.
   not a dot name.
 - Tests that need POSIX behavior get `#if !os(Windows)` with a one-line reason; Windows-only cases live in
   `WindowsPlatformTests`. Symbolic link tests need an elevated shell or Developer Mode.
+- The app is `swift build --product neodisk` (`.build\debug\neodisk.exe`, a GUI program: no console, so logs go
+  to `%LOCALAPPDATA%\Neodisk\Logs`, or to stderr when it's redirected). Settings: `%APPDATA%\Neodisk\settings.json`.
+- App shell: `NeodiskWin` over `ScanWorkspace` (NeodiskAppModel). Custom-drawn chrome subclasses `SurfaceView`, whose
+  element list feeds both hit-testing and its UI Automation provider; keep them one list. Message parameters are
+  bit patterns: convert with `Int(bitPattern:)`/`truncatingIfNeeded:`, never `Int(wParam)` (handles trap).
+- Hooks: `NEODISK_AUTOSCAN=<path>`, `NEODISK_UI_SNAPSHOT=<out.png>` (captures the window from the screen, backdrop
+  included, then quits; `NEODISK_SNAPSHOT_PRINTWINDOW=1` uses PrintWindow), `NEODISK_THEME=light|dark`,
+  `NEODISK_SCALE=<factor>` (lays out as at that DPI scale), `NEODISK_LANGUAGE=<tag>`, `NEODISK_NO_MICA=1`.
+- The maps draw through `CNeodiskCanvas` (Direct3D 11, Direct2D, DirectWrite and WIC behind a C API); rasters
+  build off the main thread and reach the canvas window by a posted message. Hooks: `NEODISK_CANVAS_PNG=<prefix>`
+  renders the cushion, flat and sunburst headless to `<prefix>-<view>.png`, `NEODISK_CANVAS_BENCH=<report.txt>`
+  times hover, resize and drill frames in a window, `NEODISK_CANVAS_DEMO=1` opens the canvas alone
+  (`NEODISK_VIZ_MODE=sunburst`). The tree is `NEODISK_CANVAS_SCAN=<path>` or a synthetic one of
+  `NEODISK_CANVAS_NODES=<count>`.
 
 ## Product constraints
 

@@ -271,8 +271,11 @@ private struct WorkspaceView: View {
             }
 
             if let notice = model.session.snapshotNotice {
-                Divider()
-                SnapshotNoticeStrip(model: model, notice: notice)
+                VStack(spacing: 0) {
+                    Divider()
+                    SnapshotNoticeStrip(model: model, notice: notice)
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
             if let superseded = model.session.supersededScanNotice {
@@ -304,6 +307,8 @@ private struct WorkspaceView: View {
                     }
             }
         }
+        // The snapshot strip slides in and out instead of jumping the map under the pointer.
+        .animation(.easeInOut(duration: 0.2), value: model.session.snapshotNotice == nil)
     }
 
     private func paneMetrics(available: CGSize) -> WorkspacePaneMetrics {

@@ -545,27 +545,14 @@ private struct LiveScanStrip: View {
     var onStop: (() -> Void)?
     var onResume: (() -> Void)?
 
+    @Environment(\.neoTextScale) private var textScale
+
     var body: some View {
+        // Reads like the status bar below it: what's happening leading, the bar and its button at the trailing end.
         HStack(spacing: 10) {
-            // Always determinate and monotonic: held phases keep their fraction with a caption, and the stripe
-            // sheen signals liveness meanwhile.
-            StripedProgressBar(
-                value: progress.metrics.progressFraction,
-                isActive: !isStopped
-            )
-            .frame(width: 160)
-            .opacity(isStopped ? 0.5 : 1)
-
-            if isStopped {
-                Button("Restart", action: { onResume?() })
-                    .neoControlSize(base: .small)
-            } else if let onStop {
-                Button("Stop", action: onStop)
-                    .neoControlSize(base: .small)
-            }
-
             Text(statusText)
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
             // No counters have moved yet while checking for changes; "0 files"
             // next to that caption would read as lost data.
             if !progress.metrics.isCheckingChanges {
@@ -577,7 +564,24 @@ private struct LiveScanStrip: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
-            Spacer()
+            Spacer(minLength: 12)
+
+            // Always determinate and monotonic: held phases keep their fraction with a caption, and the stripe
+            // sheen signals liveness meanwhile.
+            StripedProgressBar(
+                value: progress.metrics.progressFraction,
+                isActive: !isStopped
+            )
+            .frame(width: (160 * textScale).rounded())
+            .opacity(isStopped ? 0.5 : 1)
+
+            if isStopped {
+                Button("Restart", action: { onResume?() })
+                    .neoControlSize(base: .small)
+            } else if let onStop {
+                Button("Stop", action: onStop)
+                    .neoControlSize(base: .small)
+            }
         }
         .neoFont(11)
         .padding(.horizontal, 10)

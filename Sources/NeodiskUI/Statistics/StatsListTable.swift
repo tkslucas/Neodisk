@@ -40,6 +40,8 @@ struct StatsListTable<Row: Identifiable, RowContent: View>: NSViewRepresentable 
     var selection = NodeSelection()
     /// A refreshed ranking keeps its rows while the new one arrives, so the list would stay anchored otherwise.
     var keepsLeaderInView = false
+    /// Esc with the list focused, as the drill-ins' back button.
+    var onCancel: (() -> Void)?
     @ViewBuilder let content: (Row) -> RowContent
 
     func makeCoordinator() -> StatsListCoordinator {
@@ -54,6 +56,11 @@ struct StatsListTable<Row: Identifiable, RowContent: View>: NSViewRepresentable 
         tableView.canCopy = { [model] in model.selectionSupportsFileActions }
         tableView.quickLookRequested = { [weak coordinator] in
             coordinator?.toggleQuickLook() ?? false
+        }
+        tableView.cancelRequested = { [weak coordinator] in
+            guard let onCancel = coordinator?.onCancel else { return false }
+            onCancel()
+            return true
         }
         tableView.clickTrackingEnded = { [weak coordinator] in
             coordinator?.clickTrackingEnded()
@@ -104,6 +111,7 @@ struct StatsListTable<Row: Identifiable, RowContent: View>: NSViewRepresentable 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         let rows = rows
         let content = content
+        context.coordinator.onCancel = onCancel
         context.coordinator.apply(
             StatsListCoordinator.Update(
                 ids: rows.map(\.id),
@@ -143,6 +151,7 @@ final class StatsListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDe
 
     weak var tableView: OutlineNSTableView?
     weak var scrollView: NSScrollView?
+    var onCancel: (() -> Void)?
 
     init(model: NeodiskViewModel) {
         self.model = model

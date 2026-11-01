@@ -534,6 +534,13 @@ final class OutlineNSTableView: NSTableView {
     /// Select All picks exactly this list's rows, as in Finder, though ⌘A arrives as a ⌘ key.
     private(set) var isSelectingAll = false
 
+    /// Esc: true when the list handled it (a statistics drill-in goes back).
+    var cancelRequested: () -> Bool = { false }
+
+    override func cancelOperation(_ sender: Any?) {
+        if !cancelRequested() { super.cancelOperation(sender) }
+    }
+
     override func selectAll(_ sender: Any?) {
         isSelectingAll = true
         super.selectAll(sender)

@@ -91,6 +91,14 @@ struct StatsFileListView: View {
                 TextField("Filter by name", text: $filterText)
                     .textFieldStyle(.plain)
                     .neoFont(11)
+                    // Esc clears the filter, then leaves a drill-in.
+                    .onExitCommand {
+                        if !filterText.isEmpty {
+                            filterText = ""
+                        } else {
+                            onClose?()
+                        }
+                    }
             }
             .padding(.horizontal, StatsListMetrics.inset)
             .padding(.vertical, 6)
@@ -110,7 +118,8 @@ struct StatsFileListView: View {
                     rows: rows ?? visibleIDs.compactMap { model.store?.node(id: $0) },
                     click: .selectsNode { model.select($0) },
                     selection: model.selection,
-                    keepsLeaderInView: true
+                    keepsLeaderInView: true,
+                    onCancel: onClose
                 ) { node in
                     FileResultRow(
                         node: node,
@@ -133,15 +142,7 @@ struct StatsFileListView: View {
     }
 
     private func drillInHeader(_ onClose: @escaping () -> Void) -> some View {
-        HStack(spacing: 6) {
-            Button(action: onClose) {
-                Image(systemName: "chevron.left")
-                    .neoFont(10, weight: .semibold)
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
-            .help(backHelp)
-
+        DrillInBackButton(help: backHelp, action: onClose) {
             if let title {
                 if let swatch {
                     RoundedRectangle(cornerRadius: 2)
@@ -156,10 +157,9 @@ struct StatsFileListView: View {
                     .neoFont(11, weight: .semibold)
                     .foregroundStyle(.secondary)
             }
-            Spacer(minLength: 0)
         }
         .padding(.horizontal, StatsListMetrics.inset)
-        .padding(.top, 6)
+        .padding(.top, 3)
     }
 
     /// Plain counts, like the Changes tab's footer: the filter field is the way to narrow.
@@ -176,4 +176,32 @@ struct StatsFileListView: View {
             )
     }
 
+}
+
+/// A drill-in's way back: the chevron and the title beside it are one target the header's whole height, as a
+/// back button in a navigation bar is, and the chevron brightens under the pointer. Esc does the same (the list
+/// and the filter field handle it).
+struct DrillInBackButton<Title: View>: View {
+    let help: LocalizedStringKey
+    let action: () -> Void
+    @ViewBuilder let title: Title
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: "chevron.left")
+                    .neoFont(10, weight: .semibold)
+                    .foregroundStyle(isHovered ? .primary : .secondary)
+                title
+                Spacer(minLength: 0)
+            }
+            .padding(.vertical, 3)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .help(help)
+        .accessibilityLabel(Text(help))
+    }
 }

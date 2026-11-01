@@ -189,33 +189,11 @@ final class MainWindow {
         adw_toast_overlay_set_child(ptr(toastOverlay), ptr(splitView))
         adw_application_window_set_content(ptr(window), ptr(toastOverlay))
 
-        // Collapse the sidebar into an overlay on narrow windows.
-        if let condition = adw_breakpoint_condition_parse("max-width: 760sp") {
-            let breakpoint = adw_breakpoint_new(condition)
-            var value = GValue()
-            g_value_init(&value, neodisk_boolean_type())
-            g_value_set_boolean(&value, gbool(true))
-            adw_breakpoint_add_setter(breakpoint, ptr(splitView), "collapsed", &value)
-            g_value_unset(&value)
-            adw_application_window_add_breakpoint(ptr(window), breakpoint)
-        }
-        // Narrower still, statistics float over the map and secondary outline columns give way to names.
-        if let condition = adw_breakpoint_condition_parse("max-width: 900sp") {
-            let breakpoint = adw_breakpoint_new(condition)
-            var collapsed = GValue()
-            g_value_init(&collapsed, neodisk_boolean_type())
-            g_value_set_boolean(&collapsed, gbool(true))
-            adw_breakpoint_add_setter(breakpoint, ptr(statisticsSplit), "collapsed", &collapsed)
-            g_value_unset(&collapsed)
-            var hidden = GValue()
-            g_value_init(&hidden, neodisk_boolean_type())
-            g_value_set_boolean(&hidden, gbool(false))
-            for column in outline.secondaryColumns {
-                adw_breakpoint_add_setter(breakpoint, ptr(column), "visible", &hidden)
-            }
-            g_value_unset(&hidden)
-            adw_application_window_add_breakpoint(ptr(window), breakpoint)
-        }
+        // Narrow windows: statistics float over the map and secondary outline columns give way to names; narrower
+        // still, the sidebar becomes an overlay too. Only the last matching breakpoint applies, so the narrower one
+        // comes last and repeats the wider one's changes.
+        addBreakpoint("max-width: 900sp", collapsing: [statisticsSplit])
+        addBreakpoint("max-width: 760sp", collapsing: [statisticsSplit, splitView])
 
         attach(self, to: window, key: Self.attachmentKey)
         installActions()
@@ -242,6 +220,26 @@ final class MainWindow {
     }
 
     private static let attachmentKey = "neodisk-main-window"
+
+    private func addBreakpoint(_ conditionText: String, collapsing splitViews: [GPtr]) {
+        guard let condition = adw_breakpoint_condition_parse(conditionText) else { return }
+        let breakpoint = adw_breakpoint_new(condition)
+        var collapsed = GValue()
+        g_value_init(&collapsed, neodisk_boolean_type())
+        g_value_set_boolean(&collapsed, gbool(true))
+        for splitView in splitViews {
+            adw_breakpoint_add_setter(breakpoint, ptr(splitView), "collapsed", &collapsed)
+        }
+        g_value_unset(&collapsed)
+        var hidden = GValue()
+        g_value_init(&hidden, neodisk_boolean_type())
+        g_value_set_boolean(&hidden, gbool(false))
+        for column in outline.secondaryColumns {
+            adw_breakpoint_add_setter(breakpoint, ptr(column), "visible", &hidden)
+        }
+        g_value_unset(&hidden)
+        adw_application_window_add_breakpoint(ptr(window), breakpoint)
+    }
 
     private static func viewToggle(_ iconName: String, tooltip: String) -> GPtr {
         let toggle = raw(gtk_toggle_button_new())!

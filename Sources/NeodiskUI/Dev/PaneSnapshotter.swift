@@ -4,6 +4,7 @@
 // - NEODISK_TABBAR_SNAPSHOT=<out.png>: the statistics tab bar at several widths, stacked.
 // - NEODISK_STATS_SNAPSHOT=<out.png>: the statistics pane on its NEODISK_ANALYSIS_TAB (NEODISK_STATS_SNAPSHOT_WIDTH,
 //   default 230, the pane's default; the window capture uses the stored width instead).
+// - NEODISK_WELCOME_SNAPSHOT=<out.png>: the welcome sheet at its own width.
 // All read NEODISK_SNAPSHOT_APPEARANCE=light and NEODISK_SNAPSHOT_TEXT_SCALE=<0.85…2>.
 
 import AppKit
@@ -16,7 +17,8 @@ enum PaneSnapshotter {
         let sidebarPath = environment["NEODISK_SIDEBAR_SNAPSHOT"]
         let tabBarPath = environment["NEODISK_TABBAR_SNAPSHOT"]
         let statsPath = environment["NEODISK_STATS_SNAPSHOT"]
-        guard sidebarPath != nil || tabBarPath != nil || statsPath != nil else { return }
+        let welcomePath = environment["NEODISK_WELCOME_SNAPSHOT"]
+        guard sidebarPath != nil || tabBarPath != nil || statsPath != nil || welcomePath != nil else { return }
         let scale = environment["NEODISK_SNAPSHOT_TEXT_SCALE"].flatMap(Double.init).map(TextScale.snapped) ?? 1
         let dark = environment["NEODISK_SNAPSHOT_APPEARANCE"] != "light"
         Task { @MainActor in
@@ -38,6 +40,13 @@ enum PaneSnapshotter {
                 await render(
                     AnalysisPane(model: model), size: CGSize(width: width * scale, height: 640 * scale),
                     scale: scale, dark: dark, to: statsPath
+                )
+            }
+            if let welcomePath {
+                // Taller than the sheet; it sits at the top, so a cut line shows as one.
+                await render(
+                    WelcomeSheet(model: model), size: CGSize(width: 460, height: 820),
+                    scale: 1, dark: dark, to: welcomePath
                 )
             }
             if let tabBarPath {

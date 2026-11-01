@@ -5,14 +5,11 @@ import NeodiskKit
 
 // MARK: - Hosted row content
 
-/// The name never truncates: it slides under the pinned trailing cluster and the tree scrolls horizontally.
+/// A long name truncates in the middle, as in Finder, with the full name as its tooltip.
 struct OutlineNameSection: View {
     let model: NeodiskViewModel
     let row: NeodiskViewModel.OutlineRow
     let state: OutlineRowSelectionState
-    /// The bottom table's name column truncates in place (middle ellipsis)
-    /// instead of panning; the left pane keeps the full-width pan behavior.
-    var truncatesName = false
     /// Where the chevron's slot starts: the left pane's edge inset, or the bottom table's name column edge.
     var leadingInset = OutlineRowMetrics.nameLeadingInset
     /// Each level's indentation; the bottom table narrows it for deep trees.
@@ -55,13 +52,20 @@ struct OutlineNameSection: View {
                 .foregroundStyle(iconColor)
                 .frame(width: OutlineRowMetrics.iconSlotWidth)
 
-            Text(row.node.name)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .fixedSize(horizontal: !truncatesName, vertical: false)
-                .foregroundStyle(state.showsAccentSelection
-                    ? AnyShapeStyle(.white)
-                    : AnyShapeStyle(.primary))
+            // The whole name when it fits; otherwise the middle gives way and the tooltip holds the rest.
+            ViewThatFits(in: .horizontal) {
+                Text(row.node.name)
+                    .lineLimit(1)
+                    .fixedSize()
+                Text(row.node.name)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(row.node.name)
+            }
+            .layoutPriority(1)
+            .foregroundStyle(state.showsAccentSelection
+                ? AnyShapeStyle(.white)
+                : AnyShapeStyle(.primary))
 
             if cleanupMark.isItem {
                 CleanupRowGlyph(pointSize: OutlineRowMetrics.fontSize, onAccent: state.showsAccentSelection)

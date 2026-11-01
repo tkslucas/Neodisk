@@ -506,3 +506,7 @@
 "It's locked. Unlock it in Get Info to move it." = "Il est verrouillé. Déverrouillez-le dans Lire les informations pour le déplacer.";
 "Moved 1 item to the Trash." = "1 élément placé dans la Corbeille.";
 "Moved %lld items to the Trash." = "%lld éléments placés dans la Corbeille.";
+
+/* Cleanup: hard links and clones */
+"Shared" = "Partagé";
+"Shares its storage with another file (a hard link or clone), so moving it alone frees no space." = "Partage son stockage avec un autre fichier (lien physique ou clone) : le déplacer seul ne libère aucun espace.";

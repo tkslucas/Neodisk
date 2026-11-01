@@ -506,3 +506,7 @@
 "It's locked. Unlock it in Get Info to move it." = "It's locked. Unlock it in Get Info to move it.";
 "Moved 1 item to the Trash." = "Moved 1 item to the Trash.";
 "Moved %lld items to the Trash." = "Moved %lld items to the Trash.";
+
+/* Cleanup: hard links and clones */
+"Shared" = "Shared";
+"Shares its storage with another file (a hard link or clone), so moving it alone frees no space." = "Shares its storage with another file (a hard link or clone), so moving it alone frees no space.";

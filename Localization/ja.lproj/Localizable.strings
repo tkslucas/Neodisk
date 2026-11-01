@@ -506,3 +506,7 @@
 "It's locked. Unlock it in Get Info to move it." = "ロックされています。「情報を見る」でロックを解除してから移動してください。";
 "Moved 1 item to the Trash." = "1 項目をゴミ箱に入れました。";
 "Moved %lld items to the Trash." = "%lld 項目をゴミ箱に入れました。";
+
+/* Cleanup: hard links and clones */
+"Shared" = "共有";
+"Shares its storage with another file (a hard link or clone), so moving it alone frees no space." = "ほかのファイルと記憶領域を共有しているため（ハードリンクまたはクローン）、これだけを移動しても空き容量は増えません。";

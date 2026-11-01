@@ -118,6 +118,8 @@ final class NeodiskViewModel {
         set { layout.treemapStyle = newValue }
     }
     var showsStatusBar = true
+    /// The main window is on screen; menu commands that act on it disable while it's closed.
+    var isWindowOpen = false
     /// Mirror of the bottom table's persisted header sort, synced by
     /// bindPreferences. The left column ignores it (fixed size order).
     var outlineSort = OutlineSort(field: .size, ascending: false)

@@ -448,7 +448,7 @@ struct BottomOutlineTable: NSViewRepresentable {
             case "name":
                 return hostedCell(tableView, reuse: "name") { state in
                     OutlineNameSection(
-                        model: model, row: outlineRow, state: state, truncatesName: true, leadingInset: 0,
+                        model: model, row: outlineRow, state: state, leadingInset: 0,
                         indentPerDepth: indentPerDepth
                     )
                 }

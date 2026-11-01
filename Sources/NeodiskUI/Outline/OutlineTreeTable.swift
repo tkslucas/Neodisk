@@ -427,7 +427,7 @@ private final class OutlineCellView: NSView, SelectionStateReceiving {
         nameHost.sizingOptions = []
         clusterHost.sizingOptions = .intrinsicContentSize
 
-        // The name host keeps full content width so SwiftUI never center-shifts an overflowing name.
+        // The name ends at the clip, against the trailing cluster, so a long one truncates there.
         nameClipView.clipsToBounds = true
         addSubview(nameClipView)
         nameClipView.addSubview(nameHost)
@@ -447,7 +447,7 @@ private final class OutlineCellView: NSView, SelectionStateReceiving {
             nameClipView.topAnchor.constraint(equalTo: topAnchor),
             nameClipView.bottomAnchor.constraint(equalTo: bottomAnchor),
             nameLeading,
-            nameHost.trailingAnchor.constraint(equalTo: trailingAnchor),
+            nameHost.trailingAnchor.constraint(equalTo: nameClipView.trailingAnchor),
             nameHost.topAnchor.constraint(equalTo: topAnchor),
             nameHost.bottomAnchor.constraint(equalTo: bottomAnchor),
             clusterTrailing,

@@ -28,6 +28,9 @@ struct WelcomeSheet: View {
                 Text("Scan folders and disks to see where space is going,\nthen clear out what you don't need.")
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.secondary)
+                    // Every wrapping line takes its full height: a sheet sizes to its ideal height, which cut the
+                    // last line.
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity)
 
@@ -38,6 +41,7 @@ struct WelcomeSheet: View {
                     Text("Explore the treemap").fontWeight(.semibold)
                     Text("Hover to inspect. Click to select. Pinch or scroll to move around. Double-click or right-click to Reveal in Finder. Switch between treemap and sunburst in the toolbar.")
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             } icon: {
                 Image(systemName: "square.grid.3x3.topleft.filled").foregroundStyle(.blue)
@@ -48,6 +52,7 @@ struct WelcomeSheet: View {
                     Text("Clean up safely").fontWeight(.semibold)
                     Text("Drag items to Cleanup at the bottom of the sidebar, or press ⌘⌫. Nothing moves until you confirm, items go to the Trash so you can still get them back, and system folders are off-limits. You can turn this off in Settings.")
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             } icon: {
                 Image(systemName: "trash").foregroundStyle(.blue)
@@ -69,17 +74,21 @@ struct WelcomeSheet: View {
                     case .unknown:
                         Label("Checking…", systemImage: "questionmark.circle")
                             .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
 
                 if accessStatus == .granted {
                     Text("Neodisk can read protected locations. You can start a complete scan now.")
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 } else {
                     Text("Without it, protected locations (Mail, Safari, Messages, parts of Library) are skipped and totals are underreported. To enable:")
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text(LocalizedStringKey(enableAccessSteps))
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 HStack {

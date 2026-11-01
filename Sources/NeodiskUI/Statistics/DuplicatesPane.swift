@@ -256,9 +256,11 @@ private struct DuplicateGroupRow: View {
                 Text(copiesText)
                     .foregroundStyle(.secondary)
                     .neoFont(10)
+                    .lineLimit(1)
             }
+            .layoutPriority(1)
 
-            Spacer(minLength: 8)
+            Spacer(minLength: 0)
 
             // Pure APFS-clone groups share their blocks, so removing a copy
             // frees ~nothing: label them instead of showing a misleading 0.

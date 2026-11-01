@@ -701,8 +701,15 @@ extension ScanEngine {
 
     /// Shared by every bulk enumerator so child ids stay byte-identical; a drift would split one node in two.
     /// Callers pass their own id scheme's base; only the join must not vary.
+    /// Sized exactly: `parent + "/" + name` grows from the parent's capacity, about doubling each stored id.
     nonisolated static func nodeChildPath(parentPath: String, childName: String) -> String {
-        parentPath == "/" ? "/" + childName : parentPath + "/" + childName
+        let base = parentPath == "/" ? "" : parentPath
+        var path = String()
+        path.reserveCapacity(base.utf8.count + 1 + childName.utf8.count)
+        path += base
+        path += "/"
+        path += childName
+        return path
     }
 
     nonisolated static func includedChildURL(_ childURL: URL, under parentURL: URL, behavior: ScanBehavior) -> Bool {

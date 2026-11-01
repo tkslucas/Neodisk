@@ -120,9 +120,10 @@ import Testing
     /// Release builds strip the debug assert, so this is the only release check that concatenated node IDs
     /// match `url.appending(path:).path`, notably for unicode normalization (NFD vs NFC).
     @Test func nodeIDConcatenationMatchesAppendedURLPathAcrossExoticNames() {
-        // Mirrors ScanEngine+Enumeration's `childPath` expression exactly.
         func concatenatedID(base childBasePath: String, name: String) -> String {
-            childBasePath == "/" ? "/" + name : childBasePath + "/" + name
+            let id = ScanEngine.nodeChildPath(parentPath: childBasePath, childName: name)
+            #expect(id == (childBasePath == "/" ? "/" + name : childBasePath + "/" + name))
+            return id
         }
 
         let exoticNames = [

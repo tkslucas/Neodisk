@@ -449,11 +449,15 @@ private func readBulkChildren(of url: URL) throws -> [String: BulkDirectoryChild
 private func makeBulkTestDirectory() throws -> URL {
     // FileManager canonicalizes children to /private/var while the root keeps /var; realpath keeps IDs comparable.
     let temporaryPath = FileManager.default.temporaryDirectory.path
+    #if os(Windows)
+    let canonicalPath = WindowsPath.resolved(temporaryPath) ?? temporaryPath
+    #else
     let canonicalPath = temporaryPath.withCString { pointer -> String in
         guard let resolved = realpath(pointer, nil) else { return temporaryPath }
         defer { free(resolved) }
         return String(cString: resolved)
     }
+    #endif
     let url = URL(fileURLWithPath: canonicalPath, isDirectory: true)
         .appending(path: "bulk-reader-\(UUID().uuidString)", directoryHint: .isDirectory)
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)

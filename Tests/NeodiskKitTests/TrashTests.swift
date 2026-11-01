@@ -101,9 +101,14 @@ import Testing
         try FileManager.default.createDirectory(at: real.appending(path: "holder/volume"), withIntermediateDirectories: true)
         try FileManager.default.createSymbolicLink(at: base.appending(path: "alias"), withDestinationURL: real)
         // As the mount table has it: the real path (/private/var/..., not /var/...).
+        #if os(Windows)
+        let volume = try #require(WindowsPath.resolved(real.appending(path: "holder/volume").path))
+        let policy = TrashSafetyPolicy(protectedPaths: [volume])
+        #else
         let volume = try #require(realpath(real.appending(path: "holder/volume").path, nil))
         defer { free(volume) }
         let policy = TrashSafetyPolicy(protectedPaths: [String(cString: volume)])
+        #endif
 
         let alias = base.appending(path: "alias").path
         #expect(policy.refusal(forPath: alias + "/holder", identity: nil) == .protectedLocation)

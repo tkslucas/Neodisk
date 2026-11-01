@@ -116,22 +116,29 @@ public struct ContentView: View {
         Self.windowSubtitle(
             targetKind: model.coordinator.selectedTarget?.kind,
             finderUsedBytes: model.freeSpace.finderUsedBytes,
+            freeBytes: model.freeSpace.freeSpaceBytes,
             scannedTotalBytes: model.coordinator.snapshot?.aggregateStats.totalAllocatedSize
         )
     }
 
-    /// Volume scans state the system's "used" figure so the window agrees with Finder and the legend.
+    /// A volume states the system's used, capacity and free figures, so the window agrees with Finder and the
+    /// legend; a folder states what the scan accounted for.
     nonisolated static func windowSubtitle(
         targetKind: ScanTargetKind?,
         finderUsedBytes: Int64?,
+        freeBytes: Int64?,
         scannedTotalBytes: Int64?
     ) -> String {
-        let total: Int64? = if targetKind == .volume, let finderUsedBytes {
-            finderUsedBytes
-        } else {
-            scannedTotalBytes
+        if targetKind == .volume, let finderUsedBytes {
+            guard let freeBytes else { return NeodiskFormatters.size(finderUsedBytes) }
+            return String(
+                format: NSLocalizedString("%@ used of %@ · %@ free", comment: "Window subtitle for a scanned volume"),
+                NeodiskFormatters.size(finderUsedBytes),
+                NeodiskFormatters.size(finderUsedBytes + freeBytes),
+                NeodiskFormatters.size(freeBytes)
+            )
         }
-        return total.map(NeodiskFormatters.size) ?? ""
+        return scannedTotalBytes.map(NeodiskFormatters.size) ?? ""
     }
 
     @ToolbarContentBuilder

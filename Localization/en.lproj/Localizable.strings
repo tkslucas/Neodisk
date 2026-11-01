@@ -440,6 +440,7 @@
 "Collapse Cleanup" = "Collapse Cleanup";
 "Expand Cleanup" = "Expand Cleanup";
 "Sidebar Sections" = "Sidebar Sections";
+"File List Columns" = "File List Columns";
 "Show Cleanup in the sidebar. Drop items here to collect them." = "Show Cleanup in the sidebar. Drop items here to collect them.";
 "It changed since the scan. Rescan to move it." = "It changed since the scan. Rescan to move it.";
 "Move “%@” to the Trash?" = "Move “%@” to the Trash?";

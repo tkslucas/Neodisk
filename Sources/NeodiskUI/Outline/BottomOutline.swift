@@ -10,6 +10,17 @@ import NeodiskAppModel
 /// header's menu.
 enum OutlineColumn: String, CaseIterable, Sendable {
     case name, percent, size, files, modified
+
+    /// The title in the header's menu and View > File List Columns; the header itself reads "%".
+    var menuTitle: String {
+        switch self {
+        case .name: NSLocalizedString("Name", comment: "Bottom outline column header")
+        case .percent: NSLocalizedString("Percentage", comment: "Bottom outline column, in the header's menu")
+        case .size: NSLocalizedString("Size", comment: "Bottom outline column header")
+        case .files: NSLocalizedString("Files", comment: "Bottom outline column header: descendant file count")
+        case .modified: NSLocalizedString("Modified", comment: "Bottom outline column header")
+        }
+    }
 }
 
 // MARK: - Pane
@@ -29,7 +40,8 @@ struct BottomOutlinePane: View {
                     model: model,
                     snapshot: snapshot,
                     selection: model.selection,
-                    sort: model.outlineSort
+                    sort: model.outlineSort,
+                    columns: model.outlineColumns
                 )
             }
         }
@@ -45,6 +57,8 @@ struct BottomOutlineTable: NSViewRepresentable {
     let snapshot: NeodiskViewModel.OutlineRowsSnapshot
     let selection: NodeSelection
     let sort: OutlineSort
+    /// Read here so a change from the View menu reaches the table as well as one from its header.
+    let columns: ItemLayout<OutlineColumn>
 
     func makeCoordinator() -> Coordinator {
         Coordinator(model: model)
@@ -135,7 +149,7 @@ struct BottomOutlineTable: NSViewRepresentable {
         let coordinator = context.coordinator
         coordinator.apply(snapshot: snapshot)
         coordinator.applyTextScale(columnMinimums: Self.columnMinimums)
-        coordinator.applyColumns(model.outlineColumns)
+        coordinator.applyColumns(columns)
         coordinator.applySortIndicator(sort)
         coordinator.syncSelection(to: selection)
     }
@@ -490,11 +504,7 @@ struct BottomOutlineTable: NSViewRepresentable {
             guard let tableView else { return }
             for column in tableView.tableColumns {
                 guard let id = OutlineColumn(rawValue: column.identifier.rawValue), id != .name else { continue }
-                // The header reads "%"; the menu needs a word.
-                let title = id == .percent
-                    ? NSLocalizedString("Percentage", comment: "Bottom outline column, in the header's menu")
-                    : column.title
-                let item = NSMenuItem(title: title, action: #selector(toggleColumn(_:)), keyEquivalent: "")
+                let item = NSMenuItem(title: id.menuTitle, action: #selector(toggleColumn(_:)), keyEquivalent: "")
                 item.target = self
                 item.representedObject = id.rawValue
                 item.state = column.isHidden ? .off : .on
@@ -505,14 +515,14 @@ struct BottomOutlineTable: NSViewRepresentable {
 
         func menuNeedsUpdate(_ menu: NSMenu) {
             menu.removeAllItems()
-            if menu === headerMenu {
+            guard let tableView else { return }
+            // The header and the empty space below the rows both customize the list.
+            guard menu !== headerMenu, case let row = tableView.clickedRow, row >= 0, row < rows.count else {
                 fillHeaderMenu(menu)
                 menu.addItem(.separator())
                 menu.addFileListLayoutItems(model: model)
                 return
             }
-            guard let tableView,
-                  case let row = tableView.clickedRow, row >= 0, row < rows.count else { return }
             let node = rows[row].node
             guard model.supportsFileActions(node) else { return }
             menu.addFileNodeActionItems(for: node, model: model)

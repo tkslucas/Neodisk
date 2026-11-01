@@ -440,6 +440,7 @@
 "Collapse Cleanup" = "クリーンアップを折りたたむ";
 "Expand Cleanup" = "クリーンアップを展開";
 "Sidebar Sections" = "サイドバーのセクション";
+"File List Columns" = "ファイルリストの列";
 "Show Cleanup in the sidebar. Drop items here to collect them." = "サイドバーにクリーンアップを表示します。ここに項目をドロップすると集められます。";
 "It changed since the scan. Rescan to move it." = "スキャン後に変更されました。移動するには再スキャンしてください。";
 "Move “%@” to the Trash?" = "「%@」をゴミ箱に入れますか？";

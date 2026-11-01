@@ -163,6 +163,21 @@ struct NeodiskCommands: Commands {
                 .disabled(model.coordinator.snapshot == nil || !model.layout.canPlaceList(position))
             }
 
+            // The way back for columns hidden from the table header's menu.
+            Menu("File List Columns") {
+                ForEach(model.outlineColumns.order.filter { $0 != .name }, id: \.self) { column in
+                    Toggle(column.menuTitle, isOn: Binding(
+                        get: { !model.outlineColumns.isHidden(column) },
+                        set: { isShown in
+                            var layout = model.outlineColumns
+                            layout.setHidden(column, !isShown)
+                            model.setOutlineColumns(layout)
+                        }
+                    ))
+                    .disabled(!model.outlineColumns.isHidden(column) && !model.outlineColumns.canHide(column))
+                }
+            }
+
             Divider()
 
             Button {

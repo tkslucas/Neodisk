@@ -88,11 +88,6 @@ final class CleanupModel {
         return pile.totalSize(in: store)
     }
 
-    /// Exactly a collected item (the views outline these).
-    func isCollected(_ id: String) -> Bool {
-        pile.contains(id) || movingIDs.contains(id)
-    }
-
     /// A collected item or something inside one (the lists dim these).
     func isInsideCollected(_ id: String) -> Bool {
         guard let store, !pile.isEmpty || !movingIDs.isEmpty else { return false }

@@ -181,6 +181,7 @@ private struct CleanupNoticeView: View {
                 .frame(width: (16 * textScale).rounded())
             VStack(alignment: .leading, spacing: 3) {
                 Text(notice.text)
+                    .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 if notice.kind == .moved {
                     Button("Open Trash") {
@@ -200,7 +201,6 @@ private struct CleanupNoticeView: View {
             .accessibilityLabel(Text("Dismiss"))
         }
         .neoFont(11)
-        .foregroundStyle(.secondary)
         .padding(.horizontal, 4)
     }
 

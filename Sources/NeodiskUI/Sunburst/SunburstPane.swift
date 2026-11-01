@@ -435,7 +435,7 @@ struct SunburstPane: View {
         case .rightArrow:
             moveSelection(.child, extending: extending)
         case .carriageReturn, .enter, .newline:
-            model.revealSelection()
+            beepUnless(model.drillIntoSelection())
         default:
             return false
         }

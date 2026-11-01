@@ -597,17 +597,13 @@ final class TreemapController {
         case .upArrow:
             if command { beepUnless(model?.drillOut() == true) } else { moveSelection(.previous, extending: extending) }
         case .downArrow:
-            if command {
-                beepUnless(model?.drillIntoSelection() == true)
-            } else {
-                moveSelection(.next, extending: extending)
-            }
+            if command { beepUnless(model?.drillIntoSelection() == true) } else { moveSelection(.next, extending: extending) }
         case .leftArrow:
             moveSelection(.parent, extending: extending)
         case .rightArrow:
             moveSelection(.child, extending: extending)
         case .carriageReturn, .enter, .newline:
-            revealSelectionInFinder()
+            beepUnless(model?.drillIntoSelection() == true)
         default:
             return false
         }
@@ -619,14 +615,6 @@ final class TreemapController {
         let rendered = sceneQueries.renderedIDs ?? TreeKeyboardNav.renderedIDs(in: scene.cells, store: store)
         sceneQueries.renderedIDs = rendered
         model.moveSelectionInMap(move, extending: extending, isRendered: rendered.contains)
-    }
-
-    private func revealSelectionInFinder() {
-        guard let model else {
-            NSSound.beep()
-            return
-        }
-        model.revealSelection()
     }
 
     /// Maps back into rendered-scene coordinates so hit-testing holds while the display transform is active.

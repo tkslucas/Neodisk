@@ -76,7 +76,7 @@ macOS app is SwiftUI and AppKit, the Linux app is GTK 4 and libadwaita. See
 - Search: `⌘F` fuzzy search over the entire scan
 - Quick Look on spacebar (macOS)
 - Arrow keys walk the folder tree the same way in the list and the maps: `→` goes in, `←` back out, `↑` `↓` to the item before or after
-- Drill into a folder with `⌘↓`, drill back out with `⌘↑`, or click folders in the breadcrumb bar
+- Drill into a folder with `Return` or `⌘↓`, drill back out with `⌘↑`, or click folders in the breadcrumb bar
 - Snapshots, completed scans persist and reopen instantly
 - Changes tab lists what got added, deleted, renamed, grew or shrank since the previous scan (macOS)
 - Show Package Contents: apps and bundles stay solid like in Finder until you expand them (macOS)

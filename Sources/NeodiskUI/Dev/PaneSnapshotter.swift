@@ -2,7 +2,9 @@
 // material takes its content with it). Inert unless their variable is set:
 // - NEODISK_SIDEBAR_SNAPSHOT=<out.png>: the sidebar (NEODISK_SIDEBAR_SNAPSHOT_WIDTH, default 260).
 // - NEODISK_TABBAR_SNAPSHOT=<out.png>: the statistics tab bar at several widths, stacked.
-// Both read NEODISK_SNAPSHOT_APPEARANCE=light and NEODISK_SNAPSHOT_TEXT_SCALE=<0.85…2>.
+// - NEODISK_STATS_SNAPSHOT=<out.png>: the statistics pane on its NEODISK_ANALYSIS_TAB (NEODISK_STATS_SNAPSHOT_WIDTH,
+//   default 230, the pane's default; the window capture uses the stored width instead).
+// All read NEODISK_SNAPSHOT_APPEARANCE=light and NEODISK_SNAPSHOT_TEXT_SCALE=<0.85…2>.
 
 import AppKit
 import SwiftUI
@@ -13,7 +15,8 @@ enum PaneSnapshotter {
         let environment = ProcessInfo.processInfo.environment
         let sidebarPath = environment["NEODISK_SIDEBAR_SNAPSHOT"]
         let tabBarPath = environment["NEODISK_TABBAR_SNAPSHOT"]
-        guard sidebarPath != nil || tabBarPath != nil else { return }
+        let statsPath = environment["NEODISK_STATS_SNAPSHOT"]
+        guard sidebarPath != nil || tabBarPath != nil || statsPath != nil else { return }
         let scale = environment["NEODISK_SNAPSHOT_TEXT_SCALE"].flatMap(Double.init).map(TextScale.snapped) ?? 1
         let dark = environment["NEODISK_SNAPSHOT_APPEARANCE"] != "light"
         Task { @MainActor in
@@ -27,6 +30,13 @@ enum PaneSnapshotter {
                 await render(
                     SidebarPane(model: model), size: CGSize(width: width, height: 760),
                     scale: scale, dark: dark, to: sidebarPath
+                )
+            }
+            if let statsPath {
+                let width = environment["NEODISK_STATS_SNAPSHOT_WIDTH"].flatMap(Double.init) ?? 230
+                await render(
+                    AnalysisPane(model: model), size: CGSize(width: width * scale, height: 640 * scale),
+                    scale: scale, dark: dark, to: statsPath
                 )
             }
             if let tabBarPath {

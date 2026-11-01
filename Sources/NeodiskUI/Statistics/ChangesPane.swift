@@ -219,8 +219,9 @@ private struct ChangeEntryRow: View {
                     .lineLimit(1)
                     .truncationMode(.head)
             }
+            .layoutPriority(1)
 
-            Spacer(minLength: 8)
+            Spacer(minLength: 0)
 
             if entry.delta == 0 {
                 // An equal-size rename: the size says more than a delta dot.

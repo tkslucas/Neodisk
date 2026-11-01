@@ -26,15 +26,17 @@ struct StatsLegendRow: View {
                 .frame(width: 12, height: 12)
 
             VStack(alignment: .leading, spacing: 1) {
+                // A category or age bucket, not a file name: its start reads, so it never middle-truncates.
                 Text(name)
                     .lineLimit(1)
-                    .truncationMode(.middle)
                 Text(AppStrings.plural(fileCount, one: "%@ file", other: "%@ files", fileCount.formatted()))
                     .foregroundStyle(.secondary)
                     .neoFont(10)
+                    .lineLimit(1)
             }
+            .layoutPriority(1)
 
-            Spacer(minLength: 8)
+            Spacer(minLength: 0)
 
             VStack(alignment: .trailing, spacing: 1) {
                 Text(NeodiskFormatters.size(totalAllocatedSize))
@@ -48,6 +50,7 @@ struct StatsLegendRow: View {
                         .monospacedDigit()
                 }
             }
+            .fixedSize()
         }
         .neoFont(12)
     }

@@ -3,6 +3,8 @@
 import Foundation
 #if canImport(Glibc)
 import Glibc
+#elseif os(Windows)
+import WinSDK
 #endif
 
 /// Follows Finder: "available" is `volumeAvailableCapacityForImportantUsage` (counts purgeable space),
@@ -41,6 +43,8 @@ public struct VolumeSpaceInfo: Equatable, Sendable {
     public static func load(for url: URL) -> VolumeSpaceInfo? {
         #if os(Linux)
         return loadStatvfs(for: url)
+        #elseif os(Windows)
+        return loadDiskFreeSpace(for: url)
         #else
         let values: URLResourceValues
         do {
@@ -77,6 +81,27 @@ public struct VolumeSpaceInfo: Equatable, Sendable {
             totalCapacity: used + available,
             availableCapacity: available,
             strictlyFreeCapacity: available
+        )
+    }
+    #endif
+
+    #if os(Windows)
+    /// File Explorer's figures: capacity and free space of the whole volume (GetDiskFreeSpaceExW's totals, which
+    /// a disk quota would scale to the user), used is capacity minus free.
+    private static func loadDiskFreeSpace(for url: URL) -> VolumeSpaceInfo? {
+        guard let root = WindowsVolume.root(for: url.path) else { return nil }
+        var availableToCaller = ULARGE_INTEGER()
+        var total = ULARGE_INTEGER()
+        var free = ULARGE_INTEGER()
+        let succeeded = root.withCString(encodedAs: UTF16.self) {
+            GetDiskFreeSpaceExW($0, &availableToCaller, &total, &free)
+        }
+        guard succeeded, total.QuadPart > 0 else { return nil }
+        let freeBytes = Int64(clamping: free.QuadPart)
+        return VolumeSpaceInfo(
+            totalCapacity: Int64(clamping: total.QuadPart),
+            availableCapacity: freeBytes,
+            strictlyFreeCapacity: freeBytes
         )
     }
     #endif

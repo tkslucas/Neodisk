@@ -45,7 +45,10 @@ struct AgeStatsPane: View {
 
             Divider()
 
-            if model.ages.catalog.stats.isEmpty {
+            if model.ages.catalog.stats.isEmpty, model.ages.isCatalogBuilt,
+               model.coordinator.snapshot?.isComplete == true {
+                StatsEmptyState.noFiles
+            } else if model.ages.catalog.stats.isEmpty {
                 Spacer()
                 ProgressView().neoControlSize(base: .small)
                     .frame(maxWidth: .infinity)

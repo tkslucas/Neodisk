@@ -122,10 +122,23 @@ Packaging/linux/install.sh          # install to ~/.local (menu entry, icon)
 `install.sh` links the Swift runtime statically, so the installed app needs
 only GTK 4 and libadwaita, not a Swift toolchain.
 
+### Windows
+
+The shared core and the `diskscan` command-line scanner build and pass their
+tests on Windows; the app is in progress. Requires Windows 10 or 11, Swift
+6.4.2 ([swift.org/install](https://www.swift.org/install/windows/)) and
+Visual Studio 2022's C++ build tools with a Windows SDK:
+
+```powershell
+swift build                                   # core and diskscan
+swift test                                    # core, shared model and treemap suites
+swift run -c release diskscan C:\Users        # scan from the command line
+```
+
 ## Planned
 
-- Windows: a native WinUI app over the same core (see
-  [ARCHITECTURE.md](ARCHITECTURE.md#adding-windows))
+- Windows: a native Win32 and Direct2D app over the same core (see
+  [ARCHITECTURE.md](ARCHITECTURE.md#windows))
 - Linux: Flatpak packaging, the duplicates and changes tabs
 
 ## Credits

@@ -102,6 +102,8 @@ final class AppPreferences: ObservableObject {
     /// Off by default: hashing reads file contents, which costs real I/O and energy.
     @AppStorage("autoScanDuplicates") var autoScanDuplicates = false
     @AppStorage("hasSeenWelcome") var hasSeenWelcome = false
+    /// Chose Scan Anyway once: first scans no longer offer Full Disk Access.
+    @AppStorage("scansWithoutFullDiskAccess") var scansWithoutFullDiskAccess = false
     /// A multiplier of the standard sizes; read through `textScale`, which snaps it to the ladder.
     @AppStorage("textScale") var textScaleRaw = TextScale.standard
     /// The user's changes to the Categories grouping, as
@@ -168,6 +170,7 @@ final class AppPreferences: ObservableObject {
         )
         _autoScanDuplicates = AppStorage(wrappedValue: false, "autoScanDuplicates", store: defaults)
         _hasSeenWelcome = AppStorage(wrappedValue: false, "hasSeenWelcome", store: defaults)
+        _scansWithoutFullDiskAccess = AppStorage(wrappedValue: false, "scansWithoutFullDiskAccess", store: defaults)
         _textScaleRaw = AppStorage(
             wrappedValue: TextScale.standard, "textScale", store: defaults
         )

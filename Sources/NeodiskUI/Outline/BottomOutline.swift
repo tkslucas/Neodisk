@@ -439,6 +439,12 @@ struct BottomOutlineTable: NSViewRepresentable {
             rows.count
         }
 
+        /// Typing a name selects the next row that starts with it, as in Finder's lists.
+        func tableView(_ tableView: NSTableView, typeSelectStringFor tableColumn: NSTableColumn?, row: Int) -> String? {
+            guard row < rows.count, tableColumn?.identifier.rawValue == "name" else { return nil }
+            return rows[row].node.name
+        }
+
         func tableView(
             _ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int
         ) -> NSView? {
@@ -556,7 +562,7 @@ struct BottomOutlineTable: NSViewRepresentable {
             _ tableView: NSTableView, draggingSession session: NSDraggingSession,
             willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet
         ) {
-            NodeDragSource.sessionDidBegin(model: model)
+            NodeDragSource.tableSessionDidBegin(session, in: tableView, at: screenPoint, model: model)
         }
 
         func tableView(

@@ -1,4 +1,4 @@
-// Keeps the latest and previous scan per location; an unchanged rescan skips the rotation so diffs never go empty.
+// Keeps the latest and previous scan per location; an unchanged rescan keeps an existing previous as the baseline.
 // Heavy encode/decode runs detached so the actor stays free; slot mutations never suspend, so readers see whole states.
 
 #if canImport(CryptoKit)
@@ -154,8 +154,8 @@ public actor ScanSnapshotCache {
 
     // MARK: - Public API
 
-    /// Saves a complete snapshot as the latest; the prior latest rotates to "previous" unless identical, or unless
-    /// `rotatesPrevious` is false (after a move to the Trash: the previous scan stays the Changes baseline).
+    /// Saves a complete snapshot as the latest; the prior latest rotates to "previous" unless identical with a previous
+    /// kept, or unless `rotatesPrevious` is false (after a move to the Trash: the previous scan stays the baseline).
     @discardableResult
     public func save(_ snapshot: ScanSnapshot, rotatesPrevious: Bool = true) async throws -> SnapshotSaveOutcome {
         let id = UUID()
@@ -232,13 +232,14 @@ public actor ScanSnapshotCache {
         if FileManager.default.fileExists(atPath: latestURL.path) {
             if !rotatesPrevious, !pendingRotationTargetIDs.contains(targetID) {
                 log("replacing latest in place for \(snapshot.target.id)")
-            } else if latestMatches(digest: digest, targetID: snapshot.target.id, at: latestURL) {
+            } else if FileManager.default.fileExists(atPath: previousURL.path),
+                      latestMatches(digest: digest, targetID: snapshot.target.id, at: latestURL) {
                 log("content unchanged for \(snapshot.target.id); keeping previous baseline")
             } else {
                 // Linked (copied where links aren't supported), not moved: the old latest stays until the new one lands.
                 let files = FileManager.default
                 try? files.removeItem(at: previousURL)
-                rotatedPrevious = (try? files.linkItem(at: latestURL, to: previousURL)) != nil
+                rotatedPrevious = Self.hardLink(latestURL, to: previousURL)
                     || (try? files.copyItem(at: latestURL, to: previousURL)) != nil
             }
         }
@@ -254,6 +255,15 @@ public actor ScanSnapshotCache {
             rotatedPrevious: rotatedPrevious,
             hasPreviousSnapshot: FileManager.default.fileExists(atPath: previousURL.path)
         )
+    }
+
+    /// FileManager's `linkItem` makes a symbolic link on Windows, which would show the new latest as the previous.
+    private static func hardLink(_ source: URL, to destination: URL) -> Bool {
+        #if os(Windows)
+        return WindowsPath.createHardLink(at: destination.path, to: source.path)
+        #else
+        return (try? FileManager.default.linkItem(at: source, to: destination)) != nil
+        #endif
     }
 
     /// Header-only read; files from before the digest existed never match and rotate as before.

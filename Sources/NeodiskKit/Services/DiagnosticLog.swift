@@ -132,7 +132,7 @@ private nonisolated final class DiagnosticLogFile: @unchecked Sendable {
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
                 let url = directory.appending(path: "\(name).log")
                 if !FileManager.default.fileExists(atPath: url.path) {
-                    FileManager.default.createFile(atPath: url.path, contents: nil)
+                    _ = FileManager.default.createFile(atPath: url.path, contents: nil)
                 }
                 let handle = try FileHandle(forWritingTo: url)
                 size = Int(try handle.seekToEnd())
@@ -170,7 +170,7 @@ private nonisolated final class DiagnosticLogFile: @unchecked Sendable {
         let previous = rotatedURL(url)
         try? FileManager.default.removeItem(at: previous)
         try? FileManager.default.moveItem(at: url, to: previous)
-        FileManager.default.createFile(atPath: url.path, contents: nil)
+        _ = FileManager.default.createFile(atPath: url.path, contents: nil)
         handle = try? FileHandle(forWritingTo: url)
         size = 0
     }

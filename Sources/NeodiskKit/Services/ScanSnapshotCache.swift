@@ -1,4 +1,4 @@
-// Keeps the latest and previous scan per location; an unchanged rescan skips the rotation so diffs never go empty.
+// Keeps the latest and previous scan per location; an unchanged rescan keeps an existing previous as the baseline.
 // Heavy encode/decode runs detached so the actor stays free; slot mutations never suspend, so readers see whole states.
 
 #if canImport(CryptoKit)
@@ -154,8 +154,8 @@ public actor ScanSnapshotCache {
 
     // MARK: - Public API
 
-    /// Saves a complete snapshot as the latest; the prior latest rotates to "previous" unless identical, or unless
-    /// `rotatesPrevious` is false (after a move to the Trash: the previous scan stays the Changes baseline).
+    /// Saves a complete snapshot as the latest; the prior latest rotates to "previous" unless identical with a previous
+    /// kept, or unless `rotatesPrevious` is false (after a move to the Trash: the previous scan stays the baseline).
     @discardableResult
     public func save(_ snapshot: ScanSnapshot, rotatesPrevious: Bool = true) async throws -> SnapshotSaveOutcome {
         let id = UUID()
@@ -232,7 +232,8 @@ public actor ScanSnapshotCache {
         if FileManager.default.fileExists(atPath: latestURL.path) {
             if !rotatesPrevious, !pendingRotationTargetIDs.contains(targetID) {
                 log("replacing latest in place for \(snapshot.target.id)")
-            } else if latestMatches(digest: digest, targetID: snapshot.target.id, at: latestURL) {
+            } else if FileManager.default.fileExists(atPath: previousURL.path),
+                      latestMatches(digest: digest, targetID: snapshot.target.id, at: latestURL) {
                 log("content unchanged for \(snapshot.target.id); keeping previous baseline")
             } else {
                 // Linked (copied where links aren't supported), not moved: the old latest stays until the new one lands.

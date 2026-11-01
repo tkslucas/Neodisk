@@ -168,7 +168,7 @@ extension ScanTimingSuites {
         // A background save of the OTHER target rotates its predecessor; the
         // guard keys on the displayed target, so nothing here changes.
         model.diff.snapshotWasRotated(for: backgroundTarget)
-        model.changes.snapshotWasRotated(for: backgroundTarget)
+        model.changes.snapshotWasSaved(for: backgroundTarget)
 
         #expect(model.diff.isShowing)
         #expect(model.diff.baseline?.targetID == baselineBefore?.targetID)

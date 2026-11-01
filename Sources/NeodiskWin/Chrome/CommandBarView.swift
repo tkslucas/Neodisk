@@ -139,10 +139,31 @@ final class CommandBarView: SurfaceView {
         onCommand?(command)
     }
 
+    // The toolbar is one tab stop, like the sidebar: Tab always enters on its first enabled button and leaves
+    // from any button; the arrow keys, Home and End move between buttons.
+
+    override func focusFromTab(forward: Bool) {
+        focusedID = tabStops().first
+        SetFocus(hwnd)
+    }
+
+    override func moveFocus(forward: Bool) -> Bool { false }
+
+    private func moveAlongToolbar(forward: Bool) -> Bool {
+        let stops = tabStops()
+        guard let current = focusedID, let index = stops.firstIndex(of: current) else {
+            focusedID = stops.first
+            return true
+        }
+        let next = forward ? index + 1 : index - 1
+        if stops.indices.contains(next) { focusedID = stops[next] }
+        return true
+    }
+
     override func keyDown(_ virtualKey: Int32) -> Bool {
         switch virtualKey {
-        case VK_LEFT: return moveFocus(forward: false)
-        case VK_RIGHT: return moveFocus(forward: true)
+        case VK_LEFT: return moveAlongToolbar(forward: false)
+        case VK_RIGHT: return moveAlongToolbar(forward: true)
         case VK_HOME:
             focusedID = tabStops().first
             return true

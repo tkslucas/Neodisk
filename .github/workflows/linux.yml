@@ -57,7 +57,7 @@ jobs:
         run: su ci -c "cd '$GITHUB_WORKSPACE' && swift test --skip-build --quiet"
 
       - name: Save the build cache
-        if: steps.cache.outputs.cache-hit != 'true'
+        if: github.ref == 'refs/heads/main' && steps.cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: .build

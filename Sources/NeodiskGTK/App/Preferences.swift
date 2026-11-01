@@ -29,12 +29,18 @@ final class Preferences {
     var treemapStyle: TreemapStyle = .cushion {
         didSet { if !isOverriding, treemapStyle != oldValue { savedTreemapStyle = nil }; scheduleSave() }
     }
+    /// The header's view toggles, as an ItemLayout string.
+    var vizViews = "" { didSet { scheduleSave() } }
     var kindMode: FileKindDisplayMode = .categories { didSet { scheduleSave() } }
     /// The user's changes to the Categories grouping. Change it through
     /// `AppModel.updateFileCategories`, which reclassifies.
     var fileCategories = FileCategoryCustomization() { didSet { scheduleSave() } }
     var showsStatistics = true { didSet { scheduleSave() } }
     var showsOutline = true { didSet { scheduleSave() } }
+    var showsStatusBar = true { didSet { scheduleSave() } }
+    /// The sidebar's hidden and collapsed sections, as SidebarSectionState lists.
+    var sidebarHiddenSections = "" { didSet { scheduleSave() } }
+    var sidebarCollapsedSections = "" { didSet { scheduleSave() } }
     /// The file list's column order and hidden columns, as `ItemLayout` stores them.
     var outlineColumns = "" { didSet { scheduleSave() } }
     /// Folders the user scanned or pinned, most recent first — the
@@ -44,6 +50,24 @@ final class Preferences {
     var windowHeight = 820 { didSet { scheduleSave() } }
 
     var palette: VizPalette { VizPalette.named(paletteID) }
+
+    var sidebarSections: SidebarSectionState {
+        get { SidebarSectionState(hidden: sidebarHiddenSections, collapsed: sidebarCollapsedSections) }
+        set {
+            if newValue.storedHidden != sidebarHiddenSections { sidebarHiddenSections = newValue.storedHidden }
+            if newValue.storedCollapsed != sidebarCollapsedSections { sidebarCollapsedSections = newValue.storedCollapsed }
+        }
+    }
+
+    /// The view and the header's view toggles; WorkspaceLayout holds the rules. No file list placement here.
+    var workspaceLayout: WorkspaceLayout {
+        get { WorkspaceLayout(mode: vizMode, treemapStyle: treemapStyle, views: ItemLayout(stored: vizViews)) }
+        set {
+            if newValue.mode != vizMode { vizMode = newValue.mode }
+            if newValue.treemapStyle != treemapStyle { treemapStyle = newValue.treemapStyle }
+            if newValue.views != ItemLayout(stored: vizViews) { vizViews = newValue.views.stored }
+        }
+    }
 
     /// The effective scan options behind every scan the app starts.
     var scanOptions: ScanOptions {
@@ -105,10 +129,14 @@ final class Preferences {
         var paletteID: String?
         var vizMode: String?
         var treemapStyle: String?
+        var vizViews: String?
         var kindMode: String?
         var fileCategories: String?
         var showsStatistics: Bool?
         var showsOutline: Bool?
+        var showsStatusBar: Bool?
+        var sidebarHiddenSections: String?
+        var sidebarCollapsedSections: String?
         var outlineColumns: String?
         var recentFolders: [String]?
         var windowWidth: Int?
@@ -128,10 +156,15 @@ final class Preferences {
         if let value = stored.paletteID { paletteID = value }
         if let value = stored.vizMode.flatMap(VizViewMode.init(rawValue:)) { vizMode = value }
         if let value = stored.treemapStyle.flatMap(TreemapStyle.init(rawValue:)) { treemapStyle = value }
+        if let value = stored.vizViews { vizViews = value }
+        workspaceLayout.openAtLaunch(nil)
         if let value = stored.kindMode.flatMap(FileKindDisplayMode.init(rawValue:)) { kindMode = value }
         if let value = stored.fileCategories { fileCategories = FileCategoryCustomization(json: value) }
         if let value = stored.showsStatistics { showsStatistics = value }
         if let value = stored.showsOutline { showsOutline = value }
+        if let value = stored.showsStatusBar { showsStatusBar = value }
+        if let value = stored.sidebarHiddenSections { sidebarHiddenSections = value }
+        if let value = stored.sidebarCollapsedSections { sidebarCollapsedSections = value }
         if let value = stored.outlineColumns { outlineColumns = value }
         if let value = stored.recentFolders { recentFolders = value }
         if let value = stored.windowWidth { windowWidth = value }
@@ -158,10 +191,14 @@ final class Preferences {
             paletteID: paletteID,
             vizMode: (savedVizMode ?? vizMode).rawValue,
             treemapStyle: (savedTreemapStyle ?? treemapStyle).rawValue,
+            vizViews: vizViews.isEmpty ? nil : vizViews,
             kindMode: kindMode.rawValue,
             fileCategories: fileCategories.isEmpty ? nil : fileCategories.json,
             showsStatistics: showsStatistics,
             showsOutline: showsOutline,
+            showsStatusBar: showsStatusBar,
+            sidebarHiddenSections: sidebarHiddenSections.isEmpty ? nil : sidebarHiddenSections,
+            sidebarCollapsedSections: sidebarCollapsedSections.isEmpty ? nil : sidebarCollapsedSections,
             outlineColumns: outlineColumns.isEmpty ? nil : outlineColumns,
             recentFolders: recentFolders,
             windowWidth: windowWidth,

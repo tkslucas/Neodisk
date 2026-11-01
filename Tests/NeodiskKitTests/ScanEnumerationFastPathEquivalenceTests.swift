@@ -122,7 +122,7 @@ import Testing
     @Test func nodeIDConcatenationMatchesAppendedURLPathAcrossExoticNames() {
         func concatenatedID(base childBasePath: String, name: String) -> String {
             let id = ScanEngine.nodeChildPath(parentPath: childBasePath, childName: name)
-            #expect(id == (childBasePath == "/" ? "/" + name : childBasePath + "/" + name))
+            #expect(id == (childBasePath.hasSuffix("/") ? childBasePath + name : childBasePath + "/" + name))
             return id
         }
 

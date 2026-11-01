@@ -10,6 +10,8 @@ import Crypto
 import Darwin
 #elseif canImport(Glibc)
 import Glibc
+#elseif os(Windows)
+import WinSDK
 #endif
 import Foundation
 
@@ -394,6 +396,19 @@ public enum DuplicateFinder {
     /// `stat` never opens the file, so it can't block on a provider or trigger a download.
     /// Dataless (cloud-only) files are refused.
     private static func hashableStamp(_ path: String) -> DuplicateHashCache.FileStamp? {
+        #if os(Windows)
+        // An attributes-only open doesn't recall a cloud file's content.
+        guard let handle = WindowsFileInfo.open(path: path, access: DWORD(FILE_READ_ATTRIBUTES)) else { return nil }
+        defer { CloseHandle(handle) }
+        guard let info = WindowsFileInfo.HandleInfo(handle),
+              info.attributes & UInt32(FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT) == 0,
+              info.attributes & WindowsFileInfo.cloudOnlyAttributes == 0 else { return nil }
+        return DuplicateHashCache.FileStamp(
+            size: info.endOfFile,
+            modifiedAtNanoseconds: (info.lastWriteTime - WindowsFileInfo.unixEpochFileTime) * 100,
+            inode: info.fileID
+        )
+        #else
         var info = stat()
         guard path.withCString({ stat($0, &info) }) == 0 else { return nil }
         guard (info.st_mode & mode_t(S_IFMT)) == mode_t(S_IFREG) else { return nil }
@@ -409,6 +424,7 @@ public enum DuplicateFinder {
                 + Int64(modified.tv_nsec),
             inode: UInt64(info.st_ino)
         )
+        #endif
     }
 
     /// A hit under a fresh stamp skips `compute` and its disk read; a miss records the digest.
@@ -432,10 +448,10 @@ public enum DuplicateFinder {
 
     /// Hashes the first `headHashLength` bytes (or the whole file if smaller).
     private static func hashHead(of path: String, size: Int64) throws -> String {
-        let fd = try openUncached(path)
-        defer { close(fd) }
+        let file = try UncachedFile(path)
+        defer { file.close() }
         let length = Int(min(size, Int64(headHashLength)))
-        let head = try readExactly(fd: fd, offset: 0, count: length)
+        let head = try file.readExactly(offset: 0, count: length)
         var hasher = SHA256()
         head.withUnsafeBytes { hasher.update(bufferPointer: $0) }
         return hasher.finalize().hexString
@@ -443,15 +459,15 @@ public enum DuplicateFinder {
 
     /// Folds in the tail for larger files so tail divergence splits the group without reading the middle.
     private static func hashHeadAndTail(of path: String, size: Int64) throws -> String {
-        let fd = try openUncached(path)
-        defer { close(fd) }
+        let file = try UncachedFile(path)
+        defer { file.close() }
         var hasher = SHA256()
         let headLength = Int(min(size, Int64(prefixHashLength)))
-        let head = try readExactly(fd: fd, offset: 0, count: headLength)
+        let head = try file.readExactly(offset: 0, count: headLength)
         head.withUnsafeBytes { hasher.update(bufferPointer: $0) }
         if size > Int64(prefixHashLength) {
             let tailLength = Int(min(size, Int64(tailHashLength)))
-            let tail = try readExactly(fd: fd, offset: off_t(size - Int64(tailLength)), count: tailLength)
+            let tail = try file.readExactly(offset: size - Int64(tailLength), count: tailLength)
             tail.withUnsafeBytes { hasher.update(bufferPointer: $0) }
         }
         return hasher.finalize().hexString
@@ -461,18 +477,14 @@ public enum DuplicateFinder {
         of path: String,
         onChunk: (Int64) async -> Void
     ) async throws -> String {
-        let fd = try openUncached(path, readahead: true)
-        defer { close(fd) }
+        let file = try UncachedFile(path, readahead: true)
+        defer { file.close() }
         var hasher = SHA256()
         // One buffer reused across every chunk instead of a fresh Data alloc.
         var buffer = [UInt8](repeating: 0, count: fullHashChunkSize)
         while true {
             try Task.checkCancellation()
-            let count = try buffer.withUnsafeMutableBytes { raw -> Int in
-                let n = read(fd, raw.baseAddress, fullHashChunkSize)
-                if n < 0 { throw posixError() }
-                return n
-            }
+            let count = try buffer.withUnsafeMutableBytes { raw in try file.read(into: raw) }
             if count == 0 { break }
             buffer.withUnsafeBytes {
                 hasher.update(bufferPointer: UnsafeRawBufferPointer(start: $0.baseAddress, count: count))
@@ -481,17 +493,70 @@ public enum DuplicateFinder {
         }
         return hasher.finalize().hexString
     }
+}
 
-    // MARK: - Raw uncached reads
+// MARK: - Raw uncached reads
 
-    // F_NOCACHE so a full-disk scan never evicts the page cache. Linux has no per-fd bypass short of
-    // O_DIRECT's aligned I/O, so it uses the advisory NOREUSE and SEQUENTIAL hints instead.
+// F_NOCACHE so a full-disk scan never evicts the page cache. Linux has no per-fd bypass short of O_DIRECT's
+// aligned I/O, so it uses the advisory NOREUSE and SEQUENTIAL hints instead. Windows gets the sequential-scan
+// hint, which also makes the cache manager drop pages behind the read.
 
-    /// Opens `path` read-only with caching disabled. The caller owns the
-    /// returned descriptor and must `close` it.
-    private static func openUncached(_ path: String, readahead: Bool = false) throws -> Int32 {
-        let fd = open(path, O_RDONLY)
-        guard fd >= 0 else { throw posixError() }
+/// One file opened read-only for hashing. The owner must `close` it.
+private struct UncachedFile {
+    #if os(Windows)
+    private let handle: HANDLE
+
+    init(_ path: String, readahead: Bool = false) throws {
+        let opened = WindowsPath.withWidePath(path) { widePath in
+            CreateFileW(
+                widePath,
+                DWORD(GENERIC_READ),
+                DWORD(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE),
+                nil,
+                DWORD(OPEN_EXISTING),
+                DWORD(FILE_FLAG_SEQUENTIAL_SCAN),
+                nil
+            )
+        }
+        guard let opened, opened != HANDLE(bitPattern: -1) else { throw Self.lastError() }
+        handle = opened
+    }
+
+    func close() {
+        CloseHandle(handle)
+    }
+
+    /// The next bytes from the current position; 0 at the end.
+    func read(into buffer: UnsafeMutableRawBufferPointer) throws -> Int {
+        var count: DWORD = 0
+        guard ReadFile(handle, buffer.baseAddress, DWORD(clamping: buffer.count), &count, nil) else {
+            throw Self.lastError()
+        }
+        return Int(count)
+    }
+
+    private func read(at offset: Int64, into buffer: UnsafeMutableRawBufferPointer) throws -> Int {
+        var overlapped = OVERLAPPED()
+        overlapped.Offset = DWORD(truncatingIfNeeded: offset)
+        overlapped.OffsetHigh = DWORD(truncatingIfNeeded: offset >> 32)
+        var count: DWORD = 0
+        guard ReadFile(handle, buffer.baseAddress, DWORD(clamping: buffer.count), &count, &overlapped) else {
+            let error = GetLastError()
+            if error == DWORD(ERROR_HANDLE_EOF) { return 0 }
+            throw WindowsFileInfo.error(error, path: "")
+        }
+        return Int(count)
+    }
+
+    private static func lastError() -> Error {
+        WindowsFileInfo.error(GetLastError(), path: "")
+    }
+    #else
+    private let fd: Int32
+
+    init(_ path: String, readahead: Bool = false) throws {
+        fd = open(path, O_RDONLY)
+        guard fd >= 0 else { throw Self.posixError() }
         #if canImport(Darwin)
         _ = fcntl(fd, F_NOCACHE, 1)
         if readahead { _ = fcntl(fd, F_RDAHEAD, 1) }
@@ -499,19 +564,41 @@ public enum DuplicateFinder {
         _ = posix_fadvise(fd, 0, 0, POSIX_FADV_NOREUSE)
         if readahead { _ = posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL) }
         #endif
-        return fd
     }
 
-    /// Reads up to `count` bytes at `offset` via `pread`, looping over short
-    /// reads. Returns fewer bytes only at EOF.
-    private static func readExactly(fd: Int32, offset: off_t, count: Int) throws -> [UInt8] {
+    func close() {
+        _ = closeDescriptor(fd)
+    }
+
+    /// The next bytes from the current position; 0 at the end.
+    func read(into buffer: UnsafeMutableRawBufferPointer) throws -> Int {
+        let n = systemRead(fd, buffer.baseAddress, buffer.count)
+        if n < 0 { throw Self.posixError() }
+        return n
+    }
+
+    private func read(at offset: Int64, into buffer: UnsafeMutableRawBufferPointer) throws -> Int {
+        let n = pread(fd, buffer.baseAddress, buffer.count, off_t(offset))
+        if n < 0 { throw Self.posixError() }
+        return n
+    }
+
+    private static func posixError() -> POSIXError {
+        POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+    }
+    #endif
+
+    /// Up to `count` bytes at `offset`, looping over short reads. Fewer bytes only at the end of the file.
+    func readExactly(offset: Int64, count: Int) throws -> [UInt8] {
         guard count > 0 else { return [] }
         var buffer = [UInt8](repeating: 0, count: count)
         let total = try buffer.withUnsafeMutableBytes { raw -> Int in
             var got = 0
             while got < count {
-                let n = pread(fd, raw.baseAddress?.advanced(by: got), count - got, offset + off_t(got))
-                if n < 0 { throw posixError() }
+                let n = try read(
+                    at: offset + Int64(got),
+                    into: UnsafeMutableRawBufferPointer(rebasing: raw[got...])
+                )
                 if n == 0 { break }
                 got += n
             }
@@ -520,11 +607,13 @@ public enum DuplicateFinder {
         if total < count { buffer.removeLast(count - total) }
         return buffer
     }
-
-    private static func posixError() -> POSIXError {
-        POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-    }
 }
+
+#if !os(Windows)
+// The free functions, out of reach of the methods named like them.
+private func closeDescriptor(_ fd: Int32) -> Int32 { close(fd) }
+private func systemRead(_ fd: Int32, _ buffer: UnsafeMutableRawPointer?, _ count: Int) -> Int { read(fd, buffer, count) }
+#endif
 
 /// Serializes byte counters for the two hashing passes and forwards a
 /// throttled, monotonic fraction to the caller.

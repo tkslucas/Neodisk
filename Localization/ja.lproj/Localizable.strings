@@ -39,7 +39,7 @@
 "Opening last scan of %@…" = "%@の前回のスキャンを開いています…";
 
 /* MARK: - Scan failed */
-"Scan failed" = "スキャンに失敗しました";
+"Scan Failed" = "スキャンに失敗しました";
 "Try Again" = "再試行";
 
 /* MARK: - Permission notice */
@@ -69,12 +69,9 @@
 "Theme" = "テーマ";
 "Scanning" = "スキャン";
 "Show hidden files while scanning" = "スキャン中に隠しファイルを表示";
-"Mounted volume scans always include hidden files automatically." = "マウントされたボリュームのスキャンでは、常に隠しファイルが自動的に含まれます。";
 "Automatically summarize folders with many small files" = "小さいファイルが多いフォルダを自動的にまとめる";
 "Scan local cloud files" = "ローカルクラウドファイルをスキャン";
-"Summarizing folders with thousands of tiny files (like node_modules or caches) dramatically improves scan speed." = "node_modulesやキャッシュなど、数千もの小さいファイルを含むフォルダをまとめると、スキャン速度が大幅に向上します。";
 "When off, scans skip locally synced cloud folders: ~/Library/CloudStorage (Google Drive, Dropbox, OneDrive) and iCloud Drive." = "オフにすると、ローカルに同期されたクラウドフォルダ（~/Library/CloudStorage の Google Drive、Dropbox、OneDrive、および iCloud Drive）はスキャンでスキップされます。";
-"Changes apply to the next scan." = "変更は次回のスキャンから適用されます。";
 "When opening a scanned location" = "スキャン済みの場所を開くとき";
 "Rescan automatically always refreshes behind the saved results; Smart skips the refresh when the last scan took a while; Show snapshot only always waits for Rescan Now." = "「自動的に再スキャン」は保存済みの結果の裏で常に更新します。「スマート」は前回のスキャンに時間がかかった場合は更新をスキップします。「スナップショットのみ表示」は常に「今すぐ再スキャン」を待ちます。";
 "When Results Appear" = "結果の表示時";
@@ -85,28 +82,32 @@
 "One pattern per line. Trailing “/” matches folders; “*” is a wildcard." = "1行につき1つのパターン。末尾の「/」はフォルダに一致し、「*」はワイルドカードです。";
 "Add Presets" = "プリセットを追加";
 "Show free space in treemap" = "ツリーマップに空き容量を表示";
-"The sunburst always shows free and hidden space for volume scans; this adds them to the treemap too. Hidden space is capacity the scan could not see, such as purgeable space and local snapshots. Applies immediately." = "サンバーストはボリュームのスキャンで空き容量と隠れた容量を常に表示します。このオプションはツリーマップにも表示を追加します。隠れた容量とは、パージ可能な領域やローカルスナップショットなど、スキャンで確認できなかった容量です。すぐに適用されます。";
 "Workspace" = "ワークスペース";
 "Show Welcome Screen" = "ようこそ画面を表示";
 "Restore Defaults" = "初期設定に戻す";
 
 /* MARK: - Settings: Privacy */
 "Full Disk Access" = "フルディスクアクセス";
-"Neodisk can scan ordinary folders immediately. For protected macOS locations such as Mail, Safari, Messages, and Library content, grant Full Disk Access in System Settings." = "Neodiskは通常のフォルダをすぐにスキャンできます。Mail、Safari、Messages、Libraryの内容など、保護されたmacOSの場所については、システム設定でフルディスクアクセスを許可してください。";
 "Full Disk Access is enabled." = "フルディスクアクセスが有効になっています。";
 "Full Disk Access is not enabled." = "フルディスクアクセスが有効になっていません。";
 "Checking…" = "確認中…";
 "Open Full Disk Access Settings" = "フルディスクアクセスの設定を開く";
+"Neodisk Works Best with Full Disk Access" = "Neodiskはフルディスクアクセスで最もよく動作します";
+"Without it, macOS stops the scan to ask about each protected folder, like Documents, Downloads and Photos, and some locations are skipped." = "許可しない場合、macOSは書類、ダウンロード、写真などの保護されたフォルダごとにスキャンを止めて確認を求めます。また、一部の場所はスキップされます。";
+"Scan Anyway" = "このままスキャン";
+"Waiting for permission to read %@" = "%@の読み取り許可を待っています";
+"other apps' data" = "他のアプリのデータ";
+"iCloud Drive" = "iCloud Drive";
 "Recheck" = "再確認";
 "Note: running unbundled (swift run), Neodisk inherits its permissions from the terminal that launched it — grant Full Disk Access to that terminal app." = "注意: バンドルされていない状態（swift run）で実行する場合、Neodiskは起動元のターミナルの権限を継承します — そのターミナルアプリにフルディスクアクセスを許可してください。";
 "Moving to the Trash" = "ゴミ箱への移動";
 "Allow moving items to the Trash" = "項目をゴミ箱に入れることを許可";
-"Collect items in Cleanup at the bottom of the sidebar, then move them to the Trash after one confirmation. Neodisk never deletes anything itself, and won't touch system folders or your home folder. Turn this off to only look." = "サイドバー下部のクリーンアップに項目を集め、一度確認するだけでゴミ箱に入れられます。Neodiskが自分で何かを削除することはなく、システムフォルダやホームフォルダには触れません。見るだけにするにはオフにしてください。";
 "Sidebar Folders" = "サイドバーのフォルダ";
-"Folders you add are stored locally so they can appear in the sidebar." = "追加したフォルダはサイドバーに表示できるようローカルに保存されます。";
 "Clear Added Folders" = "追加したフォルダを消去";
+"Restore Default Folders" = "標準のフォルダを戻す";
+"Remove the folders you added from the sidebar?" = "追加したフォルダをサイドバーから削除しますか？";
+"Their scan snapshots are removed too." = "それらのスキャンスナップショットも削除されます。";
 "Scan Snapshots" = "スキャンスナップショット";
-"After each completed scan, Neodisk keeps the latest results for that location on this Mac so reopening it shows the last scan instantly while a fresh scan runs. Snapshots contain file names, paths, and sizes; they are stored only in Neodisk's local cache and never leave this Mac." = "スキャンが完了するたびに、Neodiskはその場所の最新の結果をこのMacに保存します。これにより、再度開いたときに新しいスキャンが実行される間も前回のスキャン結果を即座に表示できます。スナップショットにはファイル名、パス、サイズが含まれ、Neodiskのローカルキャッシュにのみ保存され、このMacの外に出ることはありません。";
 "Size on disk" = "ディスク上のサイズ";
 "Calculating…" = "計算中…";
 "Clear Scan Snapshots" = "スキャンスナップショットを消去";
@@ -142,6 +143,7 @@
 "Reveal in Finder" = "Finderに表示";
 "Open" = "開く";
 "Copy Path" = "パスをコピー";
+"Path" = "パス";
 "Expand Contents" = "内容を展開";
 "Show Package Contents" = "パッケージの内容を表示";
 "No matches" = "一致なし";
@@ -154,12 +156,10 @@
 "Filter by name" = "名前で絞り込む";
 "%@ files" = "%@個のファイル";
 "%@ file" = "%@個のファイル";
-"Largest %@ of %@ — search to narrow" = "%2$@件中サイズの大きい上位%1$@件 — 絞り込むには検索";
 
 /* MARK: - Statistics panel tabs & age buckets */
 "Kinds" = "種類";
 "Largest" = "最大";
-"Largest Files" = "最大のファイル";
 "Age" = "更新日";
 "Group by" = "グループ化";
 "Last Modified" = "最終更新日";
@@ -268,7 +268,7 @@
 "Dismiss" = "閉じる";
 
 /* MARK: - Menu bar commands */
-"Find" = "検索";
+"Find…" = "検索…";
 "Show Locations Sidebar" = "ロケーションサイドバーを表示";
 "Hide Locations Sidebar" = "ロケーションサイドバーを隠す";
 "Show Statistics" = "統計を表示";
@@ -299,7 +299,6 @@
 "Last viewed" = "前回の表示";
 "Cushion" = "クッション";
 "Flat" = "フラット";
-"The view the app starts in. Last viewed restores whatever was on screen when you quit. The toolbar picker switches views any time." = "アプリ起動時に表示されるビューです。「前回の表示」は終了時に表示していたビューを復元します。ツールバーのピッカーでいつでも切り替えられます。";
 "Color palette" = "カラーパレット";
 "Classic" = "クラシック";
 "Vivid" = "ビビッド";
@@ -307,7 +306,6 @@
 "Retro" = "レトロ";
 "Neon" = "ネオン";
 "Colorblind-safe" = "色覚対応";
-"The color set the visualizations draw with. Colorblind-safe stays distinct with common color vision differences. Applies immediately." = "ビジュアライゼーションが使用する配色です。色覚対応は一般的な色覚特性でも見分けやすい配色を保ちます。即座に適用されます。";
 
 /* MARK: - File list position */
 "Name" = "名前";
@@ -324,7 +322,6 @@
 "View" = "表示";
 "Treemap" = "ツリーマップ";
 "Sunburst" = "サンバースト";
-"Switch views. Right-click to choose which ones show." = "表示を切り替えます。右クリックで表示する項目を選べます。";
 "Cushion Treemap" = "クッションツリーマップ";
 "Flat Treemap" = "フラットツリーマップ";
 "Smaller Items" = "小さい項目";
@@ -350,7 +347,6 @@
 "Update Error" = "アップデートエラー";
 "Updates" = "アップデート";
 "Check for updates automatically" = "自動的にアップデートを確認";
-"Neodisk checks GitHub for new versions in the background and always asks before installing anything." = "NeodiskはバックグラウンドでGitHubの新しいバージョンを確認し、インストール前に必ず確認を求めます。";
 "Automatic updates work only in the packaged app." = "自動アップデートはパッケージ版のアプリでのみ機能します。";
 
 /* MARK: - Help & About */
@@ -378,8 +374,6 @@
 
 /* Settings tabs (2026-07-13) */
 "Advanced" = "詳細";
-"Loads the previous scan in the background so the Changes view opens instantly." = "前回のスキャンをバックグラウンドで読み込み、「変更」ビューをすぐに開けるようにします。";
-"Runs the duplicate scan automatically when results appear. Reading file contents can take time and energy on large locations." = "結果が表示されると自動的に重複スキャンを開始します。ファイル内容の読み込みは、大きな場所では時間と電力を消費することがあります。";
 /* Hover tooltips (2026-07-13) */
 "Free space · %@" = "空き容量 · %@";
 "Hidden space · %@" = "隠れた領域 · %@";
@@ -395,7 +389,6 @@
 "Zoom In" = "拡大";
 "Zoom Out" = "縮小";
 "Actual Size" = "実際のサイズ";
-"Scales the text in the locations sidebar, the file lists, the treemap and sunburst labels, and the statistics panel. Applies immediately. View ▸ Zoom In and Zoom Out (⌘+ and ⌘−) change it without opening Settings." = "場所サイドバー、ファイルリスト、ツリーマップとサンバーストのラベル、統計パネルの文字を拡大縮小します。すぐに反映されます。表示 ▸ 拡大／縮小（⌘+ と ⌘−）でも設定を開かずに変更できます。";
 
 /* Linux (GTK) app */
 "%@ free" = "空き %@";
@@ -407,20 +400,16 @@
 "%@ of scan" = "スキャンの %@";
 "%lld smaller items · %@" = "小さい項目 %lld 個 · %@";
 "Cached Scans" = "キャッシュ済みのスキャン";
-"Changes apply from the next scan." = "変更は次回のスキャンから適用されます。";
+"Saved scans hold file names, paths and sizes, and never leave this computer." = "保存されたスキャンにはファイル名、パス、サイズが含まれ、このコンピュータの外に出ることはありません。";
 "Choose a Location to Scan" = "スキャンする場所を選択";
 "Clear" = "消去";
 "Color Palette" = "カラーパレット";
 "Computer" = "コンピュータ";
 "Count folders with very many small files as one item, for faster scans" = "小さなファイルが非常に多いフォルダを1項目として数え、スキャンを高速化します";
-"Dot files and folders, like ~/.cache and ~/.local" = "~/.cache や ~/.local などのドットファイルとフォルダ";
-"Draw a volume's free space as a block of its own" = "ボリュームの空き容量を独立したブロックとして表示";
-"Finished scans are kept so locations reopen instantly and changes can be compared." = "完了したスキャンは保存され、場所をすぐに開き直したり変更を比較したりできます。";
 "Follow System" = "システムに合わせる";
 "Home" = "ホーム";
 "Include Hidden Files" = "隠しファイルを含める";
 "Keyboard Shortcuts" = "キーボードショートカット";
-"Locations" = "場所";
 "Main Menu" = "メインメニュー";
 "Merging changes…" = "変更を統合中…";
 "Select Largest Item Inside" = "内部の最大の項目を選択";
@@ -430,7 +419,6 @@
 "Preferences" = "設定";
 "Quit" = "終了";
 "Disk space visualizer. Treemap and sunburst views on the NeodiskKit scan engine." = "ディスク容量ビジュアライザ。NeodiskKit スキャンエンジンによるツリーマップとサンバースト表示。";
-"Recent" = "最近";
 "Refreshing…" = "更新中…";
 "Saved Scans" = "保存済みのスキャン";
 "Scans" = "スキャン";
@@ -445,6 +433,7 @@
 "Top %lld of %@ matches" = "%2$@ 件中上位 %1$lld 件";
 "Visualization" = "表示";
 "%@ free of %@" = "%2$@ 中 %1$@ 空き";
+"%@ of %@ used" = "%2$@ 中 %1$@ 使用済み";
 "%@ in %@ files" = "%2$@ 個のファイルで %1$@";
 "%@ in %@ file" = "%2$@ 個のファイルで %1$@";
 
@@ -459,6 +448,7 @@
 "Collapse Cleanup" = "クリーンアップを折りたたむ";
 "Expand Cleanup" = "クリーンアップを展開";
 "Sidebar Sections" = "サイドバーのセクション";
+"File List Columns" = "ファイルリストの列";
 "Show Cleanup in the sidebar. Drop items here to collect them." = "サイドバーにクリーンアップを表示します。ここに項目をドロップすると集められます。";
 "It changed since the scan. Rescan to move it." = "スキャン後に変更されました。移動するには再スキャンしてください。";
 "Move “%@” to the Trash?" = "「%@」をゴミ箱に入れますか？";
@@ -471,7 +461,6 @@
 "Moving items to the Trash is turned off in Preferences." = "項目をゴミ箱に入れる機能は設定でオフになっています。";
 "Moving items to the Trash is turned off in Settings." = "項目をゴミ箱に入れる機能は設定でオフになっています。";
 "Moving to the Trash…" = "ゴミ箱に入れています…";
-"Neodisk asks before each move and never deletes anything itself. System folders and your home folder are off limits. Turn this off to only look." = "Neodiskは移動のたびに確認し、自分で何かを削除することはありません。システムフォルダとホームフォルダには触れません。見るだけにするにはオフにしてください。";
 "Open Trash" = "ゴミ箱を開く";
 "Remove from Cleanup" = "クリーンアップから外す";
 "Some of this is in a cloud drive: moving it to the Trash also removes it from the cloud and your other devices." = "一部はクラウドドライブにあります。ゴミ箱に入れると、クラウドとほかのデバイスからも削除されます。";
@@ -527,3 +516,14 @@
 "Couldn't Move %lld Items to the Trash" = "%lld 項目をゴミ箱に入れられませんでした";
 "Select All" = "すべてを選択";
 "Add to Selection" = "選択に追加";
+"Adds hidden space too: capacity the scan could not see, such as purgeable space and local snapshots." = "隠れた容量も表示します。パージ可能な領域やローカルスナップショットなど、スキャンで確認できなかった容量です。";
+"Reading file contents can take time and energy on large locations." = "ファイル内容の読み込みは、大きな場所では時間と電力を消費することがあります。";
+"For protected macOS locations such as Mail, Safari, Messages, and Library content, grant Full Disk Access in System Settings." = "Mail、Safari、Messages、Libraryの内容など、保護されたmacOSの場所については、システム設定でフルディスクアクセスを許可してください。";
+"Neodisk never deletes anything itself, and won't touch system folders or your home folder." = "Neodiskが自分で何かを削除することはなく、システムフォルダやホームフォルダには触れません。";
+"Snapshots contain file names, paths, and sizes; they are stored only in Neodisk's local cache and never leave this Mac." = "スナップショットにはファイル名、パス、サイズが含まれ、Neodiskのローカルキャッシュにのみ保存され、このMacの外に出ることはありません。";
+"%@ of %@ used · %@ free" = "%2$@中%1$@使用 · 空き%3$@";
+"Move Left" = "左へ移動";
+"Move Right" = "右へ移動";
+"Statistics Tabs" = "統計のタブ";
+"Top %@ of %@ files" = "%2$@件のファイルのうち上位%1$@件";
+"No files to show" = "表示するファイルはありません";

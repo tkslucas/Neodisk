@@ -137,6 +137,8 @@ import Foundation
         #expect(unwrappedB.isAccessible)
     }
 
+    // The Windows walk counts each hard link: directory info has no link count (see WindowsFileInfo).
+    #if !os(Windows)
     @Test func pooledSummaryEmitsHardLinkClaims() async throws {
         let root = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -160,6 +162,7 @@ import Foundation
         let identities = Set(summary.hardLinkClaims.map(\.identity))
         #expect(identities.count == 1)
     }
+    #endif
 
     @Test func liveCountersAdvanceAndDoNotDoubleCountWhenFolded() async throws {
         let root = try makeTemporaryDirectory()

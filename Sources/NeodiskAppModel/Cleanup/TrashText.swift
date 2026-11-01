@@ -42,6 +42,31 @@ package extension TrashFailure {
     }
 }
 
+/// How a batch went. No size when nothing came back: a hard link's other name frees nothing.
+package enum TrashReport {
+    package static func moved(_ count: Int, bytes: Int64) -> String {
+        let size = NeodiskFormatters.size(bytes)
+        return switch (count, bytes) {
+        case (1, 0): AppStrings.localized("Moved 1 item to the Trash.", comment: "Trash result")
+        case (1, _): String(format: AppStrings.localized("Moved 1 item (%@) to the Trash.", comment: "Trash result"), size)
+        case (_, 0): String(format: AppStrings.localized("Moved %lld items to the Trash.", comment: "Trash result"), count)
+        default: String(format: AppStrings.localized("Moved %lld items (%@) to the Trash.", comment: "Trash result"), count, size)
+        }
+    }
+
+    package static func alreadyGone(_ count: Int) -> String {
+        count == 1
+            ? AppStrings.localized("1 item was already gone.", comment: "Trash result")
+            : String(format: AppStrings.localized("%lld items were already gone.", comment: "Trash result"), count)
+    }
+
+    package static func refused(_ count: Int, firstReason: String) -> String {
+        count == 1
+            ? String(format: AppStrings.localized("1 item can't go to the Trash. %@", comment: "Trash refusals; the first reason follows"), firstReason)
+            : String(format: AppStrings.localized("%lld items can't go to the Trash. %@", comment: "Trash refusals; the first reason follows"), count, firstReason)
+    }
+}
+
 /// The question asked before a move. Paths, not names, so it's clear exactly what goes.
 package struct TrashConfirmation: Sendable, Equatable {
     package let title: String

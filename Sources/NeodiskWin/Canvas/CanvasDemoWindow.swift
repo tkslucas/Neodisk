@@ -27,7 +27,7 @@ final class DemoWindow {
             windowClass.hInstance = GetModuleHandleW(nil)
             windowClass.hCursor = LoadCursorW(nil, IDC_ARROW_POINTER)
             windowClass.lpszClassName = name.baseAddress
-            RegisterClassExW(&windowClass)
+            _ = RegisterClassExW(&windowClass)
         }
         let titleUnits = Array("Neodisk canvas".utf16) + [0]
         hwnd = Self.className.withUnsafeBufferPointer { name in
@@ -43,9 +43,9 @@ final class DemoWindow {
         model.onStatus = { [weak self] text in self?.setTitle(text) }
         model.onKey = { [weak self] vk, ctrl in self?.handleKey(vk, ctrl: ctrl) ?? false }
         DemoWindow.current = self
-        ShowWindow(hwnd, SW_SHOWNORMAL)
+        _ = ShowWindow(hwnd, SW_SHOWNORMAL)
         layout()
-        if let canvasWindow = canvas.hwnd { SetFocus(canvasWindow) }
+        if let canvasWindow = canvas.hwnd { _ = SetFocus(canvasWindow) }
         canvas.modelDidChange()
     }
 
@@ -53,15 +53,15 @@ final class DemoWindow {
 
     func layout() {
         var rect = RECT()
-        GetClientRect(hwnd, &rect)
+        _ = GetClientRect(hwnd, &rect)
         if let canvasWindow = canvas?.hwnd {
-            MoveWindow(canvasWindow, 0, 0, rect.right - rect.left, rect.bottom - rect.top, true)
+            _ = MoveWindow(canvasWindow, 0, 0, rect.right - rect.left, rect.bottom - rect.top, true)
         }
     }
 
     private func setTitle(_ text: String?) {
         let units = Array((text ?? title).utf16) + [0]
-        units.withUnsafeBufferPointer { SetWindowTextW(hwnd, $0.baseAddress) }
+        units.withUnsafeBufferPointer { _ = SetWindowTextW(hwnd, $0.baseAddress) }
     }
 
     /// T treemap, B sunburst, F flat or cushion, L light or dark, K/A/R kind, age or branch colors.
@@ -84,8 +84,8 @@ final class DemoWindow {
     func runLoop() -> Int32 {
         var message = MSG()
         while GetMessageW(&message, nil, 0, 0) {
-            TranslateMessage(&message)
-            DispatchMessageW(&message)
+            _ = TranslateMessage(&message)
+            _ = DispatchMessageW(&message)
         }
         return 0
     }
@@ -94,8 +94,8 @@ final class DemoWindow {
     func pump() {
         var message = MSG()
         while PeekMessageW(&message, nil, 0, 0, UINT(PM_REMOVE)) {
-            TranslateMessage(&message)
-            DispatchMessageW(&message)
+            _ = TranslateMessage(&message)
+            _ = DispatchMessageW(&message)
         }
     }
 
@@ -120,7 +120,7 @@ private let demoWindowProc: WNDPROC = { hwnd, message, wParam, lParam in
         return 0
     case WM_SETFOCUS:
         MainActor.assumeIsolated {
-            if let canvas = DemoWindow.current?.canvas?.hwnd { SetFocus(canvas) }
+            if let canvas = DemoWindow.current?.canvas?.hwnd { _ = SetFocus(canvas) }
         }
         return 0
     case WM_DESTROY:
@@ -155,12 +155,14 @@ struct CanvasBenchmark {
 
         func clientSize() -> String {
             var rect = RECT()
-            if let hwnd = canvas.hwnd { GetClientRect(hwnd, &rect) }
+            if let hwnd = canvas.hwnd { _ = GetClientRect(hwnd, &rect) }
             return "\(rect.right - rect.left)x\(rect.bottom - rect.top) px"
         }
 
-        for (name, style, mode) in [("cushion", TreemapStyle.cushion, VizCanvas.Mode.treemap),
-                                    ("flat", .flat, .treemap), ("sunburst", .cushion, .sunburst)] {
+        let views: [(String, TreemapStyle, VizCanvas.Mode)] = [
+            ("cushion", .cushion, .treemap), ("flat", .flat, .treemap), ("sunburst", .cushion, .sunburst),
+        ]
+        for (name, style, mode) in views {
             stats.reset()
             model.treemapStyle = style
             canvas.mode = mode
@@ -203,14 +205,14 @@ struct CanvasBenchmark {
             // Live resize: the old raster stretches each frame while renders chase the latest size.
             stats.reset()
             var rect = RECT()
-            GetWindowRect(window.hwnd, &rect)
+            _ = GetWindowRect(window.hwnd, &rect)
             let width = rect.right - rect.left
             let height = rect.bottom - rect.top
             var resizeMs: [Double] = []
             for step in 0..<60 {
                 let delta = Int32(step < 30 ? -step * 8 : (step - 60) * 8)
                 let start = ContinuousClock.now
-                SetWindowPos(window.hwnd, nil, 0, 0, width + delta, height + delta / 2,
+                _ = SetWindowPos(window.hwnd, nil, 0, 0, width + delta, height + delta / 2,
                              UINT(SWP_NOMOVE | SWP_NOZORDER))
                 resizeMs.append(Clock.milliseconds(since: start))
                 window.pump()
@@ -278,9 +280,9 @@ struct CanvasBenchmark {
             }
         }
         let report = lines.joined(separator: "\n") + "\n"
-        FileManager.default.createFile(atPath: reportPath, contents: Data(report.utf8))
+        _ = FileManager.default.createFile(atPath: reportPath, contents: Data(report.utf8))
         CanvasLog.write(report)
-        DestroyWindow(window.hwnd)
+        _ = DestroyWindow(window.hwnd)
         return 0
     }
 

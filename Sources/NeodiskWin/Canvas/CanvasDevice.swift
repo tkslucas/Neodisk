@@ -156,7 +156,7 @@ final class D2DCanvas {
     /// False when the device was lost: the caller drops every image and builds a new canvas.
     func end(present: Present) -> Bool {
         let hr = ndc_canvas_end(pointer, present.rawValue)
-        return hr != ND_DEVICE_LOST
+        return hr != Int32(NDDeviceLost)
     }
 
     func finish() {

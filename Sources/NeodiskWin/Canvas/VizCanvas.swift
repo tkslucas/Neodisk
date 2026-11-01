@@ -65,8 +65,8 @@ final class VizCanvas: CanvasHost {
 
     isolated deinit {
         if let hwnd {
-            SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0)
-            DestroyWindow(hwnd)
+            _ = SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0)
+            _ = DestroyWindow(hwnd)
         }
     }
 
@@ -100,7 +100,7 @@ final class VizCanvas: CanvasHost {
 
     func invalidate() {
         guard let hwnd else { return }
-        InvalidateRect(hwnd, nil, false)
+        _ = InvalidateRect(hwnd, nil, false)
     }
 
     func runInBackground(_ job: @escaping @Sendable () -> Void) {
@@ -108,12 +108,12 @@ final class VizCanvas: CanvasHost {
     }
 
     func beep() {
-        MessageBeep(UINT(MB_OK))
+        _ = MessageBeep(UINT(MB_OK))
     }
 
     func screenPoint(for viewPoint: CGPoint) -> POINT {
         var point = POINT(x: LONG((viewPoint.x * scale).rounded()), y: LONG((viewPoint.y * scale).rounded()))
-        if let hwnd { ClientToScreen(hwnd, &point) }
+        if let hwnd { _ = ClientToScreen(hwnd, &point) }
         return point
     }
 
@@ -230,7 +230,7 @@ final class VizCanvas: CanvasHost {
             x: LONG(Int16(truncatingIfNeeded: lParam & 0xFFFF)),
             y: LONG(Int16(truncatingIfNeeded: (lParam >> 16) & 0xFFFF))
         )
-        ScreenToClient(hwnd, &screen)
+        _ = ScreenToClient(hwnd, &screen)
         let point = CGPoint(x: Double(screen.x) / scale, y: Double(screen.y) / scale)
         let notches = Double(delta) / Double(WHEEL_DELTA)
         let ctrl = keys & WPARAM(MK_CONTROL) != 0
@@ -280,8 +280,8 @@ final class VizCanvas: CanvasHost {
         switch Int32(message) {
         case WM_PAINT:
             var paint = PAINTSTRUCT()
-            BeginPaint(hwnd, &paint)
-            EndPaint(hwnd, &paint)
+            _ = BeginPaint(hwnd, &paint)
+            _ = EndPaint(hwnd, &paint)
             render()
             return 0
         case WM_ERASEBKGND:
@@ -292,7 +292,7 @@ final class VizCanvas: CanvasHost {
         case WM_DPICHANGED_AFTERPARENT:
             dpi = max(GetDpiForWindow(hwnd), 96)
             var rect = RECT()
-            GetClientRect(hwnd, &rect)
+            _ = GetClientRect(hwnd, &rect)
             pixelWidth = 0
             resize(width: Int(rect.right - rect.left), height: Int(rect.bottom - rect.top))
             return 0
@@ -311,19 +311,19 @@ final class VizCanvas: CanvasHost {
             pointerMoved(to: nil)
             return 0
         case WM_LBUTTONDOWN:
-            SetFocus(hwnd)
-            SetCapture(hwnd)
+            _ = SetFocus(hwnd)
+            _ = SetCapture(hwnd)
             pointerDown(button: 1, clickCount: 1, at: viewPoint(lParam), wParam: wParam)
             return 0
         case WM_LBUTTONDBLCLK:
             pointerDown(button: 1, clickCount: 2, at: viewPoint(lParam), wParam: wParam)
             return 0
         case WM_LBUTTONUP:
-            ReleaseCapture()
+            _ = ReleaseCapture()
             treemap.pointerUp()
             return 0
         case WM_RBUTTONDOWN:
-            SetFocus(hwnd)
+            _ = SetFocus(hwnd)
             rightClickPoint = viewPoint(lParam)
             pointerDown(button: 2, clickCount: 1, at: viewPoint(lParam), wParam: wParam)
             return 0
@@ -340,7 +340,7 @@ final class VizCanvas: CanvasHost {
             var code = LRESULT(DLGC_WANTARROWS | DLGC_WANTCHARS)
             if lParam != 0, let msg = UnsafePointer<MSG>(bitPattern: Int(lParam)),
                msg.pointee.message == UINT(WM_KEYDOWN),
-               [VK_RETURN, VK_BACK].contains(Int32(msg.pointee.wParam)) {
+               [VK_RETURN, VK_BACK].contains(Int32(truncatingIfNeeded: msg.pointee.wParam)) {
                 code |= LRESULT(DLGC_WANTMESSAGE)
             }
             return code
@@ -382,7 +382,7 @@ final class VizCanvas: CanvasHost {
             windowClass.hInstance = GetModuleHandleW(nil)
             windowClass.hCursor = LoadCursorW(nil, IDC_ARROW_POINTER)
             windowClass.lpszClassName = name.baseAddress
-            RegisterClassExW(&windowClass)
+            _ = RegisterClassExW(&windowClass)
         }
     }
 }
@@ -394,7 +394,7 @@ private let canvasWindowProc: WNDPROC = { hwnd, message, wParam, lParam in
     guard let hwnd else { return 0 }
     if message == UINT(WM_NCCREATE),
        let create = UnsafePointer<CREATESTRUCTW>(bitPattern: Int(lParam)) {
-        SetWindowLongPtrW(hwnd, GWLP_USERDATA, LONG_PTR(Int(bitPattern: create.pointee.lpCreateParams)))
+        _ = SetWindowLongPtrW(hwnd, GWLP_USERDATA, LONG_PTR(Int(bitPattern: create.pointee.lpCreateParams)))
     }
     let stored = GetWindowLongPtrW(hwnd, GWLP_USERDATA)
     if stored != 0, let pointer = UnsafeRawPointer(bitPattern: Int(stored)) {

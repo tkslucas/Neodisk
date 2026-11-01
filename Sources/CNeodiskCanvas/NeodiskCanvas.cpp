@@ -12,7 +12,6 @@
 #include <wincodec.h>
 
 #include <cmath>
-#include <cstdlib>
 #include <mutex>
 #include <new>
 #include <vector>
@@ -92,8 +91,9 @@ HRESULT ensureDevice() {
                                   D3D_FEATURE_LEVEL_10_0, D3D_FEATURE_LEVEL_9_3};
     UINT flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
     HRESULT hr = E_FAIL;
-    const char *forceWarp = getenv("NEODISK_CANVAS_WARP");
-    if (!(forceWarp && forceWarp[0] == '1')) {
+    char forceWarp[4] = {};
+    GetEnvironmentVariableA("NEODISK_CANVAS_WARP", forceWarp, sizeof(forceWarp));
+    if (forceWarp[0] != '1') {
         hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags, levels, ARRAYSIZE(levels),
                                D3D11_SDK_VERSION, s.d3d.Put(), nullptr, s.d3dContext.Put());
     }
@@ -405,14 +405,14 @@ int32_t ndc_canvas_end(NDCanvas *canvas, int32_t present) {
     HRESULT hr = canvas->context->EndDraw();
     if (hr == D2DERR_RECREATE_TARGET) {
         resetShared();
-        return ND_DEVICE_LOST;
+        return NDDeviceLost;
     }
     if (FAILED(hr)) return hr;
     if (canvas->swapChain && present != NDPresentNone) {
         hr = canvas->swapChain->Present(present == NDPresentVSync ? 1 : 0, 0);
         if (hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET) {
             resetShared();
-            return ND_DEVICE_LOST;
+            return NDDeviceLost;
         }
         if (hr == DXGI_STATUS_OCCLUDED) hr = S_OK;
     }

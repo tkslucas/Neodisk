@@ -57,7 +57,7 @@ final class CanvasMailbox: @unchecked Sendable {
         let isFirst = items.count == 1
         lock.unlock()
         if isFirst, target != 0, let hwnd = HWND(bitPattern: target) {
-            PostMessageW(hwnd, Self.message, 0, 0)
+            _ = PostMessageW(hwnd, Self.message, 0, 0)
         }
     }
 

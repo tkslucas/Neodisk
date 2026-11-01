@@ -347,14 +347,17 @@ final class TreemapPresenter {
     func resolveHover() {
         let cell = hoverPoint.flatMap { cell(at: $0) }
         let hovered = cell.flatMap { $0.isFreeSpace || $0.isHiddenSpace ? nil : $0.nodeID }
-        if hoveredRect != cell?.rect {
+        let rectChanged = hoveredRect != cell?.rect
+        if rectChanged {
             hoveredRect = cell?.rect
             host.invalidate()
         }
-        if model.hoveredNodeID != hovered || cell == nil {
+        if model.hoveredNodeID != hovered {
             model.hoveredNodeID = hovered
-            model.vizStatusText(cell.map(statusText(for:)))
             host.invalidate()
+        }
+        if rectChanged {
+            model.vizStatusText(cell.map(statusText(for:)))
         }
     }
 

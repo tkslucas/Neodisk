@@ -44,8 +44,11 @@ enum {
     NDPresentImmediate = 2,
 };
 
-/// Returned by `ndc_canvas_end` when the device is gone: destroy every canvas and image, then start over.
-#define ND_DEVICE_LOST ((int32_t)0x8899000C)
+/// Returned by `ndc_canvas_end` when the device is gone (D2DERR_RECREATE_TARGET): destroy every canvas and image,
+/// then start over.
+enum {
+    NDDeviceLost = -2003238900,
+};
 
 // MARK: Canvas
 

@@ -21,13 +21,20 @@ enum CanvasDemo {
     @MainActor
     static func run() -> Int32 {
         let environment = ProcessInfo.processInfo.environment
-        SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
+        // DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 is a macro cast the importer can't express.
+        _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT(bitPattern: -4))
         let adapter = D2DCanvas.adapterDescription
         CanvasLog.write("canvas: adapter \(adapter.name) software=\(adapter.isSoftware)")
-        guard let (store, label) = loadStore() else { return 1 }
+        guard let loaded = loadStore() else { return 1 }
+        let (store, label) = loaded
         let model = DemoModel(store: store)
         model.isDarkTheme = environment["NEODISK_CANVAS_THEME"] != "light"
         if let style = environment["NEODISK_TREEMAP_STYLE"], style == "flat" { model.treemapStyle = .flat }
+        switch environment["NEODISK_CANVAS_COLOR"] {
+        case "branch": model.colorMode = .branch
+        case "age": model.colorMode = .age(referenceDate: Date())
+        default: break
+        }
 
         if let prefix = environment["NEODISK_CANVAS_PNG"] {
             return renderPNGs(model: model, prefix: prefix)
@@ -90,8 +97,10 @@ enum CanvasDemo {
         let scale = Double(environment["NEODISK_CANVAS_SCALE"] ?? "") ?? 1
         var failures: Int32 = 0
         if let focus = environment["NEODISK_CANVAS_FOCUS"] { _ = model.drillIn(to: focus) }
-        for (name, style, mode) in [("cushion", TreemapStyle.cushion, VizCanvas.Mode.treemap),
-                                    ("flat", .flat, .treemap), ("sunburst", .cushion, .sunburst)] {
+        let views: [(String, TreemapStyle, VizCanvas.Mode)] = [
+            ("cushion", .cushion, .treemap), ("flat", .flat, .treemap), ("sunburst", .cushion, .sunburst),
+        ]
+        for (name, style, mode) in views {
             model.treemapStyle = style
             guard let host = HeadlessCanvas(model: model, size: size, scale: scale) else { return 1 }
             let start = ContinuousClock.now

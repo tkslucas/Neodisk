@@ -83,7 +83,6 @@ struct CleanupPanel: View {
                 }
             }
             .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
         }
         .neoFont(11)
         .padding(.horizontal, 4)
@@ -182,7 +181,6 @@ private struct CleanupNoticeView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(notice.text)
                     .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
                 if notice.kind == .moved {
                     Button("Open Trash") {
                         SystemIntegration.openTrash()

@@ -106,7 +106,7 @@ struct CleanupPanel: View {
                         node: node,
                         failure: cleanup.failures[node.id],
                         isMoving: cleanup.mark(for: node.id) == .moving,
-                        isSelected: model.selectedNodeID == node.id,
+                        isSelected: model.selection.contains(node.id),
                         minHeight: rowHeight,
                         model: model
                     )
@@ -222,7 +222,7 @@ private struct CleanupNoticeView: View {
 }
 
 /// One collected item: click finds it in the map, double-click shows it in Finder; hovering swaps its size for a
-/// remove button. The item selected in the map is highlighted, so ⌘⌫ visibly takes it out.
+/// remove button. Selected items are highlighted, so ⌘⌫ visibly takes them out.
 private struct CleanupItemRow: View {
     let node: FileNodeRecord
     let failure: String?

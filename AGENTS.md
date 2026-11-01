@@ -6,7 +6,7 @@ app per platform (SwiftUI/AppKit on macOS, GTK 4/libadwaita on Linux). Layout an
 ## Commits
 
 - Small, focused Conventional Commits; don't mix refactors with behavior changes.
-- Bump `AppVersion.string` (`Sources/NeodiskAppModel/AppVersion.swift`) on every user-visible change.
+- PRs don't touch `AppVersion.string` (`Sources/NeodiskAppModel/AppVersion.swift`): it's bumped once, in the release step (nightlies carry the date).
 
 ## macOS
 

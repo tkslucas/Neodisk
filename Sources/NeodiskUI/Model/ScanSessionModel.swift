@@ -691,13 +691,12 @@ final class ScanSessionModel {
                 if outcome.rotatedPrevious {
                     // The predecessor rotated: an active diff of this target must rebase on it.
                     self?.diff.snapshotWasRotated(for: snapshot.target)
-                    self?.changes.snapshotWasRotated(for: snapshot.target)
                 } else {
                     // Content-identical rescan: the previous slot still describes the right generation.
                     self?.diff.snapshotWasRestored(for: snapshot.target)
-                    // A removal rewrote the latest in place: a list loaded before the write is the old diff.
-                    if !rotatesPrevious { self?.changes.snapshotWasRotated(for: snapshot.target) }
                 }
+                // Every write rekeys the change list, and a load that ran mid-save came back empty.
+                self?.changes.snapshotWasSaved(for: snapshot.target)
                 // Kind stats ride along so the next restore of this
                 // snapshot starts with a colored map.
                 await Self.saveKindStatsSidecar(for: snapshot, in: snapshotCache)

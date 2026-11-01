@@ -63,7 +63,8 @@ struct OutlineSearchField: View {
                 .help("Clear search")
             }
         }
-        .padding(.horizontal, 10)
+        // The magnifier starts on the list's leading edge, over the rows' chevrons.
+        .padding(.horizontal, OutlineRowMetrics.contentInset)
         .padding(.vertical, 6)
         .onChange(of: model.search.focusToken) { _, _ in
             isSearchFocused = true
@@ -95,8 +96,12 @@ extension NSMenu {
             item.isEnabled = model.layout.canPlaceList(position)
             addItem(item)
         }
-        addItem(ClosureMenuItem(title: NSLocalizedString("Hide File List", comment: "File list menu")) {
-            model.updateLayout { $0.setListShown(false) }
+        let showsList = model.layout.showsList
+        addItem(ClosureMenuItem(title: showsList
+            ? NSLocalizedString("Hide File List", comment: "File list menu")
+            : NSLocalizedString("Show File List", comment: "File list menu")
+        ) {
+            model.updateLayout { $0.setListShown(!showsList) }
         })
     }
 }

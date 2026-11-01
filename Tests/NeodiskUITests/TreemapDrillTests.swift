@@ -393,6 +393,39 @@ import NeodiskKit
         model.moveSelectionInMap(.next, extending: true) { _ in true }
         #expect(Set(model.selection.ids) == [fixture.big.id, fixture.small.id])
     }
+
+    @Test func testListDoubleClickOnAFolderDrillsTheMapAnywhereInTheScan() throws {
+        let fixture = try makeFixture()
+        defer { fixture.tearDown() }
+        let model = fixture.model
+
+        model.activate(fixture.sub)                  // below the root
+        #expect(model.zoomRootID == fixture.sub.id)
+        model.activate(fixture.left)                 // another branch
+        #expect(model.zoomRootID == fixture.left.id)
+        model.activate(fixture.area)                 // above the root
+        #expect(model.zoomRootID == fixture.area.id)
+        model.activate(fixture.root)
+        #expect(model.zoomRootID == nil)
+    }
+
+    @Test func testZoomIntoSelectionIsDisabledWhereItWouldOnlyBeep() throws {
+        let fixture = try makeFixture()
+        defer { fixture.tearDown() }
+        let model = fixture.model
+
+        model.select(fixture.loose.id)               // a file whose folder is already the root
+        #expect(!model.canDrillIntoSelection)
+        #expect(!model.drillIntoSelection())
+        model.select(fixture.sub.id)
+        #expect(model.canDrillIntoSelection)
+        model.select(fixture.big.id)                 // a file: its folder
+        #expect(model.canDrillIntoSelection)
+        #expect(model.drillIntoSelection())
+        #expect(model.zoomRootID == fixture.sub.id)
+        model.select(fixture.big.id)                 // now the folder is the root
+        #expect(!model.canDrillIntoSelection)
+    }
 }
 
 /// A scan service that accepts a scan and holds its stream open forever, so a

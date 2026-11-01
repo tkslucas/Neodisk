@@ -18,6 +18,14 @@ package enum VizView: String, CaseIterable, Sendable {
 
     package var mode: VizViewMode { self == .sunburst ? .sunburst : .treemap }
 
+    package var menuTitle: String {
+        switch self {
+        case .cushion: AppStrings.localized("Cushion Treemap", comment: "View menu")
+        case .flat: AppStrings.localized("Flat Treemap", comment: "View menu")
+        case .sunburst: AppStrings.localized("Sunburst", comment: "View menu")
+        }
+    }
+
     /// Nil for Sunburst, which keeps the treemap style for the trip back.
     package var treemapStyle: TreemapStyle? {
         switch self {

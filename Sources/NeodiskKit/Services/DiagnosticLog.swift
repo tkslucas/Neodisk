@@ -7,6 +7,9 @@ import Foundation
 #if canImport(os)
 import os
 #endif
+#if os(Windows)
+import WinSDK
+#endif
 
 /// Neodisk's log: stderr, the unified log (subsystem = bundle id) and, after `persist(to:)`,
 /// a rolling file that outlives a crash. Log events, never per-entry work.
@@ -82,7 +85,8 @@ public nonisolated struct DiagnosticLog: Sendable {
     /// The log and its rotated predecessor, oldest first.
     public static var files: [URL] { DiagnosticLogFile.shared.files }
 
-    /// `~/Library/Logs/<app>` on macOS, `$XDG_STATE_HOME/<slug>` elsewhere; `NEODISK_LOG_DIR` overrides.
+    /// `~/Library/Logs/<app>` on macOS, `%LOCALAPPDATA%\<app>\Logs` on Windows, `$XDG_STATE_HOME/<slug>`
+    /// elsewhere; `NEODISK_LOG_DIR` overrides.
     public static var defaultDirectory: URL {
         if let override = ProcessInfo.processInfo.environment["NEODISK_LOG_DIR"] {
             return URL(filePath: override, directoryHint: .isDirectory)
@@ -90,6 +94,10 @@ public nonisolated struct DiagnosticLog: Sendable {
         let home = FileManager.default.homeDirectoryForCurrentUser
         #if os(macOS)
         return home.appending(path: "Library/Logs/\(AppChannel.current.appName)", directoryHint: .isDirectory)
+        #elseif os(Windows)
+        let local = ProcessInfo.processInfo.environment["LOCALAPPDATA"].map { URL(filePath: $0, directoryHint: .isDirectory) }
+            ?? home.appending(path: "AppData/Local", directoryHint: .isDirectory)
+        return local.appending(path: "\(AppChannel.current.appName)/Logs", directoryHint: .isDirectory)
         #else
         let state = ProcessInfo.processInfo.environment["XDG_STATE_HOME"].map { URL(filePath: $0) }
             ?? home.appending(path: ".local/state", directoryHint: .isDirectory)
@@ -100,10 +108,28 @@ public nonisolated struct DiagnosticLog: Sendable {
     /// Off in the release app (stderr goes nowhere) unless a dev hook asks.
     private static let mirrorsToStandardError: Bool = {
         let environment = ProcessInfo.processInfo.environment
-        if environment["NEODISK_LOG_STDERR"] == "0" { return false }
-        return Bundle.main.bundleIdentifier == nil || isatty(STDERR_FILENO) != 0
+        if environment["NEODISK_LOG_STDERR"] == "0" || !hasStandardError { return false }
+        return Bundle.main.bundleIdentifier == nil || isStandardErrorTerminal
             || environment["NEODISK_LOG_STDERR"] == "1" || ScanTiming.isEnabled
     }()
+
+    /// A Windows GUI process starts without one, and writing to it then traps.
+    static var hasStandardError: Bool {
+        #if os(Windows)
+        guard let handle = GetStdHandle(STD_ERROR_HANDLE) else { return false }
+        return handle != INVALID_HANDLE_VALUE
+        #else
+        true
+        #endif
+    }
+
+    private static var isStandardErrorTerminal: Bool {
+        #if os(Windows)
+        _isatty(2) != 0
+        #else
+        isatty(STDERR_FILENO) != 0
+        #endif
+    }
 
     /// Local time with its UTC offset, `2026-10-09T08:07:09.699-07:00`.
     private static let timestampStyle = Date.ISO8601FormatStyle(includingFractionalSeconds: true, timeZone: .current)
@@ -140,7 +166,9 @@ private nonisolated final class DiagnosticLogFile: @unchecked Sendable {
                 self.url = url
                 self.maxBytes = maxBytes
             } catch {
-                FileHandle.standardError.write(Data("Neodisk: cannot open log in \(directory.path): \(error)\n".utf8))
+                if DiagnosticLog.hasStandardError {
+                    FileHandle.standardError.write(Data("Neodisk: cannot open log in \(directory.path): \(error)\n".utf8))
+                }
             }
         }
     }

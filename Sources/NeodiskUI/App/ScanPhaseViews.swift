@@ -13,38 +13,80 @@ struct WelcomeView: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            Image(systemName: "internaldrive.fill")
-                .neoFont(56)
-                .foregroundStyle(.blue)
+            Image(systemName: "internaldrive")
+                .neoFont(48, weight: .light)
+                .foregroundStyle(.secondary)
 
             Text("Choose a Folder or Disk")
                 .neoFont(22, weight: .semibold)
 
-            Text("Start from the sidebar, drop a folder into the window,\nor choose a location manually.")
+            Text("Pick a location in the sidebar or drop a folder here.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
 
+            // The default button ends the row; the menu's Add Folder… keeps ⌘O.
             HStack(spacing: 10) {
+                if let startupVolume {
+                    Button {
+                        model.startChosenScan(startupVolume)
+                    } label: {
+                        Text("Scan \(startupVolume.displayName)").neoFont(.body)
+                    }
+                }
+
                 Button {
                     model.chooseFolderAndScan()
                 } label: {
                     Text("Choose Folder…").neoFont(.body)
                 }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut("o")
-
-                if let startupVolume {
-                    Button {
-                        model.startScan(startupVolume)
-                    } label: {
-                        Text("Scan \(startupVolume.displayName)").neoFont(.body)
-                    }
-                    .buttonStyle(.bordered)
-                }
+                .keyboardShortcut(.defaultAction)
             }
             .neoControlSize()
             .padding(.top, 6)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+// MARK: - Full Disk Access
+
+/// Offered once before a first scan that would stop at macOS privacy prompts, laid out like the empty state.
+struct FullDiskAccessGateView: View {
+    let model: NeodiskViewModel
+
+    var body: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "lock.shield")
+                .neoFont(48, weight: .light)
+                .foregroundStyle(.secondary)
+
+            Text("Neodisk Works Best with Full Disk Access")
+                .neoFont(22, weight: .semibold)
+                .multilineTextAlignment(.center)
+
+            Text("Without it, macOS stops the scan to ask about each protected folder, like Documents, Downloads and Photos, and some locations are skipped.")
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: 420)
+
+            HStack(spacing: 10) {
+                Button {
+                    model.passFullDiskAccessGate(remembering: true)
+                } label: {
+                    Text("Scan Anyway").neoFont(.body)
+                }
+
+                Button {
+                    _ = SystemIntegration.prepareAndOpenFullDiskAccessSettings()
+                } label: {
+                    Text("Open Full Disk Access Settings").neoFont(.body)
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+            .neoControlSize()
+            .padding(.top, 6)
+        }
+        .padding(.horizontal, 24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
@@ -78,8 +120,14 @@ private struct ScanProgressContent: View {
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
 
-            Text(phaseTitle)
-                .neoFont(.headline)
+            Group {
+                if let permissionWaitText = progress.permissionWaitText {
+                    Text(permissionWaitText)
+                } else {
+                    Text(phaseTitle)
+                }
+            }
+            .neoFont(.headline)
 
             VStack(spacing: 4) {
                 Text(AppStrings.plural(
@@ -96,7 +144,8 @@ private struct ScanProgressContent: View {
             }
 
             if let onStop {
-                Button("Stop Scan", action: onStop)
+                Button(action: onStop) { Text("Stop Scan").neoFont(.body) }
+                    .neoControlSize()
                     .padding(.top, 4)
             }
         }
@@ -138,22 +187,29 @@ struct ScanFailedView: View {
     let model: NeodiskViewModel
 
     var body: some View {
-        VStack(spacing: 12) {
+        // Laid out like the empty state: one glyph, a title, a line of detail, the default button.
+        VStack(spacing: 14) {
             Image(systemName: "exclamationmark.triangle")
-                .neoFont(40)
+                .neoFont(48, weight: .light)
                 .foregroundStyle(.orange)
-            Text("Scan failed")
-                .neoFont(.headline)
+            Text("Scan Failed")
+                .neoFont(22, weight: .semibold)
             if let message = model.coordinator.scanErrorMessage {
                 Text(message)
+                    .multilineTextAlignment(.center)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: 420)
             }
-            Button("Try Again") {
+            Button {
                 if let target = model.coordinator.selectedTarget {
-                    model.startScan(target)
+                    model.startScan(target, forcesRescan: true)
                 }
+            } label: {
+                Text("Try Again").neoFont(.body)
             }
+            .keyboardShortcut(.defaultAction)
+            .neoControlSize()
+            .padding(.top, 6)
             .disabled(model.coordinator.selectedTarget == nil)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

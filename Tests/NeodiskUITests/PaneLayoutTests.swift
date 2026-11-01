@@ -1,5 +1,5 @@
-// WorkspacePaneMetrics keeps the map pane usable: widths capped to the window, the analysis pane floating when
-// it can't dock, and valid ranges at pathological sizes.
+// WorkspacePaneMetrics keeps the map pane usable: widths capped to the window, side panes always docked and
+// narrowing at large text rather than covering the map, and valid ranges at pathological sizes.
 
 import Foundation
 import SwiftUI
@@ -53,56 +53,76 @@ import Testing
             outline: PaneLayout.outlineMaxWidth(),
             analysis: PaneLayout.analysisMaxWidth()
         )
-        let docked = m.analysisFloats ? 0 : m.analysisWidth + PaneLayout.splitterThickness
-        let map = 900 - m.outlineWidth - PaneLayout.splitterThickness - docked
+        let map = 900 - m.outlineWidth - m.analysisWidth - 2 * PaneLayout.splitterThickness
         #expect(map >= PaneLayout.mapMinWidth)
     }
 
-    @Test func narrowWindowFloatsAnalysisOverTheMap() {
-        // 900 − (600 + 8) − (200 + 8) = 84 < 560: no room to dock, so the
-        // pane floats at its stored width and the outline keeps its room.
+    @Test func narrowWindowDocksAnalysisAtItsMinimum() {
+        // 900 − 300 map − 16 splitters leaves 584: the analysis pane concedes to its minimum, the outline takes
+        // the rest, and the map keeps its own.
         let m = metrics(
             width: 900,
             outline: PaneLayout.outlineMaxWidth(),
             analysis: PaneLayout.analysisMaxWidth()
         )
-        #expect(m.analysisFloats)
-        #expect(m.analysisWidth == PaneLayout.analysisMaxWidth())
-        #expect(m.outlineWidth > PaneLayout.outlineMinWidth())
+        #expect(m.analysisWidth == PaneLayout.analysisMinWidth())
+        #expect(m.outlineWidth == 900 - PaneLayout.mapMinWidth - m.analysisWidth - 2 * PaneLayout.splitterThickness)
     }
 
-    @Test func roomyWindowDocksAnalysis() {
-        // 1_076 − 308 − 208 = 560: just enough map beside a docked pane.
-        #expect(!metrics(width: 1_076).analysisFloats)
-        #expect(metrics(width: 1_075).analysisFloats)
-    }
-
-    @Test func floatingAnalysisLeavesTheLayoutAsIfHidden() {
-        let floating = metrics(width: 900, outline: PaneLayout.outlineMaxWidth())
-        let hidden = metrics(
-            width: 900, showsAnalysis: false, outline: PaneLayout.outlineMaxWidth()
+    /// F36: at 200% in a 1_350-point window with the file list on the left, the panes' text-size minimums
+    /// (480 + 400) don't fit beside the map; they narrow together and the map keeps its minimum.
+    @Test func largeTextNarrowsTheSidePanesInsteadOfCoveringTheMap() {
+        let detail = 1_350 - PaneLayout.sidebarIdealWidth(scale: 2) - 10
+        let m = WorkspacePaneMetrics(
+            available: CGSize(width: detail, height: 800),
+            showsLeadingOutline: true,
+            showsAnalysis: true,
+            storedOutlineWidth: PaneLayout.outlineDefaultWidth(scale: 2),
+            storedAnalysisWidth: PaneLayout.analysisDefaultWidth(scale: 2),
+            storedBottomOutlineHeight: PaneLayout.bottomOutlineDefaultHeight(scale: 2),
+            textScale: 2
         )
-        #expect(floating.analysisFloats)
-        #expect(floating.outlineRange == hidden.outlineRange)
-        #expect(floating.outlineWidth == hidden.outlineWidth)
+        let map = detail - m.outlineWidth - m.analysisWidth - 2 * PaneLayout.splitterThickness
+        #expect(map >= PaneLayout.mapMinWidth - 0.001)
+        #expect(m.outlineRange.lowerBound < PaneLayout.outlineMinWidth(scale: 2))
+        #expect(m.analysisRange.lowerBound < PaneLayout.analysisMinWidth(scale: 2))
+        // Never below their 100% minimums.
+        #expect(m.outlineRange.lowerBound >= PaneLayout.outlineMinWidth())
+        #expect(m.analysisRange.lowerBound >= PaneLayout.analysisMinWidth())
+    }
+
+    @Test func minimumsShrinkOnlyWhenTheyDontFit() {
+        let roomy = WorkspacePaneMetrics.minimums(
+            available: 2_000, showsLeadingOutline: true, showsAnalysis: true, textScale: 2
+        )
+        #expect(roomy.outline == PaneLayout.outlineMinWidth(scale: 2))
+        #expect(roomy.analysis == PaneLayout.analysisMinWidth(scale: 2))
+        // Without the outline, the analysis pane alone fits beside the map.
+        let alone = WorkspacePaneMetrics.minimums(
+            available: 840, showsLeadingOutline: false, showsAnalysis: true, textScale: 2
+        )
+        #expect(alone.analysis == PaneLayout.analysisMinWidth(scale: 2))
+        // Smaller text keeps its own, smaller minimums even in a tiny window.
+        let small = WorkspacePaneMetrics.minimums(
+            available: 300, showsLeadingOutline: true, showsAnalysis: true, textScale: 0.85
+        )
+        #expect(small.outline == PaneLayout.outlineMinWidth(scale: 0.85))
+        #expect(small.analysis == PaneLayout.analysisMinWidth(scale: 0.85))
     }
 
     @Test func hiddenAnalysisPaneFreesItsFootprintForTheOutline() {
         // Docked at 1_100, the analysis pane caps the outline's drag range.
         let shown = metrics(width: 1_100)
         let hidden = metrics(width: 1_100, showsAnalysis: false)
-        #expect(!shown.analysisFloats)
         #expect(hidden.outlineRange.upperBound > shown.outlineRange.upperBound)
     }
 
-    @Test func hiddenOutlineLetsAnalysisDock() {
-        // 800 − 208 = 592 ≥ 560 without the outline; with it, far less.
+    @Test func hiddenOutlineGivesTheAnalysisPaneItsRoom() {
         let shown = metrics(width: 800, outline: PaneLayout.outlineMaxWidth())
         let hidden = metrics(
             width: 800, showsLeadingOutline: false, outline: PaneLayout.outlineMaxWidth()
         )
-        #expect(shown.analysisFloats)
-        #expect(!hidden.analysisFloats)
+        #expect(hidden.analysisRange.upperBound > shown.analysisRange.upperBound)
     }
 
     @Test func shortWindowCapsBottomOutline() {
@@ -135,13 +155,51 @@ import Testing
     }
 
     @Test func windowMinimumsAccommodateAllPaneMinimums() {
-        // At the window's minimum size (900x560) every pane at its minimum plus the map minimum still fits.
+        // At the window's minimum size every pane at its minimum plus the map minimum still fits.
         let widthFloor = PaneLayout.outlineMinWidth() + PaneLayout.analysisMinWidth()
             + 2 * PaneLayout.splitterThickness + PaneLayout.mapMinWidth
         let heightFloor = PaneLayout.bottomOutlineMinHeight() + PaneLayout.splitterThickness
             + PaneLayout.mapColumnMinHeight
-        #expect(widthFloor <= 900)
-        #expect(heightFloor <= 560)
+        #expect(widthFloor <= PaneLayout.windowMinWidth())
+        #expect(heightFloor <= PaneLayout.windowMinHeight())
+    }
+
+    @Test func minimumWindowDocksTheStatisticsPanelBesideTheMap() {
+        for step in TextScale.steps where PaneLayout.windowMinWidth(scale: step) < 1_350 {
+            // The detail column beside the widest sidebar, as the split view lays it out.
+            let detail = PaneLayout.windowMinWidth(scale: step) - PaneLayout.sidebarMaxWidth(scale: step) - 10
+            let m = WorkspacePaneMetrics(
+                available: CGSize(width: detail, height: 700),
+                showsLeadingOutline: false,
+                showsAnalysis: true,
+                storedOutlineWidth: PaneLayout.outlineDefaultWidth(scale: step),
+                storedAnalysisWidth: PaneLayout.analysisDefaultWidth(scale: step),
+                storedBottomOutlineHeight: PaneLayout.bottomOutlineDefaultHeight(scale: step),
+                textScale: step
+            )
+            // The panel at its full text-size minimum still leaves the map a comfortable width.
+            #expect(m.analysisRange.lowerBound == PaneLayout.analysisMinWidth(scale: step), "text scale \(step)")
+            let map = detail - m.analysisRange.lowerBound - PaneLayout.splitterThickness
+            #expect(map >= PaneLayout.mapMinWidthBesideAnalysis, "text scale \(step)")
+        }
+    }
+
+    @Test func windowMinimumNeverOutgrowsTheScreen() {
+        let laptop = CGSize(width: 1440, height: 875)
+        let largest = PaneLayout.windowMinSize(scale: 2, screen: laptop)
+        #expect(largest.width <= laptop.width - 40 && largest.height <= laptop.height - 100)
+        // A big display keeps the full minimum.
+        #expect(PaneLayout.windowMinSize(scale: 2, screen: CGSize(width: 2560, height: 1400))
+            == CGSize(width: PaneLayout.windowMinWidth(scale: 2), height: PaneLayout.windowMinHeight(scale: 2)))
+    }
+
+    @Test func firstWindowTakesMostOfTheScreenWithinBounds() {
+        let laptop = PaneLayout.defaultWindowSize(screen: CGSize(width: 1470, height: 920))
+        #expect(laptop.width == 1250 && laptop.height == 782)
+        let large = PaneLayout.defaultWindowSize(screen: CGSize(width: 3000, height: 1600))
+        #expect(large == CGSize(width: 1600, height: 1000))
+        let small = PaneLayout.defaultWindowSize(screen: CGSize(width: 1024, height: 640))
+        #expect(small.width == PaneLayout.windowMinWidth() && small.height == PaneLayout.windowMinHeight())
     }
 }
 

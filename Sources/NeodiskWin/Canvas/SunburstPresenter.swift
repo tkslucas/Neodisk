@@ -46,7 +46,7 @@ final class SunburstPresenter {
     private var inFlight: Inputs?
     private var hoveredSegment: SunburstSegment?
     private var hoverPoint: CGPoint?
-    private var centerTexts: (title: CanvasText, detail: CanvasText, key: String)?
+    private var centerTexts: (lines: [CenterLine], key: String)?
     private var lastFocusedRootID: String?
     private var wheelDrill = WheelDrillLatch()
     /// The drill animation in progress, if any.
@@ -129,17 +129,25 @@ final class SunburstPresenter {
 
     private nonisolated static func render(inputs: Inputs, store: FileTreeStore, stats: CanvasStats) -> Rendered {
         let start = ContinuousClock.now
-        let layout = (try? SunburstLayout.segments(
-            in: store,
-            rootID: inputs.rootID,
-            depthLimit: SunburstPaint.depthLimit,
-            freeSpaceBytes: inputs.freeSpaceBytes,
-            hiddenSpaceBytes: inputs.hiddenSpaceBytes,
-            expandedAggregateIDs: inputs.expandedAggregateIDs,
-            freeSpaceLabel: AppStrings.text("Free Space"),
-            hiddenSpaceLabel: AppStrings.text("Hidden Space"),
-            cancellationCheck: {}
-        )) ?? []
+        func layOut(depthLimit: Int) -> [SunburstSegment] {
+            (try? SunburstLayout.segments(
+                in: store,
+                rootID: inputs.rootID,
+                depthLimit: depthLimit,
+                freeSpaceBytes: inputs.freeSpaceBytes,
+                hiddenSpaceBytes: inputs.hiddenSpaceBytes,
+                expandedAggregateIDs: inputs.expandedAggregateIDs,
+                freeSpaceLabel: AppStrings.text("Free Space"),
+                hiddenSpaceLabel: AppStrings.text("Hidden Space"),
+                cancellationCheck: {}
+            )) ?? []
+        }
+        // Rings are sized for the depth the chart shows: a shallow folder, or one deep branch, gets thick rings
+        // that fill the pane instead of a few thin ones around an empty middle (the rule Mac PR #132 brings to
+        // SunburstCore; once it lands this second pass finds nothing to trim).
+        var layout = layOut(depthLimit: SunburstPaint.depthLimit)
+        let rings = Self.fittedRingCount(of: layout, depthLimit: SunburstPaint.depthLimit)
+        if rings < SunburstPaint.depthLimit { layout = layOut(depthLimit: rings) }
         let segments = SunburstLayout.styled(layout, style: inputs.style, in: store)
         let laidOut = ContinuousClock.now
         let geometry = SunburstGeometry(size: inputs.size)
@@ -247,30 +255,74 @@ final class SunburstPresenter {
 
     private func drawCenter(_ canvas: D2DCanvas, geometry: SunburstGeometry, isDark: Bool) {
         guard let store = model.store, let rootID = frame?.inputs.rootID, let root = store.node(id: rootID) else { return }
-        // Nine tenths of the center circle's width, as on the Mac: a long name shrinks a little, then truncates,
-        // rather than shrinking past legibility.
-        let width = geometry.maxRadius * SunburstLayout.centerRadius * 2 * 0.9
-        let key = "\(root.id)|\(root.allocatedSize)|\(geometry.maxRadius)"
+        let radius = geometry.maxRadius * (SunburstLayout.centerRadius - SunburstLayout.ringGap)
+        let key = "\(root.id)|\(root.allocatedSize)|\(radius)"
         if centerTexts?.key != key {
             let title = root.name.isEmpty ? root.path : root.name
-            let detail = NeodiskFormatters.size(root.allocatedSize)
-            let titleSize = Self.fittedSize(title, base: 14, bold: true, width: width, minimumScale: 0.8)
-            let detailSize = Self.fittedSize(detail, base: 12, bold: false, width: width, minimumScale: 0.6)
-            guard let titleText = CanvasText(title, size: titleSize, bold: true, maxWidth: width, alignment: .center),
-                  let detailText = CanvasText(detail, size: detailSize, maxWidth: width, alignment: .center) else {
-                return
-            }
-            centerTexts = (titleText, detailText, key)
+            centerTexts = (Self.centerLines(title: title, detail: NeodiskFormatters.size(root.allocatedSize), radius: radius), key)
         }
-        guard let centerTexts else { return }
-        let total = centerTexts.title.height + centerTexts.detail.height
+        guard let lines = centerTexts?.lines, !lines.isEmpty else { return }
         let color = isDark ? NDColor.white : NDColor.black.withAlpha(0.85)
-        canvas.draw(centerTexts.title, at: CGPoint(x: geometry.center.x - width / 2, y: geometry.center.y - total / 2), color)
-        canvas.draw(
-            centerTexts.detail,
-            at: CGPoint(x: geometry.center.x - width / 2, y: geometry.center.y - total / 2 + centerTexts.title.height),
-            color.withAlpha(0.7)
-        )
+        var y = geometry.center.y - lines.reduce(0) { $0 + $1.text.height } / 2
+        for line in lines {
+            canvas.draw(line.text, at: CGPoint(x: geometry.center.x - line.width / 2, y: y), line.isDetail ? color.withAlpha(0.7) : color)
+            y += line.text.height
+        }
+    }
+
+    struct CenterLine {
+        let text: CanvasText
+        let width: Double
+        let isDetail: Bool
+    }
+
+    /// The name and size inside the center hole. Each line is as wide as the circle is at its height, so the
+    /// outer lines don't run into the first ring. A name that doesn't fit shrinks a little; one that still
+    /// doesn't fit leaves the size alone rather than showing a cut-off name.
+    static func centerLines(title: String, detail: String, radius: Double) -> [CenterLine] {
+        let titleBase = 14.0, detailBase = 12.0
+        let titleLine = titleBase * 1.33, detailLine = detailBase * 1.33
+        /// The chord at the line's far edge from the center, with a little air.
+        func chord(top: Double, bottom: Double) -> Double {
+            let edge = max(abs(top), abs(bottom))
+            return edge < radius ? 2 * (radius * radius - edge * edge).squareRoot() * 0.92 : 0
+        }
+        /// The title lines (none or one) over the size line, or nil when the circle has no room for them.
+        func lines(_ titles: [String]) -> [CenterLine]? {
+            let heights = titles.map { _ in titleLine } + [detailLine]
+            var top = -heights.reduce(0, +) / 2
+            var result: [CenterLine] = []
+            for (index, height) in heights.enumerated() {
+                let width = chord(top: top, bottom: top + height)
+                top += height
+                guard width > 12 else { return nil }
+                let isDetail = index == titles.count
+                let string = isDetail ? detail : titles[index]
+                let base = isDetail ? detailBase : titleBase
+                let size = fittedSize(string, base: base, bold: !isDetail, width: width, minimumScale: isDetail ? 0.6 : 0.8)
+                guard let text = CanvasText(string, size: size, bold: !isDetail, maxWidth: width, alignment: .center) else {
+                    return nil
+                }
+                result.append(CenterLine(text: text, width: width, isDetail: isDetail))
+            }
+            return result
+        }
+        if let named = lines([title]), named[0].text.naturalWidth <= named[0].width + 0.5 { return named }
+        // No room for the whole name: the size alone (the header above names the folder), then nothing.
+        return lines([]) ?? []
+    }
+
+    /// A ring counts when its arcs cover at least this share of the circle; sparser, deeper rings are left to
+    /// drilling in.
+    nonisolated static let minimumRingCoverage: Double = 0.1
+
+    /// The rings a layout needs: down to the deepest ring that still covers `minimumRingCoverage`, at least one.
+    nonisolated static func fittedRingCount(of segments: [SunburstSegment], depthLimit: Int) -> Int {
+        var coverage = [Double](repeating: 0, count: max(depthLimit, 1))
+        for segment in segments where segment.depth < coverage.count {
+            coverage[segment.depth] += (segment.endAngle - segment.startAngle) / (.pi * 2)
+        }
+        return (coverage.lastIndex { $0 >= minimumRingCoverage } ?? 0) + 1
     }
 
     /// The font size that fits `text` in `width`, no smaller than `minimumScale` of `base`.
@@ -354,7 +406,8 @@ final class SunburstPresenter {
         inputs: Inputs
     ) {
         let painter = ArcPainter(geometry: SunburstGeometry(size: size), palette: inputs.style.palette, isDark: inputs.isDark)
-        let metrics = SunburstRingMetrics(depthLimit: SunburstPaint.depthLimit)
+        // The ring bands the animated arcs were laid out in (fitted to their depth, see `render`).
+        let metrics = SunburstRingMetrics(depthLimit: (zoom.animatedSegments.map(\.depth).max() ?? 0) + 1)
         switch presentation.phase {
         case .zooming(let progress):
             guard let focus = zoom.focus else { return }

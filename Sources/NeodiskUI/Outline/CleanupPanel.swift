@@ -133,7 +133,9 @@ struct CleanupPanel: View {
             }
             .neoFont(11)
             .multilineTextAlignment(.center)
-            .fixedSize(horizontal: false, vertical: true)
+            // Wraps to its lines without fixing its height: a fixed height is measured at any width the window
+            // probes, and a narrow probe pushed the whole window's content past its edges.
+            .lineLimit(4)
         }
         .foregroundStyle(tint)
         .frame(maxWidth: .infinity)
@@ -143,10 +145,10 @@ struct CleanupPanel: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .strokeBorder(tint.opacity(highlighted ? 0.8 : 0.4), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
         )
-        .help(cleanup.unavailableReason == nil ? NSLocalizedString(
+        .help(cleanup.unavailableReason ?? NSLocalizedString(
             "Drag files and folders here, or press ⌘⌫, to collect them. Nothing moves until you confirm.",
             comment: "Cleanup panel tooltip"
-        ) : "")
+        ))
     }
 
     /// Grows with the items up to six and a half rows, then scrolls: the half row says there's more.
@@ -387,7 +389,7 @@ private struct CleanupItemRow: View {
                 Text(failure)
                     .neoFont(10)
                     .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(3)
                     .padding(.leading, (16 * textScale).rounded() + 6)
             }
         }

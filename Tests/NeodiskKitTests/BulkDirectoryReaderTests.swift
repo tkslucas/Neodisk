@@ -266,7 +266,17 @@ import Foundation
             let expected = try childURL.resourceValues(forKeys: [.isPackageKey]).isPackage ?? false
             let bulkVerdict = try #require(children[name]?.metadata?.isPackage as Bool?)
             #expect(bulkVerdict == expected, "package mismatch for \(name)")
+            #expect(BulkDirectoryReader.isPackageDirectory(atPath: childURL.path) == expected, "path verdict for \(name)")
         }
+
+        // The Finder bundle bit makes any folder a package, for the single-path check as for the bulk read.
+        let flagged = rootURL.appending(path: "Flagged", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: flagged, withIntermediateDirectories: false)
+        var finderInfo = [UInt8](repeating: 0, count: 32)
+        finderInfo[8] = 0x20
+        #expect(setxattr(flagged.path, "com.apple.FinderInfo", &finderInfo, 32, 0, 0) == 0)
+        #expect(try readBulkChildren(of: rootURL)["Flagged"]?.metadata?.isPackage == true)
+        #expect(BulkDirectoryReader.isPackageDirectory(atPath: flagged.path))
     }
     #endif
 

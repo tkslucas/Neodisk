@@ -347,7 +347,7 @@ func runRescanBench(target: ScanTarget, options: ScanOptions, touchPath: String?
             for try await event in stream {
                 switch event {
                 case .progress(let metrics): reporter.update(metrics)
-                case .warning, .partial: break
+                case .warning, .partial, .waitingForPermission: break
                 case .finished(let snapshot): finished = snapshot
                 }
             }
@@ -481,7 +481,7 @@ do {
             if metrics.progressFraction < lastProgressFraction { progressRegressions += 1 }
             lastProgressFraction = max(lastProgressFraction, metrics.progressFraction)
             reporter.update(metrics)
-        case .warning, .partial:
+        case .warning, .partial, .waitingForPermission:
             break
         case .finished(let snapshot):
             finishedSnapshot = snapshot

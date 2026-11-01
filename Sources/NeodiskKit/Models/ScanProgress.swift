@@ -104,4 +104,7 @@ public enum ScanProgressEvent: Sendable {
     /// Sizes include only children visited so far and skip hard-link dedup; `finished` supersedes it.
     case partial(FileTreeStore)
     case finished(ScanSnapshot)
+    /// A read in this privacy-protected folder is blocked long enough to be a macOS permission prompt; nil once
+    /// it's answered. Only scans without Full Disk Access can see one.
+    case waitingForPermission(String?)
 }

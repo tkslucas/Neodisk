@@ -12,6 +12,8 @@ import CZstd
 /// (PayloadReader) or a stream (StreamingPayloadReader).
 nonisolated protocol PayloadReading: LittleEndianByteReading {
     mutating func readString() throws -> String
+    /// A length-prefixed string's bytes, appended to `bytes` without making a String.
+    mutating func readStringBytes(appendingTo bytes: inout [UInt8]) throws
 }
 
 extension PayloadReader: PayloadReading {}
@@ -276,6 +278,11 @@ nonisolated final class StreamingPayloadReader: PayloadReading {
 
     func readBytes(count: Int) throws -> Data {
         Data(bytes: try take(count), count: count)
+    }
+
+    func readStringBytes(appendingTo bytes: inout [UInt8]) throws {
+        let count = Int(UInt32(littleEndian: try load(UInt32.self)))
+        bytes.append(contentsOf: UnsafeRawBufferPointer(start: try take(count), count: count))
     }
 
     func load<T>(_ type: T.Type) throws -> T {

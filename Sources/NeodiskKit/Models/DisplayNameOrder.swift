@@ -25,6 +25,11 @@ public enum DisplayNameOrder {
     /// Negative, zero, or positive as `lhs` sorts before, equal to, or after
     /// `rhs` in natural order.
     public nonisolated static func naturalOrder(_ lhs: String, _ rhs: String) -> Int {
+        // Borrows both strings' bytes; copying them into `var`s first cost a third of a tie-heavy sort.
+        let borrowed = lhs.utf8.withContiguousStorageIfAvailable { a in
+            rhs.utf8.withContiguousStorageIfAvailable { b in naturalOrder(a, b) }
+        }
+        if let borrowed, let order = borrowed { return order }
         var lhs = lhs
         var rhs = rhs
         return lhs.withUTF8 { a in

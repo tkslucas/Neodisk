@@ -115,10 +115,7 @@ import Testing
                 storedBottomOutlineHeight: PaneLayout.bottomOutlineMaxHeight(scale: step),
                 textScale: step
             )
-            // A pane that can't dock floats over the map instead.
-            let docked = metrics.analysisFloats
-                ? 0 : metrics.analysisWidth + PaneLayout.splitterThickness
-            let map = width - metrics.outlineWidth - PaneLayout.splitterThickness - docked
+            let map = width - metrics.outlineWidth - metrics.analysisWidth - 2 * PaneLayout.splitterThickness
             #expect(map >= PaneLayout.mapMinWidth)
         }
     }
@@ -147,7 +144,10 @@ import Testing
 
     @Test func controlSizeStepsUpWithTheTextAndClampsAtTheTop() {
         #expect(TextScale.controlSize(base: .small, scale: 1.3) == .regular)
-        #expect(TextScale.controlSize(base: .small, scale: 2.0) == .large)
+        #expect(TextScale.controlSize(base: .small, scale: 1.5) == .large)
+        // A .large control is too short for 19-22 pt labels.
+        #expect(TextScale.controlSize(base: .small, scale: 1.75) == .extraLarge)
+        #expect(TextScale.controlSize(base: .small, scale: 2.0) == .extraLarge)
         #expect(TextScale.controlSize(base: .regular, scale: 2.0) == .extraLarge)
         // Already at the top of the ladder: stays there rather than trapping.
         #expect(TextScale.controlSize(base: .extraLarge, scale: 2.0) == .extraLarge)
@@ -161,6 +161,14 @@ import Testing
                 #expect(TextScale.controlSizes.firstIndex(of: grown)! >= start)
             }
         }
+    }
+
+    /// Control titles take AppKit's size for the base control, scaled, so 100% renders as before.
+    @Test func controlLabelsScaleFromTheBaseControlsFont() {
+        #expect(TextScale.controlFontSize(base: .small, scale: 1.0) == 11)
+        #expect(TextScale.controlFontSize(base: .regular, scale: 1.0) == 13)
+        #expect(TextScale.controlFontSize(base: .mini, scale: 1.0) == 9)
+        #expect(TextScale.controlFontSize(base: .small, scale: 2.0) == 22)
     }
 
     // MARK: - Treemap labels

@@ -32,8 +32,10 @@ struct SnapshotNoticeStrip: View {
                 }
             }
             Spacer(minLength: 4)
-            Button("Rescan Now") {
+            Button {
                 model.rescan()
+            } label: {
+                Text("Rescan Now").neoFont(11)
             }
             .neoControlSize(base: .small)
             Button {

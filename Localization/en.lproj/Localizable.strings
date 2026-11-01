@@ -427,6 +427,7 @@
 "Top %lld of %@ matches" = "Top %lld of %@ matches";
 "Visualization" = "Visualization";
 "%@ free of %@" = "%@ free of %@";
+"%@ of %@ used" = "%@ of %@ used";
 "%@ in %@ files" = "%@ in %@ files";
 "%@ in %@ file" = "%@ in %@ file";
 

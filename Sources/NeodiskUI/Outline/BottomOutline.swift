@@ -337,8 +337,41 @@ struct BottomOutlineTable: NSViewRepresentable {
                 && zip(rows, snapshot.rows).allSatisfy { $0.id == $1.id }
             rows = snapshot.rows
             rowIndexByID = snapshot.rowIndexByID
+            maxDepth = rows.lazy.map(\.depth).max() ?? 0
+            updateIndent()
             structuralApplyCount += 1
             selectionSync.whileApplying { tableView?.reloadRows(keepingRowViews: sameRows) }
+        }
+
+        private var maxDepth = 0
+        /// The indentation per level the name cells use.
+        private(set) var indentPerDepth = OutlineRowMetrics.indentPerDepth
+
+        /// A deep tree may indent across at most 40% of the Name column: past that every level indents less
+        /// (down to 4pt, so the hierarchy still reads) and names keep their room. True when it changed.
+        @discardableResult
+        private func updateIndent() -> Bool {
+            let standard = OutlineRowMetrics.indentPerDepth
+            var indent = standard
+            if maxDepth > 0, let tableView,
+               case let index = tableView.column(withIdentifier: .init(OutlineColumn.name.rawValue)), index >= 0 {
+                let budget = tableView.tableColumns[index].width * 0.4
+                indent = max(4, min(standard, (budget / CGFloat(maxDepth)).rounded(.down)))
+            }
+            guard indent != indentPerDepth else { return false }
+            indentPerDepth = indent
+            return true
+        }
+
+        func tableViewColumnDidResize(_ notification: Notification) {
+            guard let tableView, updateIndent() else { return }
+            let nameIndex = tableView.column(withIdentifier: .init(OutlineColumn.name.rawValue))
+            let visible = tableView.rows(in: tableView.visibleRect)
+            guard nameIndex >= 0, visible.length > 0 else { return }
+            tableView.reloadData(
+                forRowIndexes: IndexSet(integersIn: visible.location..<visible.location + visible.length),
+                columnIndexes: [nameIndex]
+            )
         }
 
         /// Reflect the persisted sort into the header arrows. Guarded by
@@ -394,7 +427,8 @@ struct BottomOutlineTable: NSViewRepresentable {
             case "name":
                 return hostedCell(tableView, reuse: "name") { state in
                     OutlineNameSection(
-                        model: model, row: outlineRow, state: state, truncatesName: true, leadingInset: 0
+                        model: model, row: outlineRow, state: state, truncatesName: true, leadingInset: 0,
+                        indentPerDepth: indentPerDepth
                     )
                 }
             case "percent":

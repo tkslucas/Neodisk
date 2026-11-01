@@ -68,6 +68,21 @@ import NeodiskKit
         #expect(abs(totalArea - 400 * 300) < 1)
     }
 
+    /// A lone sliver thinner than half a point still gets its cell; dropping it left a hole the window
+    /// background showed through as a bright hairline.
+    @Test func sliverCellsLeaveNoHoles() {
+        let big = makeTestFileNode(id: "/scan/big", name: "big", size: 100_000)
+        let sliver = makeTestFileNode(id: "/scan/sliver", name: "sliver", size: 10)
+        let root = makeTestDirectoryNode(id: "/scan", name: "scan", children: [big, sliver])
+        let store = FileTreeStore(root: root, childrenByID: ["/scan": [big, sliver]])
+        let scene = TreemapScene.build(
+            store: store, rootID: "/scan", size: CGSize(width: 400, height: 300), catalog: .empty
+        )
+        #expect(scene.cells.contains { $0.nodeID == "/scan/sliver" })
+        let totalArea = scene.cells.reduce(0.0) { $0 + Double($1.rect.width * $1.rect.height) }
+        #expect(abs(totalArea - 400 * 300) < 0.01)
+    }
+
     @Test func hitTestFindsCellUnderPoint() throws {
         let store = makeStore()
         let scene = TreemapScene.build(

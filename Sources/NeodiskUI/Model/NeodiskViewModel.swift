@@ -207,6 +207,16 @@ final class NeodiskViewModel {
     /// The sidebar's Folders section: seeded with the common folders on
     /// first launch, extended by Add Folder, every entry removable.
     var sidebarFolders: [ScanTarget] = []
+    /// The Folders rows the user added, not the common ones the section starts with.
+    var addedSidebarFolders: [ScanTarget] {
+        let commonIDs = Set(sidebarFolderStore.commonFolders.map(\.id))
+        return sidebarFolders.filter { !commonIDs.contains($0.id) }
+    }
+    /// True when a common folder was removed, so Settings can bring it back.
+    var isMissingCommonSidebarFolders: Bool {
+        let ids = Set(sidebarFolders.map(\.id))
+        return sidebarFolderStore.commonFolders.contains { !ids.contains($0.id) }
+    }
     /// Mounted volumes shown in the sidebar's Volumes section.
     let volumeLocations = SystemIntegration.volumeTargets()
     /// Locally-synced cloud storage folders (iCloud Drive, File Provider
@@ -766,6 +776,15 @@ final class NeodiskViewModel {
                 await snapshotCache.removeSnapshot(forTargetID: id)
             }
         }
+    }
+
+    /// Settings' Clear Added Folders: the common folders stay.
+    func removeAddedSidebarFolders() {
+        removeSidebarFolders(ids: Set(addedSidebarFolders.map(\.id)))
+    }
+
+    func restoreCommonSidebarFolders() {
+        sidebarFolders = sidebarFolderStore.restoreCommonFolders(keeping: sidebarFolders)
     }
 
     /// The location of the last displayed tree, so a newer tree of the same

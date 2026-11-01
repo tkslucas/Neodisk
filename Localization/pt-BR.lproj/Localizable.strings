@@ -99,6 +99,9 @@
 "Allow moving items to the Trash" = "Permitir mover itens para a Lixeira";
 "Sidebar Folders" = "Pastas da Barra Lateral";
 "Clear Added Folders" = "Limpar Pastas Adicionadas";
+"Restore Default Folders" = "Restaurar Pastas Padrão";
+"Remove the folders you added from the sidebar?" = "Remover da barra lateral as pastas que você adicionou?";
+"Their scan snapshots are removed too." = "Os snapshots de análise delas também são removidos.";
 "Scan Snapshots" = "Snapshots de Análise";
 "Size on disk" = "Tamanho no disco";
 "Calculating…" = "Calculando…";

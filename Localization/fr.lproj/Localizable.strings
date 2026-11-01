@@ -98,6 +98,9 @@
 "Allow moving items to the Trash" = "Autoriser le placement d'éléments dans la Corbeille";
 "Sidebar Folders" = "Dossiers de la barre latérale";
 "Clear Added Folders" = "Effacer les dossiers ajoutés";
+"Restore Default Folders" = "Rétablir les dossiers par défaut";
+"Remove the folders you added from the sidebar?" = "Retirer de la barre latérale les dossiers que vous avez ajoutés ?";
+"Their scan snapshots are removed too." = "Leurs instantanés d'analyse sont aussi supprimés.";
 "Scan Snapshots" = "Instantanés d'analyse";
 "Size on disk" = "Taille sur le disque";
 "Calculating…" = "Calcul en cours…";

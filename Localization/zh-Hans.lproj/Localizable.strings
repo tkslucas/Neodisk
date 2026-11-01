@@ -98,6 +98,9 @@
 "Allow moving items to the Trash" = "允许将项目移到废纸篓";
 "Sidebar Folders" = "边栏文件夹";
 "Clear Added Folders" = "清除已添加的文件夹";
+"Restore Default Folders" = "恢复默认文件夹";
+"Remove the folders you added from the sidebar?" = "要从边栏中移除你添加的文件夹吗？";
+"Their scan snapshots are removed too." = "它们的扫描快照也会一并移除。";
 "Scan Snapshots" = "扫描快照";
 "Size on disk" = "占用磁盘空间";
 "Calculating…" = "正在计算…";

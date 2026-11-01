@@ -98,6 +98,9 @@
 "Allow moving items to the Trash" = "項目をゴミ箱に入れることを許可";
 "Sidebar Folders" = "サイドバーのフォルダ";
 "Clear Added Folders" = "追加したフォルダを消去";
+"Restore Default Folders" = "標準のフォルダを戻す";
+"Remove the folders you added from the sidebar?" = "追加したフォルダをサイドバーから削除しますか？";
+"Their scan snapshots are removed too." = "それらのスキャンスナップショットも削除されます。";
 "Scan Snapshots" = "スキャンスナップショット";
 "Size on disk" = "ディスク上のサイズ";
 "Calculating…" = "計算中…";

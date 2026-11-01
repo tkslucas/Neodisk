@@ -98,6 +98,9 @@
 "Allow moving items to the Trash" = "Verschieben in den Papierkorb erlauben";
 "Sidebar Folders" = "Ordner in der Seitenleiste";
 "Clear Added Folders" = "Hinzugefügte Ordner entfernen";
+"Restore Default Folders" = "Standardordner wiederherstellen";
+"Remove the folders you added from the sidebar?" = "Die hinzugefügten Ordner aus der Seitenleiste entfernen?";
+"Their scan snapshots are removed too." = "Ihre Scan-Snapshots werden ebenfalls entfernt.";
 "Scan Snapshots" = "Scan-Snapshots";
 "Size on disk" = "Größe auf dem Datenträger";
 "Calculating…" = "Wird berechnet …";

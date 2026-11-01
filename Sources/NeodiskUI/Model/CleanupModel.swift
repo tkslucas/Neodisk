@@ -170,7 +170,7 @@ final class CleanupModel {
     }
 
     /// What ⌘⌫ or the Cleanup menu item does to these items: add the ones not in yet that may go (a folder takes
-    /// what's inside it), else take out the collected ones. Items only inside a collected folder can't move on their own.
+    /// what's inside it), else take out the collected ones. Items inside a collected folder can't move on their own.
     enum Toggle: Equatable {
         case add([String])
         case remove([String])
@@ -181,10 +181,10 @@ final class CleanupModel {
         guard let store else { return .none }
         let marks = nodes.map { ($0, mark(for: $0.id)) }
         let uncovered = marks.filter { $0.1 == .none }.map(\.0)
-        if !uncovered.isEmpty {
-            return .add(split(uncovered, in: store).allowed.map(\.id))
-        }
+        let addable = uncovered.isEmpty ? [] : split(uncovered, in: store).allowed.map(\.id)
         let collected = marks.filter { $0.1 == .collected }.map(\.0.id)
+        // Only refused items left to add (the root after Select All): a collected one makes it a remove.
+        if !addable.isEmpty || (collected.isEmpty && !uncovered.isEmpty) { return .add(addable) }
         return collected.isEmpty ? .none : .remove(collected)
     }
 

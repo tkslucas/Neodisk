@@ -221,6 +221,10 @@ import NeodiskAppModel
         // Old/d.bin goes with Old: only the root and Keep are refused.
         #expect(model.cleanup.notice?.text
             == "Added 3 items. 2 items can't go to the Trash. " + TrashRefusal.scanRoot.localizedReason)
+        // Pressed again, it takes them out: the refused root and Keep don't make it an add.
+        #expect(model.cleanupMenuTitle(for: [store.root] + nodes) == "Remove 3 Items from Cleanup")
+        model.cleanup.toggle([store.root] + nodes)
+        #expect(model.cleanup.isEmpty)
     }
 
     @Test func cancellingTheConfirmationMovesNothing() async throws {

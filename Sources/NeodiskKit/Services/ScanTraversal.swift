@@ -625,12 +625,33 @@ nonisolated final class ScanTraversal {
         batch.duplicateWarnings.reverse()
         // Presorted in parallel here: assembly's stable sort uses the same comparator, so presorted runs make it
         // near-linear without changing its result.
-        batch.nodes.sort { lhs, rhs in
-            lhs.allocatedSize == rhs.allocatedSize
-                ? DisplayNameOrder.precedes(lhs.name, rhs.name)
-                : lhs.allocatedSize > rhs.allocatedSize
-        }
+        sortBySizeThenName(&batch.nodes)
         return batch
+    }
+
+    /// Same order as a stable `sort` on the records, but sorts indices and then permutes by swaps: sorting the
+    /// records themselves copied each one (and retained its strings) through the merge buffer.
+    static func sortBySizeThenName(_ nodes: inout [FileNodeRecord]) {
+        guard nodes.count > 1 else { return }
+        var order = nodes.withUnsafeBufferPointer { records in
+            Array(0..<records.count).sorted { lhs, rhs in
+                let left = records[lhs], right = records[rhs]
+                return left.allocatedSize == right.allocatedSize
+                    ? DisplayNameOrder.precedes(left.name, right.name)
+                    : left.allocatedSize > right.allocatedSize
+            }
+        }
+        // Follow each cycle of the permutation; a placed slot is marked -1.
+        for start in order.indices where order[start] >= 0 {
+            var slot = start
+            while order[slot] != start {
+                let source = order[slot]
+                nodes.swapAt(slot, source)
+                order[slot] = -1
+                slot = source
+            }
+            order[slot] = -1
+        }
     }
 
     /// Applies one directory worker's aggregate leaf accounting in O(1) loop

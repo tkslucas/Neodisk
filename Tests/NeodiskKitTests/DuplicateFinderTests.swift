@@ -307,10 +307,12 @@ import Testing
             }
 
             // A same-size named pipe would block forever if opened; the finder must skip it on metadata.
-            // This test hangs if the guard regresses.
+            // This test hangs if the guard regresses. Windows has no named pipes in the file system.
+            #if !os(Windows)
             let fifoURL = directory.appending(path: "pipe.bin")
             #expect(mkfifo(fifoURL.path, 0o644) == 0)
             children.append(try fileNode(url: fifoURL, size: Int64(2 * Self.megabyte)))
+            #endif
 
             let root = FileNodeRecord.directory(
                 id: directory.path,
@@ -331,10 +333,16 @@ import Testing
             #expect(results.groups.count == 1)
             #expect(results.groups.first?.nodeIDs.count == 2)
             // The fifo survived size grouping but was skipped before hashing.
+            #if os(Windows)
+            #expect(results.unreadableCount == 0)
+            #else
             #expect(results.unreadableCount == 1)
+            #endif
         }
     }
 
+    // The Windows walk counts each hard link: directory info has no link count (see WindowsFileInfo).
+    #if !os(Windows)
     @Test func hardLinksCollapseToOneCopy() async throws {
         try await withTempDirectory { directory in
             let identical = bytes(seed: 0x7A, count: 2 * Self.megabyte)
@@ -393,6 +401,7 @@ import Testing
             #expect(group.nodeIDs.count == 2)
         }
     }
+    #endif
 
     @Test func vanishedFileCountsAsUnreadable() async throws {
         try await withTempDirectory { directory in
@@ -470,6 +479,10 @@ import Testing
     /// Pins a file's access+modification time to whole seconds so its
     /// hash-cache stamp is reproducible after an in-place content swap.
     private func setModificationTime(_ url: URL, secondsSinceEpoch: Int) throws {
+        #if os(Windows)
+        let date = Date(timeIntervalSince1970: TimeInterval(secondsSinceEpoch))
+        try FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: url.path)
+        #else
         var times = [
             timeval(tv_sec: secondsSinceEpoch, tv_usec: 0),
             timeval(tv_sec: secondsSinceEpoch, tv_usec: 0),
@@ -477,6 +490,7 @@ import Testing
         guard utimes(url.path, &times) == 0 else {
             throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
         }
+        #endif
     }
 
     /// Keeps size and inode and restores mtime: the one change the freshness stamp is documented to miss.

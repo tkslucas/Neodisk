@@ -1,5 +1,6 @@
 // Binary snapshot format behind ScanSnapshotCache, plus the header-only metadata read for indexing.
 
+import Dispatch
 import Foundation
 
 /// Layout: magic, version, metadata length, uncompressed metadata JSON, then a payload (compressed in v2+)
@@ -395,6 +396,9 @@ nonisolated enum ScanSnapshotCodec {
         }
     }
 
+    /// Nodes per batch handed to a worker: big enough that dispatch is noise, small enough to keep cores fed.
+    private static let decodeBatchSize = 8192
+
     private static func readTreeStore<Reader: PayloadReading>(
         nodeCount: Int,
         aggregateStats: ScanAggregateStats,
@@ -408,67 +412,120 @@ nonisolated enum ScanSnapshotCodec {
             throw ScanSnapshotCacheError.corruptData("implausible node count \(nodeCount)")
         }
 
-        // Preorder with child counts is exactly the TreeStorage layout. The id index is built afterwards in one
-        // parallel pass, which roughly halves decode.
-        var nodes: [FileNodeRecord] = []
+        // Preorder with child counts is exactly the TreeStorage layout. This thread parses the stream in order
+        // (fields, topology, each node's id and name bytes); workers turn batches into records and id hashes,
+        // since building millions of strings was most of a big decode.
         var parentIndices: [Int32] = []
         var childStarts: [Int32] = [0]
         var childSlots = [Int32](repeating: 0, count: max(0, nodeCount - 1))
-        nodes.reserveCapacity(nodeCount)
         parentIndices.reserveCapacity(nodeCount)
         childStarts.reserveCapacity(nodeCount + 1)
-        /// Ancestors still being filled: children each still expects and the next free slot.
-        var openDirectories: [(index: Int32, remainingChildren: Int, nextSlot: Int)] = []
+        /// Ancestors still being filled: children each still expects, the next free slot, and where its id
+        /// ends in `ancestorIDBytes`.
+        var openDirectories: [(index: Int32, remainingChildren: Int, nextSlot: Int, idEnd: Int)] = []
+        /// The open directories' ids, back to back: a child's id is the last one, a slash and its name.
+        var ancestorIDBytes: [UInt8] = []
+        var hashes = [UInt64](repeating: 0, count: nodeCount)
+        var rootID: String?
 
-        for index in 0..<nodeCount {
-            if index & 1023 == 0 { try Task.checkCancellation() }
-            let parentID = openDirectories.last.map { nodes[Int($0.index)].id }
-            let (node, childCount) = try readNode(parentID: parentID, version: version, from: &reader)
-            let index = Int32(nodes.count)
+        let nodes = try hashes.withUnsafeMutableBufferPointer { hashesOut in
+            try [FileNodeRecord](unsafeUninitializedCapacity: nodeCount) { buffer, initializedCount in
+                nonisolated(unsafe) let records = buffer
+                nonisolated(unsafe) let hashesBuffer = hashesOut
+                let group = DispatchGroup()
+                // Bounds the batches parsed ahead of the workers, and so the arenas held at once.
+                let inFlight = DispatchSemaphore(value: ProcessInfo.processInfo.activeProcessorCount)
+                let queue = DispatchQueue.global(qos: .userInitiated)
+                var dispatchedCount = 0
+                var batch = PendingBatch(firstIndex: 0, capacity: decodeBatchSize)
 
-            if let openIndex = openDirectories.indices.last {
-                openDirectories[openIndex].remainingChildren -= 1
-                let slot = openDirectories[openIndex].nextSlot
-                guard slot < childSlots.count else {
-                    throw ScanSnapshotCacheError.corruptData("child counts exceed node count")
+                func dispatch() {
+                    let sent = batch
+                    dispatchedCount += sent.nodes.count
+                    batch = PendingBatch(firstIndex: dispatchedCount, capacity: decodeBatchSize)
+                    inFlight.wait()
+                    queue.async(group: group) {
+                        sent.materialize(into: records, hashes: hashesBuffer)
+                        inFlight.signal()
+                    }
                 }
-                childSlots[slot] = index
-                openDirectories[openIndex].nextSlot = slot + 1
-                parentIndices.append(openDirectories[openIndex].index)
-            } else if nodes.isEmpty {
-                parentIndices.append(-1)
-            } else {
-                throw ScanSnapshotCacheError.corruptData("multiple roots in node records")
-            }
-            nodes.append(node)
-            guard childCount <= childSlots.count - Int(childStarts[Int(index)]) else {
-                throw ScanSnapshotCacheError.corruptData("child counts exceed node count")
-            }
-            childStarts.append(childStarts[Int(index)] + Int32(childCount))
 
-            if childCount > 0 {
-                guard node.isDirectory else {
-                    throw ScanSnapshotCacheError.corruptData("non-directory \(node.id) has children")
+                do {
+                    for index in 0..<nodeCount {
+                        if index & 1023 == 0 { try Task.checkCancellation() }
+                        let parentIDBytes = openDirectories.last.map { last in
+                            ancestorIDBytes[(openDirectories.dropLast().last?.idEnd ?? 0)..<last.idEnd]
+                        }
+                        let (pending, childCount) = try readPendingNode(
+                            parentIDBytes: parentIDBytes,
+                            version: version,
+                            arena: &batch.bytes,
+                            from: &reader
+                        )
+                        let index = Int32(index)
+
+                        if let openIndex = openDirectories.indices.last {
+                            openDirectories[openIndex].remainingChildren -= 1
+                            let slot = openDirectories[openIndex].nextSlot
+                            guard slot < childSlots.count else {
+                                throw ScanSnapshotCacheError.corruptData("child counts exceed node count")
+                            }
+                            childSlots[slot] = index
+                            openDirectories[openIndex].nextSlot = slot + 1
+                            parentIndices.append(openDirectories[openIndex].index)
+                        } else if index == 0 {
+                            parentIndices.append(-1)
+                            rootID = batch.string(at: pending.id)
+                        } else {
+                            throw ScanSnapshotCacheError.corruptData("multiple roots in node records")
+                        }
+                        guard childCount <= childSlots.count - Int(childStarts[Int(index)]) else {
+                            throw ScanSnapshotCacheError.corruptData("child counts exceed node count")
+                        }
+                        childStarts.append(childStarts[Int(index)] + Int32(childCount))
+
+                        if childCount > 0 {
+                            guard pending.isDirectory else {
+                                throw ScanSnapshotCacheError.corruptData(
+                                    "non-directory \(batch.string(at: pending.id)) has children"
+                                )
+                            }
+                            ancestorIDBytes.append(contentsOf: batch.bytes[pending.id])
+                            openDirectories.append((
+                                index: index,
+                                remainingChildren: childCount,
+                                nextSlot: Int(childStarts[Int(index)]),
+                                idEnd: ancestorIDBytes.count
+                            ))
+                        }
+                        batch.nodes.append(pending)
+                        if childCount == 0 {
+                            while let last = openDirectories.last, last.remainingChildren == 0 {
+                                openDirectories.removeLast()
+                                ancestorIDBytes.removeSubrange((openDirectories.last?.idEnd ?? 0)...)
+                            }
+                        }
+                        if batch.nodes.count == decodeBatchSize { dispatch() }
+                    }
+                    if !batch.nodes.isEmpty { dispatch() }
+                } catch {
+                    // Batches fill in index order, so everything handed to a worker is the initialized prefix.
+                    group.wait()
+                    initializedCount = dispatchedCount
+                    throw error
                 }
-                openDirectories.append((
-                    index: index,
-                    remainingChildren: childCount,
-                    nextSlot: Int(childStarts[Int(index)])
-                ))
-            } else {
-                while let last = openDirectories.last, last.remainingChildren == 0 {
-                    openDirectories.removeLast()
-                }
+                group.wait()
+                initializedCount = nodeCount
             }
         }
 
         guard openDirectories.isEmpty else {
             throw ScanSnapshotCacheError.corruptData("node records ended with unfinished directories")
         }
-        guard let rootNode = nodes.first else {
+        guard let rootID else {
             throw ScanSnapshotCacheError.corruptData("no root node")
         }
-        guard let built = NodeIDIndex.building(from: nodes) else {
+        guard let built = NodeIDIndex.building(from: nodes, hashes: hashes) else {
             throw ScanSnapshotCacheError.corruptData("duplicate node IDs")
         }
         // Older files stored some siblings in stale pre-dedup order; a no-op on files written since.
@@ -487,33 +544,136 @@ nonisolated enum ScanSnapshotCodec {
                 indexByID: built.index,
                 nodeHashes: built.hashes
             ),
-            rootID: rootNode.id,
+            rootID: rootID,
             aggregateStats: aggregateStats
         )
     }
 
-    private static func readNode<Reader: PayloadReading>(
-        parentID: String?,
+    /// A node read from the stream, its strings still bytes in its batch's arena.
+    private struct PendingNode {
+        var id: Range<Int>
+        var name: Range<Int>
+        /// Nil when the path is the id.
+        var path: Range<Int>?
+        var isDirectory: Bool
+        var isSymbolicLink: Bool
+        var isPackage: Bool
+        var isAccessible: Bool
+        var isSelfAccessible: Bool
+        var isSynthetic: Bool
+        var isAutoSummarized: Bool
+        var isDataless: Bool
+        var allocatedSize: Int64
+        var unduplicatedSize: Int64
+        var logicalSize: Int64
+        var cloudOnlyLogicalSize: Int64?
+        var descendantFileCount: Int
+        /// NaN when absent: a Date? costs resilient copies per node.
+        var modifiedSeconds: Double
+        var fileIdentity: FileIdentity?
+        var linkCount: UInt64
+        var cloneInfo: CloneInfo?
+        var summarizedClones: SummarizedClones?
+    }
+
+    /// Consecutive nodes from `firstIndex` and the bytes of their strings.
+    private struct PendingBatch: @unchecked Sendable {
+        let firstIndex: Int
+        var nodes: [PendingNode] = []
+        var bytes: [UInt8] = []
+
+        init(firstIndex: Int, capacity: Int) {
+            self.firstIndex = firstIndex
+            nodes.reserveCapacity(capacity)
+            bytes.reserveCapacity(capacity * 96)
+        }
+
+        func string(at range: Range<Int>) -> String {
+            bytes.withUnsafeBufferPointer { String(decoding: UnsafeBufferPointer(rebasing: $0[range]), as: UTF8.self) }
+        }
+
+        /// Initializes this batch's slots of `records` and `hashes`; batches never share a slot.
+        func materialize(
+            into records: UnsafeMutableBufferPointer<FileNodeRecord>,
+            hashes: UnsafeMutableBufferPointer<UInt64>
+        ) {
+            for (offset, node) in nodes.enumerated() {
+                let id = string(at: node.id)
+                let index = firstIndex + offset
+                hashes[index] = FNV1a.hash(id)
+                (records.baseAddress! + index).initialize(to: FileNodeRecord(
+                    id: id,
+                    path: node.path.map(string(at:)) ?? id,
+                    name: string(at: node.name),
+                    isDirectory: node.isDirectory,
+                    isSymbolicLink: node.isSymbolicLink,
+                    allocatedSize: node.allocatedSize,
+                    unduplicatedAllocatedSize: node.unduplicatedSize,
+                    logicalSize: node.logicalSize,
+                    descendantFileCount: node.descendantFileCount,
+                    lastModified: node.modifiedSeconds.isNaN
+                        ? nil
+                        : Date(timeIntervalSinceReferenceDate: node.modifiedSeconds),
+                    fileIdentity: node.fileIdentity,
+                    linkCount: node.linkCount,
+                    isPackage: node.isPackage,
+                    isAccessible: node.isAccessible,
+                    isSelfAccessible: node.isSelfAccessible,
+                    isSynthetic: node.isSynthetic,
+                    isAutoSummarized: node.isAutoSummarized,
+                    isDataless: node.isDataless,
+                    cloudOnlyLogicalSize: node.cloudOnlyLogicalSize,
+                    cloneInfo: node.cloneInfo,
+                    summarizedClones: node.summarizedClones
+                ))
+            }
+        }
+    }
+
+    /// Reads one record, appending its id, name and explicit path bytes to `arena`. A derived id is the
+    /// parent's id bytes, a slash and the name (the root's children skip the root's own slash).
+    private static func readPendingNode<Reader: PayloadReading>(
+        parentIDBytes: ArraySlice<UInt8>?,
         version: UInt32,
+        arena: inout [UInt8],
         from reader: inout Reader
-    ) throws -> (node: FileNodeRecord, childCount: Int) {
+    ) throws -> (node: PendingNode, childCount: Int) {
         let flags = NodeFlags(rawValue: try reader.readUInt16())
-        let name = try reader.readString()
+        let nameStart = arena.count
+        try reader.readStringBytes(appendingTo: &arena)
+        let name = nameStart..<arena.count
         let isDirectory = flags.contains(.isDirectory)
 
-        let id: String
+        let id: Range<Int>
+        let idStart = arena.count
         if flags.contains(.hasExplicitID) {
-            id = try reader.readString()
-        } else if let parentID {
-            id = joinedChildID(parentID: parentID, name: name)
+            try reader.readStringBytes(appendingTo: &arena)
+        } else if let parentIDBytes {
+            if !(parentIDBytes.count == 1 && parentIDBytes.first == UInt8(ascii: "/")) {
+                arena.append(contentsOf: parentIDBytes)
+            }
+            arena.append(UInt8(ascii: "/"))
+            // Copied within the arena by pointer: appending a slice of itself would copy the whole arena.
+            let destination = arena.count
+            arena.append(contentsOf: repeatElement(0, count: name.count))
+            arena.withUnsafeMutableBufferPointer { buffer in
+                guard let base = buffer.baseAddress else { return }
+                (base + destination).update(from: base + name.lowerBound, count: name.count)
+            }
         } else {
             throw ScanSnapshotCacheError.corruptData("root node without explicit ID")
         }
+        id = idStart..<arena.count
         guard !id.isEmpty else {
             throw ScanSnapshotCacheError.corruptData("node has empty ID")
         }
 
-        let path = flags.contains(.hasExplicitPath) ? try reader.readString() : id
+        var path: Range<Int>?
+        if flags.contains(.hasExplicitPath) {
+            let pathStart = arena.count
+            try reader.readStringBytes(appendingTo: &arena)
+            path = pathStart..<arena.count
+        }
         let allocatedSize = try reader.readInt64()
         let unduplicatedSize = flags.contains(.hasUnduplicatedSize) ? try reader.readInt64() : allocatedSize
         let logicalSize = flags.contains(.hasLogicalSize) ? try reader.readInt64() : allocatedSize
@@ -524,13 +684,12 @@ nonisolated enum ScanSnapshotCodec {
             : (isDirectory ? 0 : 1)
         guard allocatedSize >= 0, unduplicatedSize >= 0, logicalSize >= 0,
               directoryCloudOnlySize >= 0, descendantFileCount >= 0 else {
-            throw ScanSnapshotCacheError.corruptData("node \(id) has negative size or count")
+            throw ScanSnapshotCacheError.corruptData(
+                "node \(String(decoding: arena[id], as: UTF8.self)) has negative size or count"
+            )
         }
 
-        var lastModified: Date?
-        if flags.contains(.hasLastModified) {
-            lastModified = Date(timeIntervalSinceReferenceDate: try reader.readDouble())
-        }
+        let modifiedSeconds = flags.contains(.hasLastModified) ? try reader.readDouble() : .nan
 
         var fileIdentity: FileIdentity?
         if flags.contains(.hasFileIdentity) {
@@ -565,7 +724,9 @@ nonisolated enum ScanSnapshotCodec {
             if version >= 5, extraFlags.contains(.hasSummarizedClones) {
                 let count = Int(try reader.readUInt32())
                 guard count <= reader.remainingByteCount / 44 else {
-                    throw ScanSnapshotCacheError.corruptData("implausible clone family count \(count) for \(id)")
+                    throw ScanSnapshotCacheError.corruptData(
+                        "implausible clone family count \(count) for \(String(decoding: arena[id], as: UTF8.self))"
+                    )
                 }
                 var families: [SummarizedCloneFamily] = []
                 families.reserveCapacity(count)
@@ -576,7 +737,9 @@ nonisolated enum ScanSnapshotCodec {
                     let largestSize = try reader.readInt64()
                     let charge = try reader.readInt64()
                     guard totalSize >= 0, largestSize >= 0, charge >= 0 else {
-                        throw ScanSnapshotCacheError.corruptData("node \(id) has a negative clone size")
+                        throw ScanSnapshotCacheError.corruptData(
+                            "node \(String(decoding: arena[id], as: UTF8.self)) has a negative clone size"
+                        )
                     }
                     families.append(SummarizedCloneFamily(
                         familyKey: familyKey,
@@ -589,32 +752,30 @@ nonisolated enum ScanSnapshotCodec {
                 summarizedClones = SummarizedClones(families: families)
             }
         }
+        // Bounded by the caller against the child slots left, cheaper than asking the stream per node.
         let childCount = Int(try reader.readUInt32())
-        guard childCount <= reader.remainingByteCount else {
-            throw ScanSnapshotCacheError.corruptData("implausible child count \(childCount) for \(id)")
-        }
 
         let isAccessible = !flags.contains(.isInaccessible)
-        let node = FileNodeRecord(
+        let node = PendingNode(
             id: id,
-            path: path,
             name: name,
+            path: path,
             isDirectory: isDirectory,
             isSymbolicLink: flags.contains(.isSymbolicLink),
-            allocatedSize: allocatedSize,
-            unduplicatedAllocatedSize: unduplicatedSize,
-            logicalSize: logicalSize,
-            descendantFileCount: descendantFileCount,
-            lastModified: lastModified,
-            fileIdentity: fileIdentity,
-            linkCount: max(linkCount, 1),
             isPackage: flags.contains(.isPackage),
             isAccessible: isAccessible,
             isSelfAccessible: flags.contains(.selfAccessibilityDiffers) ? !isAccessible : isAccessible,
             isSynthetic: flags.contains(.isSynthetic),
             isAutoSummarized: flags.contains(.isAutoSummarized),
             isDataless: hasCloudOnly && !isDirectory,
+            allocatedSize: allocatedSize,
+            unduplicatedSize: unduplicatedSize,
+            logicalSize: logicalSize,
             cloudOnlyLogicalSize: isDirectory ? directoryCloudOnlySize : nil,
+            descendantFileCount: descendantFileCount,
+            modifiedSeconds: modifiedSeconds,
+            fileIdentity: fileIdentity,
+            linkCount: max(linkCount, 1),
             cloneInfo: cloneInfo,
             summarizedClones: summarizedClones
         )

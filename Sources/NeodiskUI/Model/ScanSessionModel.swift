@@ -11,9 +11,13 @@ import NeodiskAppModel
 final class ScanSessionModel {
     /// Per target path: what opens instantly from cache, "Scanned … ago", and the last scan's duration.
     private(set) var cachedScanInfo: [String: CachedScanInfo] = [:]
-    /// Shown while a cached snapshot stands in for a skipped auto-rescan:
-    /// the floating notice offering the rescan the app didn't start.
-    var snapshotNotice: SnapshotNotice?
+    /// Shown while a cached snapshot stands in for a skipped auto-rescan: the strip offering the rescan the app
+    /// didn't start. It hides on its own after `snapshotNoticeLifetime`.
+    private(set) var snapshotNotice: SnapshotNotice?
+    @ObservationIgnored var snapshotNoticeLifetime: Duration = .seconds(30)
+    @ObservationIgnored private var snapshotNoticeTask: Task<Void, Never>?
+    /// The location shown without its rescan: selecting it again doesn't sneak the rescan in, notice or not.
+    @ObservationIgnored private var skippedRescanTargetID: String?
 
     /// Set when an explicit new scan took a contended disk from a running
     /// scan the app stopped for it — a passive strip mention, dismissable.
@@ -47,7 +51,7 @@ final class ScanSessionModel {
 
     /// False until the launch prune has filled `cachedScanInfo`; before that,
     /// scans probe the cache optimistically instead of trusting the index.
-    @ObservationIgnored private var hasIndexedSnapshotCache = false
+    @ObservationIgnored private(set) var hasIndexedSnapshotCache = false
 
     /// Settings backing scan options and the auto-rescan policy; assigned by
     /// the view model's bindPreferences.
@@ -242,6 +246,8 @@ final class ScanSessionModel {
         if target.kind == .volume {
             options.includeHiddenFiles = true
         }
+        // With access granted nothing prompts, so the engine skips the watch.
+        options.watchesPermissionPrompts = model?.warnings.fullDiskAccessStatus != .granted
         return options
     }
 
@@ -373,7 +379,7 @@ final class ScanSessionModel {
             prepareForNewDisplay()
             coordinator.restoreCompletedSnapshot(recent)
             syncCachedScanDate(with: recent)
-            snapshotNotice = SnapshotNotice(for: recent, lastScanDuration: nil)
+            showSnapshotNotice(for: recent, lastScanDuration: nil)
             snapshotWasRestoredWithoutRescan()
             return true
         }
@@ -388,7 +394,7 @@ final class ScanSessionModel {
             && coordinator.snapshot?.target.id == target.id
         if displaysTargetAlready {
             // A deliberately skipped rescan must not start by accident; the notice and toolbar are the ways in.
-            if !forcesRescan, snapshotNotice?.targetID == target.id {
+            if !forcesRescan, skippedRescanTargetID == target.id {
                 return
             }
             // Rescan of the location on screen: keep the map, refresh behind it.
@@ -430,8 +436,26 @@ final class ScanSessionModel {
     /// Every startScan/restore branch that replaces what's on screen clears
     /// the pending notice and the per-scan UI state first.
     private func prepareForNewDisplay() {
-        snapshotNotice = nil
+        dismissSnapshotNotice()
+        skippedRescanTargetID = nil
         model?.resetPerScanState()
+    }
+
+    private func showSnapshotNotice(for snapshot: ScanSnapshot, lastScanDuration: TimeInterval?) {
+        let notice = SnapshotNotice(for: snapshot, lastScanDuration: lastScanDuration)
+        snapshotNotice = notice
+        skippedRescanTargetID = notice.targetID
+        snapshotNoticeTask?.cancel()
+        snapshotNoticeTask = Task { [weak self, lifetime = snapshotNoticeLifetime] in
+            try? await Task.sleep(for: lifetime)
+            guard !Task.isCancelled, self?.snapshotNotice == notice else { return }
+            self?.snapshotNotice = nil
+        }
+    }
+
+    func dismissSnapshotNotice() {
+        snapshotNoticeTask?.cancel()
+        snapshotNotice = nil
     }
 
     /// Explicit rescans (forcesRescan: true) never consult this.
@@ -456,7 +480,7 @@ final class ScanSessionModel {
         if let recent = coordinator.recentSnapshot(forTargetID: target.id) {
             coordinator.restoreCompletedSnapshot(recent)
             syncCachedScanDate(with: recent)
-            snapshotNotice = SnapshotNotice(for: recent, lastScanDuration: info.lastScanDuration)
+            showSnapshotNotice(for: recent, lastScanDuration: info.lastScanDuration)
             snapshotWasRestoredWithoutRescan()
             return
         }
@@ -473,7 +497,7 @@ final class ScanSessionModel {
             if let cached {
                 self.coordinator.completeSnapshotRestore(cached)
                 self.syncCachedScanDate(with: cached)
-                self.snapshotNotice = SnapshotNotice(for: cached, lastScanDuration: info.lastScanDuration)
+                self.showSnapshotNotice(for: cached, lastScanDuration: info.lastScanDuration)
                 self.snapshotWasRestoredWithoutRescan()
                 await Self.backfillKindStatsSidecarIfStale(
                     sidecar,
@@ -602,7 +626,7 @@ final class ScanSessionModel {
                    shouldSkipAutoRescan(lastScanDuration: lastDuration),
                    standingIn {
                     self.coordinator.restoreCompletedSnapshot(cached)
-                    self.snapshotNotice = SnapshotNotice(for: cached, lastScanDuration: lastDuration)
+                    self.showSnapshotNotice(for: cached, lastScanDuration: lastDuration)
                     self.snapshotWasRestoredWithoutRescan()
                     // The refresh was cancelled, so no scan finish will
                     // write the sidecar this snapshot is missing.
@@ -699,13 +723,12 @@ final class ScanSessionModel {
                 if outcome.rotatedPrevious {
                     // The predecessor rotated: an active diff of this target must rebase on it.
                     self?.diff.snapshotWasRotated(for: snapshot.target)
-                    self?.changes.snapshotWasRotated(for: snapshot.target)
                 } else {
                     // Content-identical rescan: the previous slot still describes the right generation.
                     self?.diff.snapshotWasRestored(for: snapshot.target)
-                    // A removal rewrote the latest in place: a list loaded before the write is the old diff.
-                    if !rotatesPrevious { self?.changes.snapshotWasRotated(for: snapshot.target) }
                 }
+                // Every write rekeys the change list, and a load that ran mid-save came back empty.
+                self?.changes.snapshotWasSaved(for: snapshot.target)
                 // Kind stats ride along so the next restore of this
                 // snapshot starts with a colored map.
                 await Self.saveKindStatsSidecar(for: snapshot, in: snapshotCache)

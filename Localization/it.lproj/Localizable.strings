@@ -137,6 +137,7 @@
 "Reveal in Finder" = "Mostra nel Finder";
 "Open" = "Apri";
 "Copy Path" = "Copia percorso";
+"Path" = "Percorso";
 "Expand Contents" = "Espandi contenuto";
 "Show Package Contents" = "Mostra contenuto pacchetto";
 "No matches" = "Nessun risultato";

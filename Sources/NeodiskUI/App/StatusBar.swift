@@ -64,6 +64,9 @@ struct StatusBar: View {
                 Text(node.url.path)
                     .lineLimit(1)
                     .truncationMode(.middle)
+                    // The whole path, even when the bar shows it shortened.
+                    .accessibilityLabel(Text("Path"))
+                    .accessibilityValue(Text(verbatim: node.url.path))
                 Spacer(minLength: 12)
                 if let cleanupText = model.cleanup.mark(for: node.id).hoverText {
                     Label(cleanupText, systemImage: "trash")

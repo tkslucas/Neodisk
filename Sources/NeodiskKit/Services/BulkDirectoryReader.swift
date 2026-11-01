@@ -576,6 +576,27 @@ nonisolated enum BulkDirectoryReader {
         name.utf8.first == UInt8(ascii: ".")
     }
 
+    /// The bulk reader's package rule for one directory, instead of `.isPackageKey`, which also probes write
+    /// access: inside another app's bundle that raises macOS's "prevented from modifying apps" notice.
+    static func isPackageDirectory(atPath path: String) -> Bool {
+        if PackageExtensionCatalog.shared.isPackageName((path as NSString).lastPathComponent) { return true }
+        #if canImport(Darwin)
+        var request = attrlist()
+        request.bitmapcount = u_short(ATTR_BIT_MAP_COUNT)
+        request.commonattr = RequestedAttributes.finderInfo
+        // Length word, then the 32-byte Finder info with finderFlags (big-endian) at offset 8.
+        var buffer = [UInt8](repeating: 0, count: 36)
+        let status = buffer.withUnsafeMutableBytes { raw in
+            getattrlist(path, &request, raw.baseAddress, raw.count, UInt32(FSOPT_NOFOLLOW))
+        }
+        guard status == 0 else { return false }
+        let finderFlags = UInt16(buffer[12]) << 8 | UInt16(buffer[13])
+        return finderFlags & FinderFlags.hasBundle != 0
+        #else
+        return false
+        #endif
+    }
+
     private enum FinderFlags {
         static let hasBundle: UInt16 = 0x2000
         static let isInvisible: UInt16 = 0x4000

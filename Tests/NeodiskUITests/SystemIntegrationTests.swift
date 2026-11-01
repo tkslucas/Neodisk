@@ -29,6 +29,18 @@ import NeodiskKit
         #expect(workspace.openedURLs == [url])
     }
 
+    @Test func webSearchEncodesEverythingButUnreservedCharacters() throws {
+        let url = try #require(SystemIntegration.webSearchURL(for: "c++ notes & 50% #1/é.txt"))
+        #expect(url.absoluteString
+            == "https://www.google.com/search?q=c%2B%2B%20notes%20%26%2050%25%20%231%2F%C3%A9.txt")
+    }
+
+    @Test func searchWebOpensTheSearchInTheBrowser() {
+        let workspace = WorkspaceSpy(openResult: true)
+        SystemIntegration.searchWeb(for: "Movies", workspace: workspace)
+        #expect(workspace.openedURLs.map(\.absoluteString) == ["https://www.google.com/search?q=Movies"])
+    }
+
     @Test func testRevealSelectsRequestedURL() {
         let url = URL(filePath: "/tmp/example.txt")
         let workspace = WorkspaceSpy(openResult: true)

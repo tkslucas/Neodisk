@@ -56,6 +56,9 @@ extension NSMenu {
             ? NSLocalizedString("Copy Paths", comment: "File node context menu, several items")
             : NSLocalizedString("Copy Path", comment: "File node context menu")
         addItem(ClosureMenuItem(title: copyTitle) { model.copyPaths(nodes) })
+        if nodes.count == 1 {
+            addWebSearchItem(for: node)
+        }
         if includeExpandContents, nodes.count == 1, let expansion = model.contentsExpansion(for: node) {
             addItem(.separator())
             let item = ClosureMenuItem(title: NSLocalizedString(expansion.menuTitleKey, comment: "File node context menu")) { model.expandNodeContents(node) }
@@ -63,6 +66,22 @@ extension NSMenu {
             addItem(item)
         }
         if includeCleanup { addCleanupItem(for: nodes, model: model) }
+    }
+
+    /// Search the Web > Name / Full Path, in the default browser.
+    @MainActor
+    func addWebSearchItem(for node: FileNodeRecord) {
+        let searches = NSMenu()
+        searches.autoenablesItems = false
+        searches.addItem(ClosureMenuItem(title: NSLocalizedString("Name", comment: "Search the Web submenu")) {
+            SystemIntegration.searchWeb(for: node.name)
+        })
+        searches.addItem(ClosureMenuItem(title: NSLocalizedString("Full Path", comment: "Search the Web submenu")) {
+            SystemIntegration.searchWeb(for: node.path)
+        })
+        let item = NSMenuItem(title: NSLocalizedString("Search the Web", comment: "File node context menu"), action: nil, keyEquivalent: "")
+        item.submenu = searches
+        addItem(item)
     }
 
     /// "Add to Cleanup" / "Remove 3 Items from Cleanup"…; a refused item stays disabled with its reason as the tooltip.

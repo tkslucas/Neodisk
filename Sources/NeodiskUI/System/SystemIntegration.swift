@@ -128,6 +128,21 @@ enum SystemIntegration {
         }
     }
 
+    /// A web search for `text`: only unreserved characters stay as they are, so "+", "&" or "#" in a name reach the
+    /// search engine as typed.
+    nonisolated static func webSearchURL(for text: String) -> URL? {
+        var allowed = CharacterSet.alphanumerics
+        allowed.insert(charactersIn: "-._~")
+        guard let query = text.addingPercentEncoding(withAllowedCharacters: allowed) else { return nil }
+        return URL(string: "https://www.google.com/search?q=" + query)
+    }
+
+    /// Opens the search in the default browser.
+    static func searchWeb(for text: String, workspace: SystemWorkspace = NSWorkspace.shared) {
+        guard let url = webSearchURL(for: text) else { return }
+        _ = workspace.open(url)
+    }
+
     static func copyPath(_ url: URL, pasteboard: PathPasteboard = NSPasteboard.general) throws {
         pasteboard.clearContents()
         let copiedPath = pasteboard.setString(url.path, forType: .string)

@@ -62,6 +62,8 @@
 "Purgeable space, local snapshots, and files the scan could not see." = "Bereinigbarer Speicher, lokale Schnappschüsse und Dateien, die der Scan nicht sehen konnte.";
 "%@ smaller items in %@" = "%@ kleinere Elemente in %@";
 "Hover the treemap or select a row to inspect an item." = "Bewege den Zeiger über die Treemap oder wähle eine Zeile, um ein Element zu untersuchen.";
+"Show Status Bar" = "Statusleiste einblenden";
+"Hide Status Bar" = "Statusleiste ausblenden";
 
 /* MARK: - Settings: sections & controls */
 "General" = "Allgemein";
@@ -406,7 +408,6 @@
 "Home" = "Persönlicher Ordner";
 "Include Hidden Files" = "Versteckte Dateien einbeziehen";
 "Keyboard Shortcuts" = "Tastenkürzel";
-"Locations" = "Orte";
 "Main Menu" = "Hauptmenü";
 "Merging changes…" = "Änderungen werden übernommen …";
 "Select Largest Item Inside" = "Größtes Objekt darin auswählen";
@@ -416,7 +417,6 @@
 "Preferences" = "Einstellungen";
 "Quit" = "Beenden";
 "Disk space visualizer. Treemap and sunburst views on the NeodiskKit scan engine." = "Speicherplatz-Visualisierer. Treemap- und Sunburst-Ansichten auf der Scan-Engine NeodiskKit.";
-"Recent" = "Zuletzt verwendet";
 "Refreshing…" = "Wird aktualisiert …";
 "Saved Scans" = "Gespeicherte Scans";
 "Scans" = "Scans";

@@ -62,6 +62,8 @@
 "Purgeable space, local snapshots, and files the scan could not see." = "消去可能な領域、ローカルスナップショット、スキャンで確認できなかったファイルです。";
 "%@ smaller items in %@" = "%2$@内の小さい項目 %1$@個";
 "Hover the treemap or select a row to inspect an item." = "ツリーマップにポインタを合わせるか、行を選択して項目を確認できます。";
+"Show Status Bar" = "ステータスバーを表示";
+"Hide Status Bar" = "ステータスバーを非表示";
 
 /* MARK: - Settings: sections & controls */
 "General" = "一般";
@@ -406,7 +408,6 @@
 "Home" = "ホーム";
 "Include Hidden Files" = "隠しファイルを含める";
 "Keyboard Shortcuts" = "キーボードショートカット";
-"Locations" = "場所";
 "Main Menu" = "メインメニュー";
 "Merging changes…" = "変更を統合中…";
 "Select Largest Item Inside" = "内部の最大の項目を選択";
@@ -416,7 +417,6 @@
 "Preferences" = "設定";
 "Quit" = "終了";
 "Disk space visualizer. Treemap and sunburst views on the NeodiskKit scan engine." = "ディスク容量ビジュアライザ。NeodiskKit スキャンエンジンによるツリーマップとサンバースト表示。";
-"Recent" = "最近";
 "Refreshing…" = "更新中…";
 "Saved Scans" = "保存済みのスキャン";
 "Scans" = "スキャン";

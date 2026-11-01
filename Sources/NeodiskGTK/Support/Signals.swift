@@ -209,6 +209,25 @@ func addAction(
     return action
 }
 
+/// A checkbox in menus. The handler gets the state asked for; `setActionState` shows what took effect.
+@discardableResult
+@MainActor
+func addToggleAction(to map: GPtr?, _ name: String, _ handler: @escaping @MainActor (Bool) -> Void) -> GPtr? {
+    guard let action = raw(g_simple_action_new_stateful(name, nil, g_variant_new_boolean(gbool(true)))) else { return nil }
+    connectPointer(action, "change-state") { variant in
+        guard let variant else { return }
+        handler(g_variant_get_boolean(ptr(variant)) != 0)
+    }
+    g_action_map_add_action(ptr(map), ptr(action))
+    g_object_unref(action)
+    return action
+}
+
+@MainActor
+func setActionState(_ action: GPtr?, _ on: Bool) {
+    g_simple_action_set_state(ptr(action), g_variant_new_boolean(gbool(on)))
+}
+
 @MainActor
 func setActionEnabled(_ action: GPtr?, _ enabled: Bool) {
     g_simple_action_set_enabled(ptr(action), gbool(enabled))

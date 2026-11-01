@@ -25,6 +25,7 @@ final class MainWindow {
     private let cushionToggle: GPtr
     private let flatToggle: GPtr
     private let sunburstToggle: GPtr
+    private let menuButton: GPtr
 
     private let sidebar: SidebarView
     private let treemap: TreemapView
@@ -69,14 +70,19 @@ final class MainWindow {
         let sidebarHeader = raw(adw_header_bar_new())!
         let sidebarTitle = raw(adw_window_title_new(AppChannel.current.appName, nil))!
         adw_header_bar_set_title_widget(ptr(sidebarHeader), ptr(sidebarTitle))
-        let menuButton = raw(gtk_menu_button_new())!
+        menuButton = raw(gtk_menu_button_new())!
         gtk_menu_button_set_icon_name(ptr(menuButton), "open-menu-symbolic")
         gtk_widget_set_tooltip_text(ptr(menuButton), L("Main Menu"))
         let primaryMenu = Widgets.menu([
             [(L("Choose Folder…"), "win.open-folder")],
+            [(L("Show Status Bar"), "win.show-status-bar")],
             [(L("Preferences"), "app.preferences"), (L("Keyboard Shortcuts"), "win.show-help-overlay"), (L("About %@", AppChannel.current.appName), "app.about")],
             [(L("Quit"), "app.quit")],
         ])
+        if let viewSection = g_menu_model_get_item_link(ptr(primaryMenu.pointer), 1, "section") {
+            g_menu_prepend_submenu(ptr(raw(viewSection)), L("Sidebar Sections"), ptr(sidebar.sectionsMenu.pointer))
+            g_object_unref(raw(viewSection))
+        }
         gtk_menu_button_set_menu_model(ptr(menuButton), ptr(primaryMenu.pointer))
         gtk_menu_button_set_primary(ptr(menuButton), gbool(true))
         adw_header_bar_pack_end(ptr(sidebarHeader), ptr(menuButton))
@@ -199,6 +205,7 @@ final class MainWindow {
         addBreakpoint("max-width: 760sp", collapsing: [statisticsSplit, splitView])
 
         attach(self, to: window, key: Self.attachmentKey)
+        gtk_widget_insert_action_group(ptr(window), "sidebar", ptr(sidebar.actions.pointer))
         installActions()
         bindModel()
 
@@ -278,6 +285,16 @@ final class MainWindow {
         }
     }
 
+    /// NEODISK_POPUP: opens a menu for a screen grab (popovers aren't in the window's capture).
+    func popUpForCapture(_ menu: String) {
+        switch menu {
+        case "primary": gtk_menu_button_popup(ptr(menuButton))
+        case "sections": sidebar.showSectionsMenu(from: .volumes, at: CGPoint(x: 40, y: 8))
+        case "status": statusBar.showMenu(at: CGPoint(x: 40, y: 8))
+        default: break
+        }
+    }
+
     func present() {
         gtk_window_present(ptr(window))
     }
@@ -342,6 +359,9 @@ final class MainWindow {
             gtk_stack_set_visible_child_name(ptr(self.vizStack), mode == .sunburst ? "sunburst" : "treemap")
             let toggle = mode == .sunburst ? self.sunburstToggle : style == .flat ? self.flatToggle : self.cushionToggle
             gtk_toggle_button_set_active(ptr(toggle), gbool(true))
+        })
+        tokens.append(track { [unowned self] in
+            setActionState(self.actions["show-status-bar"], self.model.preferences.showsStatusBar)
         })
         tokens.append(track { [unowned self] in
             let shows = gbool(self.model.preferences.showsStatistics)
@@ -419,6 +439,12 @@ final class MainWindow {
         actions["toggle-sidebar"] = addAction(to: window, "toggle-sidebar") { [unowned self] _ in
             let shown = adw_overlay_split_view_get_show_sidebar(ptr(self.splitView)) != 0
             adw_overlay_split_view_set_show_sidebar(ptr(self.splitView), gbool(!shown))
+        }
+        actions["show-status-bar"] = addToggleAction(to: window, "show-status-bar") { [unowned self] shown in
+            self.model.preferences.showsStatusBar = shown
+        }
+        addAction(to: window, "hide-status-bar") { [unowned self] _ in
+            self.model.preferences.showsStatusBar = false
         }
         actions["show-cushion"] = addAction(to: window, "show-cushion") { [unowned self] _ in
             self.showView(.cushion)

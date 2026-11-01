@@ -62,6 +62,8 @@
 "Purgeable space, local snapshots, and files the scan could not see." = "可清除空间、本地快照以及扫描无法看到的文件。";
 "%@ smaller items in %@" = "%2$@ 中有 %1$@ 个较小项目";
 "Hover the treemap or select a row to inspect an item." = "将指针悬停在矩形树图上，或选择一行以查看项目详情。";
+"Show Status Bar" = "显示状态栏";
+"Hide Status Bar" = "隐藏状态栏";
 
 /* MARK: - 设置：分区与控件 */
 "General" = "通用";
@@ -406,7 +408,6 @@
 "Home" = "主文件夹";
 "Include Hidden Files" = "包含隐藏文件";
 "Keyboard Shortcuts" = "键盘快捷键";
-"Locations" = "位置";
 "Main Menu" = "主菜单";
 "Merging changes…" = "正在合并更改…";
 "Select Largest Item Inside" = "选择其中最大的项目";
@@ -416,7 +417,6 @@
 "Preferences" = "偏好设置";
 "Quit" = "退出";
 "Disk space visualizer. Treemap and sunburst views on the NeodiskKit scan engine." = "磁盘空间可视化工具。基于 NeodiskKit 扫描引擎的矩形树图和旭日图视图。";
-"Recent" = "最近";
 "Refreshing…" = "正在刷新…";
 "Saved Scans" = "已保存的扫描";
 "Scans" = "扫描";

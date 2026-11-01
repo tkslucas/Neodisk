@@ -125,9 +125,12 @@ enum Widgets {
 
     /// Created into `cache` on first use. The tooltip is off while open, or GTK draws a showing one over the menu.
     static func popupMenu(_ cache: inout GPtr?, sections: [[(String, String)]], on parent: GPtr, at point: CGPoint) {
+        popupMenu(&cache, model: menu(sections), on: parent, at: point)
+    }
+
+    static func popupMenu(_ cache: inout GPtr?, model: GObjectRef, on parent: GPtr, at point: CGPoint) {
         let hadTooltip = gtk_widget_get_has_tooltip(ptr(parent)) != 0
         if cache == nil {
-            let model = menu(sections)
             let popover = raw(gtk_popover_menu_new_from_model(ptr(model.pointer)))!
             gtk_widget_set_parent(ptr(popover), ptr(parent))
             gtk_popover_set_has_arrow(ptr(popover), gbool(false))
@@ -139,7 +142,6 @@ enum Widgets {
             cache = popover
         } else {
             // Labels may follow the selection ("Copy Paths" for several): the items are rebuilt, the popover kept.
-            let model = menu(sections)
             gtk_popover_menu_set_menu_model(ptr(cache), ptr(model.pointer))
         }
         if hadTooltip {
@@ -185,6 +187,7 @@ enum Styles {
     .neodisk-caption { font-size: smaller; }
     .neodisk-statusbar { padding: 4px 12px; border-top: 1px solid alpha(currentColor, 0.12); }
     .neodisk-sidebar-row { padding: 6px 4px; }
+    .neodisk-sidebar-section > box > title { padding: 12px 12px 6px 12px; }
     .neodisk-capacity trough { min-height: 4px; }
     .neodisk-capacity block { min-height: 4px; }
     .neodisk-progress-caption { padding: 2px 12px 6px 12px; }

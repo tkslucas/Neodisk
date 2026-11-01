@@ -1,6 +1,6 @@
 // Dev env hooks, named like the macOS app's: NEODISK_AUTOSCAN, NEODISK_UI_SNAPSHOT (works under Xvfb),
 // NEODISK_SNAPSHOT_DELAY, NEODISK_VIZ_MODE, NEODISK_TREEMAP_STYLE, NEODISK_ANALYSIS_TAB, NEODISK_SELECT,
-// NEODISK_AUTOTRASH.
+// NEODISK_AUTOTRASH, NEODISK_POPUP.
 
 import CGtk
 import Foundation
@@ -34,6 +34,19 @@ enum DevLaunchHooks {
                 guard !ids.isEmpty else { return }
                 model.select(ids.last)
                 model.selection.replace(with: ids, primary: ids.last)
+            })
+        }
+
+        // NEODISK_POPUP=primary|sections|status: that menu opens once the scan is on screen.
+        if let menu = environment["NEODISK_POPUP"] {
+            var opened = false
+            tokens.append(track {
+                guard !opened, model.phase == .displaying else { return }
+                opened = true
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(500))
+                    window.popUpForCapture(menu)
+                }
             })
         }
 

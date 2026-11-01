@@ -35,6 +35,10 @@ final class Preferences {
     var fileCategories = FileCategoryCustomization() { didSet { scheduleSave() } }
     var showsStatistics = true { didSet { scheduleSave() } }
     var showsOutline = true { didSet { scheduleSave() } }
+    var showsStatusBar = true { didSet { scheduleSave() } }
+    /// The sidebar's hidden and collapsed sections, as SidebarSectionState lists.
+    var sidebarHiddenSections = "" { didSet { scheduleSave() } }
+    var sidebarCollapsedSections = "" { didSet { scheduleSave() } }
     /// The file list's column order and hidden columns, as `ItemLayout` stores them.
     var outlineColumns = "" { didSet { scheduleSave() } }
     /// Folders the user scanned or pinned, most recent first — the
@@ -44,6 +48,14 @@ final class Preferences {
     var windowHeight = 820 { didSet { scheduleSave() } }
 
     var palette: VizPalette { VizPalette.named(paletteID) }
+
+    var sidebarSections: SidebarSectionState {
+        get { SidebarSectionState(hidden: sidebarHiddenSections, collapsed: sidebarCollapsedSections) }
+        set {
+            if newValue.storedHidden != sidebarHiddenSections { sidebarHiddenSections = newValue.storedHidden }
+            if newValue.storedCollapsed != sidebarCollapsedSections { sidebarCollapsedSections = newValue.storedCollapsed }
+        }
+    }
 
     /// The effective scan options behind every scan the app starts.
     var scanOptions: ScanOptions {
@@ -109,6 +121,9 @@ final class Preferences {
         var fileCategories: String?
         var showsStatistics: Bool?
         var showsOutline: Bool?
+        var showsStatusBar: Bool?
+        var sidebarHiddenSections: String?
+        var sidebarCollapsedSections: String?
         var outlineColumns: String?
         var recentFolders: [String]?
         var windowWidth: Int?
@@ -132,6 +147,9 @@ final class Preferences {
         if let value = stored.fileCategories { fileCategories = FileCategoryCustomization(json: value) }
         if let value = stored.showsStatistics { showsStatistics = value }
         if let value = stored.showsOutline { showsOutline = value }
+        if let value = stored.showsStatusBar { showsStatusBar = value }
+        if let value = stored.sidebarHiddenSections { sidebarHiddenSections = value }
+        if let value = stored.sidebarCollapsedSections { sidebarCollapsedSections = value }
         if let value = stored.outlineColumns { outlineColumns = value }
         if let value = stored.recentFolders { recentFolders = value }
         if let value = stored.windowWidth { windowWidth = value }
@@ -162,6 +180,9 @@ final class Preferences {
             fileCategories: fileCategories.isEmpty ? nil : fileCategories.json,
             showsStatistics: showsStatistics,
             showsOutline: showsOutline,
+            showsStatusBar: showsStatusBar,
+            sidebarHiddenSections: sidebarHiddenSections.isEmpty ? nil : sidebarHiddenSections,
+            sidebarCollapsedSections: sidebarCollapsedSections.isEmpty ? nil : sidebarCollapsedSections,
             outlineColumns: outlineColumns.isEmpty ? nil : outlineColumns,
             recentFolders: recentFolders,
             windowWidth: windowWidth,

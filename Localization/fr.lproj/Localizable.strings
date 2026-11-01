@@ -62,6 +62,8 @@
 "Purgeable space, local snapshots, and files the scan could not see." = "Espace purgeable, instantanés locaux et fichiers que l'analyse n'a pas pu voir.";
 "%@ smaller items in %@" = "%@ éléments plus petits dans %@";
 "Hover the treemap or select a row to inspect an item." = "Survolez la carte proportionnelle ou sélectionnez une ligne pour inspecter un élément.";
+"Show Status Bar" = "Afficher la barre d'état";
+"Hide Status Bar" = "Masquer la barre d'état";
 
 /* MARK: - Settings: sections & controls */
 "General" = "Général";
@@ -406,7 +408,6 @@
 "Home" = "Dossier personnel";
 "Include Hidden Files" = "Inclure les fichiers cachés";
 "Keyboard Shortcuts" = "Raccourcis clavier";
-"Locations" = "Emplacements";
 "Main Menu" = "Menu principal";
 "Merging changes…" = "Fusion des modifications…";
 "Select Largest Item Inside" = "Sélectionner le plus grand élément à l’intérieur";
@@ -416,7 +417,6 @@
 "Preferences" = "Préférences";
 "Quit" = "Quitter";
 "Disk space visualizer. Treemap and sunburst views on the NeodiskKit scan engine." = "Visualiseur d'espace disque. Vues en carte proportionnelle et sunburst sur le moteur d'analyse NeodiskKit.";
-"Recent" = "Récents";
 "Refreshing…" = "Actualisation…";
 "Saved Scans" = "Analyses enregistrées";
 "Scans" = "Analyses";

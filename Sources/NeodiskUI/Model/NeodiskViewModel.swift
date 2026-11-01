@@ -88,6 +88,10 @@ final class NeodiskViewModel {
     var analysisTab: AnalysisTab = .largest {
         didSet { syncDiffVisibility() }
     }
+    /// Mirror of the persisted tab order and visibility; change it through setAnalysisTabs.
+    private(set) var analysisTabs = ItemLayout<AnalysisTab>()
+    /// Mirror of the bottom table's persisted column order and visibility.
+    private(set) var outlineColumns = ItemLayout<OutlineColumn>(pinned: .name)
     /// Locations sidebar visibility; lives here so the View menu can toggle
     /// it. Always starts visible.
     var sidebarVisibility = NavigationSplitViewVisibility.all
@@ -448,6 +452,7 @@ final class NeodiskViewModel {
                 self?.syncTreemapStyle()
                 self?.syncCloudOnlyPreference()
                 self?.syncOutlinePreferences()
+                self?.syncLayoutPreferences()
                 self?.syncTextScale()
                 self?.syncFileCategories()
                 self?.syncCleanupPreference()
@@ -458,6 +463,7 @@ final class NeodiskViewModel {
         syncTreemapStyle()
         syncCloudOnlyPreference()
         syncOutlinePreferences()
+        syncLayoutPreferences()
         syncTextScale()
         syncFileCategories()
         syncCleanupPreference()
@@ -558,6 +564,33 @@ final class NeodiskViewModel {
         if outlineSort != preferences.outlineSort {
             outlineSort = preferences.outlineSort
         }
+    }
+
+    private func syncLayoutPreferences() {
+        guard let preferences else { return }
+        if outlineColumns != preferences.outlineColumns {
+            outlineColumns = preferences.outlineColumns
+        }
+        if analysisTabs != preferences.analysisTabs {
+            analysisTabs = preferences.analysisTabs
+        }
+        // A hidden tab can't stay the lens: the map would color by a tab nobody can see.
+        if analysisTabs.isHidden(analysisTab), let first = analysisTabs.visible.first {
+            analysisTab = first
+        }
+    }
+
+    func setAnalysisTabs(_ layout: ItemLayout<AnalysisTab>) {
+        preferences?.analysisTabs = layout
+        analysisTabs = layout
+        if layout.isHidden(analysisTab), let first = layout.visible.first {
+            analysisTab = first
+        }
+    }
+
+    func setOutlineColumns(_ layout: ItemLayout<OutlineColumn>) {
+        preferences?.outlineColumns = layout
+        outlineColumns = layout
     }
 
     /// Push the palette to the kind catalog when the colorblind toggle flips.

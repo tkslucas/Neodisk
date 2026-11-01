@@ -6,6 +6,12 @@ import SwiftUI
 import NeodiskKit
 import NeodiskAppModel
 
+/// The bottom table's columns. Name stays first; the rest reorder by dragging their headers and hide from the
+/// header's menu.
+enum OutlineColumn: String, CaseIterable, Sendable {
+    case name, percent, size, files, modified
+}
+
 // MARK: - Pane
 
 struct BottomOutlinePane: View {
@@ -63,13 +69,17 @@ struct BottomOutlineTable: NSViewRepresentable {
         tableView.allowsMultipleSelection = false
         tableView.allowsEmptySelection = true
         tableView.usesAlternatingRowBackgroundColors = true
-        tableView.allowsColumnReordering = false
+        tableView.allowsColumnReordering = true
         tableView.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
 
         let textScale = OutlineRowMetrics.scale
         coordinator.appliedTextScale = textScale
-        for spec in Self.columns {
+        let layout = model.outlineColumns
+        coordinator.appliedColumns = layout
+        for id in layout.order {
+            guard let spec = Self.columns.first(where: { $0.identifier == id.rawValue }) else { continue }
             let column = NSTableColumn(identifier: .init(spec.identifier))
+            column.isHidden = layout.isHidden(id)
             column.title = spec.title
             // Numeric columns must not clip, so they scale; Name autoresizes and middle-truncates, so scaling
             // it too would push the numbers off-screen.
@@ -102,6 +112,12 @@ struct BottomOutlineTable: NSViewRepresentable {
         menu.delegate = coordinator
         tableView.menu = menu
 
+        let headerMenu = NSMenu()
+        headerMenu.autoenablesItems = false
+        headerMenu.delegate = coordinator
+        tableView.headerView?.menu = headerMenu
+        coordinator.headerMenu = headerMenu
+
         let scrollView = NSScrollView()
         scrollView.documentView = tableView
         scrollView.hasVerticalScroller = true
@@ -119,6 +135,7 @@ struct BottomOutlineTable: NSViewRepresentable {
         let coordinator = context.coordinator
         coordinator.apply(snapshot: snapshot)
         coordinator.applyTextScale(columnMinimums: Self.columnMinimums)
+        coordinator.applyColumns(model.outlineColumns)
         coordinator.applySortIndicator(sort)
         coordinator.syncSelection(to: selectedID)
     }
@@ -186,6 +203,9 @@ struct BottomOutlineTable: NSViewRepresentable {
         private var pendingApply: NeodiskViewModel.OutlineRowsSnapshot?
 
         weak var tableView: NSTableView?
+        weak var headerMenu: NSMenu?
+        /// The column order and visibility the table shows; a different one from the model is applied.
+        var appliedColumns = ItemLayout<OutlineColumn>(pinned: .name)
         /// The workspace text scale the row height and columns were last
         /// laid out for; a change rescales both (see applyTextScale).
         var appliedTextScale: CGFloat = 1
@@ -434,8 +454,72 @@ struct BottomOutlineTable: NSViewRepresentable {
             model.reveal(node)
         }
 
+        // MARK: Columns
+
+        func applyColumns(_ layout: ItemLayout<OutlineColumn>) {
+            guard let tableView, layout != appliedColumns else { return }
+            appliedColumns = layout
+            for (index, id) in layout.order.enumerated() {
+                let current = tableView.column(withIdentifier: .init(id.rawValue))
+                guard current >= 0 else { continue }
+                if current != index { tableView.moveColumn(current, toColumn: index) }
+                tableView.tableColumns[index].isHidden = layout.isHidden(id)
+            }
+        }
+
+        func tableView(_ tableView: NSTableView, shouldReorderColumn columnIndex: Int, toColumn newColumnIndex: Int) -> Bool {
+            columnIndex != 0 && newColumnIndex != 0
+        }
+
+        func tableViewColumnDidMove(_ notification: Notification) {
+            guard let tableView else { return }
+            var layout = appliedColumns
+            layout.setVisibleOrder(tableView.tableColumns.filter { !$0.isHidden }.compactMap {
+                OutlineColumn(rawValue: $0.identifier.rawValue)
+            })
+            commitColumns(layout)
+        }
+
+        @objc private func toggleColumn(_ sender: NSMenuItem) {
+            guard let id = sender.representedObject as? String, let column = OutlineColumn(rawValue: id) else { return }
+            var layout = appliedColumns
+            layout.setHidden(column, !layout.isHidden(column))
+            if let tableView {
+                let index = tableView.column(withIdentifier: .init(id))
+                if index >= 0 { tableView.tableColumns[index].isHidden = layout.isHidden(column) }
+            }
+            commitColumns(layout)
+        }
+
+        private func commitColumns(_ layout: ItemLayout<OutlineColumn>) {
+            guard layout != model.outlineColumns else { return }
+            appliedColumns = layout
+            model.setOutlineColumns(layout)
+        }
+
+        private func fillHeaderMenu(_ menu: NSMenu) {
+            guard let tableView else { return }
+            for column in tableView.tableColumns {
+                guard let id = OutlineColumn(rawValue: column.identifier.rawValue), id != .name else { continue }
+                // The header reads "%"; the menu needs a word.
+                let title = id == .percent
+                    ? NSLocalizedString("Percentage", comment: "Bottom outline column, in the header's menu")
+                    : column.title
+                let item = NSMenuItem(title: title, action: #selector(toggleColumn(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = id.rawValue
+                item.state = column.isHidden ? .off : .on
+                item.isEnabled = column.isHidden || appliedColumns.canHide(id)
+                menu.addItem(item)
+            }
+        }
+
         func menuNeedsUpdate(_ menu: NSMenu) {
             menu.removeAllItems()
+            if menu === headerMenu {
+                fillHeaderMenu(menu)
+                return
+            }
             guard let tableView,
                   case let row = tableView.clickedRow, row >= 0, row < rows.count else { return }
             let node = rows[row].node

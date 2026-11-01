@@ -38,7 +38,8 @@ The most used ones; the rest live in `Sources/NeodiskUI/Dev/`.
 - Headless runs share the `Neodisk` UserDefaults domain with your `swift run` sessions: check
   `defaults read Neodisk <key>` before concluding a feature regressed.
 - The sidebar's material background renders blank in offscreen captures: `NEODISK_SIDEBAR_SNAPSHOT=<out.png>`
-  renders the sidebar alone (`NEODISK_SNAPSHOT_APPEARANCE=light` for light mode).
+  renders the sidebar alone (`NEODISK_SIDEBAR_SNAPSHOT_WIDTH`), `NEODISK_TABBAR_SNAPSHOT=<out.png>` the statistics
+  tabs at several widths; both take `NEODISK_SNAPSHOT_APPEARANCE=light` and `NEODISK_SNAPSHOT_TEXT_SCALE`.
 
 ## Linux
 

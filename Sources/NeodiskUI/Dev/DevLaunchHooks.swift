@@ -101,7 +101,7 @@ enum DevLaunchHooks {
             }
         }
 
-        SidebarSnapshotter.scheduleIfRequested(model: model)
+        PaneSnapshotter.scheduleIfRequested(model: model)
     }
 
     @MainActor

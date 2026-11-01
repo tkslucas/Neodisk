@@ -40,7 +40,7 @@
 "Opening last scan of %@…" = "Abriendo el último análisis de %@…";
 
 /* MARK: - Análisis fallido */
-"Scan failed" = "Error en el análisis";
+"Scan Failed" = "Error en el análisis";
 "Try Again" = "Intentar de nuevo";
 
 /* MARK: - Aviso de permisos */

@@ -137,22 +137,29 @@ struct ScanFailedView: View {
     let model: NeodiskViewModel
 
     var body: some View {
-        VStack(spacing: 12) {
+        // Laid out like the empty state: one glyph, a title, a line of detail, the default button.
+        VStack(spacing: 14) {
             Image(systemName: "exclamationmark.triangle")
-                .neoFont(40)
+                .neoFont(48, weight: .light)
                 .foregroundStyle(.orange)
-            Text("Scan failed")
-                .neoFont(.headline)
+            Text("Scan Failed")
+                .neoFont(22, weight: .semibold)
             if let message = model.coordinator.scanErrorMessage {
                 Text(message)
+                    .multilineTextAlignment(.center)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: 420)
             }
-            Button("Try Again") {
+            Button {
                 if let target = model.coordinator.selectedTarget {
                     model.startScan(target)
                 }
+            } label: {
+                Text("Try Again").neoFont(.body)
             }
+            .keyboardShortcut(.defaultAction)
+            .neoControlSize()
+            .padding(.top, 6)
             .disabled(model.coordinator.selectedTarget == nil)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

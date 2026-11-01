@@ -95,6 +95,9 @@ The most used ones; the rest live in `Sources/NeodiskUI/Dev/`.
   times hover, resize and drill frames in a window, `NEODISK_CANVAS_DEMO=1` opens the canvas alone
   (`NEODISK_VIZ_MODE=sunburst`). The tree is `NEODISK_CANVAS_SCAN=<path>` or a synthetic one of
   `NEODISK_CANVAS_NODES=<count>`.
+- `NEODISK_SCAN_ENGINE=walk|mft|auto` (`diskscan --engine`) forces how directories are read: `mft` reads the NTFS
+  file table for any folder, not only a whole volume (elevated shell). Records the engines disagree on are files
+  being written, whose directory entries lag the file table; compare with `--dump-records`.
 
 ## Product constraints
 

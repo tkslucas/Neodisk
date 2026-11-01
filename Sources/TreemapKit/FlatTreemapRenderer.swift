@@ -75,8 +75,8 @@ public enum FlatTreemapRenderer {
     }
     #endif
 
-    /// Serial cell pass, in scene order: parents precede their descendants,
-    /// so nesting overdraw resolves correctly.
+    /// Each row band walks cells in scene order (parents before descendants), so overdraw resolves the
+    /// same as one serial pass while bands run concurrently.
     private nonisolated static func renderCells(
         _ cells: [TreemapCell],
         origin: CGPoint,
@@ -86,16 +86,20 @@ public enum FlatTreemapRenderer {
         height: Int,
         bytesPerRow: Int
     ) {
-        for cell in cells {
-            rasterize(
-                cell: cell,
-                origin: origin,
-                scale: scale,
-                into: base,
-                width: width,
-                height: height,
-                bytesPerRow: bytesPerRow
-            )
+        nonisolated(unsafe) let base = base
+        TreemapRasterTarget.forEachRowBand(height: height) { rows in
+            for cell in cells {
+                rasterize(
+                    cell: cell,
+                    origin: origin,
+                    scale: scale,
+                    rows: rows,
+                    into: base,
+                    width: width,
+                    height: height,
+                    bytesPerRow: bytesPerRow
+                )
+            }
         }
     }
 
@@ -155,6 +159,7 @@ public enum FlatTreemapRenderer {
         cell: TreemapCell,
         origin: CGPoint,
         scale: CGFloat,
+        rows: Range<Int>,
         into base: UnsafeMutablePointer<UInt8>,
         width: Int,
         height: Int,
@@ -174,7 +179,10 @@ public enum FlatTreemapRenderer {
         let x1 = min(width, Int(((Double(rect.maxX) - originX) * scaleD).rounded()))
         let y0 = max(0, Int(((Double(rect.minY) - originY) * scaleD).rounded()))
         let y1 = min(height, Int(((Double(rect.maxY) - originY) * scaleD).rounded()))
-        guard x1 > x0, y1 > y0 else { return }
+        // Geometry (corners, border rings) uses the whole cell; only the rows drawn are clipped to the band.
+        let firstRow = max(y0, rows.lowerBound)
+        let endRow = min(y1, rows.upperBound)
+        guard x1 > x0, y1 > y0, endRow > firstRow else { return }
 
         let fillWord = pack(cell.rgb)
         let borderWord = pack(cell.rgb * borderShade)
@@ -267,7 +275,7 @@ public enum FlatTreemapRenderer {
             }
         }
 
-        for py in y0..<y1 {
+        for py in firstRow..<endRow {
             let rowStart = py * bytesPerRow
             let edgeDistY = min(py - y0, y1 - 1 - py)
 

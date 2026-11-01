@@ -152,7 +152,7 @@ struct ScanFailedView: View {
             }
             Button {
                 if let target = model.coordinator.selectedTarget {
-                    model.startScan(target)
+                    model.startScan(target, forcesRescan: true)
                 }
             } label: {
                 Text("Try Again").neoFont(.body)

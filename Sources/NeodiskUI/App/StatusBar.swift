@@ -96,6 +96,8 @@ struct StatusBar: View {
         .neoFont(11)
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
+        // The whole bar takes the right-click, not only its texts.
+        .contentShape(Rectangle())
     }
 
     static func countText(_ count: Int) -> String {

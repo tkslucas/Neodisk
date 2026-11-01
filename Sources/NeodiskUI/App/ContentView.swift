@@ -567,19 +567,26 @@ private struct LiveScanStrip: View {
     var body: some View {
         // Reads like the status bar below it: what's happening leading, the bar and its button at the trailing end.
         HStack(spacing: 10) {
+            // The caption says what's happening, so it gives way last: the counts go first, then the bar narrows.
             Text(statusText)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+                .layoutPriority(2)
             // No counters have moved yet while checking for changes; "0 files"
             // next to that caption would read as lost data.
             if !progress.metrics.isCheckingChanges {
-                Text(AppStrings.plural(
-                    progress.metrics.filesVisited, one: "%@ file · %@", other: "%@ files · %@",
-                    progress.metrics.filesVisited.formatted(), NeodiskFormatters.size(progress.metrics.bytesDiscovered)
-                ))
+                ViewThatFits(in: .horizontal) {
+                    Text(AppStrings.plural(
+                        progress.metrics.filesVisited, one: "%@ file · %@", other: "%@ files · %@",
+                        progress.metrics.filesVisited.formatted(), NeodiskFormatters.size(progress.metrics.bytesDiscovered)
+                    ))
                     .monospacedDigit()
-                    .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .fixedSize()
+                    Color.clear.frame(width: 0, height: 0)
+                }
+                .foregroundStyle(.secondary)
+                .layoutPriority(1)
             }
             Spacer(minLength: 12)
 
@@ -589,7 +596,7 @@ private struct LiveScanStrip: View {
                 value: progress.metrics.progressFraction,
                 isActive: !isStopped
             )
-            .frame(width: (160 * textScale).rounded())
+            .frame(minWidth: (80 * textScale).rounded(), maxWidth: (160 * textScale).rounded())
             .opacity(isStopped ? 0.5 : 1)
 
             if isStopped {

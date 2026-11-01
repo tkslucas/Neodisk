@@ -1,0 +1,104 @@
+import AppKit
+import Foundation
+import Testing
+import NeodiskKit
+import NeodiskAppModel
+@testable import NeodiskUI
+
+/// The statistics tabs' and the bottom table's columns' layouts persist, and a hidden tab never stays the lens.
+@MainActor
+@Suite(.serialized) struct LayoutPreferencesTests {
+    private func makeModel() throws -> (NeodiskViewModel, AppPreferences, UserDefaults, String) {
+        let suite = "NeodiskLayoutTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        let cacheDirectory = FileManager.default.temporaryDirectory
+            .appending(path: suite, directoryHint: .isDirectory)
+        let model = NeodiskViewModel(
+            snapshotCache: ScanSnapshotCache(directoryURL: cacheDirectory, isLoggingEnabled: false),
+            sidebarFolderStore: SidebarFolderStore(defaults: defaults)
+        )
+        let preferences = AppPreferences(defaults: defaults)
+        model.preferences = preferences
+        return (model, preferences, defaults, suite)
+    }
+
+    @Test func hidingTheActiveTabMovesToTheFirstShownOne() throws {
+        let (model, preferences, defaults, suite) = try makeModel()
+        defer { removeTestDefaultsSuite(defaults, named: suite) }
+        model.analysisTab = .age
+        var layout = model.analysisTabs
+        layout.move(.duplicates, onto: .largest)
+        layout.setHidden(.age, true)
+        model.setAnalysisTabs(layout)
+        #expect(model.analysisTab == .duplicates)
+        #expect(preferences.analysisTabsRaw == "duplicates,largest,kinds,-age,changes")
+        #expect(AppPreferences(defaults: defaults).analysisTabs == layout)
+    }
+
+    @Test func outlineColumnsPersistWithNamePinned() throws {
+        let (model, preferences, defaults, suite) = try makeModel()
+        defer { removeTestDefaultsSuite(defaults, named: suite) }
+        var layout = model.outlineColumns
+        layout.setVisibleOrder([.name, .modified, .size, .percent, .files])
+        layout.setHidden(.percent, true)
+        layout.setHidden(.name, true)
+        model.setOutlineColumns(layout)
+        #expect(preferences.outlineColumnsRaw == "name,modified,size,-percent,files")
+        preferences.restoreDefaults()
+        #expect(AppPreferences(defaults: defaults).outlineColumns.isStandard)
+    }
+
+    /// Settings' reset while the table is on screen: rearranging it to match mustn't store the half-done orders
+    /// each column move reports.
+    @Test func bottomTableFollowsAResetWithoutStoringItsSteps() throws {
+        let (model, _, defaults, suite) = try makeModel()
+        defer { removeTestDefaultsSuite(defaults, named: suite) }
+        let custom = ItemLayout<OutlineColumn>(stored: "name,modified,files,size,-percent", pinned: .name)
+        model.setOutlineColumns(custom)
+        let coordinator = BottomOutlineTable.Coordinator(model: model)
+        let tableView = NSTableView()
+        for id in custom.order {
+            let column = NSTableColumn(identifier: .init(id.rawValue))
+            column.isHidden = custom.isHidden(id)
+            tableView.addTableColumn(column)
+        }
+        tableView.delegate = coordinator
+        coordinator.tableView = tableView
+        coordinator.appliedColumns = custom
+
+        let standard = ItemLayout<OutlineColumn>(pinned: .name)
+        model.setOutlineColumns(standard)
+        let writes = DefaultsWrites(defaults, key: "outlineColumns")
+        coordinator.applyColumns(standard)
+
+        #expect(tableView.tableColumns.map(\.identifier.rawValue) == standard.order.map(\.rawValue))
+        #expect(!tableView.tableColumns.contains { $0.isHidden })
+        #expect(model.outlineColumns == standard)
+        #expect(writes.values.isEmpty)
+        writes.stop()
+    }
+}
+
+/// The values written to one defaults key while it's watched.
+private final class DefaultsWrites: NSObject {
+    private let defaults: UserDefaults
+    private let key: String
+    private(set) var values: [String] = []
+
+    init(_ defaults: UserDefaults, key: String) {
+        self.defaults = defaults
+        self.key = key
+        super.init()
+        defaults.addObserver(self, forKeyPath: key, options: [.new], context: nil)
+    }
+
+    func stop() {
+        defaults.removeObserver(self, forKeyPath: key)
+    }
+
+    override func observeValue(
+        forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey: Any]?, context: UnsafeMutableRawPointer?
+    ) {
+        values.append(change?[.newKey] as? String ?? "")
+    }
+}

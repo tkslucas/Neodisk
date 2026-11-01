@@ -32,6 +32,8 @@ struct VizHoverTooltipData: Equatable {
     /// A filled cloud immediately before the size marks a genuinely dataless
     /// file. Directories with some cloud-only descendants do not wear it.
     var showsCloudGlyph = false
+    /// "In Cleanup" and the like, under the size, when the item is collected or inside a collected folder.
+    var cleanupText: String? = nil
 
     /// First line: the item/aggregate name, or "Free space · <size>".
     var primaryText: String {
@@ -109,12 +111,14 @@ extension VizHoverTooltipData {
             return VizHoverTooltipData(kind: .aggregate(itemCount: aggregate.itemCount), sizeBytes: aggregate.totalSize, basisBytes: basisBytes, basisName: basisName)
         }
         if let node = model.hoveredNode {
-            return VizHoverTooltipData(
+            var data = VizHoverTooltipData(
                 item: node,
                 sizeBytes: node.displayWeight(includingCloudOnly: model.showsCloudOnlyFiles),
                 basisBytes: basisBytes,
                 basisName: basisName
             )
+            data.cleanupText = model.cleanup.mark(for: node.id).hoverText
+            return data
         }
         return nil
     }
@@ -164,9 +168,18 @@ struct VizHoverTooltip: View {
                         if data.showsCloudGlyph {
                             neutralSymbol("cloud.fill", size: 9)
                         } else {
-                            Color.clear.frame(width: 13, height: 1)
+                            Color.clear.frame(width: (13 * textScale).rounded(), height: 1)
                         }
                         secondaryText
+                    }
+                    if let cleanupText = data.cleanupText {
+                        HStack(spacing: 5) {
+                            neutralSymbol("trash", size: 9)
+                            Text(cleanupText)
+                                .neoFont(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
                     }
                 }
             } else {

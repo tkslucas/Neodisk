@@ -387,7 +387,7 @@ import NeodiskKit
         let initial = model.outlineRowsSnapshot()
         let builds = model.outlineRowsCache.buildCount
         for row in stride(from: 1, to: initial.rows.count, by: 997) {
-            model.selectedNodeID = initial.rows[row].id
+            model.selection.replace(with: initial.rows[row].id)
             #expect(model.outlineRowsSnapshot().structuralVersion == initial.structuralVersion)
         }
         #expect(model.outlineRowsCache.buildCount == builds)
@@ -443,7 +443,7 @@ import NeodiskKit
         }
 
         // Dirty every axis the reset is supposed to clear.
-        model.selectedNodeID = file.id
+        model.selection.replace(with: file.id)
         model.setVisualizationHover(.node(id: file.id, swatchRGB: .zero))
         model.zoomRootID = targetA.id
         model.expandedAggregateIDs = [targetA.id]

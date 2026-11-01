@@ -33,9 +33,15 @@ The most used ones; the rest live in `Sources/NeodiskUI/Dev/`.
 - `NEODISK_HEADLESS=1` + `NEODISK_BENCH_AUTOQUIT=1` (+ `NEODISK_BENCH_RESCANS=<n>`): off-screen felt-time
   benchmark runs. A bench run that could draw on screen is a bug.
 - `NEODISK_SNAPSHOT_DIR=<dir>`: isolate the snapshot cache from the developer's real one.
+- `NEODISK_AUTOSELECT=<path>[:<path>…]`: select those items after the scan (the last one primary), as ⌘-clicks would.
+- `NEODISK_AUTOCOLLECT=<path>[:<path>…]`: collect those items in Cleanup after the scan; with
+  `NEODISK_AUTOTRASH=1`, then move them as if confirmed (really trashes: temp dirs only); `=fail` fails every move,
+  `=hold` holds them in the moving state (neither moves anything).
 - Headless runs share the `Neodisk` UserDefaults domain with your `swift run` sessions: check
   `defaults read Neodisk <key>` before concluding a feature regressed.
-- The sidebar's material background renders blank in offscreen captures; verify the sidebar by tests and a human look.
+- The sidebar's material background renders blank in offscreen captures: `NEODISK_SIDEBAR_SNAPSHOT=<out.png>`
+  renders the sidebar alone (`NEODISK_SIDEBAR_SNAPSHOT_WIDTH`), `NEODISK_TABBAR_SNAPSHOT=<out.png>` the statistics
+  tabs at several widths; both take `NEODISK_SNAPSHOT_APPEARANCE=light` and `NEODISK_SNAPSHOT_TEXT_SCALE`.
 
 ## Linux
 
@@ -48,14 +54,18 @@ The most used ones; the rest live in `Sources/NeodiskUI/Dev/`.
   means compiler warnings.
 - Static Swift runtime links need `--build-system native` for now.
 - Hooks: `NEODISK_AUTOSCAN`, `NEODISK_UI_SNAPSHOT` (GSK render to PNG, then quit; `NEODISK_SNAPSHOT_DELAY`),
-  `NEODISK_VIZ_MODE`, `NEODISK_TREEMAP_STYLE`, `NEODISK_ANALYSIS_TAB`, `NEODISK_SELECT`, `NEODISK_SCAN_TIMING`.
+  `NEODISK_VIZ_MODE`, `NEODISK_TREEMAP_STYLE`, `NEODISK_ANALYSIS_TAB`, `NEODISK_SELECT=<path>[:<path>…]`, `NEODISK_SCAN_TIMING`,
+  `NEODISK_AUTOTRASH=<path>[:<path>…]` (moves them as if confirmed, reported as the window would; really trashes:
+  temp dirs only; with `NEODISK_UI_SNAPSHOT`, the capture waits for the moves and shows the toast).
   `XDG_CONFIG_HOME` isolates settings. Example:
   `NEODISK_AUTOSCAN=/usr NEODISK_UI_SNAPSHOT=/tmp/shot.png xvfb-run -a -s "-screen 0 1600x1000x24" .build/debug/neodisk`
 
 ## Product constraints
 
-- **Read-only.** The app never modifies or deletes user files; it writes only its preferences and snapshot
-  cache. Move-to-Trash was removed on purpose: don't reintroduce it.
+- **Scanning is read-only; removal is the Trash only.** Besides its preferences and snapshot cache, the only
+  change the app makes is moving items the user collected in Cleanup and confirmed to the Trash, each re-checked
+  by `TrashSafetyPolicy` and `TrashMover` right before its move. Never delete permanently, never skip the checks,
+  and never let a drag move or trash files behind the scan (drags out of the app only copy).
 - Scans stream partial trees, then a final snapshot. The treemap and outline are primary navigation, not extras.
 - Toolbar buttons stay persistent and disable when unusable; they never appear and disappear.
 - The scan progress bar is always determinate, never moves backward within a session (fallbacks and phase

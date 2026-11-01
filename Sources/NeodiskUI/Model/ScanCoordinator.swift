@@ -460,6 +460,24 @@ final class ScanCoordinator {
         expandTask = nil
     }
 
+    /// Cuts trashed items out of the snapshot on screen, off the main actor, retrying on a newer one of the same
+    /// location. False when it cut nothing: another location or a scan is on screen, or the items are gone already.
+    func removeNodes(ids nodeIDs: [String], fromTargetID targetID: String) async -> Bool {
+        for _ in 0..<3 {
+            guard let current = snapshot, current.target.id == targetID, current.isComplete else { return false }
+            let liveIDs = nodeIDs.filter { current.treeStore.node(id: $0) != nil }
+            guard !liveIDs.isEmpty else { return false }
+            guard let updated = try? await snapshotTransformService.removingNodes(in: current, ids: liveIDs) else {
+                return false
+            }
+            if snapshot?.id == current.id {
+                snapshot = updated
+                return true
+            }
+        }
+        return false
+    }
+
     @discardableResult
     private func replaceNodeInTree(
         _ oldNode: FileNodeRecord,

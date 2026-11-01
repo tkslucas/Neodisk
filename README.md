@@ -4,7 +4,7 @@
 </h1>
 
 <p align="center">
-  Read-only disk space visualizer for macOS and Linux.
+  Disk space visualizer for macOS and Linux.
   Treemap and sunburst views on the <code>NeodiskKit</code> scan engine.
   <br>
   <a href="https://github.com/tkslucas/Neodisk/releases/latest/download/Neodisk.dmg">Download</a>
@@ -49,10 +49,14 @@ later); the AppImage bundles them and needs a system as new as Ubuntu 24.04.
 
 ## About
 
-**Read-only by design.** Neodisk never modifies or deletes your files.
-Instead, Reveal in Finder (Show in Files on Linux), Open, and Copy Path are
-the only file actions. Delete and clean up safely in your file manager
-instead.
+**Careful cleanup.** Scanning only reads. To free space, collect items in
+Cleanup at the bottom of the sidebar (drag them there from any view, or press
+⌘⌫), review them, and move them to the Trash after one confirmation. Neodisk
+never deletes anything itself: items go to the Trash, so you can still get
+them back. It refuses system folders, volumes, your home folder and its standard
+folders, and checks right before each move that the item is still the one it
+scanned. On Linux, Move to Trash is in the right-click menu. You can turn all
+of it off in Settings.
 
 **Native on each platform.** The scan engine, tree model, treemap and
 sunburst geometry, statistics, and search are one shared Swift core; the

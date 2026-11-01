@@ -15,7 +15,7 @@ struct SunburstChartView: View {
     /// Non-nil enables the center "go up" affordance and click.
     let parentNode: FileNodeRecord?
     let treeStore: FileTreeStore
-    let selectedNodeID: String?
+    let selection: NodeSelection
     let selectedAncestorIDs: Set<String>
     let depthLimit: Int
     /// Changes reload the layout; color changes only restyle segments (see the `style` onChange).
@@ -42,6 +42,15 @@ struct SunburstChartView: View {
     /// handled so unhandled keys continue up the responder chain.
     let onKeyDown: (NSEvent) -> Bool
     let contextMenu: (SunburstSegment) -> NSMenu?
+    /// Collected and moving items, drawn over the finished layout; a change never re-lays out.
+    var cleanup = SunburstCleanupInput()
+    /// The hover line for a node in Cleanup, or nil.
+    var cleanupHoverText: (String) -> String? = { _ in nil }
+    /// The dragging items a press on this arc starts; empty when it has nothing to drag.
+    var dragItems: (SunburstSegment, CGPoint) -> [NSDraggingItem] = { _, _ in [] }
+    var onDragSessionChange: (Bool) -> Void = { _ in }
+    /// Edit > Select All while the chart has focus.
+    var onSelectAll: () -> Void = {}
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Owned by SunburstPane, which shares the rendered segments with the
@@ -118,16 +127,24 @@ struct SunburstChartView: View {
         if zoomTransition == nil, !chartModel.isLayoutPending,
            let location = hoverLocation, let segment = chartModel.hoveredSegment {
             VizHoverTooltipLayer(
-                data: VizHoverTooltipData(
-                    segment: segment,
-                    node: segment.nodeID.flatMap(treeStore.node(id:)),
-                    basis: rootNode,
-                    includingCloudOnly: includeCloudOnly
-                ),
+                data: tooltipData(for: segment),
                 location: location,
                 paneSize: paneSize
             )
         }
+    }
+
+    private func tooltipData(for segment: SunburstSegment) -> VizHoverTooltipData {
+        var data = VizHoverTooltipData(
+            segment: segment,
+            node: segment.nodeID.flatMap(treeStore.node(id:)),
+            basis: rootNode,
+            includingCloudOnly: includeCloudOnly
+        )
+        if data.itemSymbolName != nil, let nodeID = segment.nodeID {
+            data.cleanupText = cleanupHoverText(nodeID)
+        }
+        return data
     }
 
     private func accessibleChart(baseChartFrame: CGRect, now: Date) -> some View {
@@ -169,8 +186,13 @@ struct SunburstChartView: View {
                 segments: chartModel.renderedSegments,
                 renderVersion: chartModel.renderedLayoutVersion,
                 selectionSegments: chartModel.selectionOverlaySegments(
-                    selectedNodeID: selectedNodeID,
+                    selection: selection,
                     selectedAncestorIDs: selectedAncestorIDs
+                ),
+                cleanupOverlay: chartModel.cleanupOverlay(
+                    collected: cleanup.collected,
+                    moving: cleanup.moving,
+                    rootIsInside: cleanup.rootIsInside
                 ),
                 chartFrame: chartFrame
             )
@@ -279,6 +301,12 @@ struct SunburstChartView: View {
             guard !chartModel.isLayoutPending, zoomTransition == nil else { return nil }
             return help(at: location, in: baseChartFrame)
         }
+        let dragProvider: (CGPoint) -> [NSDraggingItem] = { location in
+            guard !chartModel.isLayoutPending, zoomTransition == nil,
+                  !isCenterHit(at: location, in: baseChartFrame),
+                  let segment = hitTest(at: location, in: baseChartFrame) else { return [] }
+            return dragItems(segment, location)
+        }
 
         SunburstInteractionOverlay(
             onHover: onHover,
@@ -286,7 +314,10 @@ struct SunburstChartView: View {
             onPinchDrill: onPinchDrill,
             onKeyDown: keyHandler,
             contextMenu: menuProvider,
-            help: helpProvider
+            help: helpProvider,
+            dragItems: dragProvider,
+            onDragSessionChange: onDragSessionChange,
+            onSelectAll: onSelectAll
         )
         .accessibilityHidden(true)
         .allowsHitTesting(!chartModel.isLayoutPending)
@@ -563,6 +594,14 @@ struct SunburstChartView: View {
     }
 }
 
+/// What Cleanup holds, as the chart draws it.
+struct SunburstCleanupInput: Equatable {
+    var collected: [String] = []
+    var moving: Set<String> = []
+    /// The chart root is inside a collected item, so every arc is.
+    var rootIsInside = false
+}
+
 private struct SunburstCenterAffordance: View, Equatable {
     nonisolated static func == (lhs: SunburstCenterAffordance, rhs: SunburstCenterAffordance) -> Bool {
         true
@@ -580,6 +619,7 @@ private struct SunburstRenderedChartLayer: View {
     let segments: [SunburstSegment]
     let renderVersion: Int
     let selectionSegments: [SunburstSelectionOverlaySegment]
+    let cleanupOverlay: SunburstCleanupOverlay
     let chartFrame: CGRect
 
     var body: some View {
@@ -589,6 +629,10 @@ private struct SunburstRenderedChartLayer: View {
                 renderVersion: renderVersion
             )
             .equatable()
+
+            SunburstCleanupOverlayCanvas(overlay: cleanupOverlay)
+                .equatable()
+                .allowsHitTesting(false)
 
             SunburstSelectionOverlay(segments: selectionSegments)
                 .equatable()

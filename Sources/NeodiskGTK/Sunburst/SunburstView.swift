@@ -72,7 +72,7 @@ final class SunburstView: CanvasDelegate {
             self.requestRender()
         })
         tokens.append(track { [unowned self] in
-            _ = self.model.selectedNodeID
+            _ = self.model.selection
             self.canvas.queueDraw()
         })
         tokens.append(track { [unowned self] in
@@ -192,17 +192,23 @@ final class SunburstView: CanvasDelegate {
         guard size.width == width, size.height == height else { return }
 
         let geometry = SunburstGeometry(size: size)
-        if let selected = model.selectedNodeID, let store = model.store {
-            // The selected arc and its ancestors, like the Mac's overlay.
+        let selection = model.selection
+        if let selected = selection.primaryID, let store = model.store {
+            // Every selected arc, and the primary one's ancestors, like the Mac's overlay. Selected arcs draw
+            // after the ancestors, so a selected ancestor keeps its selected stroke.
             var ancestorIDs = Set(store.path(to: selected).map(\.id))
             ancestorIDs.remove(selected)
+            var selectedSegments: [SunburstSegment] = []
             for segment in frame.segments {
                 guard let id = segment.nodeID else { continue }
-                if id == selected {
-                    geometry.overlay(snapshot, segment, fill: RGBA.white.withAlpha(0.12), stroke: Accent.color, width: 2.5)
+                if selection.contains(id) {
+                    selectedSegments.append(segment)
                 } else if ancestorIDs.contains(id) {
                     geometry.overlay(snapshot, segment, fill: nil, stroke: RGBA.white.withAlpha(0.35), width: 1.5)
                 }
+            }
+            for segment in selectedSegments {
+                geometry.overlay(snapshot, segment, fill: RGBA.white.withAlpha(0.12), stroke: Accent.color, width: 2.5)
             }
         }
         if let hovered = hoveredSegment {
@@ -285,7 +291,13 @@ final class SunburstView: CanvasDelegate {
         connectPress(click, "pressed") { [unowned self] presses, x, y in
             gtk_widget_grab_focus(ptr(self.canvas.widget))
             let button = gtk_gesture_single_get_current_button(ptr(click))
-            self.handlePress(button: button, presses: presses, at: CGPoint(x: x, y: y))
+            let state = gtk_event_controller_get_current_event_state(ptr(click)).rawValue
+            self.handlePress(
+                button: button, presses: presses, at: CGPoint(x: x, y: y),
+                click: MapClick(
+                    command: state & GDK_CONTROL_MASK.rawValue != 0, shift: state & GDK_SHIFT_MASK.rawValue != 0
+                )
+            )
         }
         gtk_widget_add_controller(ptr(widget), ptr(click))
 
@@ -322,8 +334,8 @@ final class SunburstView: CanvasDelegate {
         gtk_widget_add_controller(ptr(widget), ptr(scroll))
 
         let keys = raw(gtk_event_controller_key_new())!
-        connectKey(keys) { [unowned self] keyval, _ in
-            self.handleKey(keyval)
+        connectKey(keys) { [unowned self] keyval, state in
+            MainWindow.handleTrashKey(keyval, state: state, from: self.canvas.widget) || self.handleKey(keyval, state: state)
         }
         gtk_widget_add_controller(ptr(widget), ptr(keys))
 
@@ -334,15 +346,15 @@ final class SunburstView: CanvasDelegate {
         }
     }
 
-    private func handlePress(button: UInt32, presses: Int, at point: CGPoint) {
+    private func handlePress(button: UInt32, presses: Int, at point: CGPoint, click: MapClick) {
         // The chart is moving: nothing under the pointer is where it looks.
         guard zoom == nil else { return }
         if isInCenter(point) {
-            if button == 1 { model.focusOut() }
+            if button == 1, click == .replace { model.focusOut() }
             return
         }
         guard let segment = segment(at: point), !segment.isFreeSpace, !segment.isHiddenSpace else {
-            if button == 1 { model.select(nil) }
+            if button == 1, click == .replace { model.select(nil) }
             return
         }
         if segment.isAggregate {
@@ -353,8 +365,12 @@ final class SunburstView: CanvasDelegate {
         }
         guard let nodeID = segment.nodeID else { return }
         switch button {
+        case 1 where presses == 1 && click == .toggle:
+            // Ctrl- or Shift-click: the item joins or leaves.
+            model.toggleSelection(nodeID)
         case 3:
-            model.select(nodeID)
+            // The menu acts on the selection: an arc outside it becomes it (GNOME's rule).
+            if !model.selection.contains(nodeID) { model.select(nodeID) }
             showContextMenu(at: point)
         case 1 where presses >= 2:
             model.drillIn(to: nodeID)
@@ -498,8 +514,12 @@ final class SunburstView: CanvasDelegate {
         }
     }
 
-    private func handleKey(_ keyval: UInt32) -> Bool {
+    private func handleKey(_ keyval: UInt32, state: UInt32) -> Bool {
         guard let frame, let store = model.store else { return false }
+        if TreemapView.isSelectAll(keyval, state: state) {
+            if !model.selectAllInMap() { gtk_widget_error_bell(ptr(canvas.widget)) }
+            return true
+        }
         let direction: SunburstKeyboardNav.Direction
         switch Int32(keyval) {
         case GDK_KEY_Left: direction = .previousSibling
@@ -528,7 +548,8 @@ final class SunburstView: CanvasDelegate {
             store: store,
             isRendered: { rendered.contains($0) }
         ) {
-            model.select(next)
+            // Shift adds the target; a plain arrow leaves only it selected.
+            if state & GDK_SHIFT_MASK.rawValue != 0 { model.extendSelection(to: next) } else { model.select(next) }
         } else {
             gtk_widget_error_bell(ptr(canvas.widget))
         }
@@ -546,9 +567,11 @@ final class SunburstView: CanvasDelegate {
     }
 
     private func showContextMenu(at point: CGPoint) {
+        let copy = model.selection.isMultiple ? L("Copy Paths") : L("Copy Path")
         Widgets.popupMenu(&contextMenu, sections: [
-            [(L("Open"), "win.open-item"), (L("Show in Files"), "win.show-in-files"), (L("Copy Path"), "win.copy-path")],
+            [(L("Open"), "win.open-item"), (L("Show in Files"), "win.show-in-files"), (copy, "win.copy-path")],
             [(L("Zoom In"), "win.focus-in"), (L("Zoom Out"), "win.focus-out")],
+            [(L("Move to Trash…"), "win.move-to-trash")],
         ], on: canvas.widget, at: point)
     }
 }

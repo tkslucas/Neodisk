@@ -54,6 +54,7 @@ final class SunburstChartModel: ObservableObject {
     private var activeLayoutID: String?
     private var layoutTask: Task<[SunburstSegment], Error>?
     private var selectionOverlayCache = SunburstSelectionOverlayCache(capacity: 8)
+    private var cleanupOverlayCache: (key: SunburstCleanupOverlayKey, overlay: SunburstCleanupOverlay)?
     private var legendPresentationCache = SunburstLegendPresentationCache()
     /// The rendered layout before fills, kept so a style change re-resolves
     /// colors over the finished geometry instead of re-laying out.
@@ -153,21 +154,40 @@ final class SunburstChartModel: ObservableObject {
         renderState.segment(forSegmentID: segmentID)
     }
 
+    /// Every selected arc drawn selected; the path down to the primary one drawn as its ancestors.
     func selectionOverlaySegments(
-        selectedNodeID: String?,
+        selection: NodeSelection,
         selectedAncestorIDs: Set<String>
     ) -> [SunburstSelectionOverlaySegment] {
         let key = SunburstSelectionOverlayCacheKey(
             renderVersion: renderedLayoutVersion,
-            selectedNodeID: selectedNodeID,
-            selectedAncestorIDs: selectedAncestorIDs
+            selectedNodeID: selection.primaryID,
+            selectedAncestorIDs: selectedAncestorIDs,
+            selectionRevision: selection.isMultiple ? selection.revision : 0
         )
         return selectionOverlayCache.segments(for: key) {
             renderState.selectionOverlaySegments(
-                selectedNodeID: selectedNodeID,
+                selection: selection,
                 selectedAncestorIDs: selectedAncestorIDs
             )
         }
+    }
+
+    /// The arcs Cleanup marks over the finished layout (never a re-layout): memoized per layout and pile.
+    func cleanupOverlay(collected: [String], moving: Set<String>, rootIsInside: Bool) -> SunburstCleanupOverlay {
+        let key = SunburstCleanupOverlayKey(
+            renderVersion: renderedLayoutVersion, collected: collected, moving: moving, rootIsInside: rootIsInside
+        )
+        if let cached = cleanupOverlayCache, cached.key == key { return cached.overlay }
+        let overlay = SunburstCleanupOverlay(
+            segments: renderedSegments,
+            marks: { renderState.segment(forNodeID: $0) },
+            collected: collected,
+            moving: moving,
+            rootIsInside: rootIsInside
+        )
+        cleanupOverlayCache = (key, overlay)
+        return overlay
     }
 
     /// O(segments), never a re-layout. A load in flight picks up the latest style when it completes.
@@ -259,10 +279,58 @@ final class SunburstChartModel: ObservableObject {
     }
 }
 
+private struct SunburstCleanupOverlayKey: Equatable {
+    let renderVersion: Int
+    let collected: [String]
+    let moving: Set<String>
+    let rootIsInside: Bool
+}
+
+/// Collected arcs get an outline; they and every arc inside them (by angle and ring, so pooled arcs too) get
+/// the wash. A collected item the layout pooled or dropped has no arc and draws nothing.
+struct SunburstCleanupOverlay: Equatable {
+    var wash: [SunburstSegment] = []
+    var collected: [SunburstSegment] = []
+    var moving: [SunburstSegment] = []
+
+    var isEmpty: Bool { wash.isEmpty }
+
+    init() {}
+
+    init(
+        segments: [SunburstSegment],
+        marks segment: (String) -> SunburstSegment?,
+        collected collectedIDs: [String],
+        moving movingIDs: Set<String>,
+        rootIsInside: Bool
+    ) {
+        guard !segments.isEmpty, !(collectedIDs.isEmpty && movingIDs.isEmpty) else { return }
+        if rootIsInside {
+            // Drilled into a collected folder: everything on screen is in Cleanup.
+            wash = segments
+            return
+        }
+        moving = movingIDs.sorted().compactMap(segment)
+        collected = collectedIDs.filter { !movingIDs.contains($0) }.compactMap(segment)
+        let marked = moving + collected
+        guard !marked.isEmpty else { return }
+        let epsilon = 1e-9
+        wash = segments.filter { candidate in
+            marked.contains { mark in
+                candidate.innerRadius >= mark.innerRadius - epsilon
+                    && candidate.startAngle >= mark.startAngle - epsilon
+                    && candidate.endAngle <= mark.endAngle + epsilon
+            }
+        }
+    }
+}
+
 private struct SunburstSelectionOverlayCacheKey: Hashable {
     let renderVersion: Int
     let selectedNodeID: String?
     let selectedAncestorIDs: Set<String>
+    /// A multi-selection's members aren't in the key; its revision stands for them.
+    let selectionRevision: UInt64
 }
 
 private struct SunburstSelectionOverlayCache {
@@ -367,18 +435,20 @@ private struct SunburstChartRenderState {
     }
 
     func selectionOverlaySegments(
-        selectedNodeID: String?,
+        selection: NodeSelection,
         selectedAncestorIDs: Set<String>
     ) -> [SunburstSelectionOverlaySegment] {
-        guard let selectedNodeID else { return [] }
+        guard let selectedNodeID = selection.primaryID else { return [] }
 
         var overlaySegments: [SunburstSelectionOverlaySegment] = []
-        overlaySegments.reserveCapacity(selectedAncestorIDs.count)
+        overlaySegments.reserveCapacity(selectedAncestorIDs.count + selection.count)
 
+        // An ancestor that is itself selected draws as selected, below.
         for segment in segments {
             guard let nodeID = segment.nodeID,
                   nodeID != selectedNodeID,
-                  selectedAncestorIDs.contains(nodeID) else {
+                  selectedAncestorIDs.contains(nodeID),
+                  !selection.contains(nodeID) else {
                 continue
             }
 
@@ -388,6 +458,12 @@ private struct SunburstChartRenderState {
             ))
         }
 
+        // The primary last, so it draws on top.
+        for nodeID in selection.ids where nodeID != selectedNodeID {
+            if let segment = segmentByNodeID[nodeID] {
+                overlaySegments.append(SunburstSelectionOverlaySegment(segment: segment, role: .selected))
+            }
+        }
         if let selectedSegment = segmentByNodeID[selectedNodeID] {
             overlaySegments.append(SunburstSelectionOverlaySegment(
                 segment: selectedSegment,

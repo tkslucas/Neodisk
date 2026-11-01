@@ -73,7 +73,7 @@ enum OutlineKeyboardNavigation {
             tableView.selectRowIndexes([row], byExtendingSelection: false)
             let nodeID = rows[row].id
             if model.selectedNodeID != nodeID {
-                model.selectedNodeID = nodeID
+                model.selection.replace(with: nodeID)
             }
         }
         return action

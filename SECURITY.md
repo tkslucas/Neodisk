@@ -22,9 +22,13 @@ for a fix and release before disclosing publicly.
 
 ## Scope
 
-Neodisk is a read-only disk visualizer: it never modifies or deletes user
-files, and it makes no network requests. Reports of particular interest:
+Neodisk is a disk visualizer. Scanning never modifies files; the only change
+it makes is moving items the user confirmed to the Trash, and it never deletes
+permanently. It makes no network requests. Reports of particular interest:
 
-- Anything that causes Neodisk to write to, modify, or delete scanned files
+- Anything that causes Neodisk to write to, modify, or delete files other
+  than moving confirmed items to the Trash
+- A way past the Trash safety checks (protected locations, the check that an
+  item is unchanged since the scan)
 - Unexpected network activity
 - Privilege escalation or sandbox/entitlement issues

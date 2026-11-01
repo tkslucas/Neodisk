@@ -117,11 +117,12 @@ enum SunburstChartStyler {
         switch role {
         case .ancestor:
             targetFillOpacity = min(base.fillOpacity + 0.04, 0.84)
-            strokeColor = Color.white.opacity(0.22)
+            strokeColor = Color.primary.opacity(0.22)
             strokeWidth = 1.5
         case .selected:
             targetFillOpacity = min(base.fillOpacity + 0.1, 0.9)
-            strokeColor = Color.white.opacity(0.5)
+            // The treemap's selection yellow: white vanished on light backgrounds.
+            strokeColor = Color(nsColor: .systemYellow)
             strokeWidth = 2.5
         }
 

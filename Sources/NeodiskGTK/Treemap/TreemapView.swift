@@ -49,7 +49,8 @@ final class TreemapView: CanvasDelegate {
     private var viewport = TreemapViewport.identity
     private var renderTask: Task<Void, Never>?
     private var inFlight: RenderInputs?
-    private var selectionRect: (key: String, rect: CGRect)?
+    /// Every selected item's rect, memoized per frame and selection.
+    private var selectionRects: (selection: NodeSelection, rects: [CGRect])?
     /// The cell under the pointer, in scene coordinates.
     private var hoveredRect: CGRect?
     /// Kept so hover can re-resolve when a drill or zoom moves cells under a still pointer.
@@ -90,7 +91,7 @@ final class TreemapView: CanvasDelegate {
             self.requestRender()
         })
         tokens.append(track { [unowned self] in
-            _ = self.model.selectedNodeID
+            _ = self.model.selection
             _ = self.model.hoveredNodeID
             self.canvas.queueDraw()
         })
@@ -189,7 +190,7 @@ final class TreemapView: CanvasDelegate {
                     texture: texture,
                     labels: self.makeLabels(for: rendered.0, isDark: inputs.isDark)
                 )
-                self.selectionRect = nil
+                self.selectionRects = nil
                 self.canvas.queueDraw()
             } else if rendered.0.cells.isEmpty {
                 self.frame = nil
@@ -274,21 +275,27 @@ final class TreemapView: CanvasDelegate {
         if let hoveredRect, model.hoveredNodeID != nil {
             Snapshot.stroke(snapshot, mapped(hoveredRect, mapping), width: 1.5, RGBA.white.withAlpha(0.8))
         }
-        if let selected = model.selectedNodeID, let store = model.store,
-           let rect = selectionRect(for: selected, in: frame, store: store) {
-            Snapshot.stroke(snapshot, mapped(rect, mapping).insetBy(dx: -1, dy: -1), width: 3, RGBA.white)
-            Snapshot.stroke(snapshot, mapped(rect, mapping), width: 2, Accent.color)
+        // The same ring for every selected item.
+        if let store = model.store {
+            for rect in selectionRects(in: frame, store: store) {
+                Snapshot.stroke(snapshot, mapped(rect, mapping).insetBy(dx: -1, dy: -1), width: 3, RGBA.white)
+                Snapshot.stroke(snapshot, mapped(rect, mapping), width: 2, Accent.color)
+            }
         }
     }
 
-    private func selectionRect(for nodeID: String, in frame: Frame, store: FileTreeStore) -> CGRect? {
-        if let cached = selectionRect, cached.key == nodeID { return cached.rect }
-        // A folder's "smaller items" cell carries the folder's ID; the
-        // folder's own rect comes from the layout.
-        let rect = frame.scene.cells.last(where: { $0.nodeID == nodeID && $0.aggregate == nil })?.rect
-            ?? frame.scene.rect(forNodeID: nodeID, in: store)
-        if let rect { selectionRect = (nodeID, rect) }
-        return rect
+    private func selectionRects(in frame: Frame, store: FileTreeStore) -> [CGRect] {
+        let selection = model.selection
+        if let cached = selectionRects, cached.selection == selection { return cached.rects }
+        // One layout per folder however many items share it; items merged into one "smaller items" cell share
+        // its ring.
+        let byID = frame.scene.rects(forNodeIDs: selection.ids, in: store)
+        var seen = Set<[CGFloat]>()
+        let rects = selection.ids.compactMap { byID[$0] }.filter {
+            seen.insert([$0.minX, $0.minY, $0.width, $0.height]).inserted
+        }
+        selectionRects = (selection, rects)
+        return rects
     }
 
     /// Maps the rendered frame into the live viewport while a zoom outruns
@@ -340,8 +347,14 @@ final class TreemapView: CanvasDelegate {
         gtk_gesture_single_set_button(ptr(click), 0)
         connectPress(click, "pressed") { [unowned self] presses, x, y in
             let button = gtk_gesture_single_get_current_button(ptr(click))
+            let state = gtk_event_controller_get_current_event_state(ptr(click)).rawValue
             gtk_widget_grab_focus(ptr(self.canvas.widget))
-            self.handlePress(button: button, presses: presses, at: CGPoint(x: x, y: y))
+            self.handlePress(
+                button: button, presses: presses, at: CGPoint(x: x, y: y),
+                click: MapClick(
+                    command: state & GDK_CONTROL_MASK.rawValue != 0, shift: state & GDK_SHIFT_MASK.rawValue != 0
+                )
+            )
         }
         gtk_widget_add_controller(ptr(widget), ptr(click))
 
@@ -403,8 +416,8 @@ final class TreemapView: CanvasDelegate {
         gtk_widget_add_controller(ptr(widget), ptr(drag))
 
         let keys = raw(gtk_event_controller_key_new())!
-        connectKey(keys) { [unowned self] keyval, _ in
-            self.handleKey(keyval)
+        connectKey(keys) { [unowned self] keyval, state in
+            MainWindow.handleTrashKey(keyval, state: state, from: self.canvas.widget) || self.handleKey(keyval, state: state)
         }
         gtk_widget_add_controller(ptr(widget), ptr(keys))
 
@@ -427,19 +440,31 @@ final class TreemapView: CanvasDelegate {
         requestRender()
     }
 
-    private func handlePress(button: UInt32, presses: Int, at point: CGPoint) {
+    private func handlePress(button: UInt32, presses: Int, at point: CGPoint, click: MapClick) {
         guard let cell = cell(at: point) else {
-            if button == 1 { model.select(nil) }
+            if button == 1, click == .replace { model.select(nil) }
             return
         }
         if cell.isFreeSpace || cell.isHiddenSpace {
-            model.select(nil)
+            if click == .replace { model.select(nil) }
             return
         }
         switch button {
+        case 1 where presses == 1 && click == .toggle:
+            // Ctrl- or Shift-click: the item joins or leaves. A "smaller items" cell opens instead; it stands for
+            // its folder, which a toggle mustn't add.
+            if cell.aggregate != nil {
+                model.expandedAggregateIDs.insert(cell.nodeID)
+            } else {
+                model.toggleSelection(cell.nodeID)
+            }
         case 3:
-            model.select(cell.nodeID)
-            showContextMenu(at: point)
+            // The menu acts on the selection: a cell outside it becomes it (GNOME's rule).
+            if !model.selection.contains(cell.nodeID) { model.select(cell.nodeID) }
+            // A "smaller items" cell stands for its folder: its menu doesn't offer to trash the whole folder,
+            // which would read as trashing the small items. Delete still acts on the selection, now the folder,
+            // outlined whole, and the confirmation names it.
+            showContextMenu(at: point, includeTrash: cell.aggregate == nil)
         case 1 where presses >= 2:
             // As on the Mac: flat folders drill in; cushion cells keep reveal-in-file-manager and never drill
             // by mouse.
@@ -603,8 +628,12 @@ final class TreemapView: CanvasDelegate {
         model.drillIn(to: target.nodeID)
     }
 
-    private func handleKey(_ keyval: UInt32) -> Bool {
+    private func handleKey(_ keyval: UInt32, state: UInt32) -> Bool {
         guard let frame else { return false }
+        if Self.isSelectAll(keyval, state: state) {
+            if !model.selectAllInMap() { gtk_widget_error_bell(ptr(canvas.widget)) }
+            return true
+        }
         let direction: TreemapKeyboardNav.Direction?
         switch Int32(keyval) {
         case GDK_KEY_Left: direction = .left
@@ -641,7 +670,8 @@ final class TreemapView: CanvasDelegate {
             next = TreemapKeyboardNav.largest(in: candidates)
         }
         if let next {
-            model.select(next)
+            // Shift adds the target; a plain arrow leaves only it selected.
+            if state & GDK_SHIFT_MASK.rawValue != 0 { model.extendSelection(to: next) } else { model.select(next) }
         } else {
             gtk_widget_error_bell(ptr(canvas.widget))
         }
@@ -662,10 +692,22 @@ final class TreemapView: CanvasDelegate {
         return "\(node.name)\n\(NeodiskFormatters.size(node.allocatedSize)) · \(node.path)"
     }
 
-    private func showContextMenu(at point: CGPoint) {
-        Widgets.popupMenu(&contextMenu, sections: [
-            [(L("Open"), "win.open-item"), (L("Show in Files"), "win.show-in-files"), (L("Copy Path"), "win.copy-path")],
+    /// Ctrl+A, as GTK's lists read it.
+    static func isSelectAll(_ keyval: UInt32, state: UInt32) -> Bool {
+        (Int32(keyval) == GDK_KEY_a || Int32(keyval) == GDK_KEY_A)
+            && state & GDK_CONTROL_MASK.rawValue != 0
+            && state & (GDK_SHIFT_MASK.rawValue | GDK_ALT_MASK.rawValue) == 0
+    }
+
+    private func showContextMenu(at point: CGPoint, includeTrash: Bool) {
+        let copy = model.selection.isMultiple ? L("Copy Paths") : L("Copy Path")
+        var sections: [[(String, String)]] = [
+            [(L("Open"), "win.open-item"), (L("Show in Files"), "win.show-in-files"), (copy, "win.copy-path")],
             [(L("Zoom In"), "win.focus-in"), (L("Zoom Out"), "win.focus-out")],
-        ], on: canvas.widget, at: point)
+        ]
+        if includeTrash {
+            sections.append([(L("Move to Trash…"), "win.move-to-trash")])
+        }
+        Widgets.popupMenu(&contextMenu, sections: sections, on: canvas.widget, at: point)
     }
 }

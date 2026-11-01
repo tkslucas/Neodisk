@@ -103,7 +103,7 @@ final class SidebarView {
     private func reloadLocations() {
         locations = Locations.current()
         capacityBars = [:]
-        gtk_list_box_remove_all(ptr(locationsList))
+        Widgets.removeAllRows(of: locationsList)
         for location in locations {
             gtk_list_box_append(ptr(locationsList), ptr(makeRow(for: location, bars: &capacityBars)))
         }
@@ -116,7 +116,7 @@ final class SidebarView {
             .filter { !locationIDs.contains($0) && FileManager.default.fileExists(atPath: $0) }
             .map(Locations.folder)
         recentBars = [:]
-        gtk_list_box_remove_all(ptr(recentsList))
+        Widgets.removeAllRows(of: recentsList)
         for location in recents {
             gtk_list_box_append(ptr(recentsList), ptr(makeRow(for: location, bars: &recentBars)))
         }

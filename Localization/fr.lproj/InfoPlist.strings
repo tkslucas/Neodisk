@@ -3,10 +3,10 @@
 
 "CFBundleDisplayName" = "Neodisk";
 "NSHumanReadableCopyright" = "© 2026 Neodisk contributors. GPLv3 License.";
-"NSDesktopFolderUsageDescription" = "Neodisk mesure l'espace disque utilisé par les fichiers. Elle ne modifie ni ne supprime jamais rien.";
-"NSDocumentsFolderUsageDescription" = "Neodisk mesure l'espace disque utilisé par les fichiers. Elle ne modifie ni ne supprime jamais rien.";
-"NSDownloadsFolderUsageDescription" = "Neodisk mesure l'espace disque utilisé par les fichiers. Elle ne modifie ni ne supprime jamais rien.";
-"NSRemovableVolumesUsageDescription" = "Neodisk mesure l'utilisation du disque sur les volumes amovibles. Elle ne modifie ni ne supprime jamais rien.";
-"NSNetworkVolumesUsageDescription" = "Neodisk mesure l'utilisation du disque sur les volumes réseau. Elle ne modifie ni ne supprime jamais rien.";
-"NSSystemAdministrationUsageDescription" = "L'accès complet au disque permet à Neodisk de mesurer les emplacements protégés. Elle ne modifie ni ne supprime jamais rien.";
+"NSDesktopFolderUsageDescription" = "Neodisk mesure l'espace disque utilisé par les fichiers. Elle ne modifie rien, sauf si vous placez des éléments dans la Corbeille.";
+"NSDocumentsFolderUsageDescription" = "Neodisk mesure l'espace disque utilisé par les fichiers. Elle ne modifie rien, sauf si vous placez des éléments dans la Corbeille.";
+"NSDownloadsFolderUsageDescription" = "Neodisk mesure l'espace disque utilisé par les fichiers. Elle ne modifie rien, sauf si vous placez des éléments dans la Corbeille.";
+"NSRemovableVolumesUsageDescription" = "Neodisk mesure l'utilisation du disque sur les volumes amovibles. Elle ne modifie rien, sauf si vous placez des éléments dans la Corbeille.";
+"NSNetworkVolumesUsageDescription" = "Neodisk mesure l'utilisation du disque sur les volumes réseau. Elle ne modifie rien, sauf si vous placez des éléments dans la Corbeille.";
+"NSSystemAdministrationUsageDescription" = "L'accès complet au disque permet à Neodisk de mesurer les emplacements protégés. Elle ne modifie rien, sauf si vous placez des éléments dans la Corbeille.";
 </content>

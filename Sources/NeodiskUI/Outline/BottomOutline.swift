@@ -6,6 +6,12 @@ import SwiftUI
 import NeodiskKit
 import NeodiskAppModel
 
+/// The bottom table's columns. Name stays first; the rest reorder by dragging their headers and hide from the
+/// header's menu.
+enum OutlineColumn: String, CaseIterable, Sendable {
+    case name, percent, size, files, modified
+}
+
 // MARK: - Pane
 
 struct BottomOutlinePane: View {
@@ -22,7 +28,7 @@ struct BottomOutlinePane: View {
                 BottomOutlineTable(
                     model: model,
                     snapshot: snapshot,
-                    selectedID: model.selectedNodeID,
+                    selection: model.selection,
                     sort: model.outlineSort
                 )
             }
@@ -37,7 +43,7 @@ struct BottomOutlinePane: View {
 struct BottomOutlineTable: NSViewRepresentable {
     let model: NeodiskViewModel
     let snapshot: NeodiskViewModel.OutlineRowsSnapshot
-    let selectedID: String?
+    let selection: NodeSelection
     let sort: OutlineSort
 
     func makeCoordinator() -> Coordinator {
@@ -60,16 +66,20 @@ struct BottomOutlineTable: NSViewRepresentable {
         tableView.rowHeight = OutlineRowMetrics.rowHeight
         tableView.backgroundColor = .controlBackgroundColor
         tableView.focusRingType = .none
-        tableView.allowsMultipleSelection = false
+        tableView.allowsMultipleSelection = true
         tableView.allowsEmptySelection = true
         tableView.usesAlternatingRowBackgroundColors = true
-        tableView.allowsColumnReordering = false
+        tableView.allowsColumnReordering = true
         tableView.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
 
         let textScale = OutlineRowMetrics.scale
         coordinator.appliedTextScale = textScale
-        for spec in Self.columns {
+        let layout = model.outlineColumns
+        coordinator.appliedColumns = layout
+        for id in layout.order {
+            guard let spec = Self.columns.first(where: { $0.identifier == id.rawValue }) else { continue }
             let column = NSTableColumn(identifier: .init(spec.identifier))
+            column.isHidden = layout.isHidden(id)
             column.title = spec.title
             // Numeric columns must not clip, so they scale; Name autoresizes and middle-truncates, so scaling
             // it too would push the numbers off-screen.
@@ -95,11 +105,18 @@ struct BottomOutlineTable: NSViewRepresentable {
         tableView.delegate = coordinator
         tableView.target = coordinator
         tableView.doubleAction = #selector(Coordinator.didDoubleClick)
+        tableView.allowsNodeDrags()
 
         let menu = NSMenu()
         menu.autoenablesItems = false
         menu.delegate = coordinator
         tableView.menu = menu
+
+        let headerMenu = NSMenu()
+        headerMenu.autoenablesItems = false
+        headerMenu.delegate = coordinator
+        tableView.headerView?.menu = headerMenu
+        coordinator.headerMenu = headerMenu
 
         let scrollView = NSScrollView()
         scrollView.documentView = tableView
@@ -118,8 +135,9 @@ struct BottomOutlineTable: NSViewRepresentable {
         let coordinator = context.coordinator
         coordinator.apply(snapshot: snapshot)
         coordinator.applyTextScale(columnMinimums: Self.columnMinimums)
+        coordinator.applyColumns(model.outlineColumns)
         coordinator.applySortIndicator(sort)
-        coordinator.syncSelection(to: selectedID)
+        coordinator.syncSelection(to: selection)
     }
 
     /// Per-column 100% minimum widths, keyed by identifier — the coordinator
@@ -173,18 +191,16 @@ struct BottomOutlineTable: NSViewRepresentable {
         private(set) var rows: [NeodiskViewModel.OutlineRow] = []
         private var rowIndexByID: [String: Int] = [:]
         private var appliedStructuralVersion: UInt64?
-        private var isProgrammaticSelection = false
-        // Set while the table reports a selection: syncing back mid-event is reentrant.
-        private var isReportingSelection = false
+        private let selectionSync = ListSelectionSync()
         private(set) var structuralApplyCount = 0
-        /// The selection the table last scrolled to: reveal again only when
-        /// the model's selection actually changes, not on reloads.
-        private var lastRevealedID: String?
         /// Structural rows that arrived while a click was being tracked;
         /// applied when the click finishes.
         private var pendingApply: NeodiskViewModel.OutlineRowsSnapshot?
 
         weak var tableView: NSTableView?
+        weak var headerMenu: NSMenu?
+        /// The column order and visibility the table shows; a different one from the model is applied.
+        var appliedColumns = ItemLayout<OutlineColumn>(pinned: .name)
         /// The workspace text scale the row height and columns were last
         /// laid out for; a change rescales both (see applyTextScale).
         var appliedTextScale: CGFloat = 1
@@ -213,6 +229,7 @@ struct BottomOutlineTable: NSViewRepresentable {
                     ? column.width : column.width * ratio
                 column.width = max(target, minimum)
             }
+            tableView.sizeToFit()
         }
 
         func apply(snapshot: NeodiskViewModel.OutlineRowsSnapshot) {
@@ -231,7 +248,7 @@ struct BottomOutlineTable: NSViewRepresentable {
             rows = snapshot.rows
             rowIndexByID = snapshot.rowIndexByID
             structuralApplyCount += 1
-            tableView?.reloadRows(keepingRowViews: sameRows)
+            selectionSync.whileApplying { tableView?.reloadRows(keepingRowViews: sameRows) }
         }
 
         /// Reflect the persisted sort into the header arrows. Guarded by
@@ -246,38 +263,19 @@ struct BottomOutlineTable: NSViewRepresentable {
             ]
         }
 
-        func syncSelection(to selectedID: String?) {
-            guard let tableView, !isReportingSelection else { return }
-            if let outlineTable = tableView as? OutlineNSTableView,
-               outlineTable.isTrackingClick {
-                return
-            }
-            let targetRow = selectedID.flatMap { rowIndexByID[$0] }
-            if let targetRow {
-                if tableView.selectedRow != targetRow {
-                    isProgrammaticSelection = true
-                    tableView.selectRowIndexes([targetRow], byExtendingSelection: false)
-                    isProgrammaticSelection = false
-                }
-                if lastRevealedID != selectedID {
-                    lastRevealedID = selectedID
-                    scrollToRowVerticalOnly(targetRow)
-                }
-            } else {
-                if selectedID == nil, tableView.selectedRow >= 0 {
-                    isProgrammaticSelection = true
-                    tableView.deselectAll(nil)
-                    isProgrammaticSelection = false
-                }
-                lastRevealedID = selectedID
-            }
+        func syncSelection(to selection: NodeSelection) {
+            guard let tableView else { return }
+            let reveal = selectionSync.apply(
+                selection, rowsVersion: appliedStructuralVersion ?? 0, to: tableView, row: { rowIndexByID[$0] }
+            )
+            if let reveal { scrollToRowVerticalOnly(reveal) }
         }
 
         func resyncSelectionAfterClick() {
             if let pendingApply {
                 apply(snapshot: pendingApply)
             }
-            syncSelection(to: model.selectedNodeID)
+            syncSelection(to: model.selection)
         }
 
         /// Vertical-only reveal: never disturbs an intentional horizontal
@@ -311,7 +309,10 @@ struct BottomOutlineTable: NSViewRepresentable {
                 }
             case "percent":
                 return hostedCell(tableView, reuse: "percent") { state in
-                    SubtreePercentCell(fraction: outlineRow.fractionOfParent, state: state)
+                    CleanupDimming(
+                        cleanup: model.cleanup, nodeID: outlineRow.node.id, state: state,
+                        content: SubtreePercentCell(fraction: outlineRow.fractionOfParent, state: state)
+                    )
                 }
             case "size":
                 return hostedCell(tableView, reuse: "size") { state in
@@ -326,13 +327,19 @@ struct BottomOutlineTable: NSViewRepresentable {
                     ? outlineRow.node.descendantFileCount.formatted()
                     : ""
                 return hostedCell(tableView, reuse: "files") { state in
-                    BottomDetailText(text: files, state: state)
+                    CleanupDimming(
+                        cleanup: model.cleanup, nodeID: outlineRow.node.id, state: state,
+                        content: BottomDetailText(text: files, state: state)
+                    )
                 }
             case "modified":
                 let modified = outlineRow.node.lastModified?
                     .formatted(date: .abbreviated, time: .omitted) ?? ""
                 return hostedCell(tableView, reuse: "modified") { state in
-                    BottomDetailText(text: modified, state: state)
+                    CleanupDimming(
+                        cleanup: model.cleanup, nodeID: outlineRow.node.id, state: state,
+                        content: BottomDetailText(text: modified, state: state)
+                    )
                 }
             default:
                 return nil
@@ -369,14 +376,11 @@ struct BottomOutlineTable: NSViewRepresentable {
         }
 
         func tableViewSelectionDidChange(_ notification: Notification) {
-            guard !isProgrammaticSelection, let tableView else { return }
-            let row = tableView.selectedRow
-            let newID = (row >= 0 && row < rows.count) ? rows[row].id : nil
-            if model.selectedNodeID != newID {
-                lastRevealedID = newID
-                isReportingSelection = true
-                defer { isReportingSelection = false }
-                model.selectedNodeID = newID
+            guard let tableView, let picked = selectionSync.userSelection(in: tableView, id: { row in
+                row < rows.count ? rows[row].id : nil
+            }) else { return }
+            selectionSync.report(picked) {
+                model.select(fromList: picked) { rowIndexByID[$0] != nil }
             }
         }
 
@@ -392,6 +396,27 @@ struct BottomOutlineTable: NSViewRepresentable {
             }
         }
 
+        // MARK: Dragging
+
+        func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> (any NSPasteboardWriting)? {
+            guard row < rows.count else { return nil }
+            return NodeDragSource.pasteboardItem(forNodeID: rows[row].node.id, model: model)
+        }
+
+        func tableView(
+            _ tableView: NSTableView, draggingSession session: NSDraggingSession,
+            willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet
+        ) {
+            NodeDragSource.sessionDidBegin(model: model)
+        }
+
+        func tableView(
+            _ tableView: NSTableView, draggingSession session: NSDraggingSession,
+            endedAt screenPoint: NSPoint, operation: NSDragOperation
+        ) {
+            NodeDragSource.sessionDidEnd(model: model)
+        }
+
         // MARK: Row actions (parity with `fileNodeActions`)
 
         @objc func didDoubleClick(_ sender: Any?) {
@@ -403,8 +428,79 @@ struct BottomOutlineTable: NSViewRepresentable {
             model.reveal(node)
         }
 
+        // MARK: Columns
+
+        /// Set while the table is rearranged to match the model: each `moveColumn` reports a half-done order.
+        private var isApplyingColumns = false
+
+        func applyColumns(_ layout: ItemLayout<OutlineColumn>) {
+            guard let tableView, layout != appliedColumns else { return }
+            appliedColumns = layout
+            isApplyingColumns = true
+            defer { isApplyingColumns = false }
+            for (index, id) in layout.order.enumerated() {
+                let current = tableView.column(withIdentifier: .init(id.rawValue))
+                guard current >= 0 else { continue }
+                if current != index { tableView.moveColumn(current, toColumn: index) }
+                tableView.tableColumns[index].isHidden = layout.isHidden(id)
+            }
+            tableView.sizeToFit()
+        }
+
+        func tableView(_ tableView: NSTableView, shouldReorderColumn columnIndex: Int, toColumn newColumnIndex: Int) -> Bool {
+            columnIndex != 0 && newColumnIndex != 0
+        }
+
+        func tableViewColumnDidMove(_ notification: Notification) {
+            guard let tableView, !isApplyingColumns else { return }
+            var layout = appliedColumns
+            layout.setVisibleOrder(tableView.tableColumns.filter { !$0.isHidden }.compactMap {
+                OutlineColumn(rawValue: $0.identifier.rawValue)
+            })
+            commitColumns(layout)
+        }
+
+        @objc private func toggleColumn(_ sender: NSMenuItem) {
+            guard let id = sender.representedObject as? String, let column = OutlineColumn(rawValue: id) else { return }
+            var layout = appliedColumns
+            layout.setHidden(column, !layout.isHidden(column))
+            if let tableView {
+                let index = tableView.column(withIdentifier: .init(id))
+                if index >= 0 { tableView.tableColumns[index].isHidden = layout.isHidden(column) }
+                tableView.sizeToFit()
+            }
+            commitColumns(layout)
+        }
+
+        private func commitColumns(_ layout: ItemLayout<OutlineColumn>) {
+            guard layout != model.outlineColumns else { return }
+            appliedColumns = layout
+            model.setOutlineColumns(layout)
+        }
+
+        private func fillHeaderMenu(_ menu: NSMenu) {
+            guard let tableView else { return }
+            for column in tableView.tableColumns {
+                guard let id = OutlineColumn(rawValue: column.identifier.rawValue), id != .name else { continue }
+                // The header reads "%"; the menu needs a word.
+                let title = id == .percent
+                    ? NSLocalizedString("Percentage", comment: "Bottom outline column, in the header's menu")
+                    : column.title
+                let item = NSMenuItem(title: title, action: #selector(toggleColumn(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = id.rawValue
+                item.state = column.isHidden ? .off : .on
+                item.isEnabled = column.isHidden || appliedColumns.canHide(id)
+                menu.addItem(item)
+            }
+        }
+
         func menuNeedsUpdate(_ menu: NSMenu) {
             menu.removeAllItems()
+            if menu === headerMenu {
+                fillHeaderMenu(menu)
+                return
+            }
             guard let tableView,
                   case let row = tableView.clickedRow, row >= 0, row < rows.count else { return }
             let node = rows[row].node
@@ -413,8 +509,8 @@ struct BottomOutlineTable: NSViewRepresentable {
         }
 
         func toggleQuickLook() -> Bool {
-            guard let node = model.selectedNode else { return false }
-            QuickLookPresenter.shared.togglePreview(for: node)
+            guard !model.selection.isEmpty else { return false }
+            model.quickLookSelection()
             return true
         }
 
@@ -536,8 +632,8 @@ private final class BottomCellView<Content: View>: NSView, SelectionStateReceivi
     }
 }
 
-/// Standard row highlight; only exists to forward selection/focus state to
-/// the hosted cells.
+/// Standard row highlight, forwarding selection/focus state to the hosted cells. A run of selected rows reads
+/// as one block: the corners they share are filled square.
 private final class BottomRowView: NSTableRowView {
     override var isSelected: Bool {
         didSet { forwardSelectionState() }
@@ -545,6 +641,30 @@ private final class BottomRowView: NSTableRowView {
 
     override var isEmphasized: Bool {
         didSet { forwardSelectionState() }
+    }
+
+    override var isPreviousRowSelected: Bool {
+        didSet { if isPreviousRowSelected != oldValue { needsDisplay = true } }
+    }
+
+    override var isNextRowSelected: Bool {
+        didSet { if isNextRowSelected != oldValue { needsDisplay = true } }
+    }
+
+    override func drawSelection(in dirtyRect: NSRect) {
+        super.drawSelection(in: dirtyRect)
+        guard isSelected, selectionHighlightStyle != .none, isPreviousRowSelected || isNextRowSelected else { return }
+        let color: NSColor = isEmphasized
+            ? .selectedContentBackgroundColor
+            : .unemphasizedSelectedContentBackgroundColor
+        color.setFill()
+        // The inset style's highlight keeps this much off each side.
+        let pill = bounds.insetBy(dx: OutlineRowMetrics.selectionInset, dy: 0)
+        for half in OutlineTableRowView.squaredHalves(
+            of: pill, top: isPreviousRowSelected, bottom: isNextRowSelected, isFlipped: isFlipped
+        ) {
+            half.fill()
+        }
     }
 
     private func forwardSelectionState() {

@@ -58,6 +58,8 @@ final class AppPreferences: ObservableObject {
     /// Display only: weights dataless files by cloud size instead of their ~0 on-disk size.
     @AppStorage("showCloudOnlyFiles") var showCloudOnlyFiles = true
     @AppStorage("showFreeSpace") var showFreeSpace = false
+    /// Off: Neodisk only looks, as before Cleanup existed.
+    @AppStorage("allowsMovingToTrash") var allowsMovingToTrash = true
     /// The visualization color palette, by VizPalette id. Applies
     /// immediately; unknown ids fall back to the default (see VizPalette).
     @AppStorage("vizPalette") var vizPaletteID = VizPalette.standard.id
@@ -84,6 +86,9 @@ final class AppPreferences: ObservableObject {
     /// left column has no headers and ignores these.
     @AppStorage("outlineSortField") var outlineSortFieldRaw = OutlineSortField.size.rawValue
     @AppStorage("outlineSortAscending") var outlineSortAscending = false
+    /// The statistics tabs' and the bottom table's columns' order and visibility, as ItemLayout strings.
+    @AppStorage("analysisTabs") var analysisTabsRaw = ""
+    @AppStorage("outlineColumns") var outlineColumnsRaw = ""
     /// Decodes the previous snapshot whenever a complete tree lands, so Changes opens instantly. The key
     /// predates the restore trigger.
     @AppStorage("prepareChangesAfterScan") var prepareChangesAfterScan = true
@@ -114,6 +119,7 @@ final class AppPreferences: ObservableObject {
         _includeCloudStorage = AppStorage(wrappedValue: true, "includeCloudStorage", store: defaults)
         _showCloudOnlyFiles = AppStorage(wrappedValue: true, "showCloudOnlyFiles", store: defaults)
         _showFreeSpace = AppStorage(wrappedValue: false, "showFreeSpace", store: defaults)
+        _allowsMovingToTrash = AppStorage(wrappedValue: true, "allowsMovingToTrash", store: defaults)
         _vizPaletteID = AppStorage(
             wrappedValue: VizPalette.standard.id, "vizPalette", store: defaults
         )
@@ -156,6 +162,8 @@ final class AppPreferences: ObservableObject {
             wrappedValue: TextScale.standard, "textScale", store: defaults
         )
         _fileCategoriesJSON = AppStorage(wrappedValue: "", "fileCategories", store: defaults)
+        _analysisTabsRaw = AppStorage(wrappedValue: "", "analysisTabs", store: defaults)
+        _outlineColumnsRaw = AppStorage(wrappedValue: "", "outlineColumns", store: defaults)
     }
 
     /// The workspace text scale, always one of TextScale's steps.
@@ -240,6 +248,16 @@ final class AppPreferences: ObservableObject {
         }
     }
 
+    var analysisTabs: ItemLayout<AnalysisTab> {
+        get { ItemLayout(stored: analysisTabsRaw) }
+        set { analysisTabsRaw = newValue.stored }
+    }
+
+    var outlineColumns: ItemLayout<OutlineColumn> {
+        get { ItemLayout(stored: outlineColumnsRaw, pinned: .name) }
+        set { outlineColumnsRaw = newValue.stored }
+    }
+
     /// Patterns parsed from the exclusions text, empty when disabled.
     var activeExclusionPatterns: [String] {
         guard useScanExclusions else { return [] }
@@ -271,6 +289,7 @@ final class AppPreferences: ObservableObject {
         includeCloudStorage = true
         showCloudOnlyFiles = true
         showFreeSpace = false
+        allowsMovingToTrash = true
         vizPaletteID = VizPalette.standard.id
         useScanExclusions = false
         exclusionPatternsText = ScanExclusionMatcher.commonPresetPatterns.joined(separator: "\n")
@@ -283,5 +302,7 @@ final class AppPreferences: ObservableObject {
         autoScanDuplicates = false
         textScaleRaw = TextScale.standard
         fileCategoriesJSON = ""
+        analysisTabsRaw = ""
+        outlineColumnsRaw = ""
     }
 }

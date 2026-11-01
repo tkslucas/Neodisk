@@ -63,16 +63,16 @@
 	<key>SUPublicEDKey</key>
 	<string>7++tAQZg0HfpMbNK769GZ+bIb+odjXN7VRT6hpxy52M=</string>
 	<key>NSDesktopFolderUsageDescription</key>
-	<string>Neodisk measures how much disk space files use. It never modifies or deletes anything.</string>
+	<string>Neodisk measures how much disk space files use. It changes nothing unless you move items to the Trash.</string>
 	<key>NSDocumentsFolderUsageDescription</key>
-	<string>Neodisk measures how much disk space files use. It never modifies or deletes anything.</string>
+	<string>Neodisk measures how much disk space files use. It changes nothing unless you move items to the Trash.</string>
 	<key>NSDownloadsFolderUsageDescription</key>
-	<string>Neodisk measures how much disk space files use. It never modifies or deletes anything.</string>
+	<string>Neodisk measures how much disk space files use. It changes nothing unless you move items to the Trash.</string>
 	<key>NSRemovableVolumesUsageDescription</key>
-	<string>Neodisk measures disk usage on removable volumes. It never modifies or deletes anything.</string>
+	<string>Neodisk measures disk usage on removable volumes. It changes nothing unless you move items to the Trash.</string>
 	<key>NSNetworkVolumesUsageDescription</key>
-	<string>Neodisk measures disk usage on network volumes. It never modifies or deletes anything.</string>
+	<string>Neodisk measures disk usage on network volumes. It changes nothing unless you move items to the Trash.</string>
 	<key>NSSystemAdministrationUsageDescription</key>
-	<string>Full Disk Access lets Neodisk measure protected locations. It never modifies or deletes anything.</string>
+	<string>Full Disk Access lets Neodisk measure protected locations. It changes nothing unless you move items to the Trash.</string>
 </dict>
 </plist>

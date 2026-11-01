@@ -22,6 +22,7 @@ final class StatisticsView {
     private var largestTask: Task<Void, Never>?
     private var largestGeneration = -1
     private var isSyncing = false
+    private var largestActions: ItemListActions?
     private var tokens: [ObservationToken] = []
     private var kindMenu: GPtr?
     /// The kind row the open menu is about.
@@ -69,11 +70,6 @@ final class StatisticsView {
                   let tab = AnalysisTab(rawValue: name) else { return }
             self.model.analysisTab = tab
         }
-        connectPointer(largestList, "row-activated") { [unowned self] row in
-            let index = Int(gtk_list_box_row_get_index(ptr(row)))
-            guard self.largestIDs.indices.contains(index) else { return }
-            self.model.select(self.largestIDs[index])
-        }
         connectPointer(kindsList, "row-activated") { [unowned self] row in
             let index = Int(gtk_list_box_row_get_index(ptr(row)))
             guard self.kindIDs.indices.contains(index) else { return }
@@ -103,6 +99,17 @@ final class StatisticsView {
             let mode = self.model.preferences.kindMode
             gtk_toggle_button_set_active(ptr(mode == .categories ? self.categoriesToggle : self.typesToggle), gbool(true))
             self.isSyncing = false
+        })
+        // Selected, not activated: arrowing through the list moves the selection with it, so Delete and the menu
+        // act on the rows that are highlighted.
+        largestActions = ItemListActions(list: largestList, model: model, itemCount: { [unowned self] in
+            self.largestIDs.count
+        }) { [unowned self] index in
+            self.largestIDs.indices.contains(index) ? self.largestIDs[index] : nil
+        }
+        tokens.append(track { [unowned self] in
+            _ = self.model.selection
+            self.largestActions?.sync()
         })
         tokens.append(track { [unowned self] in self.reloadKinds() })
         tokens.append(track { [unowned self] in self.reloadAges() })
@@ -149,7 +156,7 @@ final class StatisticsView {
         let catalog = model.catalog
         let highlighted = model.highlightedKindID
         let total = max(1, catalog.stats.reduce(Int64(0)) { $0 + $1.totalAllocatedSize })
-        gtk_list_box_remove_all(ptr(kindsList))
+        Widgets.removeAllRows(of: kindsList)
         // The grouping just switched and its catalog is still building.
         guard catalog.mode == model.preferences.kindMode || catalog.stats.isEmpty else {
             kindIDs = []
@@ -300,7 +307,7 @@ final class StatisticsView {
         let palette = model.palette
         let highlighted = model.highlightedAgeBucket
         let total = max(1, catalog.stats.reduce(Int64(0)) { $0 + $1.totalAllocatedSize })
-        gtk_list_box_remove_all(ptr(ageList))
+        Widgets.removeAllRows(of: ageList)
         ageBuckets = catalog.stats.map(\.bucket)
         for stat in catalog.stats {
             let row = legendRow(
@@ -348,7 +355,7 @@ final class StatisticsView {
         guard let store = model.store else {
             largestTask?.cancel()
             largestIDs = []
-            gtk_list_box_remove_all(ptr(largestList))
+            Widgets.removeAllRows(of: largestList)
             largestGeneration = -1
             return
         }
@@ -388,7 +395,7 @@ final class StatisticsView {
     }
 
     private func showLargest(_ nodes: [FileNodeRecord], rootSize: Int64) {
-        gtk_list_box_remove_all(ptr(largestList))
+        largestActions?.whileRebuilding { Widgets.removeAllRows(of: largestList) }
         largestIDs = nodes.map(\.id)
         let rootPath = model.store?.root.path ?? ""
         for node in nodes {
@@ -410,5 +417,6 @@ final class StatisticsView {
             gtk_widget_set_tooltip_text(ptr(row), node.path)
             gtk_list_box_append(ptr(largestList), ptr(row))
         }
+        largestActions?.sync()
     }
 }

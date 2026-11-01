@@ -77,3 +77,33 @@ struct SunburstHoverOverlay: View, Equatable {
         }
     }
 }
+
+/// Cleanup marks over the rings: a wash toward the window background on collected arcs and what's inside them,
+/// and a hairline around them. The same language as the treemap's.
+struct SunburstCleanupOverlayCanvas: View, Equatable {
+    let overlay: SunburstCleanupOverlay
+
+    nonisolated static func == (lhs: SunburstCleanupOverlayCanvas, rhs: SunburstCleanupOverlayCanvas) -> Bool {
+        lhs.overlay == rhs.overlay
+    }
+
+    var body: some View {
+        Canvas { context, size in
+            guard !overlay.isEmpty else { return }
+            let background = Color(nsColor: .windowBackgroundColor)
+            var wash = Path()
+            for segment in overlay.wash {
+                wash.addPath(SunburstRenderer.path(for: segment, in: size))
+            }
+            context.fill(wash, with: .color(background.opacity(0.6)))
+
+            for segment in overlay.moving + overlay.collected {
+                context.stroke(
+                    SunburstRenderer.path(for: segment, in: size),
+                    with: .color(.primary.opacity(0.35)),
+                    style: StrokeStyle(lineWidth: 1, lineJoin: .round)
+                )
+            }
+        }
+    }
+}

@@ -187,6 +187,36 @@ private func cachedMove(
         try assertMatchesFreshLayout()
     }
 
+    /// Several selected items: one ring each, matching a fresh layout; one item is exactly `selectionRect`.
+    @MainActor
+    @Test func controllerRingsEverySelectedItem() async throws {
+        var rng = SeededTestGenerator(seed: 0xBEEF)
+        let store = makeRandomStore(using: &rng)
+        let snapshot = makeTestSnapshot(root: store.root, store: store)
+        let controller = TreemapController()
+        controller.setInputs(
+            snapshot: snapshot, rootID: store.rootID, catalog: .empty,
+            style: .cushion, expandedAggregateIDs: []
+        )
+        controller.setViewSize(CGSize(width: 640, height: 480))
+        try await waitUntil("scene") { controller.scene?.size == CGSize(width: 640, height: 480) }
+        let scene = try #require(controller.scene)
+        let ids = Array(store.allNodes.map(\.id).shuffled(using: &rng).prefix(12))
+
+        controller.setSelection(NodeSelection(ids))
+        var expected: [CGRect] = []
+        for rect in ids.compactMap({ scene.rect(forNodeID: $0, in: store) }) where !expected.contains(rect) {
+            expected.append(rect)
+        }
+        #expect(controller.selectionRects == expected)
+        #expect(controller.selectionRect == scene.rect(forNodeID: ids.last!, in: store))
+
+        controller.setSelectedNode(ids[0])
+        #expect(controller.selectionRects == [scene.rect(forNodeID: ids[0], in: store)].compactMap { $0 })
+        controller.setSelection(NodeSelection())
+        #expect(controller.selectionRects.isEmpty)
+    }
+
     /// Opt-in benchmark (`NEODISK_TREEMAP_NAV_BENCH=1`): 1,000 arrow presses, uncached vs cached, plus the
     /// per-tick selection-rect cost.
     @Test(.enabled(if: ProcessInfo.processInfo.environment["NEODISK_TREEMAP_NAV_BENCH"] != nil))

@@ -647,9 +647,9 @@ final class ScanSessionModel {
         saveSnapshotToCache(snapshot)
     }
 
-    /// After a subtree splice. The index keeps the last full scan's date and duration (they drive auto-rescan);
-    /// only the node count updates. The pre-splice snapshot still rotates into the previous slot.
-    func persistSplicedSnapshot() {
+    /// After a splice: the index keeps the last full scan's date and duration (they drive auto-rescan). A removal
+    /// (`rotatesPrevious: false`) keeps the previous scan as the baseline.
+    func persistSplicedSnapshot(rotatesPrevious: Bool = true) {
         guard let snapshot = coordinator.snapshot,
               snapshot.isComplete, snapshot.source.isPersistable else { return }
         let existing = cachedScanInfo[snapshot.target.id]
@@ -661,16 +661,51 @@ final class ScanSessionModel {
             totalAllocatedSize: snapshot.aggregateStats.totalAllocatedSize,
             cloudOnlyLogicalSize: Self.cloudOnlyBytes(of: snapshot)
         )
-        saveSnapshotToCache(snapshot)
+        saveSnapshotToCache(snapshot, rotatesPrevious: rotatesPrevious)
     }
 
-    private func saveSnapshotToCache(_ snapshot: ScanSnapshot) {
+    /// Items left a location that's no longer on screen (the user switched mid-move): cut them from its stored
+    /// scan, in memory and on disk, so going back doesn't show them.
+    func removeNodesFromStoredScan(of target: ScanTarget, ids: [String]) async {
+        let stored: ScanSnapshot?
+        if let recent = coordinator.recentSnapshot(forTargetID: target.id) {
+            stored = recent
+        } else {
+            stored = await snapshotCache.loadSnapshot(for: target)
+        }
+        guard let stored, stored.isComplete, stored.source.isPersistable,
+              let updated = try? await Task.detached(priority: .userInitiated, operation: {
+                  try stored.removingNodes(ids: ids)
+              }).value else { return }
+        // The location may have come back on screen while the cut ran; the on-screen path owns it then.
+        guard coordinator.snapshot?.target.id != target.id else {
+            if await coordinator.removeNodes(ids: ids, fromTargetID: target.id) {
+                persistSplicedSnapshot(rotatesPrevious: false)
+            }
+            return
+        }
+        if coordinator.recentSnapshot(forTargetID: target.id) != nil {
+            coordinator.forgetRecentSnapshot(forTargetID: target.id)
+        }
+        let existing = cachedScanInfo[target.id]
+        cachedScanInfo[target.id] = CachedScanInfo(
+            lastScanDate: existing?.lastScanDate ?? (updated.finishedAt ?? Date()),
+            lastScanDuration: existing?.lastScanDuration,
+            nodeCount: updated.treeStore.nodeCount,
+            hasPreviousSnapshot: existing?.hasPreviousSnapshot ?? false,
+            totalAllocatedSize: updated.aggregateStats.totalAllocatedSize,
+            cloudOnlyLogicalSize: Self.cloudOnlyBytes(of: updated)
+        )
+        saveSnapshotToCache(updated, rotatesPrevious: false)
+    }
+
+    private func saveSnapshotToCache(_ snapshot: ScanSnapshot, rotatesPrevious: Bool = true) {
         Task { [weak self, snapshotCache] in
             // Signals the end of the persistence pipeline (success or failure)
             // for the test seam; runs after every await below completes.
             defer { self?.onSnapshotPersistedForTesting?(snapshot) }
             do {
-                let outcome = try await snapshotCache.save(snapshot)
+                let outcome = try await snapshotCache.save(snapshot, rotatesPrevious: rotatesPrevious)
                 // The save knows the truth: an unchanged rescan skips the rotation.
                 self?.setHasPreviousSnapshot(
                     outcome.hasPreviousSnapshot, forTargetID: snapshot.target.id
@@ -682,6 +717,8 @@ final class ScanSessionModel {
                 } else {
                     // Content-identical rescan: the previous slot still describes the right generation.
                     self?.diff.snapshotWasRestored(for: snapshot.target)
+                    // A removal rewrote the latest in place: a list loaded before the write is the old diff.
+                    if !rotatesPrevious { self?.changes.snapshotWasRotated(for: snapshot.target) }
                 }
                 // Kind stats ride along so the next restore of this
                 // snapshot starts with a colored map.

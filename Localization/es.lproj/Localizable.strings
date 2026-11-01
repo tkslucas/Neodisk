@@ -101,8 +101,9 @@
 "Open Full Disk Access Settings" = "Abrir los ajustes de Acceso total al disco";
 "Recheck" = "Volver a comprobar";
 "Note: running unbundled (swift run), Neodisk inherits its permissions from the terminal that launched it — grant Full Disk Access to that terminal app." = "Nota: al ejecutarse sin empaquetar (swift run), Neodisk hereda sus permisos de la terminal que lo inició; concede Acceso total al disco a esa aplicación de terminal.";
-"Read-Only Guarantee" = "Garantía de solo lectura";
-"Neodisk is a viewer: it never modifies or deletes files, and has no delete function at all. To remove something, use Reveal in Finder and delete it there." = "Neodisk es un visor: nunca modifica ni elimina archivos, y no tiene ninguna función para eliminar. Para quitar algo, usa Mostrar en el Finder y elimínalo desde ahí.";
+"Moving to the Trash" = "Mover a la Papelera";
+"Allow moving items to the Trash" = "Permitir mover elementos a la Papelera";
+"Collect items in Cleanup at the bottom of the sidebar, then move them to the Trash after one confirmation. Neodisk never deletes anything itself, and won't touch system folders or your home folder. Turn this off to only look." = "Reúne elementos en Limpieza, en la parte inferior de la barra lateral, y muévelos a la Papelera tras una sola confirmación. Neodisk nunca elimina nada por su cuenta y no toca las carpetas del sistema ni tu carpeta de inicio. Desactívalo para solo mirar.";
 "Sidebar Folders" = "Carpetas de la barra lateral";
 "Folders you add are stored locally so they can appear in the sidebar." = "Las carpetas que añades se guardan localmente para que puedan aparecer en la barra lateral.";
 "Clear Added Folders" = "Borrar carpetas añadidas";
@@ -124,11 +125,11 @@
 
 /* MARK: - Ficha de bienvenida (primer inicio) */
 "Welcome to Neodisk" = "Bienvenido a Neodisk";
-"Scan folders and disks to see where space is going.\nNeodisk is read-only: it never modifies or deletes files." = "Analiza carpetas y discos para ver adónde va el espacio.\nNeodisk es de solo lectura: nunca modifica ni elimina archivos.";
+"Scan folders and disks to see where space is going,\nthen clear out what you don't need." = "Analiza carpetas y discos para ver adónde va el espacio\ny luego deshazte de lo que no necesites.";
 "Explore the treemap" = "Explora el mapa de árbol";
 "Hover to inspect. Click to select. Pinch or scroll to move around. Double-click or right-click to Reveal in Finder. Switch between treemap and sunburst in the toolbar." = "Pasa el cursor para inspeccionar. Haz clic para seleccionar. Junta o separa los dedos, o desplázate, para navegar. Haz doble clic o clic derecho para Mostrar en el Finder. Cambia entre el mapa de árbol y el gráfico Sunburst en la barra de herramientas.";
-"Read-only access" = "Acceso de solo lectura";
-"Neodisk is purely a visualizer: it only ever reads your disk and cannot delete files or move them to the Trash — by design. To clean something up, right-click it, Reveal in Finder, and delete it there." = "Neodisk es puramente un visualizador: solo lee tu disco y, por diseño, no puede eliminar archivos ni moverlos a la Papelera. Para limpiar algo, haz clic derecho, elige Mostrar en el Finder y elimínalo desde ahí.";
+"Clean up safely" = "Limpia con seguridad";
+"Drag items to Cleanup at the bottom of the sidebar, or press ⌘⌫. Nothing moves until you confirm, items go to the Trash so you can still get them back, and system folders are off-limits. You can turn this off in Settings." = "Arrastra elementos a Limpieza, en la parte inferior de la barra lateral, o pulsa ⌘⌫. Nada se mueve hasta que lo confirmes, los elementos van a la Papelera para que puedas recuperarlos y las carpetas del sistema quedan fuera de alcance. Puedes desactivarlo en Ajustes.";
 "Enabled" = "Activado";
 "Not enabled" = "No activado";
 "Neodisk can read protected locations. You can start a complete scan now." = "Neodisk puede leer ubicaciones protegidas. Ya puedes iniciar un análisis completo.";
@@ -430,10 +431,9 @@
 "Merging changes…" = "Combinando cambios…";
 "Move Selection" = "Mover la selección";
 "Opening…" = "Abriendo…";
-"Pick a disk or folder in the sidebar to see what takes up space. Neodisk only reads your files; it never changes or deletes them." = "Elige un disco o una carpeta en la barra lateral para ver qué ocupa espacio. Neodisk solo lee tus archivos; nunca los cambia ni los elimina.";
 "Preferences" = "Preferencias";
 "Quit" = "Salir";
-"Read-only disk space visualizer. Treemap and sunburst views on the NeodiskKit scan engine." = "Visualizador de espacio en disco de solo lectura. Vistas de mapa de árbol y sunburst sobre el motor de análisis NeodiskKit.";
+"Disk space visualizer. Treemap and sunburst views on the NeodiskKit scan engine." = "Visualizador de espacio en disco. Vistas de mapa de árbol y sunburst sobre el motor de análisis NeodiskKit.";
 "Recent" = "Recientes";
 "Refreshing…" = "Actualizando…";
 "Saved Scans" = "Análisis guardados";
@@ -451,3 +451,82 @@
 "%@ free of %@" = "%@ libres de %@";
 "%@ in %@ files" = "%@ en %@ archivos";
 "%@ in %@ file" = "%@ en %@ archivo";
+
+/* MARK: - Cleanup and moving to the Trash */
+"%lld items were already gone." = "%lld elementos ya no estaban.";
+"1 item was already gone." = "1 elemento ya no estaba.";
+"Add to Cleanup" = "Añadir a Limpieza";
+"and %lld more" = "y %lld más";
+"Cleanup" = "Limpieza";
+"Drag files and folders here, or press ⌘⌫, to collect them. Nothing moves until you confirm." = "Arrastra archivos y carpetas aquí, o pulsa ⌘⌫, para reunirlos. Nada se mueve hasta que lo confirmes.";
+"Drag items here to review before trashing" = "Arrastra elementos aquí para revisarlos antes de tirarlos";
+"Drop here to collect" = "Suelta aquí para reunir";
+"It changed since the scan. Rescan to move it." = "Ha cambiado desde el análisis. Vuelve a analizar para moverlo.";
+"Move “%@” to the Trash?" = "¿Mover “%@” a la Papelera?";
+"Move %lld items (%@) to the Trash?" = "¿Mover %lld elementos (%@) a la Papelera?";
+"Move Cleanup to Trash…" = "Mover Limpieza a la Papelera…";
+"Move to Trash" = "Mover a la Papelera";
+"Move to Trash…" = "Mover a la Papelera…";
+"Moved %lld items (%@) to the Trash." = "Se movieron %lld elementos (%@) a la Papelera.";
+"Moved 1 item (%@) to the Trash." = "Se movió 1 elemento (%@) a la Papelera.";
+"Moving items to the Trash is turned off in Preferences." = "Mover elementos a la Papelera está desactivado en Preferencias.";
+"Moving items to the Trash is turned off in Settings." = "Mover elementos a la Papelera está desactivado en Ajustes.";
+"Moving to the Trash…" = "Moviendo a la Papelera…";
+"Neodisk asks before each move and never deletes anything itself. System folders and your home folder are off limits. Turn this off to only look." = "Neodisk pregunta antes de cada traslado y nunca elimina nada por su cuenta. Las carpetas del sistema y tu carpeta personal quedan fuera de alcance. Desactívalo para solo mirar.";
+"Open Trash" = "Abrir la Papelera";
+"Release to collect" = "Suelta para reunir";
+"Remove from Cleanup" = "Quitar de Limpieza";
+"Some of this is in a cloud drive: moving it to the Trash also removes it from the cloud and your other devices." = "Parte de esto está en una unidad en la nube: al moverlo a la Papelera también se elimina de la nube y de tus otros dispositivos.";
+"Some of this shares storage with other files (hard links or clones), so less space may come back." = "Parte de esto comparte almacenamiento con otros archivos (enlaces duros o clones), así que puede que se libere menos espacio.";
+"The space comes back when you empty the Trash." = "El espacio se libera al vaciar la Papelera.";
+"This is already in the Trash." = "Ya está en la Papelera.";
+"This is the location being shown. Scan the folder that holds it to remove it." = "Es la ubicación que se está mostrando. Analiza la carpeta que la contiene para quitarla.";
+"This scan was stopped early. Rescan to move items to the Trash." = "Este análisis se detuvo antes de terminar. Vuelve a analizar para mover elementos a la Papelera.";
+"Wait for the scan to finish." = "Espera a que termine el análisis.";
+"%lld items couldn't be moved; they're still in Cleanup." = "No se pudieron mover %lld elementos; siguen en Limpieza.";
+"1 item couldn't be moved; it's still in Cleanup." = "No se pudo mover 1 elemento; sigue en Limpieza.";
+"Can't Move “%@” to the Trash" = "No se puede mover “%@” a la Papelera";
+"Couldn't Move “%@” to the Trash" = "No se ha podido mover “%@” a la Papelera";
+"It's no longer there." = "Ya no está ahí.";
+"The item couldn't be moved to the Trash." = "No se ha podido mover el elemento a la Papelera.";
+"This isn't a file or folder, so it can't go to the Trash." = "No es un archivo ni una carpeta, así que no puede ir a la Papelera.";
+"This location is protected: the system or your account needs it. What's inside it can go." = "Esta ubicación está protegida: la necesita el sistema o tu cuenta. Lo que contiene sí puede irse.";
+"This scan was opened from a file, so its items can't be moved." = "Este análisis se abrió desde un archivo, así que sus elementos no se pueden mover.";
+"In Cleanup" = "En Limpieza";
+"In a folder in Cleanup" = "En una carpeta de Limpieza";
+"Neodisk couldn't look inside this folder, so it can't tell what it holds." = "Neodisk no pudo mirar dentro de esta carpeta, así que no sabe qué contiene.";
+"This name couldn't be read correctly, so Neodisk can't move it safely." = "Este nombre no se pudo leer correctamente, así que Neodisk no puede moverlo con seguridad.";
+"Neodisk couldn't read everything inside some of this, so it may hold more than shown." = "Neodisk no pudo leer todo lo que hay dentro, así que puede contener más de lo que se muestra.";
+"This scan is from %@: folders may have changed since. Rescan to be sure." = "Este análisis es de %@: las carpetas pueden haber cambiado desde entonces. Vuelve a analizar para asegurarte.";
+"1 item changed since you collected it and left Cleanup." = "1 elemento cambió desde que lo recogiste y salió de Limpieza.";
+"%lld items changed since you collected them and left Cleanup." = "%lld elementos cambiaron desde que los recogiste y salieron de Limpieza.";
+"Reset Tabs" = "Restablecer pestañas";
+"Percentage" = "Porcentaje";
+"More tabs" = "Más pestañas";
+"It's locked. Unlock it in Get Info to move it." = "Está bloqueado. Desbloquéalo en Obtener información para moverlo.";
+"Moved 1 item to the Trash." = "Se movió 1 elemento a la Papelera.";
+"Moved %lld items to the Trash." = "Se movieron %lld elementos a la Papelera.";
+
+/* Cleanup: partly refused additions, packages */
+"Added 1 item." = "Se añadió 1 elemento.";
+"Added %lld items." = "Se añadieron %lld elementos.";
+"1 item can't go to the Trash. %@" = "1 elemento no puede ir a la Papelera. %@";
+"%lld items can't go to the Trash. %@" = "%lld elementos no pueden ir a la Papelera. %@";
+"This is inside a package, which Finder shows as one file (an app, a plug-in, a library). Move the whole package instead." = "Está dentro de un paquete, que el Finder muestra como un solo archivo (una app, un complemento, una biblioteca). Mueve el paquete completo.";
+/* Cleanup: hard links and clones */
+"Shared" = "Compartido";
+"Shares its storage with another file (a hard link or clone), so moving it alone frees no space." = "Comparte almacenamiento con otro archivo (un enlace duro o un clon), así que moverlo solo no libera espacio.";
+/* Multi-selection */
+"Add %lld Items to Cleanup" = "Añadir %lld elementos a Limpieza";
+"Remove %lld Items from Cleanup" = "Quitar %lld elementos de Limpieza";
+"Copy Paths" = "Copiar rutas";
+"Deselect All" = "Anular toda la selección";
+"%lld items selected" = "%lld elementos seleccionados";
+"All in Cleanup" = "Todos en Limpieza";
+"%lld in Cleanup" = "%lld en Limpieza";
+"%lld items" = "%lld elementos";
+"Can't Move %lld Items to the Trash" = "No se pueden mover %lld elementos a la Papelera";
+"Couldn't Move 1 Item to the Trash" = "No se ha podido mover 1 elemento a la Papelera";
+"Couldn't Move %lld Items to the Trash" = "No se han podido mover %lld elementos a la Papelera";
+"Select All" = "Seleccionar todo";
+"Add to Selection" = "Añadir a la selección";

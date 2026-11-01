@@ -1,5 +1,5 @@
-// Hashing reads real bytes, so duplicates are found only on an explicit action. Rows are read-only
-// navigation; cleanup happens via Reveal in Finder.
+// Hashing reads real bytes, so duplicates are found only on an explicit action. A copy's row selects it, and
+// drags or ⌘⌫ collect it in Cleanup.
 
 import SwiftUI
 import NeodiskKit
@@ -340,12 +340,13 @@ private struct DuplicateGroupDetailView: View {
                 model: model,
                 rows: group.nodeIDs.compactMap { model.store?.node(id: $0) },
                 click: .selectsNode { model.select($0) },
-                selectedID: model.selectedNodeID
+                selection: model.selection
             ) { node in
                 FileResultRow(
                     node: node,
                     palette: model.vizPalette,
-                    includeCloudOnly: model.showsCloudOnlyFiles
+                    includeCloudOnly: model.showsCloudOnlyFiles,
+                    cleanup: model.cleanup
                 )
             }
         }

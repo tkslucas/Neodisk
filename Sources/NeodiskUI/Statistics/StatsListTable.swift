@@ -4,6 +4,7 @@
 import AppKit
 import SwiftUI
 import NeodiskKit
+import NeodiskAppModel
 
 /// What clicking a row does.
 enum StatsListClick {
@@ -33,7 +34,7 @@ struct StatsListTable<Row: Identifiable, RowContent: View>: NSViewRepresentable 
     let rows: [Row]
     let click: StatsListClick
     /// Read by the caller so a selection change reaches the table.
-    var selectedID: String?
+    var selection = NodeSelection()
     /// A refreshed ranking keeps its rows while the new one arrives, so the list would stay anchored otherwise.
     var keepsLeaderInView = false
     @ViewBuilder let content: (Row) -> RowContent
@@ -71,6 +72,7 @@ struct StatsListTable<Row: Identifiable, RowContent: View>: NSViewRepresentable 
         tableView.target = coordinator
         tableView.action = #selector(StatsListCoordinator.didClick)
         tableView.doubleAction = #selector(StatsListCoordinator.didDoubleClick)
+        tableView.allowsNodeDrags()
 
         let scrollView = NSScrollView()
         scrollView.documentView = tableView
@@ -102,7 +104,7 @@ struct StatsListTable<Row: Identifiable, RowContent: View>: NSViewRepresentable 
                 ids: rows.map(\.id),
                 cell: { AnyView(content(rows[$0])) },
                 click: click,
-                selectedID: selectedID,
+                selection: selection,
                 keepsLeaderInView: keepsLeaderInView,
                 textScale: textScale
             )
@@ -116,7 +118,7 @@ final class StatsListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDe
         let ids: [String]
         let cell: (Int) -> AnyView
         let click: StatsListClick
-        let selectedID: String?
+        let selection: NodeSelection
         let keepsLeaderInView: Bool
         var textScale: CGFloat = 1
     }
@@ -124,15 +126,15 @@ final class StatsListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDe
     private let model: NeodiskViewModel
     private var current = Update(
         ids: [], cell: { _ in AnyView(EmptyView()) }, click: .opens { _ in },
-        selectedID: nil, keepsLeaderInView: false
+        selection: NodeSelection(), keepsLeaderInView: false
     )
     private var rowByID: [String: Int] = [:]
     /// An update that arrived while a click was being tracked: reloading
     /// then would clear the row under the mouse, so it waits for mouse-up.
     private var pending: Update?
-    private var isProgrammaticSelection = false
-    // Set while the table reports a selection: syncing back mid-event is reentrant.
-    private var isReportingSelection = false
+    private let selectionSync = ListSelectionSync()
+    /// Bumped with every new set of rows, so the selection is mirrored onto them.
+    private var rowsVersion: UInt64 = 0
 
     weak var tableView: OutlineNSTableView?
     weak var scrollView: NSScrollView?
@@ -158,15 +160,17 @@ final class StatsListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDe
         current = update
         if !sameRows {
             rowByID = Dictionary(update.ids.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+            rowsVersion &+= 1
         }
         let rowHeight = StatsListMetrics.rowHeight(scale: update.textScale)
         if tableView.rowHeight != rowHeight {
             tableView.rowHeight = rowHeight
         }
         tableView.menu = selectsNodes ? fileActionsMenu() : nil
+        tableView.allowsMultipleSelection = selectsNodes
         // Same rows: refresh the visible cells in place (sizes, palette,
         // the cloud-only toggle); new rows: reload.
-        tableView.reloadRows(keepingRowViews: sameRows)
+        selectionSync.whileApplying { tableView.reloadRows(keepingRowViews: sameRows) }
         if update.keepsLeaderInView, newLeader, let scrollView {
             scrollView.contentView.scroll(to: NSPoint(x: 0, y: -OutlineRowMetrics.verticalContentInset))
             scrollView.reflectScrolledClipView(scrollView.contentView)
@@ -182,16 +186,9 @@ final class StatsListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDe
     }
 
     private func syncSelection() {
-        guard let tableView, !isReportingSelection else { return }
-        let target = selectsNodes ? current.selectedID.flatMap { rowByID[$0] } : nil
-        guard tableView.selectedRow != (target ?? -1) else { return }
-        isProgrammaticSelection = true
-        if let target {
-            tableView.selectRowIndexes([target], byExtendingSelection: false)
-        } else {
-            tableView.deselectAll(nil)
-        }
-        isProgrammaticSelection = false
+        guard let tableView else { return }
+        let selection = selectsNodes ? current.selection : NodeSelection()
+        _ = selectionSync.apply(selection, rowsVersion: rowsVersion, to: tableView, row: { rowByID[$0] })
     }
 
     func clickTrackingEnded() {
@@ -231,15 +228,48 @@ final class StatsListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDe
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
-        guard !isProgrammaticSelection, let tableView,
-              case .selectsNode(let select) = current.click else { return }
-        let row = tableView.selectedRow
-        guard row >= 0, row < current.ids.count else { return }
-        let id = current.ids[row]
-        guard id != model.selectedNodeID else { return }
-        isReportingSelection = true
-        defer { isReportingSelection = false }
-        select(id)
+        guard let tableView, case .selectsNode(let select) = current.click else { return }
+        let ids = current.ids
+        guard let picked = selectionSync.userSelection(in: tableView, id: { $0 < ids.count ? ids[$0] : nil })
+        else { return }
+        selectionSync.report(picked) {
+            if picked.isSingle, let id = picked.ids.first {
+                // One row: the list's own pick (Changes routes a deleted entry to the folder that held it).
+                if id != model.selectedNodeID || model.selection.isMultiple { select(id) }
+            } else if !picked.ids.isEmpty || picked.extending {
+                // (An empty plain pick is a click below the rows: the selection stays, as it always has.)
+                // Several rows: only items still in the tree join (a deleted change has no node).
+                let store = model.store
+                let live = ListSelection(
+                    ids: picked.ids.filter { store?.node(id: $0) != nil },
+                    primary: picked.primary,
+                    extending: picked.extending
+                )
+                model.select(fromList: live) { rowByID[$0] != nil }
+            }
+        }
+    }
+
+    // MARK: Dragging
+
+    /// Only lists of items drag; rows that open a drill-in (kinds, duplicate groups) don't.
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> (any NSPasteboardWriting)? {
+        guard selectsNodes, row < current.ids.count else { return nil }
+        return NodeDragSource.pasteboardItem(forNodeID: current.ids[row], model: model)
+    }
+
+    func tableView(
+        _ tableView: NSTableView, draggingSession session: NSDraggingSession,
+        willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet
+    ) {
+        NodeDragSource.sessionDidBegin(model: model)
+    }
+
+    func tableView(
+        _ tableView: NSTableView, draggingSession session: NSDraggingSession,
+        endedAt screenPoint: NSPoint, operation: NSDragOperation
+    ) {
+        NodeDragSource.sessionDidEnd(model: model)
     }
 
     // MARK: Row actions
@@ -270,8 +300,8 @@ final class StatsListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDe
     }
 
     func toggleQuickLook() -> Bool {
-        guard selectsNodes, let node = model.selectedNode else { return false }
-        QuickLookPresenter.shared.togglePreview(for: node)
+        guard selectsNodes, !model.selection.isEmpty else { return false }
+        model.quickLookSelection()
         return true
     }
 }

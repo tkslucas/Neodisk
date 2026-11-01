@@ -76,6 +76,8 @@ private struct TreemapRepresentable: NSViewRepresentable {
             palette: model.vizPalette,
             labelScale: CGFloat(model.textScale)
         )
-        controller.setSelectedNode(model.selectedNodeID)
+        controller.setSelection(model.selection)
+        // Read here so a pile change reaches the map like a selection change; it redraws only the overlay.
+        controller.setCleanupItems(collected: model.cleanup.itemIDs, moving: model.cleanup.movingIDs)
     }
 }

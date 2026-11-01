@@ -149,12 +149,40 @@ import NeodiskKit
 
         #expect(didApplyLayout)
         let overlaySegments = model.selectionOverlaySegments(
-            selectedNodeID: selected.nodeID,
+            selection: NodeSelection([selected.nodeID!]),
             selectedAncestorIDs: Set([ancestor.nodeID!, selected.nodeID!, "missing"])
         )
 
         #expect(overlaySegments.map(\.segment.id) == [ancestor.id, selected.id])
         #expect(overlaySegments.map(\.role) == [.ancestor, .selected])
+    }
+
+    /// Every selected arc draws selected (the primary last, on top); only the primary's path draws as
+    /// ancestors, and an ancestor that is itself selected draws selected.
+    @Test func multiSelectionDrawsEveryArcAndOnlyThePrimarysPath() async {
+        let ancestor = makeSegment(id: "ancestor", depth: 0)
+        let primary = makeSegment(id: "primary", depth: 1)
+        let other = makeSegment(id: "other", depth: 1)
+        let service = ImmediateSunburstLayoutService(segments: [ancestor, primary, other])
+        let model = SunburstChartModel(layoutService: service)
+        _ = await model.loadLayout(makeRequest(layoutID: "layout"))
+
+        var selection = NodeSelection()
+        selection.replace(with: [other.nodeID!, "offscreen", primary.nodeID!], primary: primary.nodeID)
+        let segments = model.selectionOverlaySegments(
+            selection: selection, selectedAncestorIDs: [ancestor.nodeID!, primary.nodeID!]
+        )
+        #expect(segments.map(\.segment.id) == [ancestor.id, other.id, primary.id])
+        #expect(segments.map(\.role) == [.ancestor, .selected, .selected])
+
+        // A new member set under the same primary is a new overlay, not the memo of the old one.
+        selection.add(ancestor.nodeID!)
+        selection.add(primary.nodeID!)
+        let grown = model.selectionOverlaySegments(
+            selection: selection, selectedAncestorIDs: [ancestor.nodeID!, primary.nodeID!]
+        )
+        #expect(grown.map(\.segment.id) == [other.id, ancestor.id, primary.id])
+        #expect(grown.allSatisfy { $0.role == .selected })
     }
 
     @Test func applyStyleRecolorsWithoutReLayoutAndKeepsHover() async throws {
@@ -331,6 +359,50 @@ private func makeRequest(layoutID: String) -> SunburstLayoutRequest {
         includeCloudOnly: false,
         layoutID: layoutID
     )
+}
+
+@Suite struct SunburstCleanupOverlayTests {
+    private func arc(_ id: String, _ start: Double, _ end: Double, ring: Int, aggregate: Bool = false) -> SunburstSegment {
+        SunburstSegment(
+            id: id, nodeID: aggregate ? nil : id, label: id,
+            startAngle: start, endAngle: end,
+            innerRadius: 0.2 + Double(ring) * 0.1, outerRadius: 0.3 + Double(ring) * 0.1,
+            depth: ring,
+            colorToken: SunburstColorToken(midpoint: 0.5, depth: ring, role: .normal),
+            totalSize: 1, isAggregate: aggregate
+        )
+    }
+
+    @Test func washCoversTheCollectedArcAndEverythingOutsideItsSpan() {
+        let segments = [
+            arc("/a", 0, 2, ring: 0), arc("/b", 2, 4, ring: 0),
+            arc("/a/x", 0, 1, ring: 1), arc("/a/pool", 1, 2, ring: 1, aggregate: true),
+            arc("/b/y", 2, 4, ring: 1),
+        ]
+        let byID = Dictionary(uniqueKeysWithValues: segments.map { ($0.id, $0) })
+        let overlay = SunburstCleanupOverlay(
+            segments: segments, marks: { byID[$0] }, collected: ["/a"], moving: [], rootIsInside: false
+        )
+        #expect(overlay.collected.map(\.id) == ["/a"])
+        #expect(Set(overlay.wash.map(\.id)) == ["/a", "/a/x", "/a/pool"])
+
+        let moving = SunburstCleanupOverlay(
+            segments: segments, marks: { byID[$0] }, collected: ["/a"], moving: ["/a"], rootIsInside: false
+        )
+        #expect(moving.collected.isEmpty)
+        #expect(moving.moving.map(\.id) == ["/a"])
+
+        let unrendered = SunburstCleanupOverlay(
+            segments: segments, marks: { byID[$0] }, collected: ["/gone"], moving: [], rootIsInside: false
+        )
+        #expect(unrendered.isEmpty)
+
+        let inside = SunburstCleanupOverlay(
+            segments: segments, marks: { byID[$0] }, collected: ["/elsewhere"], moving: [], rootIsInside: true
+        )
+        #expect(inside.wash.count == segments.count)
+        #expect(inside.collected.isEmpty)
+    }
 }
 
 private func makeSegment(id: String, depth: Int = 0) -> SunburstSegment {

@@ -3,9 +3,9 @@
 
 "CFBundleDisplayName" = "Neodisk";
 "NSHumanReadableCopyright" = "© 2026 colaboradores de Neodisk. Licencia GPLv3.";
-"NSDesktopFolderUsageDescription" = "Neodisk mide cuánto espacio en disco usan los archivos. Nunca modifica ni elimina nada.";
-"NSDocumentsFolderUsageDescription" = "Neodisk mide cuánto espacio en disco usan los archivos. Nunca modifica ni elimina nada.";
-"NSDownloadsFolderUsageDescription" = "Neodisk mide cuánto espacio en disco usan los archivos. Nunca modifica ni elimina nada.";
-"NSRemovableVolumesUsageDescription" = "Neodisk mide el uso de disco en volúmenes extraíbles. Nunca modifica ni elimina nada.";
-"NSNetworkVolumesUsageDescription" = "Neodisk mide el uso de disco en volúmenes de red. Nunca modifica ni elimina nada.";
-"NSSystemAdministrationUsageDescription" = "El Acceso total al disco permite que Neodisk mida ubicaciones protegidas. Nunca modifica ni elimina nada.";
+"NSDesktopFolderUsageDescription" = "Neodisk mide cuánto espacio en disco usan los archivos. No cambia nada a menos que muevas elementos a la Papelera.";
+"NSDocumentsFolderUsageDescription" = "Neodisk mide cuánto espacio en disco usan los archivos. No cambia nada a menos que muevas elementos a la Papelera.";
+"NSDownloadsFolderUsageDescription" = "Neodisk mide cuánto espacio en disco usan los archivos. No cambia nada a menos que muevas elementos a la Papelera.";
+"NSRemovableVolumesUsageDescription" = "Neodisk mide el uso de disco en volúmenes extraíbles. No cambia nada a menos que muevas elementos a la Papelera.";
+"NSNetworkVolumesUsageDescription" = "Neodisk mide el uso de disco en volúmenes de red. No cambia nada a menos que muevas elementos a la Papelera.";
+"NSSystemAdministrationUsageDescription" = "El Acceso total al disco permite que Neodisk mida ubicaciones protegidas. No cambia nada a menos que muevas elementos a la Papelera.";

@@ -18,6 +18,8 @@ final class Preferences {
     var includeHiddenFiles = true { didSet { scheduleSave() } }
     var autoSummarizeDirectories = true { didSet { scheduleSave() } }
     var showFreeSpace = false { didSet { scheduleSave() } }
+    /// Off: Neodisk only looks, and Move to Trash leaves the menus.
+    var allowsMovingToTrash = true { didSet { scheduleSave() } }
     var paletteID = VizPalette.standard.id { didSet { scheduleSave() } }
     // A same-value write (a toggle echoing the model back) isn't a choice,
     // so only a real change ends a session override.
@@ -33,6 +35,8 @@ final class Preferences {
     var fileCategories = FileCategoryCustomization() { didSet { scheduleSave() } }
     var showsStatistics = true { didSet { scheduleSave() } }
     var showsOutline = true { didSet { scheduleSave() } }
+    /// The file list's column order and hidden columns, as `ItemLayout` stores them.
+    var outlineColumns = "" { didSet { scheduleSave() } }
     /// Folders the user scanned or pinned, most recent first — the
     /// sidebar's Recents, and the snapshot cache's keep list.
     var recentFolders: [String] = [] { didSet { scheduleSave() } }
@@ -97,6 +101,7 @@ final class Preferences {
         var includeHiddenFiles: Bool?
         var autoSummarizeDirectories: Bool?
         var showFreeSpace: Bool?
+        var allowsMovingToTrash: Bool?
         var paletteID: String?
         var vizMode: String?
         var treemapStyle: String?
@@ -104,6 +109,7 @@ final class Preferences {
         var fileCategories: String?
         var showsStatistics: Bool?
         var showsOutline: Bool?
+        var outlineColumns: String?
         var recentFolders: [String]?
         var windowWidth: Int?
         var windowHeight: Int?
@@ -118,6 +124,7 @@ final class Preferences {
         if let value = stored.includeHiddenFiles { includeHiddenFiles = value }
         if let value = stored.autoSummarizeDirectories { autoSummarizeDirectories = value }
         if let value = stored.showFreeSpace { showFreeSpace = value }
+        if let value = stored.allowsMovingToTrash { allowsMovingToTrash = value }
         if let value = stored.paletteID { paletteID = value }
         if let value = stored.vizMode.flatMap(VizViewMode.init(rawValue:)) { vizMode = value }
         if let value = stored.treemapStyle.flatMap(TreemapStyle.init(rawValue:)) { treemapStyle = value }
@@ -125,6 +132,7 @@ final class Preferences {
         if let value = stored.fileCategories { fileCategories = FileCategoryCustomization(json: value) }
         if let value = stored.showsStatistics { showsStatistics = value }
         if let value = stored.showsOutline { showsOutline = value }
+        if let value = stored.outlineColumns { outlineColumns = value }
         if let value = stored.recentFolders { recentFolders = value }
         if let value = stored.windowWidth { windowWidth = value }
         if let value = stored.windowHeight { windowHeight = value }
@@ -146,6 +154,7 @@ final class Preferences {
             includeHiddenFiles: includeHiddenFiles,
             autoSummarizeDirectories: autoSummarizeDirectories,
             showFreeSpace: showFreeSpace,
+            allowsMovingToTrash: allowsMovingToTrash,
             paletteID: paletteID,
             vizMode: (savedVizMode ?? vizMode).rawValue,
             treemapStyle: (savedTreemapStyle ?? treemapStyle).rawValue,
@@ -153,6 +162,7 @@ final class Preferences {
             fileCategories: fileCategories.isEmpty ? nil : fileCategories.json,
             showsStatistics: showsStatistics,
             showsOutline: showsOutline,
+            outlineColumns: outlineColumns.isEmpty ? nil : outlineColumns,
             recentFolders: recentFolders,
             windowWidth: windowWidth,
             windowHeight: windowHeight

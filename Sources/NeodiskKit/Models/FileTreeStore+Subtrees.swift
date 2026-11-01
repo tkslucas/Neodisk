@@ -31,6 +31,16 @@ extension FileTreeStore {
         if removalIDs.contains(rootID) {
             return FileTreeStore(root: emptyRootNode())
         }
+        // Numeric path first (one array pass); the dictionary path below stays the fallback and the oracle.
+        if case .spliced(let store) = try numericApplyEdits(
+            replacements: [],
+            removingSubtreeIDs: removalIDs,
+            insertions: [],
+            recordOverrides: [:],
+            cancellationCheck: cancellationCheck
+        ) {
+            return store
+        }
 
         var removedIDs = Set<String>()
         for removalID in removalIDs {

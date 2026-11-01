@@ -76,6 +76,84 @@ enum DevLaunchHooks {
                 }
             }
         }
+
+        // NEODISK_AUTOSELECT=<path>[:<path>...] selects those items once the scan finishes, the last one primary,
+        // as ⌘-clicks would: headless snapshots show a multi-selection in every view.
+        if let rawPaths = environment["NEODISK_AUTOSELECT"] {
+            let paths = rawPaths.split(separator: ":").map(String.init)
+            Task { @MainActor in
+                for _ in 0..<120 {
+                    try? await Task.sleep(for: .milliseconds(500))
+                    guard !model.coordinator.isScanning, model.coordinator.snapshot?.isComplete == true else {
+                        continue
+                    }
+                    let ids = paths.compactMap { findNode(at: $0, in: model)?.id }
+                    model.selection.replace(with: ids, primary: ids.last)
+                    for id in ids { model.revealInOutline(id) }
+                    FileHandle.standardError.write(Data(
+                        "NEODISK_AUTOSELECT: selected \(ids.count) of \(paths.count)\n".utf8
+                    ))
+                    break
+                }
+            }
+        }
+
+        // NEODISK_AUTOCOLLECT=<path>[:<path>...] adds those items to Cleanup once the scan finishes, so a
+        // headless snapshot shows the marks. Nothing moves: only the pile changes.
+        if let rawPaths = environment["NEODISK_AUTOCOLLECT"] {
+            let paths = rawPaths.split(separator: ":").map(String.init)
+            Task { @MainActor in
+                for _ in 0..<120 {
+                    try? await Task.sleep(for: .milliseconds(500))
+                    guard !model.coordinator.isScanning, model.coordinator.snapshot?.isComplete == true else {
+                        continue
+                    }
+                    let nodes = paths.compactMap { findNode(at: $0, in: model) }
+                    model.cleanup.add(nodes)
+                    FileHandle.standardError.write(Data(
+                        "NEODISK_AUTOCOLLECT: found \(nodes.count) of \(paths.count), collected \(model.cleanup.itemIDs.count)\n".utf8
+                    ))
+                    // NEODISK_AUTOTRASH=1 then moves the pile as if confirmed: every safety check still runs.
+                    // =fail fails every move and =hold holds them for a minute first; neither moves anything.
+                    switch environment["NEODISK_AUTOTRASH"] {
+                    case "1":
+                        await autoTrash(model: model)
+                    case "fail":
+                        model.cleanup.trashItem = { _ in throw CocoaError(.fileWriteNoPermission) }
+                        await autoTrash(model: model)
+                    case "hold":
+                        model.cleanup.trashItem = { _ in
+                            Thread.sleep(forTimeInterval: 60)
+                            throw CocoaError(.fileWriteNoPermission)
+                        }
+                        model.cleanup.confirm = { _ in true }
+                        model.cleanup.moveAllToTrash()
+                    default:
+                        break
+                    }
+                    break
+                }
+            }
+        }
+
+        PaneSnapshotter.scheduleIfRequested(model: model)
+    }
+
+    @MainActor
+    private static func autoTrash(model: NeodiskViewModel) async {
+        let before = model.coordinator.snapshot?.root.allocatedSize ?? 0
+        let earlierNotice = model.cleanup.notice?.id
+        model.cleanup.confirm = { _ in true }
+        model.cleanup.moveAllToTrash()
+        for _ in 0..<120 {
+            try? await Task.sleep(for: .milliseconds(250))
+            if !model.cleanup.isMoving, let notice = model.cleanup.notice, notice.id != earlierNotice { break }
+        }
+        let after = model.coordinator.snapshot?.root.allocatedSize ?? 0
+        FileHandle.standardError.write(Data((
+            "NEODISK_AUTOTRASH: \(model.cleanup.notice?.text ?? "no result"); root \(before) -> \(after); "
+            + "left in Cleanup \(model.cleanup.itemIDs.count)\n"
+        ).utf8))
     }
 
     /// Walks the scanned tree down to the node whose path matches, for the

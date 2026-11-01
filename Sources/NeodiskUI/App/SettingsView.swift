@@ -28,7 +28,7 @@ struct SettingsView: View {
             AdvancedSettingsTab(preferences: preferences)
                 .tabItem { Label("Advanced", systemImage: "slider.horizontal.3") }
 
-            PrivacySettingsTab(model: model)
+            PrivacySettingsTab(model: model, preferences: preferences)
                 .tabItem { Label("Privacy", systemImage: "hand.raised") }
         }
         .frame(width: 480)
@@ -270,6 +270,7 @@ private struct AdvancedSettingsTab: View {
 
 private struct PrivacySettingsTab: View {
     let model: NeodiskViewModel
+    @ObservedObject var preferences: AppPreferences
 
     @State private var accessStatus: FullDiskAccessStatus = .unknown
     @State private var snapshotCacheSize: Int64?
@@ -314,8 +315,9 @@ private struct PrivacySettingsTab: View {
                 }
             }
 
-            Section("Read-Only Guarantee") {
-                Text("Neodisk is a viewer: it never modifies or deletes files, and has no delete function at all. To remove something, use Reveal in Finder and delete it there.")
+            Section("Moving to the Trash") {
+                Toggle("Allow moving items to the Trash", isOn: $preferences.allowsMovingToTrash)
+                Text("Collect items in Cleanup at the bottom of the sidebar, then move them to the Trash after one confirmation. Neodisk never deletes anything itself, and won't touch system folders or your home folder. Turn this off to only look.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }

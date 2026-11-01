@@ -147,6 +147,13 @@ enum SystemIntegration {
         workspace.activateFileViewerSelecting(urls)
     }
 
+    /// The user's Trash in Finder.
+    static func openTrash() {
+        let trash = (try? FileManager.default.url(for: .trashDirectory, in: .userDomainMask, appropriateFor: nil, create: false))
+            ?? URL(filePath: NSHomeDirectory()).appending(path: ".Trash", directoryHint: .isDirectory)
+        NSWorkspace.shared.open(trash)
+    }
+
     static func open(_ url: URL, workspace: SystemWorkspace = NSWorkspace.shared) throws {
         guard workspace.open(url) else {
             throw SystemIntegrationError.openFailed(path: url.path)

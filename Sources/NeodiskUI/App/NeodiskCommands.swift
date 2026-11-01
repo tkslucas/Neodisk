@@ -216,13 +216,12 @@ struct NeodiskCommands: Commands {
             Button {
                 model.select(nil)
             } label: {
-                Label("Deselect", systemImage: "clear")
+                Label("Deselect All", systemImage: "clear")
             }
             .keyboardShortcut("a", modifiers: [.command, .option])
-            .disabled(model.selectedNodeID == nil)
+            .disabled(model.selection.isEmpty)
         }
 
-        // No Move to Trash: Neodisk is read-only by design.
         CommandMenu("Inspect") {
             Button {
                 model.quickLookSelection()
@@ -230,7 +229,7 @@ struct NeodiskCommands: Commands {
                 Label("Quick Look", systemImage: "eye")
             }
             .keyboardShortcut("y")
-            .disabled(model.selectedNode == nil)
+            .disabled(model.selection.isEmpty)
 
             Divider()
 
@@ -253,10 +252,30 @@ struct NeodiskCommands: Commands {
             Button {
                 model.copyPathOfSelection()
             } label: {
-                Label("Copy Path", systemImage: "doc.on.doc")
+                Label(LocalizedStringKey(model.selection.isMultiple ? "Copy Paths" : "Copy Path"), systemImage: "doc.on.doc")
             }
             .keyboardShortcut("c", modifiers: [.command, .option])
             .disabled(!model.selectionSupportsFileActions)
+
+            if model.cleanup.isEnabled {
+                Divider()
+
+                Button {
+                    model.toggleCleanupForSelection()
+                } label: {
+                    Label(model.cleanupMenuTitle(for: model.selectedNodes), systemImage: "trash")
+                }
+                .keyboardShortcut(.delete, modifiers: .command)
+                // Refused items stay enabled: ⌘⌫ then says why. Something inside a collected folder is already in.
+                .disabled(model.cleanup.toggle(for: model.selectedNodes) == .none)
+
+                Button {
+                    model.cleanup.moveAllToTrash()
+                } label: {
+                    Label("Move Cleanup to Trash…", systemImage: "trash.fill")
+                }
+                .disabled(!model.cleanup.canMoveToTrash)
+            }
         }
 
         // No help book; the app is meant to be self-explanatory. Help

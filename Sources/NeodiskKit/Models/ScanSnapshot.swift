@@ -210,6 +210,38 @@ public struct ScanSnapshot: Identifiable, Sendable {
         )
     }
 
+    /// Without the given subtrees (moved to the Trash): ancestors shrink, hard links and clones rebalance, their
+    /// warnings go. Nil when none exist or the root is asked for.
+    public nonisolated func removingNodes(
+        ids nodeIDs: [String],
+        cancellationCheck: () throws -> Void = {}
+    ) throws -> ScanSnapshot? {
+        try cancellationCheck()
+        let removalIDs = treeStore.topLevelNodeIDs(from: nodeIDs)
+        guard !removalIDs.isEmpty, !removalIDs.contains(treeStore.rootID) else { return nil }
+        let removedPaths = removalIDs.compactMap { treeStore.node(id: $0)?.path }
+        let updatedStore = try treeStore.removingSubtrees(
+            rootedAt: removalIDs,
+            cancellationCheck: cancellationCheck
+        )
+        return ScanSnapshot(
+            target: target,
+            treeStore: updatedStore,
+            startedAt: startedAt,
+            finishedAt: finishedAt,
+            scanWarnings: Self.mergedWarningsPruningReplacedSubtrees(
+                existing: scanWarnings,
+                replacedRootPaths: removedPaths,
+                additional: []
+            ),
+            aggregateStats: updatedStore.aggregateStats,
+            isComplete: isComplete,
+            scanOptions: scanOptions,
+            source: source,
+            incrementalCheckpoint: incrementalCheckpoint
+        )
+    }
+
     public nonisolated func scoped(to target: ScanTarget) -> ScanSnapshot? {
         try? scoped(to: target, cancellationCheck: {})
     }

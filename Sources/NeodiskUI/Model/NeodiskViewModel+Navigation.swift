@@ -1,5 +1,6 @@
 // Navigation verbs over the model's selection and zoom state; the stored state stays in NeodiskViewModel.swift.
 
+import AppKit
 import Foundation
 import NeodiskKit
 import NeodiskAppModel
@@ -7,8 +8,9 @@ import NeodiskAppModel
 extension NeodiskViewModel {
     // MARK: - Selection & zoom
 
+    /// A plain click: just this item, or nothing.
     func select(_ nodeID: String?) {
-        selectedNodeID = nodeID  // its didSet widens the map if the node is off-screen
+        selection.replace(with: nodeID)  // its didSet widens the map if the node is off-screen
         if let nodeID {
             revealInOutline(nodeID)
             // With duplicate results on screen, selecting a copy drills into its group; a non-duplicate steps
@@ -19,8 +21,42 @@ extension NeodiskViewModel {
         }
     }
 
+    /// The rows a user picked in a list. An extending gesture keeps what the list doesn't show; the primary is
+    /// revealed in the outline like a plain selection.
+    func select(fromList list: ListSelection, listShows: (String) -> Bool) {
+        selection.applyList(
+            selected: list.ids, primary: list.primary, extending: list.extending, listShows: listShows
+        )
+        if let primaryID = selection.primaryID { revealInOutline(primaryID) }
+    }
+
+    /// ⌘-click in a map: the item joins as the primary, or leaves.
+    func toggleSelection(_ nodeID: String) {
+        selection.toggle(nodeID)
+        if selection.primaryID == nodeID { revealInOutline(nodeID) }
+    }
+
+    /// ⇧-arrow in a map: the item joins as the primary.
+    func extendSelection(to nodeID: String) {
+        selection.add(nodeID)
+        revealInOutline(nodeID)
+    }
+
+    /// Select All in a map: everything the map is rooted at shows, one level down.
+    func selectAllInMap() {
+        guard let store, let rootID = effectiveRootID else { return }
+        let children = store.children(of: rootID).filter {
+            !$0.isSynthetic && $0.displayWeight(includingCloudOnly: showsCloudOnlyFiles) > 0
+        }
+        guard !children.isEmpty else {
+            NSSound.beep()
+            return
+        }
+        selection.replace(with: children.map(\.id), primary: children.first?.id)
+    }
+
     /// Widens the root out to the lowest common ancestor; never narrows (drilling in stays ⌘↓).
-    /// Internal because the caller, selectedNodeID's didSet, lives in NeodiskViewModel.swift.
+    /// Internal because the caller, selection's didSet, lives in NeodiskViewModel.swift.
     func widenRootToShow(_ nodeID: String) {
         guard let store, let currentRootID = effectiveRootID,
               currentRootID != store.root.id,
@@ -86,8 +122,8 @@ extension NeodiskViewModel {
         }
         zoomRootID = dir.id == store.root.id ? nil : dir.id
         // When the user explicitly drilled into a folder, land the selection
-        // on its largest child so arrow keys keep working inside.
-        if node.isDirectory {
+        // on its largest child so arrow keys keep working inside. A multi-selection stays as it is.
+        if node.isDirectory, !selection.isMultiple {
             selectLargestChild(of: dir.id, in: store)
         }
         return true
@@ -126,7 +162,7 @@ extension NeodiskViewModel {
         let selectionStaysInside = selectedNodeID.map {
             $0 != node.id && store.isAncestor(node.id, of: $0)
         } ?? false
-        if !selectionStaysInside {
+        if !selectionStaysInside, !selection.isMultiple {
             selectLargestChild(of: node.id, in: store)
         }
         return true
@@ -173,7 +209,8 @@ extension NeodiskViewModel {
         isSteppingDrillHistory = false
         // Keep the selection when it is still inside the map; otherwise land
         // on the largest child, as drilling in does.
-        if let selectedNodeID, selectedNodeID == target || !store.isAncestor(target, of: selectedNodeID) {
+        if !selection.isMultiple, let selectedNodeID,
+           selectedNodeID == target || !store.isAncestor(target, of: selectedNodeID) {
             selectLargestChild(of: target, in: store)
         }
         return true

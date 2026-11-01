@@ -10,8 +10,8 @@ import NeodiskKit
 final class QuickLookPresenter: NSObject {
     static let shared = QuickLookPresenter()
 
-    /// Real, existing, not cloud-only: previewing a dataless file would force a download, which the
-    /// read-only promise forbids.
+    /// Real, existing, not cloud-only: previewing a dataless file would force a download, and looking
+    /// never changes what is on disk.
     nonisolated static func canPreview(
         _ node: FileNodeRecord,
         fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
@@ -19,39 +19,61 @@ final class QuickLookPresenter: NSObject {
         node.supportsFileActions && !node.isDataless && fileExists(node.path)
     }
 
-    /// The single item vended to the panel.
-    private var previewedURL: NSURL?
+    /// The items vended to the panel, in selection order; its own arrows page through them.
+    private var previewedURLs: [NSURL] = []
     private var panelCloseObserver: NSObjectProtocol?
 
-    /// Closes the panel if it's already up; beeps when the node can't be previewed.
+    /// What the panel shows for these items: the previewable ones, and where to start (the current item, or the
+    /// first).
+    nonisolated static func previewItems(
+        for nodes: [FileNodeRecord],
+        current: FileNodeRecord?,
+        fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
+    ) -> (urls: [URL], index: Int) {
+        let previewable = nodes.filter { canPreview($0, fileExists: fileExists) }
+        let index = current.flatMap { current in previewable.firstIndex { $0.id == current.id } } ?? 0
+        return (previewable.map(\.url), index)
+    }
+
     func togglePreview(for node: FileNodeRecord) {
+        togglePreview(for: [node], current: node)
+    }
+
+    /// Closes the panel if it's already up; beeps when nothing can be previewed.
+    func togglePreview(for nodes: [FileNodeRecord], current: FileNodeRecord?) {
         if isPanelVisible {
             closePanel()
             return
         }
-        guard Self.canPreview(node) else {
+        guard show(nodes, current: current) else {
             NSSound.beep()
             return
         }
-        previewedURL = node.url as NSURL
-        showPanel()
     }
 
     /// Unlike the space toggle it never closes the panel, and stays quiet when the node can't be previewed.
     func openPreview(for node: FileNodeRecord) {
-        guard Self.canPreview(node) else { return }
-        previewedURL = node.url as NSURL
-        showPanel()
+        _ = show([node], current: node)
     }
 
-    /// No-op when the panel is closed; keeps the last preview rather than blanking on an unpreviewable node.
-    func selectionDidChange(to node: FileNodeRecord?) {
+    /// No-op when the panel is closed; keeps the last preview rather than blanking on unpreviewable items.
+    func selectionDidChange(to nodes: @autoclosure () -> [FileNodeRecord], current: FileNodeRecord?) {
         guard isPanelVisible,
               let panel = QLPreviewPanel.shared(),
-              panel.dataSource === self,
-              let node, Self.canPreview(node) else { return }
-        previewedURL = node.url as NSURL
+              panel.dataSource === self else { return }
+        let items = Self.previewItems(for: nodes(), current: current)
+        guard !items.urls.isEmpty else { return }
+        previewedURLs = items.urls.map { $0 as NSURL }
         panel.reloadData()
+        panel.currentPreviewItemIndex = items.index
+    }
+
+    private func show(_ nodes: [FileNodeRecord], current: FileNodeRecord?) -> Bool {
+        let items = Self.previewItems(for: nodes, current: current)
+        guard !items.urls.isEmpty else { return false }
+        previewedURLs = items.urls.map { $0 as NSURL }
+        showPanel(at: items.index)
+        return true
     }
 
     // MARK: - Panel lifecycle
@@ -62,13 +84,14 @@ final class QuickLookPresenter: NSObject {
         QLPreviewPanel.sharedPreviewPanelExists() && QLPreviewPanel.shared().isVisible
     }
 
-    private func showPanel() {
+    private func showPanel(at index: Int) {
         guard let panel = QLPreviewPanel.shared() else { return }
         // Re-claim unconditionally: the shared panel is reused and another
         // show may follow a close that never cleared it.
         panel.dataSource = self
         panel.delegate = self
         panel.reloadData()
+        panel.currentPreviewItemIndex = index
         panel.makeKeyAndOrderFront(nil)
 
         // There is no previewPanelDidClose delegate method, so observe the window notification instead.
@@ -92,7 +115,7 @@ final class QuickLookPresenter: NSObject {
     }
 
     private func panelWillClose() {
-        previewedURL = nil
+        previewedURLs = []
         if QLPreviewPanel.sharedPreviewPanelExists(), let panel = QLPreviewPanel.shared() {
             if panel.dataSource === self { panel.dataSource = nil }
             if panel.delegate === self { panel.delegate = nil }
@@ -110,11 +133,11 @@ final class QuickLookPresenter: NSObject {
 // only ever calls them on the main thread.
 extension QuickLookPresenter: @preconcurrency QLPreviewPanelDataSource {
     func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int {
-        previewedURL == nil ? 0 : 1
+        previewedURLs.count
     }
 
     func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> QLPreviewItem! {
-        previewedURL
+        previewedURLs.indices.contains(index) ? previewedURLs[index] : nil
     }
 }
 
@@ -126,30 +149,5 @@ extension QuickLookPresenter: @preconcurrency QLPreviewPanelDelegate {
               event.charactersIgnoringModifiers == " " else { return false }
         panel.close()
         return true
-    }
-}
-
-// MARK: - Spacebar hook for selection lists
-
-/// Attach to the List itself: keys only reach it while focused, so typing spaces into a search field
-/// is unaffected.
-private struct QuickLookSpaceKey: ViewModifier {
-    let model: NeodiskViewModel
-
-    func body(content: Content) -> some View {
-        content.onKeyPress(.space) {
-            guard let node = model.selectedNode else { return .ignored }
-            if NSApp.keyWindow?.firstResponder is NSText { return .ignored }
-            QuickLookPresenter.shared.togglePreview(for: node)
-            return .handled
-        }
-    }
-}
-
-extension View {
-    /// Quick Look the model's selected node on space. Attach to selection
-    /// Lists (the search results; the AppKit tables handle space themselves).
-    func quickLookOnSpace(model: NeodiskViewModel) -> some View {
-        modifier(QuickLookSpaceKey(model: model))
     }
 }

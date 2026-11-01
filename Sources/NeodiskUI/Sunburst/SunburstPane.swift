@@ -50,7 +50,7 @@ struct SunburstPane: View {
                         rootNode: rootNode,
                         parentNode: store.parent(of: rootID),
                         treeStore: store,
-                        selectedNodeID: model.selectedNodeID,
+                        selection: model.selection,
                         selectedAncestorIDs: selectedAncestorIDs(in: store),
                         depthLimit: Self.depthLimit,
                         layoutID: Self.layoutID(
@@ -75,6 +75,17 @@ struct SunburstPane: View {
                         onNavigateToParent: { model.zoomOut() },
                         onKeyDown: { handleKey($0) },
                         contextMenu: { contextMenu(for: $0) },
+                        cleanup: cleanupInput(rootID: rootID, in: store),
+                        cleanupHoverText: { model.cleanup.mark(for: $0).hoverText },
+                        dragItems: { segment, location in dragItems(for: segment, at: location, rootID: rootID) },
+                        onDragSessionChange: { active in
+                            if active {
+                                NodeDragSource.sessionDidBegin(model: model)
+                            } else {
+                                NodeDragSource.sessionDidEnd(model: model)
+                            }
+                        },
+                        onSelectAll: { model.selectAllInMap() },
                         chartModel: chartModel
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -168,6 +179,17 @@ struct SunburstPane: View {
     /// Hidden space follows the exact same volume/zoom gates as free space.
     private var gatedHiddenSpaceBytes: Int64? {
         model.zoomRootID == nil ? model.freeSpace.hiddenSpaceBytes : nil
+    }
+
+    /// Read in the body, so a pile change redraws the overlay (and only the overlay).
+    private func cleanupInput(rootID: String, in store: FileTreeStore) -> SunburstCleanupInput {
+        let cleanup = model.cleanup
+        guard !cleanup.isEmpty || cleanup.isMoving else { return SunburstCleanupInput() }
+        return SunburstCleanupInput(
+            collected: cleanup.itemIDs,
+            moving: cleanup.movingIDs,
+            rootIsInside: cleanup.isInsideCollected(rootID)
+        )
     }
 
     private func selectedAncestorIDs(in store: FileTreeStore) -> Set<String> {
@@ -303,16 +325,48 @@ struct SunburstPane: View {
         model.setVisualizationHover(nil)
     }
 
-    /// Pointer drills clear the selection so a stale one doesn't read as still selected; refusals select.
+    /// Pointer drills clear a single selection so a stale one doesn't read as still selected, but keep a
+    /// multi-selection the user built up; refusals select.
     private func drillOrSelect(_ nodeID: String) {
         if model.drillIn(to: nodeID) {
-            model.select(nil)
+            clearSingleSelectionAfterDrill()
         } else {
             model.select(nodeID)
         }
     }
 
+    private func clearSingleSelectionAfterDrill() {
+        if !model.selection.isMultiple { model.select(nil) }
+    }
+
+    /// ⌘- or ⇧-click (read from the click's event): toggle the item instead of selecting or drilling.
+    private var currentClick: MapClick {
+        let flags = NSApp.currentEvent?.modifierFlags ?? []
+        return MapClick(command: flags.contains(.command), shift: flags.contains(.shift))
+    }
+
+    /// A press on a selected arc, or inside a selected folder, drags the whole selection; any other arc drags
+    /// its own item.
+    private func dragItems(for segment: SunburstSegment, at location: CGPoint, rootID: String) -> [NSDraggingItem] {
+        guard let nodeID = segment.nodeID ?? (segment.isAggregate ? segment.parentFolderID : nil),
+              let store = model.store else { return [] }
+        if let ids = model.selection.dragIDs(pressing: nodeID, mapRootID: rootID, in: store) {
+            let items = NodeDragSource.draggingItems(forNodeIDs: ids, model: model, at: location)
+            if !items.isEmpty { return items }
+        }
+        guard !segment.isAggregate else { return [] }
+        return NodeDragSource.draggingItems(forNodeIDs: [nodeID], model: model, at: location)
+    }
+
     private func handleClick(_ segment: SunburstSegment?) {
+        if currentClick == .toggle {
+            // Files and folders alike join or leave; no drill, no Quick Look. Pooled and synthetic arcs aren't items.
+            if let segment, !segment.isAggregate, !segment.isFreeSpace, !segment.isHiddenSpace,
+               let nodeID = segment.nodeID {
+                model.toggleSelection(nodeID)
+            }
+            return
+        }
         guard let segment else {
             model.select(nil)
             return
@@ -352,7 +406,7 @@ struct SunburstPane: View {
         guard let targetID, let store = model.store,
               store.node(id: targetID)?.isSunburstFolder(in: store) == true,
               model.drillIn(to: targetID) else { return }
-        model.select(nil)
+        clearSingleSelectionAfterDrill()
     }
 
     // MARK: - Keyboard
@@ -366,15 +420,20 @@ struct SunburstPane: View {
         }
         guard let key = event.specialKey else { return false }
         let command = event.modifierFlags.contains(.command)
+        let extending = event.modifierFlags.contains(.shift)
         switch key {
         case .upArrow:
-            if command { beepUnless(model.drillOut()) } else { moveSelection(.parent) }
+            if command { beepUnless(model.drillOut()) } else { moveSelection(.parent, extending: extending) }
         case .downArrow:
-            if command { beepUnless(model.drillIntoSelection()) } else { moveSelection(.largestChild) }
+            if command {
+                beepUnless(model.drillIntoSelection())
+            } else {
+                moveSelection(.largestChild, extending: extending)
+            }
         case .leftArrow:
-            moveSelection(.previousSibling)
+            moveSelection(.previousSibling, extending: extending)
         case .rightArrow:
-            moveSelection(.nextSibling)
+            moveSelection(.nextSibling, extending: extending)
         case .carriageReturn, .enter, .newline:
             model.revealSelection()
         default:
@@ -383,7 +442,8 @@ struct SunburstPane: View {
         return true
     }
 
-    private func moveSelection(_ direction: SunburstKeyboardNav.Direction) {
+    /// Moves from the primary item and leaves only the target selected; ⇧ adds the target instead.
+    private func moveSelection(_ direction: SunburstKeyboardNav.Direction, extending: Bool = false) {
         guard let store = model.store, let rootID = model.effectiveRootID,
               let target = SunburstKeyboardNav.target(
                   from: model.selectedNodeID,
@@ -395,7 +455,7 @@ struct SunburstPane: View {
             NSSound.beep()
             return
         }
-        model.select(target)
+        if extending { model.extendSelection(to: target) } else { model.select(target) }
     }
 
     // MARK: - Legend list interaction
@@ -435,6 +495,10 @@ struct SunburstPane: View {
     }
 
     private func handleRowClick(_ row: SunburstLegendRow) {
+        if currentClick == .toggle {
+            if case .node(let nodeID, _) = row.target { model.toggleSelection(nodeID) }
+            return
+        }
         switch row.target {
         case .node(let nodeID, let isDirectory):
             if isDirectory {
@@ -472,7 +536,7 @@ struct SunburstPane: View {
                 targetID = nil
             }
             guard let targetID, model.drillIn(to: targetID) else { return }
-            model.select(nil)
+            clearSingleSelectionAfterDrill()
         case .drillOut:
             model.drillOut()
         }

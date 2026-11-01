@@ -29,9 +29,11 @@ so in the PR. Build prerequisites for each platform are in the README.
 
 Two hard rules:
 
-- **Neodisk is read-only.** It never writes to, modifies, or deletes scanned
-  files, and it makes no network requests. Any change that could break that
-  will not be merged. See the read-only note in the README.
+- **Scanning is read-only; removal is the Trash only.** A scan never writes
+  to scanned files. The only file change Neodisk makes is moving items the
+  user confirmed to the Trash, through the safety checks in
+  `TrashSafetyPolicy` and `TrashMover`; it never deletes permanently. It makes
+  no network requests. Any change that weakens either will not be merged.
 - **Keep the layering.** `NeodiskKit` stays UI-free, `TreemapKit` stays pure
   geometry, logic both apps need lives in `NeodiskAppModel`, and platform
   differences stay inside the core. See [ARCHITECTURE.md](ARCHITECTURE.md).

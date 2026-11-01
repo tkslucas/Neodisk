@@ -53,13 +53,18 @@ final class TreemapController {
         didSet { sceneQueries = SceneQueries() }
     }
     private var catalog: FileKindCatalog = .empty
-    private var selectedNodeID: String?
+    private var selection = NodeSelection()
+    private var selectedNodeID: String? { selection.primaryID }
+    private var cleanupCollectedIDs: [String] = []
+    private var cleanupMovingIDs: Set<String> = []
 
     /// Memoized per scene and store (both immutable). `selectionRect` is read on every display refresh,
     /// so re-running the layout down the selection path each time was pure repeat work.
     private struct SceneQueries {
         var navigationCandidates: [TreemapKeyboardNav.Candidate]?
         var selectionRect: (nodeID: String, rect: CGRect?)?
+        var selectionRects: (selection: NodeSelection, rects: [CGRect])?
+        var cleanupMarks: CleanupMarks?
     }
     private var sceneQueries = SceneQueries()
 
@@ -210,10 +215,23 @@ final class TreemapController {
         startRender()
     }
 
-    func setSelectedNode(_ nodeID: String?) {
-        guard nodeID != selectedNodeID else { return }
-        selectedNodeID = nodeID
+    func setSelection(_ selection: NodeSelection) {
+        guard selection != self.selection else { return }
+        self.selection = selection
         pushDisplay()
+    }
+
+    func setSelectedNode(_ nodeID: String?) {
+        setSelection(NodeSelection(nodeID.map { [$0] } ?? []))
+    }
+
+    /// Cleanup marks are drawn over the map, never baked into it: a change only redraws the overlay.
+    func setCleanupItems(collected: [String], moving: Set<String>) {
+        guard collected != cleanupCollectedIDs || moving != cleanupMovingIDs else { return }
+        cleanupCollectedIDs = collected
+        cleanupMovingIDs = moving
+        sceneQueries.cleanupMarks = nil
+        view?.refreshCleanupLayers()
     }
 
     func setViewSize(_ size: CGSize) {
@@ -303,6 +321,69 @@ final class TreemapController {
         return rect
     }
 
+    /// Every selected item's rect, the same ring for each: one item is exactly `selectionRect`. Items merged into
+    /// one "smaller items" cell share its ring.
+    var selectionRects: [CGRect] {
+        guard selection.isMultiple else { return selectionRect.map { [$0] } ?? [] }
+        if let memo = sceneQueries.selectionRects, memo.selection == selection { return memo.rects }
+        guard let scene, let store else { return [] }
+        let byID = scene.rects(forNodeIDs: selection.ids, in: store)
+        var seen = Set<[CGFloat]>()
+        let rects = selection.ids.compactMap { byID[$0] }.filter {
+            seen.insert([$0.minX, $0.minY, $0.width, $0.height]).inserted
+        }
+        sceneQueries.selectionRects = (selection, rects)
+        return rects
+    }
+
+    /// Collected items the scene draws on their own, in rendered-scene coordinates; memoized per scene and pile.
+    struct CleanupMarks {
+        var collected: [CGRect] = []
+        var moving: [CGRect] = []
+        /// The scene root itself sits inside a collected item, so the whole map is.
+        var washesCanvas = false
+        var canvas: CGRect = .null
+
+        var isEmpty: Bool { collected.isEmpty && moving.isEmpty && !washesCanvas }
+    }
+
+    var cleanupMarks: CleanupMarks {
+        if let memo = sceneQueries.cleanupMarks { return memo }
+        var marks = CleanupMarks()
+        guard let scene, let store, !(cleanupCollectedIDs.isEmpty && cleanupMovingIDs.isEmpty) else {
+            sceneQueries.cleanupMarks = marks
+            return marks
+        }
+        let canvas = CGRect(
+            x: -scene.viewport.origin.x,
+            y: -scene.viewport.origin.y,
+            width: scene.size.width * scene.viewport.scale,
+            height: scene.size.height * scene.viewport.scale
+        )
+        marks.canvas = canvas
+        let movingFirst = cleanupMovingIDs.sorted()
+        // One layout per folder on the items' paths, however many items share it.
+        let rects = scene.rects(forNodeIDs: movingFirst + cleanupCollectedIDs, in: store, exact: true)
+        for (ids, isMoving) in [(movingFirst, true), (cleanupCollectedIDs, false)] {
+            // A moving item is also still in the pile until its move lands; it draws once, as moving.
+            for id in ids where isMoving || !cleanupMovingIDs.contains(id) {
+                if id == scene.rootID || store.isAncestor(id, of: scene.rootID) {
+                    marks.washesCanvas = true
+                    if id == scene.rootID {
+                        if isMoving { marks.moving.append(canvas) } else { marks.collected.append(canvas) }
+                    }
+                    continue
+                }
+                guard let rect = rects[id],
+                      rect.width >= 2, rect.height >= 2,
+                      rect.intersects(scene.renderBounds) else { continue }
+                if isMoving { marks.moving.append(rect) } else { marks.collected.append(rect) }
+            }
+        }
+        sceneQueries.cleanupMarks = marks
+        return marks
+    }
+
     /// Nil while a gesture moves the map (the ring hides with the tooltip).
     var hoverRect: CGRect? {
         guard !isGesturing else { return nil }
@@ -343,24 +424,44 @@ final class TreemapController {
         _ = setHoveredCell(cell(at: hoverPoint))
     }
 
-    func click(at point: CGPoint) {
+    /// What a press would drag: the selection when the press lands on a selected item or inside one (cushion draws
+    /// folders only as files), else the cell's item alone. `carriesSelection` defers the click to mouse-up, so the
+    /// drag keeps the whole selection.
+    func dragCandidate(at point: CGPoint) -> (nodeIDs: [String], carriesSelection: Bool)? {
+        guard let model, !model.coordinator.isScanning, let store, let scene, let cell = cell(at: point),
+              !cell.isFreeSpace, !cell.isHiddenSpace else { return nil }
+        if let ids = selection.dragIDs(pressing: cell.nodeID, mapRootID: scene.rootID, in: store) {
+            let draggable = ids.filter { NodeDragSource.draggableNode(id: $0, model: model) != nil }
+            if !draggable.isEmpty { return (draggable, true) }
+        }
+        guard cell.aggregate == nil, NodeDragSource.draggableNode(id: cell.nodeID, model: model) != nil else {
+            return nil
+        }
+        return ([cell.nodeID], false)
+    }
+
+    func click(at point: CGPoint, _ kind: MapClick = .replace) {
         guard let model else { return }
         guard let cell = cell(at: point) else {
-            model.select(nil)
+            if kind == .replace { model.select(nil) }
             return
         }
         // The synthetic free/hidden-space cells represent no file; clicking
         // them clears the selection (same as the sunburst's arcs).
         if cell.isFreeSpace || cell.isHiddenSpace {
-            model.select(nil)
+            if kind == .replace { model.select(nil) }
             return
         }
         // Clicking a "smaller items" cell opens it up: its folder's children
-        // render individually.
+        // render individually. It stands for its folder, so ⌘-click doesn't add that folder.
         if cell.aggregate != nil {
             model.expandAggregate(inFolder: cell.nodeID)
+            if kind == .toggle { return }
         }
-        model.select(cell.nodeID)
+        switch kind {
+        case .replace: model.select(cell.nodeID)
+        case .toggle: model.toggleSelection(cell.nodeID)
+        }
     }
 
     /// Cushion reveals in Finder (mouse never drills there). Flat drills into folders, including aggregates,
@@ -473,7 +574,7 @@ final class TreemapController {
     func contextMenu(at point: CGPoint) -> NSMenu? {
         guard let model, let cell = cell(at: point),
               let node = model.store?.node(id: cell.nodeID) else { return nil }
-        return NSMenu.fileNodeActions(for: node, model: model)
+        return NSMenu.fileNodeActions(for: node, model: model, includeCleanup: cell.aggregate == nil)
     }
 
     /// Spacebar Quick Look for the treemap: previews the selected node, so
@@ -495,13 +596,21 @@ final class TreemapController {
         let command = event.modifierFlags.contains(.command)
         switch key {
         case .upArrow:
-            if command { beepUnless(model?.drillOut() == true) } else { moveSelection(.up) }
+            if command {
+                beepUnless(model?.drillOut() == true)
+            } else {
+                moveSelection(.up, extending: event.modifierFlags.contains(.shift))
+            }
         case .downArrow:
-            if command { beepUnless(model?.drillIntoSelection() == true) } else { moveSelection(.down) }
+            if command {
+                beepUnless(model?.drillIntoSelection() == true)
+            } else {
+                moveSelection(.down, extending: event.modifierFlags.contains(.shift))
+            }
         case .leftArrow:
-            moveSelection(.left)
+            moveSelection(.left, extending: event.modifierFlags.contains(.shift))
         case .rightArrow:
-            moveSelection(.right)
+            moveSelection(.right, extending: event.modifierFlags.contains(.shift))
         case .carriageReturn, .enter, .newline:
             revealSelectionInFinder()
         default:
@@ -510,8 +619,9 @@ final class TreemapController {
         return true
     }
 
-    /// With no selection, selects the largest tile so the keyboard has an anchor.
-    private func moveSelection(_ direction: MoveDirection) {
+    /// With no selection, selects the largest tile so the keyboard has an anchor. Moves from the primary item and
+    /// leaves only the target selected; ⇧ adds the target instead.
+    private func moveSelection(_ direction: MoveDirection, extending: Bool = false) {
         guard let model, let scene else { return }
         let candidates: [TreemapKeyboardNav.Candidate]
         if let cached = sceneQueries.navigationCandidates {
@@ -532,7 +642,7 @@ final class TreemapController {
         if let target = TreemapKeyboardNav.target(
             from: from, direction: direction, excluding: selectedNodeID, in: candidates
         ) {
-            model.select(target)
+            if extending { model.extendSelection(to: target) } else { model.select(target) }
         } else {
             NSSound.beep()
         }

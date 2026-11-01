@@ -12,6 +12,7 @@ final class MainWindow {
     let model: AppModel
 
     private let splitView: GPtr
+    private let toastOverlay: GPtr
     private let restoreLabel: GPtr
     private let titleLabel: GPtr
     private let subtitleLabel: GPtr
@@ -36,6 +37,11 @@ final class MainWindow {
     private let search: OutlineSearch
 
     private var actions: [String: GPtr] = [:]
+    /// Kept while it's out of the window (turned off in Preferences), so it can come back.
+    private var trashAction: GObjectRef?
+    /// The moves the toast on screen reports. Another move while it shows adds to it, rather than queuing a
+    /// second toast behind it.
+    private var movedToast: (toast: GObjectRef, count: Int, bytes: Int64)?
     private var tokens: [ObservationToken] = []
 
     init(application: GPtr, model: AppModel) {
@@ -68,7 +74,7 @@ final class MainWindow {
         gtk_widget_set_tooltip_text(ptr(menuButton), L("Main Menu"))
         let primaryMenu = Widgets.menu([
             [(L("Choose Folder…"), "win.open-folder")],
-            [(L("Preferences"), "app.preferences"), (L("Keyboard Shortcuts"), "win.show-help-overlay"), (L("About Neodisk"), "app.about")],
+            [(L("Preferences"), "app.preferences"), (L("Keyboard Shortcuts"), "win.show-help-overlay"), (L("About %@", AppChannel.current.appName), "app.about")],
             [(L("Quit"), "app.quit")],
         ])
         gtk_menu_button_set_menu_model(ptr(menuButton), ptr(primaryMenu.pointer))
@@ -141,7 +147,7 @@ final class MainWindow {
         adw_status_page_set_title(ptr(emptyState), L("Choose a Location to Scan"))
         adw_status_page_set_description(
             ptr(emptyState),
-            L("Pick a disk or folder in the sidebar to see what takes up space. Neodisk only reads your files; it never changes or deletes them.")
+            L("Scan folders and disks to see where space is going,\nthen clear out what you don't need.")
         )
         let openButton = raw(gtk_button_new_with_label(L("Choose Folder…")))!
         Widgets.addClasses(openButton, ["pill", "suggested-action"])
@@ -182,37 +188,17 @@ final class MainWindow {
             splitView, "show-sidebar", sidebarToggle, "active",
             GBindingFlags(rawValue: 1 | 2)  // G_BINDING_BIDIRECTIONAL | G_BINDING_SYNC_CREATE
         )
-        adw_application_window_set_content(ptr(window), ptr(splitView))
+        toastOverlay = raw(adw_toast_overlay_new())!
+        adw_toast_overlay_set_child(ptr(toastOverlay), ptr(splitView))
+        adw_application_window_set_content(ptr(window), ptr(toastOverlay))
 
-        // Collapse the sidebar into an overlay on narrow windows.
-        if let condition = adw_breakpoint_condition_parse("max-width: 760sp") {
-            let breakpoint = adw_breakpoint_new(condition)
-            var value = GValue()
-            g_value_init(&value, neodisk_boolean_type())
-            g_value_set_boolean(&value, gbool(true))
-            adw_breakpoint_add_setter(breakpoint, ptr(splitView), "collapsed", &value)
-            g_value_unset(&value)
-            adw_application_window_add_breakpoint(ptr(window), breakpoint)
-        }
-        // Narrower still, statistics float over the map and secondary outline columns give way to names.
-        if let condition = adw_breakpoint_condition_parse("max-width: 900sp") {
-            let breakpoint = adw_breakpoint_new(condition)
-            var collapsed = GValue()
-            g_value_init(&collapsed, neodisk_boolean_type())
-            g_value_set_boolean(&collapsed, gbool(true))
-            adw_breakpoint_add_setter(breakpoint, ptr(statisticsSplit), "collapsed", &collapsed)
-            g_value_unset(&collapsed)
-            var hidden = GValue()
-            g_value_init(&hidden, neodisk_boolean_type())
-            g_value_set_boolean(&hidden, gbool(false))
-            for column in outline.secondaryColumns {
-                adw_breakpoint_add_setter(breakpoint, ptr(column), "visible", &hidden)
-            }
-            g_value_unset(&hidden)
-            adw_application_window_add_breakpoint(ptr(window), breakpoint)
-        }
+        // Narrow windows: statistics float over the map and secondary outline columns give way to names; narrower
+        // still, the sidebar becomes an overlay too. Only the last matching breakpoint applies, so the narrower one
+        // comes last and repeats the wider one's changes.
+        addBreakpoint("max-width: 900sp", collapsing: [statisticsSplit])
+        addBreakpoint("max-width: 760sp", collapsing: [statisticsSplit, splitView])
 
-        attach(self, to: window, key: "neodisk-main-window")
+        attach(self, to: window, key: Self.attachmentKey)
         installActions()
         bindModel()
 
@@ -234,6 +220,24 @@ final class MainWindow {
         }
         connectNotify(window, "default-width") { [unowned self] in self.rememberSize() }
         connectNotify(window, "default-height") { [unowned self] in self.rememberSize() }
+    }
+
+    private static let attachmentKey = "neodisk-main-window"
+
+    private func addBreakpoint(_ conditionText: String, collapsing splitViews: [GPtr]) {
+        guard let condition = adw_breakpoint_condition_parse(conditionText) else { return }
+        let breakpoint = adw_breakpoint_new(condition)
+        var collapsed = GValue()
+        g_value_init(&collapsed, neodisk_boolean_type())
+        g_value_set_boolean(&collapsed, gbool(true))
+        for splitView in splitViews {
+            adw_breakpoint_add_setter(breakpoint, ptr(splitView), "collapsed", &collapsed)
+        }
+        g_value_unset(&collapsed)
+        // Not a setter: the user may hide or show columns meanwhile, and a setter would undo that on unapply.
+        connect(raw(breakpoint), "apply") { [outline] in outline.setCompact(true) }
+        connect(raw(breakpoint), "unapply") { [outline] in outline.setCompact(false) }
+        adw_application_window_add_breakpoint(ptr(window), breakpoint)
     }
 
     private static func viewToggle(_ iconName: String, tooltip: String) -> GPtr {
@@ -311,6 +315,14 @@ final class MainWindow {
             for name in ["open-item", "show-in-files", "copy-path"] {
                 setActionEnabled(self.actions[name], hasSelection)
             }
+        })
+        tokens.append(track { [unowned self] in
+            // Several items: enabled while any can go; the confirmation then says which can't.
+            let canMove = self.model.selectedNodes.contains { self.model.canMoveToTrash($0) }
+            setActionEnabled(self.trashAction?.pointer, canMove)
+        })
+        tokens.append(track { [unowned self] in
+            self.setTrashActionInstalled(self.model.preferences.allowsMovingToTrash)
         })
         tokens.append(track { [unowned self] in
             let mode = self.model.preferences.vizMode
@@ -406,16 +418,24 @@ final class MainWindow {
             self.showView(.sunburst)
         }
         actions["open-item"] = addAction(to: window, "open-item") { [unowned self] _ in
-            guard let path = self.model.selectedNode?.path else { return }
-            FileActions.open(path, from: self.window)
+            for node in self.model.selectedNodes { FileActions.open(node.path, from: self.window) }
         }
         actions["show-in-files"] = addAction(to: window, "show-in-files") { [unowned self] _ in
             guard let path = self.model.selectedNode?.path else { return }
             FileActions.showInFileManager(path, from: self.window)
         }
         actions["copy-path"] = addAction(to: window, "copy-path") { [unowned self] _ in
-            guard let path = self.model.selectedNode?.path else { return }
-            FileActions.copyPath(path, from: self.window)
+            let paths = self.model.selectedNodes.map(\.path)
+            guard !paths.isEmpty else { return }
+            FileActions.copyPath(paths.joined(separator: "\n"), from: self.window)
+        }
+        addAction(to: window, "open-trash") { [unowned self] _ in
+            FileActions.openTrash(from: self.window)
+        }
+        if let action = addAction(to: window, "move-to-trash", { [unowned self] _ in
+            self.moveSelectionToTrash()
+        }) {
+            trashAction = GObjectRef(retaining: action)
         }
         actions["scan-location"] = addAction(to: window, "scan-location", stringParameter: true) { [unowned self] path in
             guard let path else { return }
@@ -423,6 +443,180 @@ final class MainWindow {
         }
         addAction(to: window, "show-help-overlay") { [unowned self] _ in
             ShortcutsWindow.present(from: self.window)
+        }
+    }
+
+    // MARK: - Moving to the Trash
+
+    /// Off in Preferences, the action leaves the window and its menu items hide with it.
+    private func setTrashActionInstalled(_ installed: Bool) {
+        guard let action = trashAction?.pointer else { return }
+        let isInstalled = g_action_map_lookup_action(ptr(window), "move-to-trash") != nil
+        if installed, !isInstalled {
+            g_action_map_add_action(ptr(window), ptr(action))
+        } else if !installed, isInstalled {
+            g_action_map_remove_action(ptr(window), "move-to-trash")
+        }
+    }
+
+    /// Delete in the map or the outline. A plain key the focused view handles, not an app accelerator, which
+    /// would take Delete from the search field. Shift+Delete means "delete for good" elsewhere: not here.
+    static func handleTrashKey(_ keyval: UInt32, state: UInt32, from widget: GPtr?) -> Bool {
+        let modifiers: UInt32 = 1 | 4 | 8  // GDK_SHIFT_MASK | GDK_CONTROL_MASK | GDK_ALT_MASK
+        guard Int32(keyval) == GDK_KEY_Delete || Int32(keyval) == GDK_KEY_KP_Delete, state & modifiers == 0,
+              let root = raw(gtk_widget_get_root(ptr(widget))),
+              let window = attached(MainWindow.self, to: root, key: attachmentKey) else { return false }
+        window.moveSelectionToTrash()
+        return true
+    }
+
+    /// Explains a refusal instead of doing nothing; otherwise asks, then moves. Several selected items go after
+    /// one confirmation (a folder takes what's selected inside it); the ones that can't are named there.
+    func moveSelectionToTrash() {
+        guard let store = model.store, !model.selection.isEmpty, !model.isMovingToTrash else {
+            gtk_widget_error_bell(ptr(window))
+            return
+        }
+        if let reason = model.trashUnavailableReason {
+            showToast(reason)
+            return
+        }
+        let nodes = model.selection.topLevelIDs(in: store).compactMap { store.node(id: $0) }
+        guard nodes.count > 1 else {
+            if let node = nodes.first { moveToTrash(node) }
+            return
+        }
+        let reasons = nodes.map { model.trashRefusalReason(for: $0) }
+        let allowed = zip(nodes, reasons).compactMap { $1 == nil ? $0 : nil }
+        let refusals = reasons.compactMap { $0 }
+        guard !allowed.isEmpty else {
+            showAlert(heading: L("Can't Move %lld Items to the Trash", Int64(nodes.count)), body: refusals.first ?? "")
+            return
+        }
+        let confirmation = TrashConfirmation(nodes: allowed, scannedAt: model.snapshot?.finishedAt)
+        var message = confirmation.message
+        if let firstRefusal = refusals.first {
+            message += "\n\n" + (refusals.count == 1
+                ? L("1 item can't go to the Trash. %@", firstRefusal)
+                : L("%lld items can't go to the Trash. %@", Int64(refusals.count), firstRefusal))
+        }
+        confirm(title: confirmation.title, message: message) { [unowned self] in
+            Task { await self.move(allowed) }
+        }
+    }
+
+    private func moveToTrash(_ node: FileNodeRecord) {
+        if let reason = model.trashRefusalReason(for: node) {
+            showAlert(heading: L("Can't Move “%@” to the Trash", node.name), body: reason)
+            return
+        }
+        let confirmation = TrashConfirmation(nodes: [node], scannedAt: model.snapshot?.finishedAt)
+        confirm(title: confirmation.title, message: confirmation.message) { [unowned self] in
+            Task { await self.move(node) }
+        }
+    }
+
+    private func confirm(title: String, message: String, then move: @escaping @MainActor () -> Void) {
+        let dialog = raw(adw_alert_dialog_new(title, message))!
+        adw_alert_dialog_add_response(ptr(dialog), "cancel", L("Cancel"))
+        adw_alert_dialog_add_response(ptr(dialog), "trash", L("Move to Trash"))
+        adw_alert_dialog_set_response_appearance(ptr(dialog), "trash", ADW_RESPONSE_DESTRUCTIVE)
+        // GNOME's rule for destructive responses: Return and Escape both cancel.
+        adw_alert_dialog_set_default_response(ptr(dialog), "cancel")
+        adw_alert_dialog_set_close_response(ptr(dialog), "cancel")
+        connectPointer(dialog, "response") { response in
+            guard string(from: response?.assumingMemoryBound(to: CChar.self)) == "trash" else { return }
+            move()
+        }
+        adw_dialog_present(ptr(dialog), ptr(window))
+    }
+
+    /// Moves a confirmed item and reports how it went. Nil when another move is still running.
+    @discardableResult
+    func move(_ node: FileNodeRecord) async -> TrashOutcome? {
+        guard let outcome = await model.moveToTrash(node) else {
+            gtk_widget_error_bell(ptr(window))
+            return nil
+        }
+        switch outcome {
+        case .moved(let bytes):
+            reportMoved(count: 1, bytes: bytes)
+        case .alreadyGone:
+            showToast(L("1 item was already gone."))
+        case .failed(let reason):
+            showAlert(heading: L("Couldn't Move “%@” to the Trash", node.name), body: reason)
+        }
+        return outcome
+    }
+
+    /// Moves confirmed items and reports them together: one toast for what moved, one alert for what didn't.
+    @discardableResult
+    func move(_ nodes: [FileNodeRecord]) async -> [TrashOutcome]? {
+        guard let outcomes = await model.moveToTrash(nodes) else {
+            gtk_widget_error_bell(ptr(window))
+            return nil
+        }
+        let summary = TrashBatchSummary(outcomes)
+        if summary.moved > 0 { reportMoved(count: summary.moved, bytes: summary.bytes) }
+        if summary.gone > 0 {
+            showToast(summary.gone == 1
+                ? L("1 item was already gone.") : L("%lld items were already gone.", Int64(summary.gone)))
+        }
+        if let reason = summary.firstFailure {
+            showAlert(heading: summary.failed == 1
+                ? L("Couldn't Move 1 Item to the Trash")
+                : L("Couldn't Move %lld Items to the Trash", Int64(summary.failed)), body: reason)
+        }
+        return outcomes
+    }
+
+    /// No Undo: putting an item back is the file manager's job, and it knows where each one came from.
+    private func reportMoved(count moved: Int, bytes: Int64) {
+        let count = (movedToast?.count ?? 0) + moved
+        let total = (movedToast?.bytes ?? 0) + bytes
+        if let previous = movedToast?.toast.pointer {
+            adw_toast_dismiss(ptr(previous))
+        }
+        let text = switch (count, total) {
+        case (1, 0): L("Moved 1 item to the Trash.")
+        case (1, _): L("Moved 1 item (%@) to the Trash.", NeodiskFormatters.size(total))
+        case (_, 0): L("Moved %lld items to the Trash.", Int64(count))
+        default: L("Moved %lld items (%@) to the Trash.", Int64(count), NeodiskFormatters.size(total))
+        }
+        guard let toast = showToast(text, button: (L("Open Trash"), "win.open-trash")) else { return }
+        movedToast = (toast, count, total)
+        connect(toast.pointer, "dismissed") { [weak self, unowned toast] in
+            if self?.movedToast?.toast === toast { self?.movedToast = nil }
+        }
+    }
+
+    /// Plain text: names and paths may hold markup characters.
+    @discardableResult
+    private func showToast(_ text: String, button: (label: String, action: String)? = nil) -> GObjectRef? {
+        guard let toast = adw_toast_new(text) else { return nil }
+        adw_toast_set_use_markup(toast, gbool(false))
+        if let button {
+            adw_toast_set_button_label(toast, button.label)
+            adw_toast_set_action_name(toast, button.action)
+        }
+        let kept = GObjectRef(retaining: raw(toast)!)
+        // The overlay takes the constructor's reference.
+        adw_toast_overlay_add_toast(ptr(toastOverlay), toast)
+        return kept
+    }
+
+    /// Reasons run longer than a toast's single line.
+    private func showAlert(heading: String, body: String) {
+        let dialog = raw(adw_alert_dialog_new(heading, body))!
+        adw_alert_dialog_add_response(ptr(dialog), "close", L("OK"))
+        adw_alert_dialog_set_default_response(ptr(dialog), "close")
+        adw_alert_dialog_set_close_response(ptr(dialog), "close")
+        adw_dialog_present(ptr(dialog), ptr(window))
+        // libadwaita 1.5 focuses the default response only when another response would take focus first, so a
+        // lone OK starts on the scrollable message instead and Return does nothing. The buttons exist once the
+        // dialog is presented, and it focuses this one as it opens.
+        if let button = Widgets.firstDescendant(of: dialog, ofType: gtk_button_get_type()) {
+            adw_dialog_set_focus(ptr(dialog), ptr(button))
         }
     }
 

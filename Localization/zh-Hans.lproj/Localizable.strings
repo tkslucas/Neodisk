@@ -100,8 +100,9 @@
 "Open Full Disk Access Settings" = "打开完全磁盘访问权限设置";
 "Recheck" = "重新检查";
 "Note: running unbundled (swift run), Neodisk inherits its permissions from the terminal that launched it — grant Full Disk Access to that terminal app." = "注意：以非打包方式运行（swift run）时，Neodisk 会继承启动它的终端应用的权限，请为该终端应用授予完全磁盘访问权限。";
-"Read-Only Guarantee" = "只读保证";
-"Neodisk is a viewer: it never modifies or deletes files, and has no delete function at all. To remove something, use Reveal in Finder and delete it there." = "Neodisk 只是一个查看工具：它绝不会修改或删除文件，也完全没有删除功能。如需移除内容，请使用“在访达中显示”，然后在访达中删除。";
+"Moving to the Trash" = "移到废纸篓";
+"Allow moving items to the Trash" = "允许将项目移到废纸篓";
+"Collect items in Cleanup at the bottom of the sidebar, then move them to the Trash after one confirmation. Neodisk never deletes anything itself, and won't touch system folders or your home folder. Turn this off to only look." = "在边栏底部的“清理”中收集项目，确认一次即可将它们移到废纸篓。Neodisk 自身绝不会删除任何内容，也不会触及系统文件夹或你的个人文件夹。关闭此项即可只查看。";
 "Sidebar Folders" = "边栏文件夹";
 "Folders you add are stored locally so they can appear in the sidebar." = "你添加的文件夹会存储在本地，以便显示在边栏中。";
 "Clear Added Folders" = "清除已添加的文件夹";
@@ -123,11 +124,11 @@
 
 /* MARK: - 欢迎表单（首次启动） */
 "Welcome to Neodisk" = "欢迎使用 Neodisk";
-"Scan folders and disks to see where space is going.\nNeodisk is read-only: it never modifies or deletes files." = "扫描文件夹和磁盘，了解空间都去哪儿了。\nNeodisk 是只读的：它绝不会修改或删除文件。";
+"Scan folders and disks to see where space is going,\nthen clear out what you don't need." = "扫描文件夹和磁盘，了解空间都去哪儿了，\n然后清理掉不需要的内容。";
 "Explore the treemap" = "探索矩形树图";
 "Hover to inspect. Click to select. Pinch or scroll to move around. Double-click or right-click to Reveal in Finder. Switch between treemap and sunburst in the toolbar." = "悬停以查看详情，点按以选择，双指缩放或滚动以移动视图，双击或右键点按可在访达中显示。可在工具栏中切换矩形树图和旭日图。";
-"Read-only access" = "只读访问";
-"Neodisk is purely a visualizer: it only ever reads your disk and cannot delete files or move them to the Trash — by design. To clean something up, right-click it, Reveal in Finder, and delete it there." = "Neodisk 纯粹是一个可视化工具：按照设计，它只会读取你的磁盘，无法删除文件或将其移到废纸篓。如需清理内容，请右键点按该项目，选择“在访达中显示”，然后在访达中删除。";
+"Clean up safely" = "安全清理";
+"Drag items to Cleanup at the bottom of the sidebar, or press ⌘⌫. Nothing moves until you confirm, items go to the Trash so you can still get them back, and system folders are off-limits. You can turn this off in Settings." = "将项目拖到边栏底部的“清理”，或按 ⌘⌫。在你确认之前不会移动任何内容，项目会移到废纸篓，因此仍可找回，系统文件夹也不会被触及。你可以在“设置”中关闭此功能。";
 "Enabled" = "已启用";
 "Not enabled" = "未启用";
 "Neodisk can read protected locations. You can start a complete scan now." = "Neodisk 可以读取受保护的位置，现在可以开始完整扫描。";
@@ -429,10 +430,9 @@
 "Merging changes…" = "正在合并更改…";
 "Move Selection" = "移动选择";
 "Opening…" = "正在打开…";
-"Pick a disk or folder in the sidebar to see what takes up space. Neodisk only reads your files; it never changes or deletes them." = "在边栏中选择一个磁盘或文件夹，看看是什么在占用空间。Neodisk 只读取你的文件，从不更改或删除它们。";
 "Preferences" = "偏好设置";
 "Quit" = "退出";
-"Read-only disk space visualizer. Treemap and sunburst views on the NeodiskKit scan engine." = "只读的磁盘空间可视化工具。基于 NeodiskKit 扫描引擎的矩形树图和旭日图视图。";
+"Disk space visualizer. Treemap and sunburst views on the NeodiskKit scan engine." = "磁盘空间可视化工具。基于 NeodiskKit 扫描引擎的矩形树图和旭日图视图。";
 "Recent" = "最近";
 "Refreshing…" = "正在刷新…";
 "Saved Scans" = "已保存的扫描";
@@ -450,3 +450,82 @@
 "%@ free of %@" = "%2$@ 中可用 %1$@";
 "%@ in %@ files" = "%2$@ 个文件，共 %1$@";
 "%@ in %@ file" = "%2$@ 个文件，共 %1$@";
+
+/* MARK: - Cleanup and moving to the Trash */
+"%lld items were already gone." = "%lld 个项目已不存在。";
+"1 item was already gone." = "1 个项目已不存在。";
+"Add to Cleanup" = "添加到清理";
+"and %lld more" = "以及另外 %lld 个";
+"Cleanup" = "清理";
+"Drag files and folders here, or press ⌘⌫, to collect them. Nothing moves until you confirm." = "将文件和文件夹拖到这里，或按 ⌘⌫ 来收集它们。在你确认之前，不会移动任何内容。";
+"Drag items here to review before trashing" = "将项目拖到这里，在移到废纸篓前检查";
+"Drop here to collect" = "拖放到这里以收集";
+"It changed since the scan. Rescan to move it." = "自扫描以来它已更改。请重新扫描后再移动。";
+"Move “%@” to the Trash?" = "要将“%@”移到废纸篓吗？";
+"Move %lld items (%@) to the Trash?" = "要将 %lld 个项目（%@）移到废纸篓吗？";
+"Move Cleanup to Trash…" = "将清理项目移到废纸篓…";
+"Move to Trash" = "移到废纸篓";
+"Move to Trash…" = "移到废纸篓…";
+"Moved %lld items (%@) to the Trash." = "已将 %lld 个项目（%@）移到废纸篓。";
+"Moved 1 item (%@) to the Trash." = "已将 1 个项目（%@）移到废纸篓。";
+"Moving items to the Trash is turned off in Preferences." = "已在“偏好设置”中关闭将项目移到废纸篓。";
+"Moving items to the Trash is turned off in Settings." = "已在“设置”中关闭将项目移到废纸篓。";
+"Moving to the Trash…" = "正在移到废纸篓…";
+"Neodisk asks before each move and never deletes anything itself. System folders and your home folder are off limits. Turn this off to only look." = "Neodisk 每次移动前都会询问，自身绝不会删除任何内容。系统文件夹和你的个人文件夹不会被触及。关闭此项即可只查看。";
+"Open Trash" = "打开废纸篓";
+"Release to collect" = "松开以收集";
+"Remove from Cleanup" = "从清理中移除";
+"Some of this is in a cloud drive: moving it to the Trash also removes it from the cloud and your other devices." = "其中部分内容位于云盘中：将其移到废纸篓也会将其从云端和你的其他设备中移除。";
+"Some of this shares storage with other files (hard links or clones), so less space may come back." = "其中部分内容与其他文件共享存储（硬链接或克隆），因此释放的空间可能较少。";
+"The space comes back when you empty the Trash." = "清倒废纸篓后即可释放空间。";
+"This is already in the Trash." = "此项目已在废纸篓中。";
+"This is the location being shown. Scan the folder that holds it to remove it." = "这是当前显示的位置。要移除它，请扫描包含它的文件夹。";
+"This scan was stopped early. Rescan to move items to the Trash." = "此次扫描已提前停止。请重新扫描后再将项目移到废纸篓。";
+"Wait for the scan to finish." = "请等待扫描完成。";
+"%lld items couldn't be moved; they're still in Cleanup." = "有 %lld 个项目无法移动，仍保留在清理中。";
+"1 item couldn't be moved; it's still in Cleanup." = "有 1 个项目无法移动，仍保留在清理中。";
+"Can't Move “%@” to the Trash" = "无法将“%@”移到废纸篓";
+"Couldn't Move “%@” to the Trash" = "未能将“%@”移到废纸篓";
+"It's no longer there." = "它已不存在。";
+"The item couldn't be moved to the Trash." = "无法将该项目移到废纸篓。";
+"This isn't a file or folder, so it can't go to the Trash." = "这不是文件或文件夹，因此无法移到废纸篓。";
+"This location is protected: the system or your account needs it. What's inside it can go." = "此位置受保护：系统或你的账户需要它。其中的内容可以移除。";
+"This scan was opened from a file, so its items can't be moved." = "此扫描是从文件打开的，因此无法移动其中的项目。";
+"In Cleanup" = "在清理中";
+"In a folder in Cleanup" = "在清理中的文件夹内";
+"Neodisk couldn't look inside this folder, so it can't tell what it holds." = "Neodisk 无法查看此文件夹的内容，因此无法确定其中有什么。";
+"This name couldn't be read correctly, so Neodisk can't move it safely." = "无法正确读取此名称，因此 Neodisk 无法安全地移动它。";
+"Neodisk couldn't read everything inside some of this, so it may hold more than shown." = "Neodisk 无法读取其中的全部内容，因此实际可能比显示的更多。";
+"This scan is from %@: folders may have changed since. Rescan to be sure." = "此扫描来自%@：文件夹可能已有变化。请重新扫描以确保准确。";
+"1 item changed since you collected it and left Cleanup." = "1 个项目在收集后发生了变化，已移出清理。";
+"%lld items changed since you collected them and left Cleanup." = "%lld 个项目在收集后发生了变化，已移出清理。";
+"Reset Tabs" = "重置标签页";
+"Percentage" = "百分比";
+"More tabs" = "更多标签页";
+"It's locked. Unlock it in Get Info to move it." = "此项已锁定。请在“显示简介”中解锁后再移动。";
+"Moved 1 item to the Trash." = "已将 1 个项目移到废纸篓。";
+"Moved %lld items to the Trash." = "已将 %lld 个项目移到废纸篓。";
+
+/* Cleanup: partly refused additions, packages */
+"Added 1 item." = "已添加 1 个项目。";
+"Added %lld items." = "已添加 %lld 个项目。";
+"1 item can't go to the Trash. %@" = "有 1 个项目无法移到废纸篓。%@";
+"%lld items can't go to the Trash. %@" = "有 %lld 个项目无法移到废纸篓。%@";
+"This is inside a package, which Finder shows as one file (an app, a plug-in, a library). Move the whole package instead." = "此项位于一个包中，访达会将包显示为单个文件（如应用、插件或资源库）。请改为移动整个包。";
+/* Cleanup: hard links and clones */
+"Shared" = "共享";
+"Shares its storage with another file (a hard link or clone), so moving it alone frees no space." = "与另一个文件共享存储（硬链接或克隆），因此单独移动它不会释放空间。";
+/* Multi-selection */
+"Add %lld Items to Cleanup" = "将 %lld 个项目添加到清理";
+"Remove %lld Items from Cleanup" = "从清理中移除 %lld 个项目";
+"Copy Paths" = "拷贝路径";
+"Deselect All" = "全部取消选择";
+"%lld items selected" = "已选择 %lld 个项目";
+"All in Cleanup" = "全部在清理中";
+"%lld in Cleanup" = "%lld 个在清理中";
+"%lld items" = "%lld 个项目";
+"Can't Move %lld Items to the Trash" = "无法将 %lld 个项目移到废纸篓";
+"Couldn't Move 1 Item to the Trash" = "未能将 1 个项目移到废纸篓";
+"Couldn't Move %lld Items to the Trash" = "未能将 %lld 个项目移到废纸篓";
+"Select All" = "全选";
+"Add to Selection" = "添加到所选内容";

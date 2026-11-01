@@ -20,19 +20,26 @@ import NeodiskAppModel
 final class NeodiskViewModel {
     let coordinator: ScanCoordinator
 
-    var selectedNodeID: String? {
+    /// Every selected item, one of them primary; see NodeSelection. Lists and maps write it, every view reads it.
+    var selection = NodeSelection() {
         didSet {
-            guard selectedNodeID != oldValue else { return }
+            guard selection.revision != oldValue.revision else { return }
             // Any selection — from the treemap, outline, sidebar lists, or
-            // search — keeps itself on screen: if it lands outside a
+            // search — keeps its primary on screen: if it lands outside a
             // drilled-in map, widen the root out to reveal it. Done here, not
-            // in select(), because the outline sets selectedNodeID directly.
-            if let selectedNodeID { widenRootToShow(selectedNodeID) }
+            // in select(), because the lists write the selection directly.
+            if let primaryID = selection.primaryID, primaryID != oldValue.primaryID {
+                widenRootToShow(primaryID)
+            }
             // Live-update an open Quick Look panel as the selection moves
             // (arrow-keying through the outline). No-op when it's closed.
-            QuickLookPresenter.shared.selectionDidChange(to: selectedNode)
+            QuickLookPresenter.shared.selectionDidChange(to: selectedNodes, current: selectedNode)
         }
     }
+
+    /// The primary selected item: what single-item features (drilling, arrow keys, the breadcrumb) act on.
+    var selectedNodeID: String? { selection.primaryID }
+
     private(set) var visualizationHover: VisualizationHover?
 
     /// Publish a complete hover identity in one observation transaction.
@@ -88,6 +95,10 @@ final class NeodiskViewModel {
     var analysisTab: AnalysisTab = .largest {
         didSet { syncDiffVisibility() }
     }
+    /// Mirror of the persisted tab order and visibility; change it through setAnalysisTabs.
+    private(set) var analysisTabs = ItemLayout<AnalysisTab>()
+    /// Mirror of the bottom table's persisted column order and visibility.
+    private(set) var outlineColumns = ItemLayout<OutlineColumn>(pinned: .name)
     /// Locations sidebar visibility; lives here so the View menu can toggle
     /// it. Always starts visible.
     var sidebarVisibility = NavigationSplitViewVisibility.all
@@ -118,6 +129,11 @@ final class NeodiskViewModel {
     /// puts it in the environment for SwiftUI; the AppKit surfaces that draw
     /// their own text (outline table, treemap labels) read it from here.
     var textScale: Double = TextScale.standard
+
+    // MARK: Cleanup
+
+    /// Items collected for the Trash; see CleanupModel.
+    let cleanup: CleanupModel
 
     // MARK: Kind statistics
 
@@ -263,6 +279,7 @@ final class NeodiskViewModel {
         self.sidebarFolderStore = sidebarFolderStore
         self.warnings = ScanWarningsModel(coordinator: coordinator)
         self.freeSpace = FreeSpaceModel(coordinator: coordinator)
+        self.cleanup = CleanupModel(coordinator: coordinator)
         self.search = SearchModel(coordinator: coordinator, indexService: searchIndexService)
         self.kinds = KindStatsModel(coordinator: coordinator, indexService: searchIndexService)
         self.largest = LargestFilesModel(coordinator: coordinator, indexService: searchIndexService)
@@ -282,6 +299,7 @@ final class NeodiskViewModel {
         diff.model = self
         changes.model = self
         session.model = self
+        cleanup.model = self
 
         // The coordinator is @Observable, so views track its properties
         // (phase, snapshot, …) directly; the model only needs the snapshot
@@ -415,7 +433,7 @@ final class NeodiskViewModel {
     /// or snapshot takes the screen. Internal (not private): the caller is
     /// the scan session, whose branches decide when a new scan takes over.
     func resetPerScanState() {
-        selectedNodeID = nil
+        selection.clear()
         setVisualizationHover(nil)
         zoomRootID = nil
         drillHistory = DrillHistory()
@@ -441,8 +459,10 @@ final class NeodiskViewModel {
                 self?.syncTreemapStyle()
                 self?.syncCloudOnlyPreference()
                 self?.syncOutlinePreferences()
+                self?.syncLayoutPreferences()
                 self?.syncTextScale()
                 self?.syncFileCategories()
+                self?.syncCleanupPreference()
             }
         freeSpace.update()
         syncVizPalette()
@@ -450,8 +470,25 @@ final class NeodiskViewModel {
         syncTreemapStyle()
         syncCloudOnlyPreference()
         syncOutlinePreferences()
+        syncLayoutPreferences()
         syncTextScale()
         syncFileCategories()
+        syncCleanupPreference()
+    }
+
+    private func syncCleanupPreference() {
+        guard let preferences else { return }
+        cleanup.setEnabled(preferences.allowsMovingToTrash)
+    }
+
+    /// Before items leave the tree: a selection or drill root inside one moves to the folder that held it, so
+    /// the views land somewhere that still exists.
+    func prepareForRemoval(of removedIDs: [String], in store: FileTreeStore) {
+        let removed = Set(removedIDs)
+        if let zoomRootID, let kept = store.survivor(of: zoomRootID, removing: removed), kept != zoomRootID {
+            self.zoomRootID = kept == store.rootID ? nil : kept
+        }
+        selection.prepareForRemoval(of: removed, in: store)
     }
 
     /// Mirror the persisted text scale onto the model, and push it into the
@@ -524,6 +561,33 @@ final class NeodiskViewModel {
         if outlineSort != preferences.outlineSort {
             outlineSort = preferences.outlineSort
         }
+    }
+
+    private func syncLayoutPreferences() {
+        guard let preferences else { return }
+        if outlineColumns != preferences.outlineColumns {
+            outlineColumns = preferences.outlineColumns
+        }
+        if analysisTabs != preferences.analysisTabs {
+            analysisTabs = preferences.analysisTabs
+        }
+        // A hidden tab can't stay the lens: the map would color by a tab nobody can see.
+        if analysisTabs.isHidden(analysisTab), let first = analysisTabs.visible.first {
+            analysisTab = first
+        }
+    }
+
+    func setAnalysisTabs(_ layout: ItemLayout<AnalysisTab>) {
+        preferences?.analysisTabs = layout
+        analysisTabs = layout
+        if layout.isHidden(analysisTab), let first = layout.visible.first {
+            analysisTab = first
+        }
+    }
+
+    func setOutlineColumns(_ layout: ItemLayout<OutlineColumn>) {
+        preferences?.outlineColumns = layout
+        outlineColumns = layout
     }
 
     /// Push the palette to the kind catalog when the colorblind toggle flips.
@@ -680,8 +744,14 @@ final class NeodiskViewModel {
         duplicates.snapshotDidChange()
         changes.snapshotDidChange()
         search.snapshotDidChange()
+        cleanup.snapshotDidChange(snapshot)
 
         guard let snapshot else { return }
+
+        // A newer tree of the same location keeps the selection by path; what's gone leaves it.
+        if isSameLocation, snapshot.isComplete {
+            selection.reconcile(with: snapshot.treeStore)
+        }
 
         // Expand the root row by default so the outline isn't a single line.
         expandOutlineNodes([snapshot.treeStore.root.id])

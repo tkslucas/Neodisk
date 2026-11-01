@@ -702,6 +702,35 @@ import Testing
         }
     }
 
+    /// A rescan's save (rotating) superseded mid-encode by the save after a move to the Trash (in place): the
+    /// scan before the rescan must still end up as the previous one, or Changes loses its baseline.
+    @Test func testSupersededRotationStillRotatesThroughTheInPlaceSave() async throws {
+        let cacheDirectory = makeTemporaryCacheDirectory()
+        defer { try? FileManager.default.removeItem(at: cacheDirectory) }
+        let cache = ScanSnapshotCache(directoryURL: cacheDirectory, isLoggingEnabled: false)
+        let target = makeTestTarget("/rotation-race")
+        let before = makeFileSnapshot(target: target, files: [("a.bin", 100), ("b.bin", 50)])
+        let rescan = makeFileSnapshot(target: target, files: [("a.bin", 200), ("b.bin", 50)])
+        let afterMove = makeFileSnapshot(target: target, files: [("a.bin", 200)])
+        try await cache.save(before)
+
+        let gate = EncodeGate()
+        await cache.setEncodeGateForTesting(gate.closure)
+        let rescanSave = Task { try await cache.save(rescan) }
+        await gate.waitUntilEntered()
+        let moveSave = Task { try await cache.save(afterMove, rotatesPrevious: false) }
+        await gate.waitUntilEntered()
+        gate.open()
+        _ = try await rescanSave.value
+        _ = try await moveSave.value
+        await cache.setEncodeGateForTesting(nil)
+
+        let latest = try #require(await cache.loadSnapshot(for: target))
+        let previous = try #require(await cache.loadPreviousSnapshot(for: target))
+        #expect(latest.treeStore.node(id: target.id + "/b.bin") == nil)
+        #expect(previous.treeStore.node(id: target.id + "/a.bin")?.allocatedSize == 100)
+    }
+
     @Test func testLoadDuringInFlightSaveReturnsTheSavingSnapshot() async throws {
         let cacheDirectory = makeTemporaryCacheDirectory()
         defer { try? FileManager.default.removeItem(at: cacheDirectory) }

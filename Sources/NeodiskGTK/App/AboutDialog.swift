@@ -13,7 +13,7 @@ enum AboutDialog {
         adw_about_dialog_set_developer_name(OpaquePointer(dialog), "Lucas Takayasu")
         adw_about_dialog_set_comments(
             OpaquePointer(dialog),
-            L("Read-only disk space visualizer. Treemap and sunburst views on the NeodiskKit scan engine.")
+            L("Disk space visualizer. Treemap and sunburst views on the NeodiskKit scan engine.")
         )
         adw_about_dialog_set_website(OpaquePointer(dialog), "https://github.com/tkslucas/Neodisk")
         adw_about_dialog_set_issue_url(OpaquePointer(dialog), "https://github.com/tkslucas/Neodisk/issues")

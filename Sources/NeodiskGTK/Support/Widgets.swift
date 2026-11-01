@@ -104,6 +104,25 @@ enum Widgets {
         }
     }
 
+    /// The first widget of `type` under `root`, depth first.
+    static func firstDescendant(of root: GPtr, ofType type: GType) -> GPtr? {
+        var child = gtk_widget_get_first_child(ptr(root))
+        while let current = child {
+            if g_type_check_instance_is_a(ptr(raw(current)), type) != 0 { return raw(current) }
+            if let found = firstDescendant(of: raw(current)!, ofType: type) { return found }
+            child = gtk_widget_get_next_sibling(current)
+        }
+        return nil
+    }
+
+    /// Removes a list box's rows. Not `gtk_list_box_remove_all`: it removes every child, and a row menu's popover
+    /// parented to the list isn't a row, so it would loop on it forever.
+    static func removeAllRows(of list: GPtr) {
+        while let row = gtk_list_box_get_row_at_index(ptr(list), 0) {
+            gtk_list_box_remove(ptr(list), ptr(raw(row)))
+        }
+    }
+
     /// Created into `cache` on first use. The tooltip is off while open, or GTK draws a showing one over the menu.
     static func popupMenu(_ cache: inout GPtr?, sections: [[(String, String)]], on parent: GPtr, at point: CGPoint) {
         let hadTooltip = gtk_widget_get_has_tooltip(ptr(parent)) != 0
@@ -118,6 +137,10 @@ enum Widgets {
                 }
             }
             cache = popover
+        } else {
+            // Labels may follow the selection ("Copy Paths" for several): the items are rebuilt, the popover kept.
+            let model = menu(sections)
+            gtk_popover_menu_set_menu_model(ptr(cache), ptr(model.pointer))
         }
         if hadTooltip {
             gtk_widget_set_has_tooltip(ptr(parent), gbool(false))
@@ -128,12 +151,23 @@ enum Widgets {
         gtk_popover_popup(ptr(cache))
     }
 
+    /// Extra menu item attributes by action: Delete shows as an accelerator (the focused view handles the key),
+    /// and Move to Trash hides when its action leaves the window (turned off in Preferences).
+    private static let itemAttributes: [String: [(String, String)]] = [
+        "win.move-to-trash": [("accel", "Delete"), ("hidden-when", "action-missing")],
+    ]
+
     static func menu(_ sections: [[(String, String)]]) -> GObjectRef {
         let menu = raw(g_menu_new())!
         for items in sections {
             let section = g_menu_new()
             for (label, action) in items {
-                g_menu_append(section, label, action)
+                let item = g_menu_item_new(label, action)
+                for (name, value) in itemAttributes[action] ?? [] {
+                    g_menu_item_set_attribute_value(item, name, g_variant_new_string(value))
+                }
+                g_menu_append_item(section, item)
+                g_object_unref(raw(item))
             }
             g_menu_append_section(ptr(menu), nil, ptr(raw(section)))
             g_object_unref(raw(section))

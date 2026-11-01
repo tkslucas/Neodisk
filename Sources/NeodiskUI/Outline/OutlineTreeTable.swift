@@ -4,6 +4,7 @@
 import AppKit
 import SwiftUI
 import NeodiskKit
+import NeodiskAppModel
 
 // MARK: - AppKit-backed outline table
 
@@ -11,7 +12,7 @@ import NeodiskKit
 struct OutlineTreeTable: NSViewRepresentable {
     let model: NeodiskViewModel
     let snapshot: NeodiskViewModel.OutlineRowsSnapshot
-    let selectedID: String?
+    let selection: NodeSelection
 
     func makeCoordinator() -> Coordinator {
         Coordinator(model: model)
@@ -38,7 +39,7 @@ struct OutlineTreeTable: NSViewRepresentable {
         tableView.intercellSpacing = .zero
         tableView.backgroundColor = .controlBackgroundColor
         tableView.focusRingType = .none
-        tableView.allowsMultipleSelection = false
+        tableView.allowsMultipleSelection = true
         tableView.allowsEmptySelection = true
         tableView.usesAlternatingRowBackgroundColors = false
         tableView.columnAutoresizingStyle = .noColumnAutoresizing
@@ -51,6 +52,7 @@ struct OutlineTreeTable: NSViewRepresentable {
         tableView.delegate = coordinator
         tableView.target = coordinator
         tableView.doubleAction = #selector(Coordinator.didDoubleClick)
+        tableView.allowsNodeDrags()
 
         let menu = NSMenu()
         menu.autoenablesItems = false
@@ -110,7 +112,7 @@ struct OutlineTreeTable: NSViewRepresentable {
         let coordinator = context.coordinator
         coordinator.apply(snapshot: snapshot)
         coordinator.applyColumnWidth()
-        coordinator.syncSelection(to: selectedID)
+        coordinator.syncSelection(to: selection)
     }
 
     @MainActor
@@ -124,12 +126,7 @@ struct OutlineTreeTable: NSViewRepresentable {
         /// Last measured gap between the table's frame and its single
         /// column (the style's horizontal padding).
         private var columnOverhead: CGFloat = 12
-        private var isProgrammaticSelection = false
-        // Set while the table reports a selection: syncing back mid-event is reentrant.
-        private var isReportingSelection = false
-        /// The selection the outline last scrolled to: reveal again only
-        /// when the model's selection actually changes, not on reloads.
-        private var lastRevealedID: String?
+        private let selectionSync = ListSelectionSync()
 
         weak var tableView: NSTableView?
         weak var column: NSTableColumn?
@@ -164,7 +161,7 @@ struct OutlineTreeTable: NSViewRepresentable {
             rowIndexByID = snapshot.rowIndexByID
             contentWidth = snapshot.contentWidth
             structuralApplyCount += 1
-            tableView?.reloadRows(keepingRowViews: sameRows)
+            selectionSync.whileApplying { tableView?.reloadRows(keepingRowViews: sameRows) }
         }
 
         /// The column always spans at least the visible width and grows to
@@ -210,33 +207,12 @@ struct OutlineTreeTable: NSViewRepresentable {
             }
         }
 
-        func syncSelection(to selectedID: String?) {
-            guard let tableView, !isReportingSelection else { return }
-            // Mid-click the table shows the clicked row before the delegate fires; syncing now would revert it.
-            // clickTrackingEnded re-syncs once the delegate has run.
-            if let outlineTable = tableView as? OutlineNSTableView,
-               outlineTable.isTrackingClick {
-                return
-            }
-            let targetRow = selectedID.flatMap { rowIndexByID[$0] }
-            if let targetRow {
-                if tableView.selectedRow != targetRow {
-                    isProgrammaticSelection = true
-                    tableView.selectRowIndexes([targetRow], byExtendingSelection: false)
-                    isProgrammaticSelection = false
-                }
-                if lastRevealedID != selectedID {
-                    lastRevealedID = selectedID
-                    scrollToRowVerticalOnly(targetRow)
-                }
-            } else {
-                if selectedID == nil, tableView.selectedRow >= 0 {
-                    isProgrammaticSelection = true
-                    tableView.deselectAll(nil)
-                    isProgrammaticSelection = false
-                }
-                lastRevealedID = selectedID
-            }
+        func syncSelection(to selection: NodeSelection) {
+            guard let tableView else { return }
+            let reveal = selectionSync.apply(
+                selection, rowsVersion: appliedStructuralVersion ?? 0, to: tableView, row: { rowIndexByID[$0] }
+            )
+            if let reveal { scrollToRowVerticalOnly(reveal) }
         }
 
         /// Click tracking finished and the delegate has run: apply any rows
@@ -246,7 +222,7 @@ struct OutlineTreeTable: NSViewRepresentable {
                 apply(snapshot: pendingApply)
                 applyColumnWidth()
             }
-            syncSelection(to: model.selectedNodeID)
+            syncSelection(to: model.selection)
         }
 
         /// scrollRowToVisible could tug the horizontal position, since row rects span the full content width.
@@ -283,15 +259,33 @@ struct OutlineTreeTable: NSViewRepresentable {
         }
 
         func tableViewSelectionDidChange(_ notification: Notification) {
-            guard !isProgrammaticSelection, let tableView else { return }
-            let row = tableView.selectedRow
-            let newID = (row >= 0 && row < rows.count) ? rows[row].id : nil
-            if model.selectedNodeID != newID {
-                lastRevealedID = newID
-                isReportingSelection = true
-                defer { isReportingSelection = false }
-                model.selectedNodeID = newID
+            guard let tableView, let picked = selectionSync.userSelection(in: tableView, id: { row in
+                row < rows.count ? rows[row].id : nil
+            }) else { return }
+            selectionSync.report(picked) {
+                model.select(fromList: picked) { rowIndexByID[$0] != nil }
             }
+        }
+
+        // MARK: Dragging
+
+        func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> (any NSPasteboardWriting)? {
+            guard row < rows.count else { return nil }
+            return NodeDragSource.pasteboardItem(forNodeID: rows[row].node.id, model: model)
+        }
+
+        func tableView(
+            _ tableView: NSTableView, draggingSession session: NSDraggingSession,
+            willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet
+        ) {
+            NodeDragSource.sessionDidBegin(model: model)
+        }
+
+        func tableView(
+            _ tableView: NSTableView, draggingSession session: NSDraggingSession,
+            endedAt screenPoint: NSPoint, operation: NSDragOperation
+        ) {
+            NodeDragSource.sessionDidEnd(model: model)
         }
 
         // MARK: Row actions (parity with `fileNodeActions`)
@@ -315,8 +309,8 @@ struct OutlineTreeTable: NSViewRepresentable {
         }
 
         func toggleQuickLook() -> Bool {
-            guard let node = model.selectedNode else { return false }
-            QuickLookPresenter.shared.togglePreview(for: node)
+            guard !model.selection.isEmpty else { return false }
+            model.quickLookSelection()
             return true
         }
 
@@ -343,6 +337,15 @@ final class OutlineTableRowView: NSTableRowView {
 
     override var isEmphasized: Bool {
         didSet { forwardSelectionState() }
+    }
+
+    // A run of selected rows reads as one block: the corners they share stay square.
+    override var isPreviousRowSelected: Bool {
+        didSet { if isPreviousRowSelected != oldValue { needsDisplay = true } }
+    }
+
+    override var isNextRowSelected: Bool {
+        didSet { if isNextRowSelected != oldValue { needsDisplay = true } }
     }
 
     private func forwardSelectionState() {
@@ -376,6 +379,19 @@ final class OutlineTableRowView: NSTableRowView {
             xRadius: OutlineRowMetrics.selectionRadius,
             yRadius: OutlineRowMetrics.selectionRadius
         ).fill()
+        for half in Self.squaredHalves(
+            of: rect, top: isPreviousRowSelected, bottom: isNextRowSelected, isFlipped: isFlipped
+        ) {
+            half.fill()
+        }
+    }
+
+    /// The halves of a row's selection filled square, so its corners join a selected neighbor's.
+    static func squaredHalves(of rect: NSRect, top: Bool, bottom: Bool, isFlipped: Bool) -> [NSRect] {
+        let half = rect.height / 2
+        let upper = NSRect(x: rect.minX, y: isFlipped ? rect.minY : rect.midY, width: rect.width, height: half)
+        let lower = NSRect(x: rect.minX, y: isFlipped ? rect.midY : rect.minY, width: rect.width, height: half)
+        return (top ? [upper] : []) + (bottom ? [lower] : [])
     }
 }
 
@@ -494,6 +510,14 @@ final class OutlineNSTableView: NSTableView {
     /// programmatic sync must not "correct" the selection mid-click.
     private(set) var isTrackingClick = false
     var clickTrackingEnded: () -> Void = {}
+    /// Select All picks exactly this list's rows, as in Finder, though ⌘A arrives as a ⌘ key.
+    private(set) var isSelectingAll = false
+
+    override func selectAll(_ sender: Any?) {
+        isSelectingAll = true
+        super.selectAll(sender)
+        isSelectingAll = false
+    }
 
     override func keyDown(with event: NSEvent) {
         if event.charactersIgnoringModifiers == " ", quickLookRequested() {
@@ -515,6 +539,13 @@ final class OutlineNSTableView: NSTableView {
             }
         }
         super.keyDown(with: event)
+    }
+
+    // AppKit's first-column autoresizing only passes on the pane's change, so a table laid out wider than its
+    // pane (bigger text, a shown column) never comes back: refit the first column on every resize.
+    override func resize(withOldSuperviewSize oldSize: NSSize) {
+        super.resize(withOldSuperviewSize: oldSize)
+        if columnAutoresizingStyle == .firstColumnOnlyAutoresizingStyle { sizeToFit() }
     }
 
     override func mouseDown(with event: NSEvent) {

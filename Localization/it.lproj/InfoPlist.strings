@@ -3,9 +3,9 @@
 
 "CFBundleDisplayName" = "Neodisk";
 "NSHumanReadableCopyright" = "© 2026 collaboratori di Neodisk. Licenza GPLv3.";
-"NSDesktopFolderUsageDescription" = "Neodisk misura lo spazio su disco occupato dai file. Non modifica né elimina mai nulla.";
-"NSDocumentsFolderUsageDescription" = "Neodisk misura lo spazio su disco occupato dai file. Non modifica né elimina mai nulla.";
-"NSDownloadsFolderUsageDescription" = "Neodisk misura lo spazio su disco occupato dai file. Non modifica né elimina mai nulla.";
-"NSRemovableVolumesUsageDescription" = "Neodisk misura l'utilizzo del disco sui volumi rimovibili. Non modifica né elimina mai nulla.";
-"NSNetworkVolumesUsageDescription" = "Neodisk misura l'utilizzo del disco sui volumi di rete. Non modifica né elimina mai nulla.";
-"NSSystemAdministrationUsageDescription" = "Accesso completo al disco consente a Neodisk di misurare le posizioni protette. Non modifica né elimina mai nulla.";
+"NSDesktopFolderUsageDescription" = "Neodisk misura lo spazio su disco occupato dai file. Non modifica nulla, a meno che tu non sposti elementi nel Cestino.";
+"NSDocumentsFolderUsageDescription" = "Neodisk misura lo spazio su disco occupato dai file. Non modifica nulla, a meno che tu non sposti elementi nel Cestino.";
+"NSDownloadsFolderUsageDescription" = "Neodisk misura lo spazio su disco occupato dai file. Non modifica nulla, a meno che tu non sposti elementi nel Cestino.";
+"NSRemovableVolumesUsageDescription" = "Neodisk misura l'utilizzo del disco sui volumi rimovibili. Non modifica nulla, a meno che tu non sposti elementi nel Cestino.";
+"NSNetworkVolumesUsageDescription" = "Neodisk misura l'utilizzo del disco sui volumi di rete. Non modifica nulla, a meno che tu non sposti elementi nel Cestino.";
+"NSSystemAdministrationUsageDescription" = "Accesso completo al disco consente a Neodisk di misurare le posizioni protette. Non modifica nulla, a meno che tu non sposti elementi nel Cestino.";

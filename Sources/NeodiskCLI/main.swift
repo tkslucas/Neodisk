@@ -19,12 +19,14 @@ struct CLIOptions {
     var benchRescan = false
     /// Only with --bench-rescan; the one deliberate write diskscan can make.
     var benchTouch: String?
+    /// Forces how directories are read (`walk`, `mft`, `auto`) and prints one bench line after the scan.
+    var engine: String?
 }
 
 func printUsage(to handle: FileHandle) {
     let usage = """
     usage: diskscan <path> [--json] [--depth N] [--top N] [--no-hidden]
-                    [--bench-rescan [--bench-touch <file>]]
+                    [--bench-rescan [--bench-touch <file>]] [--engine walk|mft|auto]
 
     Scans a directory tree and reports allocated sizes (hard links counted
     once, like du; on Windows once per link, like File Explorer). Progress
@@ -47,6 +49,10 @@ func printUsage(to handle: FileHandle) {
                             rescan has a changed subtree to splice. The only
                             write diskscan ever performs, and only with this
                             flag.
+      --engine E            read directories with the walk, the NTFS file
+                            table (Windows, elevated) or the automatic choice,
+                            then print time, items/s, totals and memory to
+                            stderr
     """
     handle.write(Data((usage + "\n").utf8))
 }
@@ -85,6 +91,12 @@ func parseOptions(_ arguments: [String]) -> CLIOptions? {
                 return nil
             }
             options.benchTouch = value
+        case "--engine":
+            guard let value = iterator.next(), ["walk", "mft", "auto"].contains(value) else {
+                FileHandle.standardError.write(Data("error: --engine takes walk, mft or auto\n".utf8))
+                return nil
+            }
+            options.engine = value
         case "-h", "--help":
             printUsage(to: FileHandle.standardOutput)
             exit(0)
@@ -447,14 +459,27 @@ if cliOptions.benchRescan {
     ))
 }
 
+if let engineChoice = cliOptions.engine {
+    #if os(Windows)
+    _putenv_s("NEODISK_SCAN_ENGINE", engineChoice)
+    #else
+    setenv("NEODISK_SCAN_ENGINE", engineChoice, 1)
+    #endif
+}
+
 let engine = ScanEngine()
 var reporter = ProgressReporter()
 var finishedSnapshot: ScanSnapshot?
+let scanStart = ContinuousClock.now
+var lastProgressFraction = 0.0
+var progressRegressions = 0
 
 do {
     for try await event in engine.scan(target: target, options: scanOptions) {
         switch event {
         case .progress(let metrics):
+            if metrics.progressFraction < lastProgressFraction { progressRegressions += 1 }
+            lastProgressFraction = max(lastProgressFraction, metrics.progressFraction)
             reporter.update(metrics)
         case .warning, .partial:
             break
@@ -473,6 +498,20 @@ reporter.finish()
 guard let snapshot = finishedSnapshot else {
     FileHandle.standardError.write(Data("error: scan produced no result\n".utf8))
     exit(1)
+}
+
+if let engineChoice = cliOptions.engine {
+    let elapsed = scanStart.duration(to: .now)
+    let seconds = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
+    let stats = snapshot.aggregateStats
+    let items = snapshot.treeStore.nodeCount
+    let line = "bench: engine=\(engineChoice) seconds=" + String(format: "%.3f", seconds)
+        + " nodes=\(items) nodesPerSecond=" + String(format: "%.0f", Double(items) / max(seconds, 0.001))
+        + " files=\(stats.fileCount) dirs=\(stats.directoryCount)"
+        + " logical=\(stats.totalLogicalSize) allocated=\(stats.totalAllocatedSize)"
+        + " warnings=\(snapshot.scanWarnings.count) progressRegressions=\(progressRegressions) "
+        + MemoryFootprint.summary()
+    FileHandle.standardError.write(Data((line + "\n").utf8))
 }
 
 if !snapshot.scanWarnings.isEmpty {

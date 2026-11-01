@@ -110,9 +110,7 @@ struct SidebarPane: View {
                 progressFor: backgroundScanProgress(forTargetID:)
             )
         }
-        .dropDestination(for: URL.self) { urls, _ in
-            model.addDroppedFolders(urls)
-        }
+        .addLocationDropTarget(model: model)
         .onDeleteCommand {
             removeSelectedFolders()
         }

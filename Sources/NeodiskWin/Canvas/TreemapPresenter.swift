@@ -95,6 +95,14 @@ final class TreemapPresenter {
     var hasFrame: Bool { frame != nil }
     var isAnimating: Bool { zoomTarget != nil }
 
+    /// Whether the next frame paints every pixel, so the canvas can skip its clear.
+    var coversCanvas: Bool {
+        guard let frame, zoomTarget == nil else { return false }
+        let shown = mapped(frame.scene.renderBounds, displayMapping(for: frame))
+        return shown.minX <= 0 && shown.minY <= 0 && shown.maxX >= host.viewSize.width - 0.01
+            && shown.maxY >= host.viewSize.height - 0.01
+    }
+
     // MARK: - Rendering
 
     private func currentInputs() -> RenderInputs? {
@@ -257,10 +265,12 @@ final class TreemapPresenter {
         canvas.pushClip(bounds)
         defer { canvas.popClip() }
 
-        // A resize or zoom in progress stretches the last crisp frame until the next lands.
-        canvas.draw(frame.image, in: mapped(frame.scene.renderBounds, mapping), smooth: true)
+        // A resize or zoom in progress stretches the last crisp frame until the next lands. The raster is
+        // opaque, so at its own resolution it's copied rather than blended.
+        let isExact = mapping == .identity && frame.inputs.viewport == .identity
+        canvas.draw(frame.image, in: mapped(frame.scene.renderBounds, mapping), sampling: isExact ? .opaque : .smooth)
         if mapping == .identity, let labels = frame.labels {
-            canvas.draw(labels, in: CGRect(origin: .zero, size: frame.inputs.size), smooth: false)
+            canvas.draw(labels, in: CGRect(origin: .zero, size: frame.inputs.size), sampling: .exact)
         }
 
         if let hoveredRect, model.hoveredNodeID != nil {

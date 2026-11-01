@@ -79,6 +79,12 @@ The most used ones; the rest live in `Sources/NeodiskUI/Dev/`.
   not a dot name.
 - Tests that need POSIX behavior get `#if !os(Windows)` with a one-line reason; Windows-only cases live in
   `WindowsPlatformTests`. Symbolic link tests need an elevated shell or Developer Mode.
+- The maps draw through `CNeodiskCanvas` (Direct3D 11, Direct2D, DirectWrite and WIC behind a C API); rasters
+  build off the main thread and reach the canvas window by a posted message. Hooks: `NEODISK_CANVAS_PNG=<prefix>`
+  renders the cushion, flat and sunburst headless to `<prefix>-<view>.png`, `NEODISK_CANVAS_BENCH=<report.txt>`
+  times hover, resize and drill frames in a window, `NEODISK_CANVAS_DEMO=1` opens the canvas alone
+  (`NEODISK_VIZ_MODE=sunburst`). The tree is `NEODISK_CANVAS_SCAN=<path>` or a synthetic one of
+  `NEODISK_CANVAS_NODES=<count>`.
 
 ## Product constraints
 

@@ -40,6 +40,7 @@ enum CanvasDemo {
             return renderPNGs(model: model, prefix: prefix)
         }
         let window = DemoWindow(model: model, title: label)
+        if environment["NEODISK_VIZ_MODE"] == "sunburst" { window.canvas.mode = .sunburst }
         if let report = environment["NEODISK_CANVAS_BENCH"] {
             return CanvasBenchmark(window: window, model: model, label: label, adapter: adapter).run(reportPath: report)
         }
@@ -305,14 +306,14 @@ enum SyntheticTree {
 
         var childrenByID: [String: [FileNodeRecord]] = [:]
         childrenByID.reserveCapacity(nodeCount / 16)
-        var made = 0
         let rootPath = "C:\\Synthetic"
 
         /// Returns the folder's record (sizes are its subtree's).
         func folder(_ path: String, name: String, depth: Int, budget: Int) -> FileNodeRecord {
             var children: [FileNodeRecord] = []
             var remaining = budget
-            let fileCount = min(remaining, depth == 0 ? 6 : Int(4 + uniform() * 40))
+            // The deepest level takes whatever budget is left as files, so the tree has exactly `nodeCount` nodes.
+            let fileCount = min(remaining, depth == 0 ? 6 : depth >= 9 ? remaining : Int(4 + uniform() * 40))
             for index in 0..<fileCount {
                 let ext = extensions[Int(next() % UInt64(extensions.count))]
                 let name = "file\(index).\(ext)"
@@ -326,20 +327,23 @@ enum SyntheticTree {
                     isAutoSummarized: false
                 ))
             }
-            made += fileCount
             remaining -= fileCount
-            if remaining > 0, depth < 9 {
+            if remaining > 0 {
                 let folderCount = depth == 0 ? 12 : Int(2 + uniform() * 9)
                 // Uneven split: a few folders hold most of the tree, as on a real disk.
                 var weights = (0..<folderCount).map { _ in pow(uniform(), 3) + 0.01 }
                 let total = weights.reduce(0, +)
                 weights = weights.map { $0 / total }
+                var assigned = 0
+                var cumulative = 0.0
                 for (index, weight) in weights.enumerated() {
-                    let share = Int(Double(remaining) * weight)
+                    cumulative += weight * Double(remaining)
+                    let end = index == folderCount - 1 ? remaining : min(remaining, Int(cumulative.rounded()))
+                    let share = end - assigned
                     guard share > 0 else { continue }
+                    assigned = end
                     let name = "folder\(depth)-\(index)"
                     children.append(folder(path + "\\" + name, name: name, depth: depth + 1, budget: share - 1))
-                    made += 1
                 }
             }
             childrenByID[path] = children

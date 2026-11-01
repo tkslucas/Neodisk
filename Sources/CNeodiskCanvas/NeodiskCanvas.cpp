@@ -395,7 +395,7 @@ int32_t ndc_canvas_begin(NDCanvas *canvas, NDColor clear) {
     if (!canvas->target) return E_FAIL;
     canvas->context->BeginDraw();
     canvas->context->SetTransform(D2D1::Matrix3x2F::Identity());
-    canvas->context->Clear(color(clear));
+    if (clear.a >= 0) canvas->context->Clear(color(clear));
     canvas->clipDepth = 0;
     return S_OK;
 }
@@ -471,11 +471,14 @@ int32_t ndc_canvas_save_png(NDCanvas *canvas, const uint16_t *path) {
     return hr;
 }
 
-void ndc_draw_image(NDCanvas *canvas, NDImage *image, NDRect dest, float opacity, int32_t smooth) {
+void ndc_draw_image(NDCanvas *canvas, NDImage *image, NDRect dest, float opacity, int32_t sampling) {
     if (!image || !image->bitmap) return;
+    if (sampling == NDImageOpaque) canvas->context->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_COPY);
     canvas->context->DrawBitmap(image->bitmap.Get(), rectF(dest), opacity,
-                                smooth ? D2D1_INTERPOLATION_MODE_LINEAR : D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
+                                sampling == NDImageSmooth ? D2D1_INTERPOLATION_MODE_LINEAR
+                                                          : D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
                                 nullptr, nullptr);
+    if (sampling == NDImageOpaque) canvas->context->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_SOURCE_OVER);
 }
 
 void ndc_fill_rect(NDCanvas *canvas, NDRect rect, NDColor c) {
@@ -667,8 +670,8 @@ float ndc_text_measure(const uint16_t *utf16, uint32_t length, float fontSize, i
 }
 
 int32_t ndc_rasterize_arcs(uint32_t pixelWidth, uint32_t pixelHeight, float scale, float cx, float cy,
-                           const NDArc *arcs, uint32_t count, NDColor separator, float separatorWidth, void *pixels,
-                           uint32_t stride) {
+                           const NDArc *arcs, uint32_t count, NDColor separator, float separatorWidth,
+                           NDColor background, void *pixels, uint32_t stride) {
     ComScope com;
     HRESULT hr;
     Ref<ID2D1Factory> factory;
@@ -690,7 +693,7 @@ int32_t ndc_rasterize_arcs(uint32_t pixelWidth, uint32_t pixelHeight, float scal
     Ref<ID2D1RenderTarget> target;
     if (FAILED(hr = factory->CreateWicBitmapRenderTarget(bitmap.Get(), &props, target.Put()))) return hr;
     target->BeginDraw();
-    target->Clear(D2D1::ColorF(0, 0, 0, 0));
+    target->Clear(color(background));
     paintArcs(target.Get(), factory.Get(), cx, cy, arcs, count, nullptr, separator, separatorWidth);
     if (FAILED(hr = target->EndDraw())) return hr;
     WICRect rect = {0, 0, static_cast<INT>(pixelWidth), static_cast<INT>(pixelHeight)};

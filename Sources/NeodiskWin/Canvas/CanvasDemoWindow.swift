@@ -193,14 +193,30 @@ struct CanvasBenchmark {
                 let start = ContinuousClock.now
                 canvas.pointerMoved(to: point)
                 canvas.render()
+                // This move's frame is on screen; drop the repaint the move queued.
+                if let hwnd = canvas.hwnd { _ = ValidateRect(hwnd, nil) }
                 hoverMs.append(Clock.milliseconds(since: start))
                 window.pump()
             }
             lines.append("  hover " + Self.summary(hoverMs) + " (hit-test + overlay frame)")
             lines.append("  hover " + stats.summary(frameKey))
-            if !stats.values(renderKey).isEmpty {
-                lines.append("  hover re-rasters: \(stats.values(renderKey).count) (should be 0)")
+            lines.append("  hover " + stats.summary(frameKey + ".cpu"))
+            lines.append("  hover re-rasters: \(stats.values(renderKey).count)")
+            // The same frames drawn but not presented: the device's own cost, without waiting on composition.
+            stats.reset()
+            canvas.presentMode = .none
+            for index in 0..<200 {
+                let point = (mode == .treemap ? canvas.treemap.benchmarkPoint(index * 7919)
+                    : canvas.sunburst.benchmarkPoint(index * 7919)) ?? .zero
+                canvas.pointerMoved(to: point)
+                canvas.render()
+                if let hwnd = canvas.hwnd { _ = ValidateRect(hwnd, nil) }
+                window.pump()
             }
+            canvas.presentMode = .immediate
+            lines.append("  draw only (no present) " + stats.summary(frameKey))
+            stats.reset()
+
 
             // Live resize: the old raster stretches each frame while renders chase the latest size.
             stats.reset()
@@ -222,6 +238,7 @@ struct CanvasBenchmark {
             _ = settle()
             lines.append("  resize " + Self.summary(resizeMs) + " (WM_SIZE + buffer resize + stretched frame)")
             lines.append("  resize " + stats.summary(frameKey))
+            lines.append("  resize " + stats.summary(frameKey + ".cpu"))
             lines.append("  resize " + stats.summary("resize.buffers"))
             lines.append("  resize " + stats.summary(renderKey) + " (background renders while dragging)")
             lines.append(String(format: "  resize settled %.0f ms after the last step", Clock.milliseconds(since: settleStart)))
@@ -231,39 +248,30 @@ struct CanvasBenchmark {
             if mode == .sunburst, let target = canvas.sunburst.benchmarkDrillTarget {
                 _ = model.drillIn(to: target)
                 let start = ContinuousClock.now
-                var frames = 0
-                while canvas.sunburst.isAnimating, Clock.milliseconds(since: start) < 5000 {
-                    canvas.render()
-                    window.pump()
-                    frames += 1
-                }
-                lines.append(String(format: "  drill in: %d frames in %.0f ms", frames, Clock.milliseconds(since: start)))
+                window.wait(seconds: 5) { !canvas.sunburst.isAnimating }
+                lines.append(String(format: "  drill in: %d frames in %.0f ms", stats.values(frameKey).count,
+                                    Clock.milliseconds(since: start)))
                 lines.append("  drill in " + stats.summary(frameKey))
+                lines.append("  drill in " + stats.summary(frameKey + ".cpu"))
                 _ = settle()
                 stats.reset()
                 model.focusOut()
                 let outStart = ContinuousClock.now
-                frames = 0
-                while canvas.sunburst.isAnimating, Clock.milliseconds(since: outStart) < 5000 {
-                    canvas.render()
-                    window.pump()
-                    frames += 1
-                }
-                lines.append(String(format: "  drill out: %d frames in %.0f ms", frames, Clock.milliseconds(since: outStart)))
+                window.wait(seconds: 5) { !canvas.sunburst.isAnimating }
+                lines.append(String(format: "  drill out: %d frames in %.0f ms", stats.values(frameKey).count,
+                                    Clock.milliseconds(since: outStart)))
                 lines.append("  drill out " + stats.summary(frameKey))
+                lines.append("  drill out " + stats.summary(frameKey + ".cpu"))
                 lines.append("  drill " + stats.summary(renderKey))
             } else if mode == .treemap, style == .cushion {
                 let center = CGPoint(x: canvas.viewSize.width / 2, y: canvas.viewSize.height / 2)
                 _ = canvas.treemap.wheel(notches: 4, horizontal: false, at: center, ctrl: true, shift: false)
                 let start = ContinuousClock.now
-                var frames = 0
-                while canvas.treemap.isAnimating, Clock.milliseconds(since: start) < 5000 {
-                    canvas.render()
-                    window.pump()
-                    frames += 1
-                }
-                lines.append(String(format: "  zoom glide: %d frames in %.0f ms", frames, Clock.milliseconds(since: start)))
+                window.wait(seconds: 5) { !canvas.treemap.isAnimating }
+                lines.append(String(format: "  zoom glide: %d frames in %.0f ms", stats.values(frameKey).count,
+                                    Clock.milliseconds(since: start)))
                 lines.append("  zoom glide " + stats.summary(frameKey))
+                lines.append("  zoom glide " + stats.summary(frameKey + ".cpu"))
                 _ = settle()
                 lines.append("  zoom " + stats.summary(renderKey) + " (renders chasing the glide)")
                 _ = canvas.keyDown(VK_ESCAPE)

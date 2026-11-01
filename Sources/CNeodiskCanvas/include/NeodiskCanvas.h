@@ -61,6 +61,7 @@ int32_t ndc_canvas_resize(NDCanvas *canvas, uint32_t pixelWidth, uint32_t pixelH
 /// The adapter the shared device runs on (a software one means WARP).
 void ndc_adapter_info(NDAdapterInfo *out);
 
+/// `clear` is skipped when its alpha is negative (the frame covers every pixel itself).
 int32_t ndc_canvas_begin(NDCanvas *canvas, NDColor clear);
 int32_t ndc_canvas_end(NDCanvas *canvas, int32_t present);
 /// Blocks until the device has executed everything submitted, so a benchmark times real work.
@@ -69,7 +70,18 @@ int32_t ndc_canvas_save_png(NDCanvas *canvas, const uint16_t *path);
 
 // MARK: Drawing, in DIPs, between begin and end
 
-void ndc_draw_image(NDCanvas *canvas, NDImage *image, NDRect dest, float opacity, int32_t smooth);
+/// How an image is sampled and composited.
+enum {
+    /// Nearest pixel, blended: for images drawn at their own resolution.
+    NDImageExact = 0,
+    /// Bilinear, blended: for stretched images.
+    NDImageSmooth = 1,
+    /// Nearest pixel, copied without blending: for opaque images at their own resolution, the cheapest path
+    /// on a software device.
+    NDImageOpaque = 2,
+};
+
+void ndc_draw_image(NDCanvas *canvas, NDImage *image, NDRect dest, float opacity, int32_t sampling);
 void ndc_fill_rect(NDCanvas *canvas, NDRect rect, NDColor color);
 /// A stroke of `width` DIPs inside `rect`.
 void ndc_stroke_rect(NDCanvas *canvas, NDRect rect, float width, NDColor color);
@@ -106,10 +118,10 @@ float ndc_text_measure(const uint16_t *utf16, uint32_t length, float fontSize, i
 
 // MARK: CPU raster (any thread, no shared device)
 
-/// Paints arcs (fill + separator) into premultiplied BGRA pixels, clearing to transparent first.
+/// Paints arcs (fill + separator) into premultiplied BGRA pixels over `background`.
 int32_t ndc_rasterize_arcs(uint32_t pixelWidth, uint32_t pixelHeight, float scale, float cx, float cy,
                            const NDArc *arcs, uint32_t count, NDColor separator, float separatorWidth,
-                           void *pixels, uint32_t stride);
+                           NDColor background, void *pixels, uint32_t stride);
 
 #ifdef __cplusplus
 }

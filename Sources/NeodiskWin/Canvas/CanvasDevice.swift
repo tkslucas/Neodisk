@@ -143,8 +143,9 @@ final class D2DCanvas {
         return ndc_canvas_resize(pointer, UInt32(max(pixelWidth, 1)), UInt32(max(pixelHeight, 1)), dpi) >= 0
     }
 
-    func begin(clear: NDColor) -> Bool {
-        ndc_canvas_begin(pointer, clear) >= 0
+    /// Without `clear`, the frame must cover every pixel itself.
+    func begin(clear: NDColor?) -> Bool {
+        ndc_canvas_begin(pointer, clear ?? NDColor(r: 0, g: 0, b: 0, a: -1)) >= 0
     }
 
     enum Present: Int32 {
@@ -170,8 +171,17 @@ final class D2DCanvas {
 
     // MARK: Drawing
 
-    func draw(_ image: CanvasImage, in rect: CGRect, opacity: Float = 1, smooth: Bool) {
-        ndc_draw_image(pointer, image.pointer, NDRect(rect), opacity, smooth ? 1 : 0)
+    enum Sampling: Int32 {
+        /// Nearest pixel, blended.
+        case exact = 0
+        /// Bilinear, blended, for stretched images.
+        case smooth = 1
+        /// Nearest pixel, copied: opaque images at their own resolution.
+        case opaque = 2
+    }
+
+    func draw(_ image: CanvasImage, in rect: CGRect, opacity: Float = 1, sampling: Sampling) {
+        ndc_draw_image(pointer, image.pointer, NDRect(rect), opacity, sampling.rawValue)
     }
 
     func fill(_ rect: CGRect, _ color: NDColor) {

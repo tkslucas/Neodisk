@@ -141,8 +141,8 @@ final class VizCanvas: CanvasHost {
     func render() {
         guard ensureDevice(), let device else { return }
         let start = ContinuousClock.now
-        let background = model.vizBackgroundRGB
-        guard device.begin(clear: NDColor(background)) else { return }
+        let covers = mode == .treemap ? treemap.coversCanvas : sunburst.coversCanvas
+        guard device.begin(clear: covers ? nil : NDColor(model.vizBackgroundRGB)) else { return }
         let size = viewSize
         switch mode {
         case .treemap: treemap.draw(into: device, size: size)
@@ -153,8 +153,10 @@ final class VizCanvas: CanvasHost {
             return
         }
         if timesFrames {
+            let name = mode == .treemap ? "frame.treemap" : "frame.sunburst"
+            stats.record(name + ".cpu", ms: Clock.milliseconds(since: start))
             device.finish()
-            stats.record(mode == .treemap ? "frame.treemap" : "frame.sunburst", ms: Clock.milliseconds(since: start))
+            stats.record(name, ms: Clock.milliseconds(since: start))
         }
         if isAnimating { invalidate() }
     }

@@ -24,6 +24,7 @@ final class SunburstPresenter {
         var size: CGSize
         var scale: Double
         var isDark: Bool
+        var background: SIMD3<Float>
     }
 
     private struct Frame {
@@ -57,6 +58,8 @@ final class SunburstPresenter {
 
     var hasFrame: Bool { frame != nil }
     var isAnimating: Bool { zoom != nil }
+    /// The raster is opaque and stretched over the canvas except while a drill animates.
+    var coversCanvas: Bool { frame != nil && zoom == nil }
 
     func modelDidChange() {
         let focused = model.focusedRootID
@@ -96,7 +99,8 @@ final class SunburstPresenter {
             style: SunburstColorStyle(mode: mode, catalog: model.catalog, highlight: model.highlight, palette: model.palette),
             size: size,
             scale: host.scale,
-            isDark: model.isDarkTheme
+            isDark: model.isDarkTheme,
+            background: model.vizBackgroundRGB
         )
     }
 
@@ -154,7 +158,7 @@ final class SunburstPresenter {
                         UInt32(width), UInt32(height), Float(inputs.scale),
                         Float(geometry.center.x), Float(geometry.center.y),
                         arcBuffer.baseAddress, UInt32(arcs.count), separator, 1,
-                        buffer.baseAddress, UInt32(width * 4)
+                        NDColor(inputs.background), buffer.baseAddress, UInt32(width * 4)
                     )
                 }
             }
@@ -206,8 +210,9 @@ final class SunburstPresenter {
             }
         }
         // A resize in progress stretches the last frame until the new one lands.
-        canvas.draw(frame.image, in: CGRect(origin: .zero, size: size), smooth: true)
-        guard frame.inputs.size == size else { return }
+        let isExact = frame.inputs.size == size
+        canvas.draw(frame.image, in: CGRect(origin: .zero, size: size), sampling: isExact ? .opaque : .smooth)
+        guard isExact else { return }
 
         let geometry = SunburstGeometry(size: size)
         let accent = NDColor(model.accentRGB)

@@ -304,5 +304,13 @@ import WinSDK
         #expect(WindowsVolume.information(root: volumeRoot)?.fileSystemName == "ntfs")
         #expect(ScanSourceProfile.detect(for: URL(filePath: NSTemporaryDirectory())) != .unsupported)
     }
+
+    @Test func logsLiveUnderLocalAppData() {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["NEODISK_LOG_DIR"] == nil, let local = environment["LOCALAPPDATA"] else { return }
+        let path = DiagnosticLog.defaultDirectory.path(percentEncoded: false).lowercased()
+        #expect(path.hasPrefix(URL(filePath: local).path(percentEncoded: false).lowercased()))
+        #expect(path.hasSuffix("/logs/"))
+    }
 }
 #endif

@@ -105,7 +105,8 @@ import NeodiskAppModel
         #expect(FileManager.default.fileExists(atPath: environment.path("keep.txt")))
         #expect(model.store?.root.allocatedSize == before - old.allocatedSize)
         #expect(model.cleanup.isEmpty)
-        #expect(model.selectedNodeID == model.store?.root.id)
+        // A top-level item's survivor is the root: nothing selected, not a ring around the whole map.
+        #expect(model.selectedNodeID == nil)
         #expect(model.cleanup.notice?.kind == .moved)
     }
 

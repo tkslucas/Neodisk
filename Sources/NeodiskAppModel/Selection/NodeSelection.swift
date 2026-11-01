@@ -85,8 +85,8 @@ package struct NodeSelection: Equatable, Sendable {
 
     // MARK: - Lists
 
-    /// A list reports its selected rows. A plain click or arrow key means exactly those rows; an extending
-    /// gesture (⌘- or ⇧-click, Select All) keeps the items this list doesn't show, like collapsed rows or
+    /// A list reports its selected rows. A plain click, arrow key or Select All means exactly those rows; an
+    /// extending gesture (⌘- or ⇧-click) keeps the items this list doesn't show, like collapsed rows or
     /// another list's picks.
     package mutating func applyList(
         selected listIDs: [String],
@@ -171,7 +171,8 @@ package struct NodeSelection: Equatable, Sendable {
         guard !gone.isEmpty else { return }
         let survivor = primaryID.flatMap { store.survivor(of: $0, removing: removedIDs) }
         remove(gone)
-        if ids.isEmpty, let survivor {
+        // The scan root as the survivor would ring the whole map: nothing selected reads better.
+        if ids.isEmpty, let survivor, survivor != store.rootID {
             replace(with: survivor)
         }
     }

@@ -510,7 +510,7 @@ final class OutlineNSTableView: NSTableView {
     /// programmatic sync must not "correct" the selection mid-click.
     private(set) var isTrackingClick = false
     var clickTrackingEnded: () -> Void = {}
-    /// Select All keeps what this list doesn't show selected, like a ⌘-click.
+    /// Select All picks exactly this list's rows, as in Finder, though ⌘A arrives as a ⌘ key.
     private(set) var isSelectingAll = false
 
     override func selectAll(_ sender: Any?) {

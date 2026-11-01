@@ -126,6 +126,13 @@ import NeodiskKit
         #expect(selection.ids == ["/s/a"] && selection.primaryID == "/s/a")
     }
 
+    @Test func removingATopLevelItemClearsInsteadOfSelectingTheRoot() {
+        let store = makeStore()
+        var selection = NodeSelection(["/s/b"], primary: "/s/b")
+        selection.prepareForRemoval(of: ["/s/b"], in: store)
+        #expect(selection.ids.isEmpty && selection.primaryID == nil)
+    }
+
     @Test func aPressOnOrInsideASelectedItemDragsTheSelection() {
         let store = makeStore()
         let selection = NodeSelection(["/s/a", "/s/a/a1", "/s/b"])

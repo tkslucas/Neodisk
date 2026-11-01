@@ -84,7 +84,8 @@ final class ListSelectionSync {
 struct ListSelection: Equatable {
     let ids: [String]
     let primary: String?
-    /// ⌘- or ⇧-click, ⇧-arrow, Select All: the items this list doesn't show stay selected.
+    /// ⌘- or ⇧-click, ⇧-arrow: the items this list doesn't show stay selected. Select All isn't one: it picks
+    /// exactly this list's rows, so ⌘⌫ after it never takes something picked in another view.
     let extending: Bool
 
     /// One row picked with a plain click or arrow key: the list's usual single-item action applies.
@@ -92,7 +93,7 @@ struct ListSelection: Equatable {
 
     @MainActor
     static func isExtendingGesture(in tableView: NSTableView) -> Bool {
-        if (tableView as? OutlineNSTableView)?.isSelectingAll == true { return true }
+        if (tableView as? OutlineNSTableView)?.isSelectingAll == true { return false }
         guard let event = NSApp?.currentEvent else { return false }
         switch event.type {
         case .leftMouseDown, .leftMouseUp, .leftMouseDragged, .keyDown:

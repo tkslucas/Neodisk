@@ -58,7 +58,8 @@ final class ItemListActions {
         let keys = raw(gtk_event_controller_key_new())!
         gtk_event_controller_set_propagation_phase(ptr(keys), GTK_PHASE_CAPTURE)
         connectKey(keys) { [unowned self] keyval, state in
-            self.isExtending = Self.extends(state)
+            // Ctrl+A picks exactly this list's rows, so Delete after it never takes another view's pick.
+            self.isExtending = Self.extends(state) && !TreemapView.isSelectAll(keyval, state: state)
             return MainWindow.handleTrashKey(keyval, state: state, from: self.list)
         }
         gtk_widget_add_controller(ptr(list), ptr(keys))

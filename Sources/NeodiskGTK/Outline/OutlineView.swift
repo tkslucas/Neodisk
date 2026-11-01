@@ -75,8 +75,9 @@ final class OutlineView {
         // Seen before the view acts on them, so a selection change knows whether it extends the selection.
         let extendKeys = raw(gtk_event_controller_key_new())!
         gtk_event_controller_set_propagation_phase(ptr(extendKeys), GTK_PHASE_CAPTURE)
-        connectKey(extendKeys) { [unowned self] _, state in
-            self.isExtending = Self.extends(state)
+        connectKey(extendKeys) { [unowned self] keyval, state in
+            // Ctrl+A picks exactly the outline's rows, so Delete after it never takes another view's pick.
+            self.isExtending = Self.extends(state) && !TreemapView.isSelectAll(keyval, state: state)
             return false
         }
         gtk_widget_add_controller(ptr(columnView), ptr(extendKeys))

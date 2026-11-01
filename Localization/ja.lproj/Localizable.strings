@@ -39,7 +39,7 @@
 "Opening last scan of %@…" = "%@の前回のスキャンを開いています…";
 
 /* MARK: - Scan failed */
-"Scan failed" = "スキャンに失敗しました";
+"Scan Failed" = "スキャンに失敗しました";
 "Try Again" = "再試行";
 
 /* MARK: - Permission notice */

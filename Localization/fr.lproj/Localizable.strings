@@ -39,7 +39,7 @@
 "Opening last scan of %@…" = "Ouverture de la dernière analyse de %@…";
 
 /* MARK: - Scan failed */
-"Scan failed" = "Échec de l'analyse";
+"Scan Failed" = "Échec de l'analyse";
 "Try Again" = "Réessayer";
 
 /* MARK: - Permission notice */

@@ -39,7 +39,7 @@
 "Opening last scan of %@…" = "Apertura dell'ultima scansione di %@…";
 
 /* MARK: - Scan failed */
-"Scan failed" = "Scansione non riuscita";
+"Scan Failed" = "Scansione non riuscita";
 "Try Again" = "Riprova";
 
 /* MARK: - Permission notice */

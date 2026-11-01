@@ -39,7 +39,7 @@
 "Opening last scan of %@…" = "正在打开 %@ 的上次扫描…";
 
 /* MARK: - 扫描失败 */
-"Scan failed" = "扫描失败";
+"Scan Failed" = "扫描失败";
 "Try Again" = "重试";
 
 /* MARK: - 权限提示 */

@@ -518,3 +518,15 @@
 "Move Right" = "右へ移動";
 "Statistics Tabs" = "統計のタブ";
 "Top %@ of %@ files" = "%2$@件のファイルのうち上位%1$@件";
+
+/* Windows app */
+"Commands" = "コマンド";
+"Location" = "場所";
+"Locations" = "場所";
+"Status" = "状態";
+"Local Disk" = "ローカル ディスク";
+"Drive" = "ドライブ";
+"Show in File Explorer" = "エクスプローラーで表示";
+"More" = "その他";
+"Scan progress" = "スキャンの進行状況";
+"Couldn't Scan" = "スキャンできませんでした";

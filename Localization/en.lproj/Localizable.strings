@@ -518,3 +518,15 @@
 "Move Right" = "Move Right";
 "Statistics Tabs" = "Statistics Tabs";
 "Top %@ of %@ files" = "Top %@ of %@ files";
+
+/* Windows app */
+"Commands" = "Commands";
+"Location" = "Location";
+"Locations" = "Locations";
+"Status" = "Status";
+"Local Disk" = "Local Disk";
+"Drive" = "Drive";
+"Show in File Explorer" = "Show in File Explorer";
+"More" = "More";
+"Scan progress" = "Scan progress";
+"Couldn't Scan" = "Couldn't Scan";

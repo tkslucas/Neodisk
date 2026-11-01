@@ -70,6 +70,7 @@ final class MainWindow: Win32Window {
         statusBar = StatusBarView(parent: hwnd)
         emptyState = EmptyStateView(parent: hwnd)
         canvas = makeCanvas(hwnd)
+        _ = ndw_set_accessible_name(canvas, L("Visualization").wide)
         searchField = withWide("EDIT") { className in
             withWide("") { title in
                 CreateWindowExW(
@@ -86,8 +87,8 @@ final class MainWindow: Win32Window {
         outline = OutlineView(parent: hwnd, columns: [
             .init(title: L("Name"), width: 320, trailing: false),
             .init(title: L("Size"), width: 96, trailing: true),
-            .init(title: L("Percent"), width: 88, trailing: true),
-            .init(title: L("Items"), width: 84, trailing: true),
+            .init(title: L("Share"), width: 88, trailing: true),
+            .init(title: L("Files"), width: 84, trailing: true),
             .init(title: L("Modified"), width: 132, trailing: true),
         ], name: L("Files"))
         _ = ndw_set_accessible_name(outline.hwnd, L("Files").wide)

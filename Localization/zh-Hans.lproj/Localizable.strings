@@ -518,3 +518,15 @@
 "Move Right" = "右移";
 "Statistics Tabs" = "统计标签页";
 "Top %@ of %@ files" = "已显示 %2$@ 个文件中的前 %1$@ 个";
+
+/* Windows app */
+"Commands" = "命令";
+"Location" = "位置";
+"Locations" = "位置";
+"Status" = "状态";
+"Local Disk" = "本地磁盘";
+"Drive" = "驱动器";
+"Show in File Explorer" = "在文件资源管理器中显示";
+"More" = "更多";
+"Scan progress" = "扫描进度";
+"Couldn't Scan" = "无法扫描";

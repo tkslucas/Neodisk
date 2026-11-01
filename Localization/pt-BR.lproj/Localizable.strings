@@ -519,3 +519,15 @@
 "Move Right" = "Mover para a Direita";
 "Statistics Tabs" = "Abas de Estatísticas";
 "Top %@ of %@ files" = "Principais %@ de %@ arquivos";
+
+/* Windows app */
+"Commands" = "Comandos";
+"Location" = "Local";
+"Locations" = "Locais";
+"Status" = "Status";
+"Local Disk" = "Disco Local";
+"Drive" = "Unidade";
+"Show in File Explorer" = "Mostrar no Explorador de Arquivos";
+"More" = "Mais";
+"Scan progress" = "Progresso da análise";
+"Couldn't Scan" = "Não foi possível analisar";

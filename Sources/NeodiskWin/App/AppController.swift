@@ -138,7 +138,7 @@ final class AppController {
         case 2: if let path { FileActions.showInExplorer(path) }
         case 3: if let path { FileActions.copyToClipboard(path, owner: window.hwnd) }
         case 4:
-            let text = "\(AppChannel.current.appName) \(AppVersion.display)\n\n" + L("A disk space analyzer.")
+            let text = "\(AppChannel.current.appName) \(AppVersion.display)"
             _ = withWide(text) { body in
                 withWide(AppChannel.current.appName) { MessageBoxW(window.hwnd, body, $0, UINT(MB_OK | MB_ICONINFORMATION)) }
             }
@@ -311,7 +311,7 @@ final class AppController {
             parts.append(L("%@ free", NeodiskFormatters.size(space.availableCapacity)))
         }
         if workspace.isShowingPartialScan {
-            parts.append(L("Stopped, showing partial results"))
+            parts.append(L("Stopped — showing partial results"))
         } else if let finished = workspace.snapshot?.finishedAt {
             parts.append(L("Scanned %@", DisplayFormatters.relativeDate(finished)))
         }

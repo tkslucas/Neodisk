@@ -169,7 +169,7 @@ final class StatsListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDe
         if tableView.rowHeight != rowHeight {
             tableView.rowHeight = rowHeight
         }
-        tableView.menu = selectsNodes ? fileActionsMenu() : nil
+        tableView.menu = rowsMenu()
         tableView.allowsMultipleSelection = selectsNodes
         // Same rows: refresh the visible cells in place (sizes, palette,
         // the cloud-only toggle); new rows: reload.
@@ -181,7 +181,8 @@ final class StatsListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDe
         syncSelection()
     }
 
-    private func fileActionsMenu() -> NSMenu {
+    /// A file row's actions; below the rows, which statistics tabs show.
+    private func rowsMenu() -> NSMenu {
         let menu = tableView?.menu ?? NSMenu()
         menu.autoenablesItems = false
         menu.delegate = self
@@ -297,6 +298,10 @@ final class StatsListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDe
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
+        guard let row = tableView?.clickedRow, row >= 0 else {
+            menu.addAnalysisTabItems(model: model)
+            return
+        }
         guard selectsNodes, let id = clickedID,
               let node = model.store?.node(id: id), model.supportsFileActions(node) else { return }
         menu.addFileNodeActionItems(for: node, model: model, includeExpandContents: false)

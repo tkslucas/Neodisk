@@ -29,8 +29,9 @@ struct SunburstChartView: View {
     /// Whether cloud-only (dataless) bytes count toward arc weights — the
     /// toolbar toggle. Part of the layout identity.
     let includeCloudOnly: Bool
-    /// Formatted total size of the displayed folder, shown in the center
-    /// hole (the hover-preview folder while the chart hovers a directory).
+    /// Name and formatted total size of the displayed folder, shown in the center hole (the hover-preview
+    /// folder while the chart hovers a directory).
+    let centerTitle: String
     let centerSizeText: String
     let onHoverSegment: (SunburstSegment?) -> Void
     let onClickSegment: (SunburstSegment?) -> Void
@@ -238,13 +239,18 @@ struct SunburstChartView: View {
                         .allowsHitTesting(false)
                         .transition(.opacity)
                 } else {
-                    Text(verbatim: centerSizeText)
-                        .neoFont(14, weight: .medium)
-                        .monospacedDigit()
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.4)
-                        .frame(width: centerAffordanceSize(in: chartFrame) * 0.9)
+                    VStack(spacing: 1) {
+                        Text(verbatim: centerTitle)
+                            .neoFont(.headline)
+                            .truncationMode(.middle)
+                        Text(verbatim: centerSizeText)
+                            .neoFont(.callout)
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                    .frame(width: centerAffordanceSize(in: chartFrame) * 0.8)
                         .position(x: chartFrame.midX, y: chartFrame.midY)
                         .allowsHitTesting(false)
                         .transition(.opacity)

@@ -240,9 +240,11 @@ private struct LegendRowView: View {
     var cleanupMark: CleanupModel.Mark = .none
 
     var body: some View {
-        HStack(spacing: 9) {
+        HStack(spacing: 8) {
+            // The hairline keeps pale or dark fills (Smaller Items, free space) visible on either background.
             Circle()
                 .fill(row.dotColor)
+                .overlay(Circle().strokeBorder(.primary.opacity(0.2), lineWidth: 0.5))
                 .frame(width: dotSize, height: dotSize)
             Text(verbatim: row.label)
                 .neoFont(labelFont)
@@ -277,15 +279,16 @@ private struct LegendRowView: View {
     }
 
     private var dotSize: CGFloat {
-        (isHeader ? 14 : 12) * textScale
+        (10 * textScale).rounded()
     }
 
+    /// The app's list type: body rows under a headline, as the file list and statistics pane read.
     private var labelFont: NeoFont {
-        isHeader ? NeoFont(16, weight: .semibold) : NeoFont(14)
+        isHeader ? .headline : .body
     }
 
     private var sizeFont: NeoFont {
-        isHeader ? NeoFont(14, weight: .semibold) : NeoFont(13)
+        isHeader ? .headline : .body
     }
 
     private var backgroundColor: Color {

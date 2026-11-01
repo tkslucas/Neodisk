@@ -54,14 +54,16 @@ struct SidebarPane: View {
     private func section(
         _ section: SidebarSection, @ViewBuilder content: () -> some View
     ) -> some View {
-        Section(isExpanded: expansion(of: section)) {
+        let isExpanded = expansion(of: section)
+        return Section(isExpanded: isExpanded) {
             content()
         } header: {
-            // Scales with the rows; the system's header font wouldn't.
+            // Scales with the rows; the system's header font wouldn't. The whole header toggles, not just its chevron.
             Text(LocalizedStringKey(section.titleKey))
                 .neoFont(11, weight: .bold)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
+                .onTapGesture { withAnimation { isExpanded.wrappedValue.toggle() } }
                 .contextMenu { SidebarSectionsMenuItems(model: model) }
         }
     }

@@ -42,6 +42,7 @@ The most used ones; the rest live in `Sources/NeodiskUI/Dev/`.
 - The sidebar's material background renders blank in offscreen captures: `NEODISK_SIDEBAR_SNAPSHOT=<out.png>`
   renders the sidebar alone (`NEODISK_SIDEBAR_SNAPSHOT_WIDTH`), `NEODISK_TABBAR_SNAPSHOT=<out.png>` the statistics
   tabs at several widths; both take `NEODISK_SNAPSHOT_APPEARANCE=light` and `NEODISK_SNAPSHOT_TEXT_SCALE`.
+  `NEODISK_SIDEBAR_COLLAPSED=<volumes,cloudFiles,…>` collapses those sidebar sections for the run, unsaved.
 
 ## Linux
 

@@ -1,6 +1,6 @@
 // Panes rendered alone once the scan settles, for states the window capture can't show (the split view's sidebar
 // material takes its content with it). Inert unless their variable is set:
-// - NEODISK_SIDEBAR_SNAPSHOT=<out.png>: the sidebar (NEODISK_SIDEBAR_SNAPSHOT_WIDTH, default 260).
+// - NEODISK_SIDEBAR_SNAPSHOT=<out.png>: the sidebar (NEODISK_SIDEBAR_SNAPSHOT_WIDTH, default 260 × text scale).
 // - NEODISK_TABBAR_SNAPSHOT=<out.png>: the statistics tab bar at several widths, stacked.
 // - NEODISK_STATS_SNAPSHOT=<out.png>: the statistics pane on its NEODISK_ANALYSIS_TAB (NEODISK_STATS_SNAPSHOT_WIDTH,
 //   default 230, the pane's default; the window capture uses the stored width instead).
@@ -26,7 +26,8 @@ enum PaneSnapshotter {
             }
             try? await Task.sleep(for: .seconds(3))
             if let sidebarPath {
-                let width = environment["NEODISK_SIDEBAR_SNAPSHOT_WIDTH"].flatMap(Double.init) ?? 260
+                // The real column's width scales with the text.
+                let width = environment["NEODISK_SIDEBAR_SNAPSHOT_WIDTH"].flatMap(Double.init) ?? 260 * scale
                 await render(
                     SidebarPane(model: model), size: CGSize(width: width, height: 760),
                     scale: scale, dark: dark, to: sidebarPath

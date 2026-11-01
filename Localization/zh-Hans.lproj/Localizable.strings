@@ -440,6 +440,7 @@
 "Collapse Cleanup" = "折叠清理";
 "Expand Cleanup" = "展开清理";
 "Sidebar Sections" = "边栏部分";
+"File List Columns" = "文件列表栏";
 "Show Cleanup in the sidebar. Drop items here to collect them." = "在边栏中显示清理。将项目拖放到这里以收集它们。";
 "It changed since the scan. Rescan to move it." = "自扫描以来它已更改。请重新扫描后再移动。";
 "Move “%@” to the Trash?" = "要将“%@”移到废纸篓吗？";

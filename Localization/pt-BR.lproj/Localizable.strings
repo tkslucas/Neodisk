@@ -441,6 +441,7 @@
 "Collapse Cleanup" = "Recolher Limpeza";
 "Expand Cleanup" = "Expandir Limpeza";
 "Sidebar Sections" = "Seções da Barra Lateral";
+"File List Columns" = "Colunas da Lista de Arquivos";
 "Show Cleanup in the sidebar. Drop items here to collect them." = "Mostrar Limpeza na barra lateral. Solte itens aqui para reuni-los.";
 "It changed since the scan. Rescan to move it." = "Ele mudou desde a análise. Analise novamente para movê-lo.";
 "Move “%@” to the Trash?" = "Mover “%@” para a Lixeira?";

@@ -440,6 +440,7 @@
 "Collapse Cleanup" = "Aufräumen einklappen";
 "Expand Cleanup" = "Aufräumen ausklappen";
 "Sidebar Sections" = "Abschnitte der Seitenleiste";
+"File List Columns" = "Spalten der Dateiliste";
 "Show Cleanup in the sidebar. Drop items here to collect them." = "Aufräumen in der Seitenleiste anzeigen. Lege Objekte hier ab, um sie zu sammeln.";
 "It changed since the scan. Rescan to move it." = "Es hat sich seit dem Scan geändert. Scanne erneut, um es zu verschieben.";
 "Move “%@” to the Trash?" = "„%@“ in den Papierkorb legen?";

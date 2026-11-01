@@ -47,7 +47,7 @@ struct CloudSummaryStrip: View {
                 legend(color: cloudOnlyColor, isHatched: true, label: "Cloud-only", bytes: cloudOnly)
             }
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, StatsListMetrics.inset)
         .padding(.vertical, 8)
     }
 

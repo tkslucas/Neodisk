@@ -69,7 +69,7 @@ private struct ChangeResultsView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
-            .padding(.horizontal, 10)
+            .padding(.horizontal, StatsListMetrics.inset)
             .padding(.top, 6)
 
             // Own centered row: beside the header it starved the "since"
@@ -84,7 +84,7 @@ private struct ChangeResultsView: View {
             .labelsHidden()
             .fixedSize()
             .frame(maxWidth: .infinity)
-            .padding(.horizontal, 10)
+            .padding(.horizontal, StatsListMetrics.inset)
             .padding(.vertical, 4)
 
             Divider()
@@ -115,7 +115,7 @@ private struct ChangeResultsView: View {
                     Text(footerText(entries: entries, filter: filter))
                         .neoFont(10)
                         .foregroundStyle(.secondary)
-                        .padding(.horizontal, 10)
+                        .padding(.horizontal, StatsListMetrics.inset)
                         .padding(.vertical, 4)
                 }
             }

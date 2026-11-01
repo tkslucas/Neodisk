@@ -82,7 +82,7 @@ struct DuplicatesPane: View {
                 }
                 .neoControlSize(base: .small)
             }
-            .padding(.horizontal, 10)
+            .padding(.horizontal, StatsListMetrics.inset)
             .padding(.vertical, 7)
 
             Divider()
@@ -163,7 +163,7 @@ private struct DuplicateResultsView: View {
                 .disabled(!model.duplicates.canScan)
                 .help("Search for duplicates again")
             }
-            .padding(.horizontal, 10)
+            .padding(.horizontal, StatsListMetrics.inset)
             .padding(.vertical, 7)
 
             Divider()
@@ -184,7 +184,7 @@ private struct DuplicateResultsView: View {
                 Text(unreadableText)
                     .neoFont(10)
                     .foregroundStyle(.secondary)
-                    .padding(.horizontal, 10)
+                    .padding(.horizontal, StatsListMetrics.inset)
                     .padding(.vertical, 4)
             }
         }
@@ -333,7 +333,7 @@ private struct DuplicateGroupDetailView: View {
                 }
                 Spacer()
             }
-            .padding(.horizontal, 10)
+            .padding(.horizontal, StatsListMetrics.inset)
             .padding(.vertical, 6)
 
             Divider()

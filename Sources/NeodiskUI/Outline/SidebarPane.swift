@@ -90,7 +90,7 @@ struct SidebarPane: View {
                 section(.folders) {
                     ForEach(visibleFolders) { target in
                         row(target, now: now, bar: cloudBar(for: target) ?? kindBars[target.id])
-                            .contextMenu { removeMenu(clicked: target) }
+                            .contextMenu { rowMenu(for: target, removable: true) }
                     }
 
                     addFolderRow
@@ -235,53 +235,49 @@ struct SidebarPane: View {
         .tag(target.id)
     }
 
-    /// One row of the Volumes or Local Cloud Files section: not removable, so the menu only reveals it.
+    /// One row of the Volumes or Local Cloud Files section: not removable.
     private func builtInLocationRow(
         _ target: ScanTarget,
         now: Date,
         bar: VolumeBarData?
     ) -> some View {
         row(target, now: now, bar: bar)
-            .contextMenu {
-                Button("Reveal in Finder") {
-                    SystemIntegration.reveal(target.url)
-                }
-                stopScanButton(for: target)
-            }
-    }
-
-    /// A "Stop Scan" item for rows with a running background scan. Foreground
-    /// scans have the scan page's own stop controls, so they are excluded.
-    @ViewBuilder
-    private func stopScanButton(for target: ScanTarget) -> some View {
-        if model.session.activeSessions[target.id] != nil {
-            Divider()
-            Button("Stop Scan") {
-                model.session.stopSession(forTargetID: target.id)
-            }
-        }
+            .contextMenu { rowMenu(for: target, removable: false) }
     }
 
     private var selectedFolderIDs: Set<String> {
         selection.intersection(visibleFolders.map(\.id))
     }
 
+    /// A row's menu: scan it fresh (or stop its background scan), reveal it, and for Folders rows remove it.
     @ViewBuilder
-    private func removeMenu(clicked target: ScanTarget) -> some View {
-        let ids = selectedFolderIDs.contains(target.id) ? selectedFolderIDs : [target.id]
+    private func rowMenu(for target: ScanTarget, removable: Bool) -> some View {
+        if model.session.activeSessions[target.id] != nil, target.id != model.coordinator.selectedTarget?.id {
+            // A background scan; the displayed one has the scan page's own stop control.
+            Button("Stop Scan") {
+                model.session.stopSession(forTargetID: target.id)
+            }
+        } else {
+            Button(model.session.cachedScanInfo[target.id] == nil ? "Scan" : "Rescan") {
+                model.startScan(target, forcesRescan: true)
+            }
+            .disabled(isScanning(target.id))
+        }
+        Divider()
         Button("Reveal in Finder") {
             SystemIntegration.reveal(target.url)
         }
-        stopScanButton(for: target)
-        Divider()
-        // Refuse removal while a scan is in flight — dropping the cache mid-
-        // scan would orphan the session (the model guard backs this). A bulk
-        // remove stays live as long as one selected folder is idle.
-        Button(ids.count > 1 ? "Remove \(ids.count) Folders from Sidebar" : "Remove from Sidebar") {
-            model.removeSidebarFolders(ids: ids)
-            selection.subtract(ids)
+        if removable {
+            let ids = selectedFolderIDs.contains(target.id) ? selectedFolderIDs : [target.id]
+            Divider()
+            // Refuse removal while a scan is in flight — dropping the cache mid-scan would orphan the session (the
+            // model guard backs this). A bulk remove stays live as long as one selected folder is idle.
+            Button(ids.count > 1 ? "Remove \(ids.count) Folders from Sidebar" : "Remove from Sidebar") {
+                model.removeSidebarFolders(ids: ids)
+                selection.subtract(ids)
+            }
+            .disabled(ids.allSatisfy { isScanning($0) })
         }
-        .disabled(ids.allSatisfy { isScanning($0) })
     }
 
     private func removeSelectedFolders() {

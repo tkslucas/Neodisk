@@ -128,8 +128,8 @@ enum SystemIntegration {
         }
     }
 
-    /// The fallback search when the system's web-search service isn't available: only unreserved characters stay as
-    /// they are, so "+", "&" or "#" in a name reach the search engine as typed.
+    /// A web search for `text`: only unreserved characters stay as they are, so "+", "&" or "#" in a name reach the
+    /// search engine as typed.
     nonisolated static func webSearchURL(for text: String) -> URL? {
         var allowed = CharacterSet.alphanumerics
         allowed.insert(charactersIn: "-._~")
@@ -137,22 +137,10 @@ enum SystemIntegration {
         return URL(string: "https://www.google.com/search?q=" + query)
     }
 
-    /// Searches through the system's web-search service, as a "Search With…" menu item does, so the user's chosen
-    /// search engine and browser answer; the fallback URL only if the service isn't there.
-    static func searchWeb(
-        for text: String, workspace: SystemWorkspace = NSWorkspace.shared,
-        service: (String) -> Bool = performWebSearchService
-    ) {
-        guard !service(text), let url = webSearchURL(for: text) else { return }
+    /// Opens the search in the default browser.
+    static func searchWeb(for text: String, workspace: SystemWorkspace = NSWorkspace.shared) {
+        guard let url = webSearchURL(for: text) else { return }
         _ = workspace.open(url)
-    }
-
-    static func performWebSearchService(_ text: String) -> Bool {
-        let pasteboard = NSPasteboard.withUniqueName()
-        defer { pasteboard.releaseGlobally() }
-        pasteboard.declareTypes([.string], owner: nil)
-        guard pasteboard.setString(text, forType: .string) else { return false }
-        return NSPerformService("Search With %WebSearchProvider@", pasteboard)
     }
 
     static func copyPath(_ url: URL, pasteboard: PathPasteboard = NSPasteboard.general) throws {

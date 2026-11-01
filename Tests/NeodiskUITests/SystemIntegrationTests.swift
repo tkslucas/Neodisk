@@ -35,17 +35,9 @@ import NeodiskKit
             == "https://www.google.com/search?q=c%2B%2B%20notes%20%26%2050%25%20%231%2F%C3%A9.txt")
     }
 
-    @Test func searchWebGoesThroughTheSystemService() {
+    @Test func searchWebOpensTheSearchInTheDefaultBrowser() {
         let workspace = WorkspaceSpy(openResult: true)
-        var searched: [String] = []
-        SystemIntegration.searchWeb(for: "Movies", workspace: workspace) { searched.append($0); return true }
-        #expect(searched == ["Movies"])
-        #expect(workspace.openedURLs.isEmpty)
-    }
-
-    @Test func searchWebFallsBackToTheURLWithoutTheService() {
-        let workspace = WorkspaceSpy(openResult: true)
-        SystemIntegration.searchWeb(for: "Movies", workspace: workspace) { _ in false }
+        SystemIntegration.searchWeb(for: "Movies", workspace: workspace)
         #expect(workspace.openedURLs.map(\.absoluteString) == ["https://www.google.com/search?q=Movies"])
     }
 

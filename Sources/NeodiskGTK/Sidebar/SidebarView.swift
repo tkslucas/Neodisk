@@ -165,7 +165,7 @@ final class SidebarView {
         syncSelection(with: model.target?.id)
     }
 
-    /// The name with its size trailing, then when it was scanned, then the bar; the path is the tooltip.
+    /// The name with its size trailing, a volume's usage, when it was scanned, then the bar; the path is the tooltip.
     private func makeRow(for location: Location) -> GPtr {
         let space = location.space.flatMap { $0.totalCapacity > 0 ? $0 : nil }
         let cached = model.cachedScans[location.id]
@@ -183,6 +183,11 @@ final class SidebarView {
             Widgets.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6, labels),
         ])
         gtk_widget_set_hexpand(ptr(text), gbool(true))
+        if let usage = SidebarRowText.usage(space: space) {
+            let label = Widgets.label(usage, classes: ["dim-label", "neodisk-caption", "neodisk-numeric"], ellipsize: true)
+            labels.append(label)
+            Widgets.append(text, label)
+        }
         let scanning = model.isScanning && model.target?.id == location.id
         if let detail = scanning ? L("Scanning…") : SidebarRowText.scanned(cached?.lastScanDate) {
             let label = Widgets.label(detail, classes: ["dim-label", "neodisk-caption"], ellipsize: true)
@@ -202,9 +207,8 @@ final class SidebarView {
         let row = raw(gtk_list_box_row_new())!
         gtk_list_box_row_set_child(ptr(row), ptr(content))
         // Not over the capacity bar: its own bubble answers there.
-        let tooltip = SidebarRowText.tooltip(path: location.path, space: space)
         for widget in [icon] + labels {
-            gtk_widget_set_tooltip_text(ptr(widget), tooltip)
+            gtk_widget_set_tooltip_text(ptr(widget), location.path)
         }
         return row
     }

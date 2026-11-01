@@ -27,6 +27,40 @@ import Foundation
         #expect(packageNode.logicalSize >= Int64("binary".utf8.count))
         #expect(snapshot.aggregateStats.fileCount >= 1)
     }
+
+    /// Scans of /Applications raised "prevented from modifying apps": CoreFoundation's package and readable
+    /// keys probe write access. The scan must leave bundles untouched and never ask for write access.
+    @Test func testScanLeavesAppBundlesUntouched() async throws {
+        let forbidden: Set<URLResourceKey> = [.isReadableKey, .isPackageKey]
+        let keySets = [ScanMetadataLoader.scanResourceKeys, ScanMetadataLoader.rootResourceKeys,
+                       ScanMetadataLoader.atomicSummaryResourceKeySet, ScanMetadataLoader.atomicProbeResourceKeySet]
+        #expect(keySets.allSatisfy { $0.isDisjoint(with: forbidden) })
+
+        let rootURL = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+        let packageURL = rootURL.appending(path: "Sample.app", directoryHint: .isDirectory)
+        let binaryURL = packageURL.appending(path: "Contents/MacOS/Binary")
+        try FileManager.default.createDirectory(at: binaryURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("binary".utf8).write(to: binaryURL)
+        let tracked = [packageURL, packageURL.appending(path: "Contents"), binaryURL.deletingLastPathComponent(), binaryURL]
+        func fingerprint() -> [String] {
+            tracked.map { url in
+                var info = stat()
+                _ = lstat(url.path, &info)
+                let xattrs = listxattr(url.path, nil, 0, XATTR_NOFOLLOW)
+                return "\(info.st_ctimespec.tv_sec).\(info.st_ctimespec.tv_nsec) \(info.st_mtimespec.tv_nsec) \(xattrs)"
+            }
+        }
+        let before = fingerprint()
+
+        let parentScan = try await finishedSnapshot(target: ScanTarget(url: rootURL), options: ScanOptions())
+        let packageNode = try #require(rootChildren(in: parentScan).first(where: { $0.name == "Sample.app" }))
+        #expect(packageNode.isPackage && packageNode.isAccessible)
+        let rootScan = try await finishedSnapshot(target: ScanTarget(url: packageURL), options: ScanOptions())
+        #expect(rootScan.root.isPackage && rootScan.root.isSelfAccessible)
+
+        #expect(fingerprint() == before)
+    }
     #endif
 
     @Test func testPackageLeafNodesIncludeNestedPackageContents() async throws {
@@ -906,7 +940,7 @@ import Foundation
                 progressPaths.append(metrics.currentPath)
             case .finished(let snapshot):
                 finalSnapshot = snapshot
-            case .warning, .partial:
+            case .warning, .partial, .waitingForPermission:
                 break
             }
         }
@@ -1585,7 +1619,7 @@ import Foundation
                 finalizingProgress.append(metrics)
             case .finished:
                 didFinish = true
-            case .progress, .warning, .partial:
+            case .progress, .warning, .partial, .waitingForPermission:
                 break
             }
         }
@@ -2140,7 +2174,7 @@ import Foundation
                 progressSnapshots.append(metrics)
             case .finished(let snapshot):
                 finalSnapshot = snapshot
-            case .warning, .partial:
+            case .warning, .partial, .waitingForPermission:
                 break
             }
         }
@@ -2300,7 +2334,7 @@ extension ScanEngineTests {
                 partialStores.append(store)
             case .finished(let snapshot):
                 finalSnapshot = snapshot
-            case .progress, .warning:
+            case .progress, .warning, .waitingForPermission:
                 break
             }
         }

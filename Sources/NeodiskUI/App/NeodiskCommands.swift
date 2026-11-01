@@ -141,10 +141,12 @@ struct NeodiskCommands: Commands {
             Divider()
 
             // Hidden views stay here as the way back: picking one shows it in the toolbar again.
+            // The current view is checked, as the file list placements below are.
             ForEach(Array(VizView.allCases.enumerated()), id: \.element) { index, view in
-                Button {
-                    model.updateLayout { $0.pick(view) }
-                } label: {
+                Toggle(isOn: Binding(
+                    get: { model.coordinator.snapshot != nil && model.vizView == view },
+                    set: { _ in model.updateLayout { $0.pick(view) } }
+                )) {
                     Label(view.menuTitle, systemImage: view.systemImage)
                 }
                 .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: [.command, .option])
@@ -232,7 +234,7 @@ struct NeodiskCommands: Commands {
                 Label("Zoom Into Selection", systemImage: "plus.magnifyingglass")
             }
             .keyboardShortcut(.downArrow)
-            .disabled(model.selectedNode == nil)
+            .disabled(!model.canDrillIntoSelection)
 
             Divider()
 

@@ -23,7 +23,8 @@ nonisolated struct HardLinkDeduplicator {
     }
 
     /// Subtracts each duplicate claim from its owner, rebuilds ancestors bottom-up and re-sorts changed children.
-    /// Detaches `indexByID` from `nodes` (see `NodeIDIndex.detachNodeKeys`) so the charges don't copy the tree.
+    /// Always detaches `indexByID` from `nodes` (see `NodeIDIndex.detachNodeKeys`), so neither these charges nor the
+    /// clone pass after them copy the tree.
     nonisolated static func applyDeduplication(
         nodes: inout [FileNodeRecord],
         parentIndices: [Int32],
@@ -34,7 +35,10 @@ nonisolated struct HardLinkDeduplicator {
         minimumAllocatedSizeByNodeID: [String: Int64]
     ) {
         let duplicates = duplicateClaimIndices(from: hardLinkClaims)
-        guard !duplicates.isEmpty else { return }
+        guard !duplicates.isEmpty else {
+            indexByID.detachNodeKeys()
+            return
+        }
 
         // Owner lookups are read-only so they fan out; charges total in a flat per-node array, not a dictionary.
         let owners = ownerIndices(of: duplicates, in: hardLinkClaims, indexByID: indexByID)

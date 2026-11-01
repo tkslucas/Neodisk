@@ -137,6 +137,8 @@ public nonisolated struct ScanOptions: Hashable, Codable, Sendable {
     public var exclusionPatterns: [String] = []
     public var exclusionRootPath: String?
     public var tuning = Tuning()
+    /// Times the listings that can raise a macOS permission prompt; the app sets it only without Full Disk Access.
+    public var watchesPermissionPrompts: Bool?
 
     public nonisolated init(
         includeHiddenFiles: Bool = false,

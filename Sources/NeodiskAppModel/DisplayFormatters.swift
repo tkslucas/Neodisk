@@ -6,9 +6,10 @@ import Foundation
 package enum DisplayFormatters {
     private static let formatterCache = FormatterCache()
 
-    /// TimelineView callers pass the timeline date as `relativeTo` so the string re-renders on schedule.
+    /// TimelineView callers pass the timeline date so the string re-renders on schedule; the real clock wins when
+    /// that date lags (the repeated hour when daylight saving ends read a 17-minute-old scan as "in 43 minutes").
     package static func relativeDate(_ date: Date, relativeTo now: Date = Date()) -> String {
-        formatterCache.relativeDate(date, relativeTo: now)
+        formatterCache.relativeDate(date, relativeTo: max(now, Date()))
     }
 
     /// "45 seconds", "3 minutes", "2 hours" — a rough single-unit duration,

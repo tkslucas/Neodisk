@@ -63,9 +63,33 @@ enum ScanExpansionResult {
 @MainActor
 final class ScanProgressState: ObservableObject {
     @Published var metrics: ScanMetrics
+    /// The protected folder a read is held in by a macOS permission prompt, as Finder names it.
+    @Published var waitingForPermissionFolder: String?
 
     init(metrics: ScanMetrics = ScanMetrics()) {
         self.metrics = metrics
+    }
+
+    var permissionWaitText: String? {
+        waitingForPermissionFolder.map {
+            String(format: NSLocalizedString("Waiting for permission to read %@", comment: "Scan status; %@ is a folder"), $0)
+        }
+    }
+
+    /// With Full Disk Access nothing prompts, so a slow protected read is only slow.
+    func setWaitingForPermission(path: String?) {
+        guard let path, SystemIntegration.fullDiskAccessStatus() != .granted else {
+            waitingForPermissionFolder = nil
+            return
+        }
+        if path.hasSuffix("/Library/Mobile Documents") {
+            waitingForPermissionFolder = NSLocalizedString("iCloud Drive", comment: "Scan status: Waiting for permission to read iCloud Drive")
+        } else if path.hasSuffix("/Library/Containers") || path.hasSuffix("/Library/Group Containers") {
+            waitingForPermissionFolder = NSLocalizedString("other apps' data", comment: "Scan status: Waiting for permission to read other apps' data")
+        } else {
+            // The Photos library is a package: its name without the extension, as Finder shows it.
+            waitingForPermissionFolder = (FileManager.default.displayName(atPath: path) as NSString).deletingPathExtension
+        }
     }
 }
 

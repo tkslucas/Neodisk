@@ -53,7 +53,7 @@ enum PreferencesDialog {
 
         // Scanning.
         let scanPage = page(L("Scanning"), icon: "drive-harddisk-symbolic")
-        let scanning = group(L("Scans"), description: L("Changes apply from the next scan."))
+        let scanning = group(L("Scans"), description: L("Changes apply to the next scan."))
         addSwitch(to: scanning, title: L("Include Hidden Files"),
                   isOn: preferences.includeHiddenFiles) { preferences.includeHiddenFiles = $0 }
         addSwitch(to: scanning, title: L("Summarize Huge Folders"),
@@ -61,7 +61,7 @@ enum PreferencesDialog {
                   isOn: preferences.autoSummarizeDirectories) { preferences.autoSummarizeDirectories = $0 }
         adw_preferences_page_add(ptr(scanPage), ptr(scanning))
 
-        let storage = group(L("Saved Scans"))
+        let storage = group(L("Saved Scans"), description: L("Saved scans hold file names, paths and sizes, and never leave this computer."))
         let cacheRow = raw(adw_action_row_new())!
         adw_preferences_row_set_title(ptr(cacheRow), L("Cached Scans"))
         adw_action_row_set_subtitle(ptr(cacheRow), L("Calculating…"))

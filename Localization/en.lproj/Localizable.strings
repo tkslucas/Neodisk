@@ -396,7 +396,7 @@
 "%@ of scan" = "%@ of scan";
 "%lld smaller items · %@" = "%lld smaller items · %@";
 "Cached Scans" = "Cached Scans";
-"Changes apply from the next scan." = "Changes apply from the next scan.";
+"Saved scans hold file names, paths and sizes, and never leave this computer." = "Saved scans hold file names, paths and sizes, and never leave this computer.";
 "Choose a Location to Scan" = "Choose a Location to Scan";
 "Clear" = "Clear";
 "Color Palette" = "Color Palette";
@@ -510,7 +510,7 @@
 "Couldn't Move %lld Items to the Trash" = "Couldn't Move %lld Items to the Trash";
 "Select All" = "Select All";
 "Add to Selection" = "Add to Selection";
-"Hidden space is capacity the scan could not see, such as purgeable space and local snapshots." = "Hidden space is capacity the scan could not see, such as purgeable space and local snapshots.";
+"Adds hidden space too: capacity the scan could not see, such as purgeable space and local snapshots." = "Adds hidden space too: capacity the scan could not see, such as purgeable space and local snapshots.";
 "Reading file contents can take time and energy on large locations." = "Reading file contents can take time and energy on large locations.";
 "For protected macOS locations such as Mail, Safari, Messages, and Library content, grant Full Disk Access in System Settings." = "For protected macOS locations such as Mail, Safari, Messages, and Library content, grant Full Disk Access in System Settings.";
 "Neodisk never deletes anything itself, and won't touch system folders or your home folder." = "Neodisk never deletes anything itself, and won't touch system folders or your home folder.";

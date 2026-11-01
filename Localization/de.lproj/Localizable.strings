@@ -396,7 +396,7 @@
 "%@ of scan" = "%@ des Scans";
 "%lld smaller items · %@" = "%lld kleinere Objekte · %@";
 "Cached Scans" = "Zwischengespeicherte Scans";
-"Changes apply from the next scan." = "Änderungen gelten ab dem nächsten Scan.";
+"Saved scans hold file names, paths and sizes, and never leave this computer." = "Gespeicherte Scans enthalten Dateinamen, Pfade und Größen und verlassen diesen Computer nie.";
 "Choose a Location to Scan" = "Ort zum Scannen wählen";
 "Clear" = "Leeren";
 "Color Palette" = "Farbpalette";
@@ -510,7 +510,7 @@
 "Couldn't Move %lld Items to the Trash" = "%lld Objekte konnten nicht in den Papierkorb gelegt werden";
 "Select All" = "Alles auswählen";
 "Add to Selection" = "Zur Auswahl hinzufügen";
-"Hidden space is capacity the scan could not see, such as purgeable space and local snapshots." = "Verborgener Speicherplatz ist Kapazität, die der Scan nicht sehen konnte, etwa löschbarer Speicher und lokale Schnappschüsse.";
+"Adds hidden space too: capacity the scan could not see, such as purgeable space and local snapshots." = "Zeigt auch verborgenen Speicherplatz: Kapazität, die der Scan nicht sehen konnte, etwa löschbarer Speicher und lokale Schnappschüsse.";
 "Reading file contents can take time and energy on large locations." = "Das Lesen von Dateiinhalten kann bei großen Orten Zeit und Energie kosten.";
 "For protected macOS locations such as Mail, Safari, Messages, and Library content, grant Full Disk Access in System Settings." = "Für geschützte macOS-Orte wie Mail, Safari, Messages und Library-Inhalte erteile Vollständigen Festplattenzugriff in den Systemeinstellungen.";
 "Neodisk never deletes anything itself, and won't touch system folders or your home folder." = "Neodisk löscht selbst niemals etwas und rührt weder Systemordner noch deinen Benutzerordner an.";

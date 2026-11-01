@@ -188,18 +188,25 @@ func connectTooltip(_ instance: GPtr?, _ handler: @escaping @MainActor (_ x: Int
 
 // MARK: - Actions
 
-/// Returns the action so the caller can toggle its enabled state.
+/// Returns the action so the caller can toggle its enabled state. A string `state` makes menu items for
+/// "<name>::<value>" radio items; the caller keeps it current with `setActionState`.
 @discardableResult
 @MainActor
 func addAction(
     to map: GPtr?,
     _ name: String,
     stringParameter: Bool = false,
+    state: String? = nil,
     _ handler: @escaping @MainActor (String?) -> Void
 ) -> GPtr? {
     let parameterType = stringParameter ? g_variant_type_new("s") : nil
     defer { if let parameterType { g_variant_type_free(parameterType) } }
-    guard let action = raw(g_simple_action_new(name, parameterType)) else { return nil }
+    let created = if let state {
+        g_simple_action_new_stateful(name, parameterType, g_variant_new_string(state))
+    } else {
+        g_simple_action_new(name, parameterType)
+    }
+    guard let action = raw(created) else { return nil }
     connectPointer(action, "activate") { variant in
         let argument = variant.flatMap { string(from: g_variant_get_string(ptr($0), nil)) }
         handler(argument)
@@ -226,6 +233,11 @@ func addToggleAction(to map: GPtr?, _ name: String, _ handler: @escaping @MainAc
 @MainActor
 func setActionState(_ action: GPtr?, _ on: Bool) {
     g_simple_action_set_state(ptr(action), g_variant_new_boolean(gbool(on)))
+}
+
+@MainActor
+func setActionState(_ action: GPtr?, _ value: String) {
+    g_simple_action_set_state(ptr(action), g_variant_new_string(value))
 }
 
 @MainActor

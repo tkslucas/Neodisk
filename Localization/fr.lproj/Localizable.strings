@@ -396,7 +396,7 @@
 "%@ of scan" = "%@ de l'analyse";
 "%lld smaller items · %@" = "%lld éléments plus petits · %@";
 "Cached Scans" = "Analyses en cache";
-"Changes apply from the next scan." = "Les modifications s'appliquent à partir de la prochaine analyse.";
+"Saved scans hold file names, paths and sizes, and never leave this computer." = "Les analyses enregistrées contiennent des noms de fichiers, des chemins et des tailles, et ne quittent jamais cet ordinateur.";
 "Choose a Location to Scan" = "Choisissez un emplacement à analyser";
 "Clear" = "Effacer";
 "Color Palette" = "Palette de couleurs";
@@ -510,7 +510,7 @@
 "Couldn't Move %lld Items to the Trash" = "%lld éléments n'ont pas pu être placés dans la Corbeille";
 "Select All" = "Tout sélectionner";
 "Add to Selection" = "Ajouter à la sélection";
-"Hidden space is capacity the scan could not see, such as purgeable space and local snapshots." = "L'espace masqué est la capacité que l'analyse n'a pas pu voir, comme l'espace purgeable et les instantanés locaux.";
+"Adds hidden space too: capacity the scan could not see, such as purgeable space and local snapshots." = "Ajoute aussi l'espace masqué : la capacité que l'analyse n'a pas pu voir, comme l'espace purgeable et les instantanés locaux.";
 "Reading file contents can take time and energy on large locations." = "La lecture du contenu des fichiers peut prendre du temps et de l’énergie sur les grands emplacements.";
 "For protected macOS locations such as Mail, Safari, Messages, and Library content, grant Full Disk Access in System Settings." = "Pour les emplacements macOS protégés tels que Mail, Safari, Messages et le contenu de Library, accordez l'accès complet au disque dans les Réglages Système.";
 "Neodisk never deletes anything itself, and won't touch system folders or your home folder." = "Neodisk ne supprime jamais rien elle-même et ne touche ni aux dossiers système ni à votre dossier de départ.";

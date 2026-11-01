@@ -123,7 +123,7 @@ private struct ViewSettingsTab: View {
                 }
 
                 Toggle("Show free space in treemap", isOn: $preferences.showFreeSpace)
-                Text("Hidden space is capacity the scan could not see, such as purgeable space and local snapshots.")
+                Text("Adds hidden space too: capacity the scan could not see, such as purgeable space and local snapshots.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
 

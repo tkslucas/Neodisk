@@ -26,7 +26,8 @@ final class MainWindow {
     private let vizSwitcher: GPtr
     /// "views.<view>" checkboxes: which toggles the header shows.
     private let viewActions = GObjectRef(adopting: raw(g_simple_action_group_new())!)
-    private var viewMenu: GPtr?
+    private let viewsMenu: GObjectRef
+    private var viewsPopover: GPtr?
     private let menuButton: GPtr
 
     private let sidebar: SidebarView
@@ -76,17 +77,16 @@ final class MainWindow {
         gtk_menu_button_set_icon_name(ptr(menuButton), "open-menu-symbolic")
         gtk_widget_set_tooltip_text(ptr(menuButton), L("Main Menu"))
         // The views stay here as the way back: picking a hidden one shows its toggle again.
-        let primaryMenu = Widgets.menu([
-            [(L("Choose Folder…"), "win.open-folder")],
-            VizView.allCases.map { ($0.title, "win.show-\($0.rawValue)") },
-            [(L("Show Status Bar"), "win.show-status-bar")],
-            [(L("Preferences"), "app.preferences"), (L("Keyboard Shortcuts"), "win.show-help-overlay"), (L("About %@", AppChannel.current.appName), "app.about")],
-            [(L("Quit"), "app.quit")],
+        let layoutSection = Widgets.section([])
+        g_menu_append_submenu(ptr(layoutSection.pointer), L("Sidebar Sections"), ptr(sidebar.sectionsMenu.pointer))
+        g_menu_append(ptr(layoutSection.pointer), L("Show Status Bar"), "win.show-status-bar")
+        let primaryMenu = Widgets.menu(sections: [
+            Widgets.section([(L("Choose Folder…"), "win.open-folder")]),
+            Widgets.section(VizView.allCases.map { ($0.menuTitle, "win.view::\($0.rawValue)") }),
+            layoutSection,
+            Widgets.section([(L("Preferences"), "app.preferences"), (L("Keyboard Shortcuts"), "win.show-help-overlay"), (L("About %@", AppChannel.current.appName), "app.about")]),
+            Widgets.section([(L("Quit"), "app.quit")]),
         ])
-        if let section = g_menu_model_get_item_link(ptr(primaryMenu.pointer), 2, "section") {
-            g_menu_prepend_submenu(ptr(raw(section)), L("Sidebar Sections"), ptr(sidebar.sectionsMenu.pointer))
-            g_object_unref(raw(section))
-        }
         gtk_menu_button_set_menu_model(ptr(menuButton), ptr(primaryMenu.pointer))
         gtk_menu_button_set_primary(ptr(menuButton), gbool(true))
         adw_header_bar_pack_end(ptr(sidebarHeader), ptr(menuButton))
@@ -114,11 +114,12 @@ final class MainWindow {
         for view in VizView.allCases {
             let toggle = raw(gtk_toggle_button_new())!
             gtk_button_set_icon_name(ptr(toggle), view.iconName)
-            gtk_widget_set_tooltip_text(ptr(toggle), view.title)
-            gtk_toggle_button_set_group(ptr(toggle), ptr(viewToggles[.cushion]))
+            gtk_widget_set_tooltip_text(ptr(toggle), view.menuTitle)
+            gtk_toggle_button_set_group(ptr(toggle), ptr(viewToggles.values.first))
             viewToggles[view] = toggle
         }
         self.viewToggles = viewToggles
+        viewsMenu = Widgets.menu([VizView.allCases.map { ($0.menuTitle, "views.\($0.rawValue)") }])
         vizSwitcher = Widgets.box(GTK_ORIENTATION_HORIZONTAL, classes: ["linked"], VizView.allCases.compactMap { viewToggles[$0] })
         adw_header_bar_set_title_widget(ptr(header), ptr(vizSwitcher))
 
@@ -238,7 +239,11 @@ final class MainWindow {
         // Right-click: the checklist of views shown; the last one shown stays.
         let click = raw(gtk_gesture_click_new())!
         gtk_gesture_single_set_button(ptr(click), 3)
-        connectPress(click, "pressed") { [unowned self] _, x, y in self.showViewMenu(at: CGPoint(x: x, y: y)) }
+        connectPress(click, "pressed") { [unowned self] _, x, y in
+            // Claimed, or the header's window handle opens the window manager's menu too.
+            gtk_gesture_set_state(ptr(click), GTK_EVENT_SEQUENCE_CLAIMED)
+            self.showViewMenu(at: CGPoint(x: x, y: y))
+        }
         gtk_widget_add_controller(ptr(vizSwitcher), ptr(click))
         g_object_bind_property(
             statisticsSplit, "show-sidebar", statisticsToggle, "active",
@@ -270,7 +275,7 @@ final class MainWindow {
     }
 
     private func showViewMenu(at point: CGPoint) {
-        Widgets.popupMenu(&viewMenu, sections: [VizView.allCases.map { ($0.title, "views.\($0.rawValue)") }], on: vizSwitcher, at: point)
+        Widgets.popupMenu(&viewsPopover, model: viewsMenu, on: vizSwitcher, at: point)
     }
 
     /// NEODISK_POPUP: opens a menu for a screen grab (popovers aren't in the window's capture).
@@ -351,6 +356,7 @@ final class MainWindow {
                 setActionEnabled(self.actions["views.\(view.rawValue)"], layout.views.isHidden(view) || layout.views.canHide(view))
             }
             gtk_toggle_button_set_active(ptr(self.viewToggles[layout.view]), gbool(true))
+            setActionState(self.actions["view"], layout.view.rawValue)
         })
         tokens.append(track { [unowned self] in
             setActionState(self.actions["show-status-bar"], self.model.preferences.showsStatusBar)
@@ -438,10 +444,12 @@ final class MainWindow {
         addAction(to: window, "hide-status-bar") { [unowned self] _ in
             self.model.preferences.showsStatusBar = false
         }
+        let current = model.preferences.workspaceLayout.view.rawValue
+        actions["view"] = addAction(to: window, "view", stringParameter: true, state: current) { [unowned self] value in
+            guard let view = value.flatMap(VizView.init(rawValue:)) else { return }
+            self.model.preferences.workspaceLayout.pick(view)
+        }
         for view in VizView.allCases {
-            addAction(to: window, "show-\(view.rawValue)") { [unowned self] _ in
-                self.model.preferences.workspaceLayout.pick(view)
-            }
             actions["views.\(view.rawValue)"] = addToggleAction(to: viewActions.pointer, view.rawValue) { [unowned self] shown in
                 var views = self.model.preferences.workspaceLayout.views
                 views.setHidden(view, !shown)
@@ -668,14 +676,6 @@ final class MainWindow {
 }
 
 private extension VizView {
-    var title: String {
-        switch self {
-        case .cushion: L("Cushion Treemap")
-        case .flat: L("Flat Treemap")
-        case .sunburst: L("Sunburst")
-        }
-    }
-
     var iconName: String {
         switch self {
         case .cushion: "neodisk-treemap-symbolic"

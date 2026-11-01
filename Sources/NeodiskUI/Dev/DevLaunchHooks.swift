@@ -21,7 +21,21 @@ enum DevLaunchHooks {
 
         // NEODISK_AUTOSCAN=<path> scans on launch.
         if let path = environment["NEODISK_AUTOSCAN"], model.coordinator.phase == .idle {
-            model.startScan(ScanTarget(url: URL(filePath: path, directoryHint: .isDirectory)))
+            let target = ScanTarget(url: URL(filePath: path, directoryHint: .isDirectory))
+            #if DEBUG
+            // Without access, scan as a click would once the index is in: a first scan offers Full Disk Access.
+            if environment["NEODISK_FULL_DISK_ACCESS"] == "off" {
+                model.warnings.fullDiskAccessStatus = .notGranted
+                Task { @MainActor in
+                    while !model.session.hasIndexedSnapshotCache { try? await Task.sleep(for: .milliseconds(50)) }
+                    model.startChosenScan(target)
+                }
+            } else {
+                model.startScan(target)
+            }
+            #else
+            model.startScan(target)
+            #endif
             // NEODISK_BENCH_RESCANS drives repeated in-app rescans of the
             // just-started scan to measure felt rescan cost with the baseline
             // in memory (no relaunch/decode).

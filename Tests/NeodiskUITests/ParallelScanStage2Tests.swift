@@ -168,7 +168,7 @@ extension ScanTimingSuites {
         // A background save of the OTHER target rotates its predecessor; the
         // guard keys on the displayed target, so nothing here changes.
         model.diff.snapshotWasRotated(for: backgroundTarget)
-        model.changes.snapshotWasRotated(for: backgroundTarget)
+        model.changes.snapshotWasSaved(for: backgroundTarget)
 
         #expect(model.diff.isShowing)
         #expect(model.diff.baseline?.targetID == baselineBefore?.targetID)
@@ -196,6 +196,88 @@ extension ScanTimingSuites {
         model.removeSidebarFolders(ids: [target.id])
         // Removable once the scan is no longer running.
         #expect(!model.sidebarFolders.contains { $0.id == target.id })
+    }
+
+    /// Moving the sidebar selection by keyboard shows a saved scan and never starts one.
+    @Test func testPreviewShowsSavedScansAndNeverScans() async throws {
+        let environment = try TestEnvironment()
+        defer { environment.tearDown() }
+        let saved = makeTestTarget("/stage2/preview-saved")
+        let unscanned = makeTestTarget("/stage2/preview-unscanned")
+        let model = environment.makeModel(policy: .automatic)
+        model.session.sourceIdentityProvider = environment.parallelSameDevice
+        model.startScan(saved)
+        await awaitSnapshotPersist(on: model, of: saved) {
+            environment.scanService.yield(.finished(environment.snapshot(for: saved)), scanIndex: 0)
+            environment.scanService.finish(scanIndex: 0)
+        }
+        model.startScan(unscanned)
+        model.stopScan()
+        let scansBefore = environment.scanService.scanCount
+
+        model.startScan(saved, previewOnly: true)
+        #expect(model.coordinator.selectedTarget?.id == saved.id)
+        #expect(model.session.activeSession(forTargetID: saved.id) == nil)
+
+        let other = makeTestTarget("/stage2/preview-never")
+        model.startScan(other, previewOnly: true)
+        #expect(model.coordinator.selectedTarget?.id == saved.id)
+        #expect(model.session.activeSession(forTargetID: other.id) == nil)
+        #expect(environment.scanService.scanCount == scansBefore)
+    }
+
+    /// Removing from the sidebar is undoable and keeps the saved scan; Undo puts each folder back in place.
+    @Test func testSidebarRemovalUndoesAndKeepsTheScan() async throws {
+        let environment = try TestEnvironment()
+        defer { environment.tearDown() }
+        let first = makeTestTarget("/stage2/undo-first")
+        let second = makeTestTarget("/stage2/undo-second")
+        environment.sidebarFolderStore.add(first)
+        environment.sidebarFolderStore.add(second)
+        let model = environment.makeModel(policy: .automatic)
+        model.session.sourceIdentityProvider = environment.parallelSameDevice
+        model.startScan(first)
+        await awaitSnapshotPersist(on: model, of: first) {
+            environment.scanService.yield(.finished(environment.snapshot(for: first)), scanIndex: 0)
+            environment.scanService.finish(scanIndex: 0)
+        }
+        #expect(model.session.cachedScanInfo[first.id] != nil)
+
+        let undoManager = UndoManager()
+        undoManager.groupsByEvent = false
+        undoManager.beginUndoGrouping()
+        model.removeSidebarFolders(ids: [first.id], undoManager: undoManager)
+        undoManager.endUndoGrouping()
+        #expect(!model.sidebarFolders.contains { $0.id == first.id })
+        #expect(model.session.cachedScanInfo[first.id] != nil)
+
+        undoManager.undo()
+        #expect(model.sidebarFolders.map(\.id).filter { [first.id, second.id].contains($0) } == [first.id, second.id])
+        #expect(SidebarFolderStore(defaults: environment.defaults).load().contains { $0.id == first.id })
+
+        undoManager.redo()
+        #expect(!model.sidebarFolders.contains { $0.id == first.id })
+    }
+
+    /// Removing the location on screen from the sidebar clears the view instead of leaving an unlisted scan.
+    @Test func testRemovingTheShownFolderClearsTheView() async throws {
+        let environment = try TestEnvironment()
+        defer { environment.tearDown() }
+        let target = makeTestTarget("/stage2/remove-shown")
+        environment.sidebarFolderStore.add(target)
+        let model = environment.makeModel(policy: .automatic)
+        model.session.sourceIdentityProvider = environment.parallelSameDevice
+        model.startScan(target)
+        await awaitSnapshotPersist(on: model, of: target) {
+            environment.scanService.yield(.finished(environment.snapshot(for: target)), scanIndex: 0)
+            environment.scanService.finish(scanIndex: 0)
+        }
+        #expect(model.coordinator.canRescan)
+
+        model.removeSidebarFolders(ids: [target.id])
+        #expect(model.coordinator.selectedTarget == nil)
+        #expect(model.coordinator.snapshot == nil)
+        #expect(!model.coordinator.canRescan)
     }
 
     // MARK: - Fixtures

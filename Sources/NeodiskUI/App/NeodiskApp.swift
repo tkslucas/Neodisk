@@ -47,13 +47,19 @@ public struct NeodiskApp: App {
         }
     }
 
+    static let mainWindowID = "main"
+
     public var body: some Scene {
-        WindowGroup {
+        // One main window, not a group: once closed, the Window menu lists it and, like the Dock icon, brings it
+        // back where it was. Its commands disable while it's closed (NeodiskCommands).
+        Window(AppChannel.current.appName, id: Self.mainWindowID) {
             ContentView(model: model, preferences: preferences, updates: updates)
                 .onAppear {
                     preferences.applyTheme()
                     quitDelegate.snapshotCache = snapshotCache
+                    model.isWindowOpen = true
                 }
+                .onDisappear { model.isWindowOpen = false }
         }
         .defaultSize(PaneLayout.defaultWindowSize(screen: NSScreen.main?.visibleFrame.size))
         .commands {
@@ -80,6 +86,12 @@ public struct NeodiskApp: App {
 @MainActor
 final class QuitDelegate: NSObject, NSApplicationDelegate {
     var snapshotCache: ScanSnapshotCache?
+
+    /// A single window as the primary scene would quit the app when it closes; Neodisk stays running, its scan
+    /// in memory, until the Dock icon or the Window menu brings the window back.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
+    }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let snapshotCache else { return .terminateNow }

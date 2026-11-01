@@ -55,7 +55,12 @@ private final class ConditionsBox: @unchecked Sendable {
         // getattrlistbulk self-contends past ~8 readers, so the local-SSD ceiling is cores capped at that knee
         // (PERFORMANCE.md 2026-07-17), never narrower than conservative, which is never narrower than network.
         let cores = max(1, ProcessInfo.processInfo.activeProcessorCount)
+        #if os(Windows)
+        // Windows directory-info reads overlap I/O instead of contending (ScanConcurrencyPolicy).
+        #expect(parallel == min(max(8, cores * 2), 16))
+        #else
         #expect(parallel == min(max(4, cores), 8))
+        #endif
         #expect(parallel >= conservative)
         #expect(conservative >= network)
         #expect(parallel <= 8)

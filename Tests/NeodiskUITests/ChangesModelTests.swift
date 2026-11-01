@@ -121,7 +121,7 @@ import NeodiskKit
         }
         let tokenBefore = model.changes.reloadToken
 
-        model.changes.snapshotWasRotated(for: target)
+        model.changes.snapshotWasSaved(for: target)
 
         // The stale list stays on screen (no flash) but the pane's task key
         // changes, and the next loadIfNeeded recomputes.

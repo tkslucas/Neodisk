@@ -44,6 +44,7 @@ nonisolated final class ScanTraversal {
     private var minimumAllocatedSizeByNodeID: [String: Int64] = [:]
     private var concurrency: AdaptiveScanConcurrency
     private let directoryIOExecutor: DirectoryIOExecutor
+    private let permissionWatch: PermissionPromptWatch?
     private var ownedDeviceIDs: Set<UInt64> = []
     private var workStack: [ScanWorkItem] = []
     /// Directories inside other apps' containers, read at most
@@ -83,6 +84,7 @@ nonisolated final class ScanTraversal {
         volumeFileSystemTypeProvider: @escaping ScanEngine.VolumeFileSystemTypeProvider,
         diagnostics: ScanDiagnosticsContext?,
         bulkEnumerationEnabled: Bool,
+        permissionPrompts: PermissionPromptWatch.Configuration? = nil,
         baseDepth: Int = 0,
         metrics: ScanMetrics,
         warnings: [ScanWarning],
@@ -113,6 +115,12 @@ nonisolated final class ScanTraversal {
         self.directoryIOExecutor = DirectoryIOExecutor(
             workerCount: concurrency.undegradedTraversalWorkerLimit + ProtectedContainers.concurrentReadLimit
         )
+        // Whole scans only: an incremental subtree sits under folders the first scan already listed.
+        self.permissionWatch = options.watchesPermissionPrompts == true && baseDepth == 0
+            ? PermissionPromptWatch(scanRoot: target.url.path, configuration: permissionPrompts) {
+                continuation.yield(.waitingForPermission($0))
+            }
+            : nil
         self.metrics = metrics
         self.warnings = warnings
         self.emissionState = emissionState
@@ -123,6 +131,7 @@ nonisolated final class ScanTraversal {
     /// Scans the target's directory iteratively (no recursion) and returns a
     /// fully assembled flat tree.
     func run() async throws -> FileTreeStore {
+        defer { permissionWatch?.stop() }
         // One shared pool owns every package/atomic summary, so a giant bundle fans across all workers instead
         // of stalling the loop. Torn down on both success and error paths.
         let pool = AtomicDirectorySummaryPool(
@@ -155,6 +164,8 @@ nonisolated final class ScanTraversal {
             // Seeds the pool heartbeat's base metrics; otherwise a root-leaf scan (package root) runs its whole
             // summary with the heartbeat dropping every emission.
             maybeEmitProgress()
+            let volumeIndex = await prepareVolumeIndex(rootMetadata: rootMetadata)
+            defer { volumeIndex?.end() }
 
             ScanTiming.note(
                 "workers traversal=\(concurrency.traversalWorkerLimit) "
@@ -183,6 +194,92 @@ nonisolated final class ScanTraversal {
             ScanProfile.emit()
             await pool.cancelAndFinish(with: error)
             throw error
+        }
+    }
+
+    /// Reads the target volume's file table first where that's possible (see `NTFSScanAccelerator`); directory
+    /// reads then come from memory. The bar fills its preparation span meanwhile and, should the table prove
+    /// unusable, the walk continues from wherever the bar got to.
+    private func prepareVolumeIndex(rootMetadata: NodeMetadata) async -> VolumeIndexLease? {
+        guard NTFSScanAccelerator.isAvailable, baseDepth == 0,
+              rootMetadata.isDirectory, !rootMetadata.isSymbolicLink else {
+            return nil
+        }
+        let span = NTFSScanAccelerator.preparationSpan
+        let base = metrics
+        let targetPath = target.url.path
+        let pool = summaryPool
+        let continuation = self.continuation
+        let state = PreparationState()
+        let lease = await withTaskCancellationHandler {
+            await withCheckedContinuation { (resume: CheckedContinuation<VolumeIndexLease?, Never>) in
+                let thread = Thread {
+                    let lease = NTFSScanAccelerator.prepare(
+                        targetPath: targetPath,
+                        progress: { fraction in
+                            guard let fraction = state.advance(to: fraction) else { return }
+                            var progress = base
+                            progress.preparationSpan = span
+                            progress.preparationFraction = fraction
+                            progress.recalculateProgress()
+                            if let pool {
+                                pool.publishProgressBase(progress)
+                            } else {
+                                continuation.yield(.progress(progress))
+                            }
+                        },
+                        isCancelled: { state.isCancelled }
+                    )
+                    resume.resume(returning: lease)
+                }
+                thread.name = "com.neodisk.file-table"
+                thread.start()
+            }
+        } onCancel: {
+            state.cancel()
+        }
+        // On a fallback the walk takes the rest of the bar from where reading the table left it.
+        let reached = state.fraction
+        metrics.preparationSpan = lease == nil ? span * reached : span
+        metrics.preparationFraction = 1
+        metrics.recalculateProgress()
+        publishProgress()
+        return lease
+    }
+
+    private nonisolated final class PreparationState: @unchecked Sendable {
+        private let lock = NSLock()
+        private var cancelled = false
+        private var reached = 0.0
+        private var lastEmission = ContinuousClock.now - .seconds(1)
+
+        var isCancelled: Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            return cancelled
+        }
+
+        var fraction: Double {
+            lock.lock()
+            defer { lock.unlock() }
+            return reached
+        }
+
+        func cancel() {
+            lock.lock()
+            cancelled = true
+            lock.unlock()
+        }
+
+        /// The fraction to publish, or nil while emissions are throttled.
+        func advance(to fraction: Double) -> Double? {
+            lock.lock()
+            defer { lock.unlock() }
+            reached = max(reached, fraction)
+            let now = ContinuousClock.now
+            guard now - lastEmission >= .milliseconds(100) || fraction >= 1 else { return nil }
+            lastEmission = now
+            return reached
         }
     }
 
@@ -270,6 +367,7 @@ nonisolated final class ScanTraversal {
         let directoryResourceKeys = ScanMetadataLoader.scanResourceKeys
         let usesBulkEnumeration = bulkEnumerationEnabled
         let directoryIOExecutor = self.directoryIOExecutor
+        let permissionWatch = self.permissionWatch
         let listings = summaryPool?.listings
         let continuation = self.continuation
         // Set once in `run()` before the group starts, so workers can resolve mount-boundary flags off the
@@ -370,6 +468,8 @@ nonisolated final class ScanTraversal {
                             #if DEBUG
                             let traversalStart = DispatchTime.now().uptimeNanoseconds
                             #endif
+                            let permissionToken = permissionWatch?.begin(taskItem.path)
+                            defer { permissionWatch?.end(permissionToken) }
                             do {
                                 let contents = try await ScanEngine.directoryEntries(
                                     of: taskItem.url,
@@ -458,6 +558,10 @@ nonisolated final class ScanTraversal {
                     group.addTask {
                         let profileToken = ScanProfile.started(.packageTask, taskItem.path)
                         defer { ScanProfile.finish(profileToken) }
+                        if let permissionToken = permissionWatch?.begin(taskItem.path) {
+                            try? await directoryIOExecutor.run { _, _ in PermissionPromptWatch.touch(taskItem.path) }
+                            permissionWatch?.end(permissionToken)
+                        }
                         var localMetrics = taskMetrics
                         var localEmissionState = taskEmissionState
                         let leaf = try await summarizer.makeLeafNode(
@@ -562,7 +666,7 @@ nonisolated final class ScanTraversal {
         var batch = DirectoryLeafBatch()
         batch.nodes.reserveCapacity(entries.count)
         batch.pendingChildWorkItems.reserveCapacity(min(entries.count, 64))
-        var seenNodeIDs = Set<String>()
+        var seenNodeIDs = Set<String>(minimumCapacity: entries.count)
 
         for (offset, entry) in entries.reversed().enumerated() {
             if offset.isMultiple(of: 256) {
@@ -795,8 +899,8 @@ nonisolated final class ScanTraversal {
 
         // Check if this directory should be summarized as atomic (many small files)
         let minDepth = options.tuning.autoSummarizeMinDepthForSummarization ?? AtomicDirectoryThresholds.minDepthForSummarization
-        let isNodeDependencyLayout = AtomicDirectorySummarizer.isNodeDependencyLayoutDirectory(at: item.url)
-        let isKnownGeneratedDirectory = AtomicDirectorySummarizer.isKnownGeneratedDirectory(at: item.url)
+        let isNodeDependencyLayout = AtomicDirectorySummarizer.isNodeDependencyLayoutDirectory(atPath: item.path)
+        let isKnownGeneratedDirectory = AtomicDirectorySummarizer.isKnownGeneratedDirectory(atPath: item.path)
         let canProbeForAutoSummary =
             item.depth >= minDepth ||
             (item.depth >= 1 && isNodeDependencyLayout) ||

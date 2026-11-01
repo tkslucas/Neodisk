@@ -253,7 +253,7 @@ package struct TreemapScene: Sendable {
         ]
 
         while let (node, rect, parentSurface, ridgeHeight, isRoot, color, depth) = stack.popLast() {
-            guard rect.width > 0.5, rect.height > 0.5, rect.intersects(renderBounds) else { continue }
+            guard rect.width > 0, rect.height > 0, rect.intersects(renderBounds) else { continue }
 
             var surface = parentSurface
             if style == .cushion, !isRoot {
@@ -367,7 +367,7 @@ package struct TreemapScene: Sendable {
                     }
 
                     if let aggregateRect = layout.aggregateRect,
-                       aggregateRect.width > 0.5, aggregateRect.height > 0.5 {
+                       aggregateRect.width > 0, aggregateRect.height > 0 {
                         let tail = children[layout.keptCount...]
                         var aggregateSurface = surface
                         if style == .cushion {

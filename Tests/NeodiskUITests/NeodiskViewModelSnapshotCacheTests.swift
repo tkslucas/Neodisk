@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-import NeodiskKit
+@testable import NeodiskKit
 @testable import NeodiskUI
 
 /// Snapshot-cache wiring in the view model: persisting finished scans,
@@ -177,6 +177,37 @@ import NeodiskKit
         #expect(model.coordinator.isScanning)
         #expect(environment.scanService.scanCount == 1)
         model.stopScan()
+    }
+
+    @Test func testSnapshotNoticeHidesOnItsOwnAndStillHoldsTheSkippedRescan() async throws {
+        let environment = try TestEnvironment()
+        defer { environment.tearDown() }
+        let target = makeTestTarget("/cache-vm/notice-lifetime")
+        environment.sidebarFolderStore.add(target)
+        try await environment.cache.save(makeSimpleSnapshot(target: target))
+
+        let model = environment.makeModel(policy: .snapshotOnly)
+        model.session.snapshotNoticeLifetime = .milliseconds(50)
+        try await waitUntilAsync("prune indexes the snapshot") {
+            model.session.cachedScanInfo[target.id] != nil
+        }
+        model.startScan(target)
+        try await waitUntilAsync("notice shown") { model.session.snapshotNotice?.targetID == target.id }
+        try await waitUntilAsync("notice hides on its own") { model.session.snapshotNotice == nil }
+
+        // Gone from view, the skipped rescan still waits for an explicit one.
+        model.startScan(target)
+        #expect(environment.scanService.scanCount == 0)
+
+        // Another location and back: a new notice; its close button dismisses it.
+        model.session.snapshotNoticeLifetime = .seconds(60)
+        let other = makeTestTarget("/cache-vm/notice-other")
+        model.startScan(other)
+        model.stopScan()
+        model.startScan(target)
+        try await waitUntilAsync("notice shown again") { model.session.snapshotNotice?.targetID == target.id }
+        model.session.dismissSnapshotNotice()
+        #expect(model.session.snapshotNotice == nil)
     }
 
     @Test func testAutomaticPolicyAutoRescansSlowLocationWithoutNotice() async throws {
@@ -445,6 +476,119 @@ import NeodiskKit
         }
     }
 
+    /// The Changes tab stays open across rescans, as when someone rescans to see what changed.
+    @Test func testRescanInSameSessionListsChanges() async throws {
+        let (model, tree, environment) = try await scanRealTree()
+        defer { environment.tearDown(); try? FileManager.default.removeItem(at: tree) }
+        try Data(count: 300_000).write(to: tree.appending(path: "added.bin"))
+        try FileManager.default.removeItem(at: tree.appending(path: "gone.bin"))
+        try await Task.sleep(for: .seconds(1))  // FSEvents journals a write a moment after it.
+
+        var list = try await rescanAndLoadChanges(model)
+        #expect(list?.entries(for: .added).contains { $0.name == "added.bin" } == true)
+        #expect(list?.entries(for: .deleted).contains { $0.name == "gone.bin" } == true)
+
+        // A third scan compares with the second, now that a previous slot exists.
+        try Data(count: 400_000).write(to: tree.appending(path: "later.bin"))
+        try await Task.sleep(for: .seconds(1))
+        list = try await rescanAndLoadChanges(model)
+        #expect(list?.entries(for: .added).map(\.name) == ["later.bin"])
+    }
+
+    /// An unchanged rescan still has a baseline: Changes says nothing changed, not "no previous scan".
+    @Test func testUnchangedRescanInSameSessionComparesWithFirstScan() async throws {
+        let (model, tree, environment) = try await scanRealTree()
+        defer { environment.tearDown(); try? FileManager.default.removeItem(at: tree) }
+
+        let list = try await rescanAndLoadChanges(model)
+        #expect(list?.entries(for: .all).isEmpty == true)
+        #expect(model.changes.comparisonDate != nil)
+    }
+
+    /// The pane can load while the save is still encoding (no comparison yet); the finished save must reload it.
+    @Test func testChangesLoadedMidSaveReloadsWhenTheSaveLands() async throws {
+        let environment = try TestEnvironment()
+        defer { environment.tearDown() }
+        let target = makeTestTarget("/cache-vm/mid-save")
+        environment.sidebarFolderStore.add(target)
+        let model = environment.makeModel()
+        model.analysisTab = .changes
+        let paneLoads = ChangesPaneDriver(model: model)
+        for (index, size) in [Int64(10), 25].enumerated() {
+            try await scanAndPersist(model, paneLoads: paneLoads) {
+                index == 0 ? model.startScan(target) : model.rescan()
+                environment.scanService.yield(.finished(makeSizedSnapshot(target: target, fileSize: size)), scanIndex: index)
+                environment.scanService.finish(scanIndex: index)
+            }
+        }
+        // No persisted list to fall back on, as after a cleared or failed diff save.
+        for url in try FileManager.default.contentsOfDirectory(at: environment.cacheDirectory, includingPropertiesForKeys: nil)
+        where url.pathExtension == "nddiff" { try FileManager.default.removeItem(at: url) }
+
+        let (entered, enteredContinuation) = AsyncStream.makeStream(of: Void.self)
+        let (release, releaseContinuation) = AsyncStream.makeStream(of: Void.self)
+        await environment.cache.setEncodeGateForTesting {
+            enteredContinuation.yield(())
+            for await _ in release { break }
+        }
+        model.rescan()
+        environment.scanService.yield(.finished(makeSizedSnapshot(target: target, fileSize: 40)), scanIndex: 2)
+        environment.scanService.finish(scanIndex: 2)
+        for await _ in entered { break }
+        try await waitUntilAsync("pane loaded against the save in flight") {
+            paneLoads.tick()
+            return model.coordinator.snapshot?.treeStore.node(id: target.id + "/file.txt")?.allocatedSize == 40
+                && !model.changes.isLoading
+        }
+        releaseContinuation.finish()
+        try await waitUntilAsync("Changes compares with the second scan") {
+            paneLoads.tick()
+            return model.changes.list?.entries(for: .all).first?.delta == 15
+        }
+    }
+
+    /// Scans a real temp folder through the app's scan service, Changes open, until the snapshot is on disk.
+    private func scanRealTree() async throws -> (NeodiskViewModel, URL, TestEnvironment) {
+        let tree = FileManager.default.temporaryDirectory.resolvingSymlinksInPath()
+            .appending(path: "NeodiskChangesTree-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: tree.appending(path: "sub"), withIntermediateDirectories: true)
+        try Data(count: 200_000).write(to: tree.appending(path: "sub/kept.bin"))
+        try Data(count: 100_000).write(to: tree.appending(path: "gone.bin"))
+        let environment = try TestEnvironment()
+        let target = ScanTarget(url: tree, kind: .folder)
+        environment.sidebarFolderStore.add(target)
+        let model = environment.makeModel(service: IncrementalScanService())
+        model.analysisTab = .changes
+        try await scanAndPersist(model, paneLoads: ChangesPaneDriver(model: model)) { model.startScan(target) }
+        #expect(!model.changes.canCompare)
+        return (model, tree, environment)
+    }
+
+    private func scanAndPersist(
+        _ model: NeodiskViewModel, paneLoads: ChangesPaneDriver, start: () -> Void
+    ) async throws {
+        var persisted = false
+        model.session.onSnapshotPersistedForTesting = { _ in persisted = true }
+        defer { model.session.onSnapshotPersistedForTesting = nil }
+        paneLoads.tick()
+        start()
+        // Polled like the pane's .task(id:): a load can run mid-save and must not stick.
+        try await waitUntilAsync("scan finished and persisted", timeout: 20) {
+            paneLoads.tick()
+            return persisted && !model.coordinator.isScanning
+        }
+    }
+
+    private func rescanAndLoadChanges(_ model: NeodiskViewModel) async throws -> ScanChangeList? {
+        let paneLoads = ChangesPaneDriver(model: model)
+        try await scanAndPersist(model, paneLoads: paneLoads) { model.rescan() }
+        try await waitUntilAsync("Changes has a baseline", timeout: 10) {
+            paneLoads.tick()
+            return model.changes.list != nil && !model.changes.isLoading
+        }
+        return model.changes.list
+    }
+
     // MARK: - Fixtures
 
     private struct TestEnvironment {
@@ -467,10 +611,10 @@ import NeodiskKit
 
         /// Injected like the app does (ContentView sets model.preferences on appear), on isolated defaults.
         @MainActor
-        func makeModel(policy: AutoRescanPolicy? = nil) -> NeodiskViewModel {
+        func makeModel(policy: AutoRescanPolicy? = nil, service: (any ScanEventStreaming)? = nil) -> NeodiskViewModel {
             let model = NeodiskViewModel(
                 coordinator: ScanCoordinator(
-                    scanService: scanService,
+                    scanService: service ?? scanService,
                     progressThrottleDuration: .milliseconds(40)
                 ),
                 snapshotCache: cache,
@@ -512,5 +656,20 @@ import NeodiskKit
             startedAt: startedAt,
             finishedAt: finishedAt
         )
+    }
+}
+
+/// Calls `loadIfNeeded` only when the pane's task id would change, as SwiftUI's `.task(id:)` does.
+@MainActor
+final class ChangesPaneDriver {
+    let model: NeodiskViewModel
+    private var lastID: String?
+    init(model: NeodiskViewModel) { self.model = model }
+
+    func tick() {
+        let id = "\(model.coordinator.snapshot?.id.uuidString ?? "none")|\(model.changes.reloadToken)|\(model.changes.canCompare)"
+        guard id != lastID else { return }
+        lastID = id
+        model.changes.loadIfNeeded()
     }
 }

@@ -33,8 +33,23 @@ enum DevLaunchHooks {
             })
         }
 
+        let snapshotOutput = environment["NEODISK_UI_SNAPSHOT"]
+        let delay = environment["NEODISK_SNAPSHOT_DELAY"].flatMap(Double.init) ?? 1.5
+        func captureAndQuit(to output: String) {
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(delay))
+                if capture(window.window, to: output) {
+                    FileHandle.standardError.write(Data("neodisk: wrote \(output)\n".utf8))
+                } else {
+                    FileHandle.standardError.write(Data("neodisk: capture failed\n".utf8))
+                }
+                g_application_quit(ptr(application))
+            }
+        }
+
         // NEODISK_AUTOTRASH=<path>[:<path>...] moves those items as if each was confirmed, once the scan is on
-        // screen: every safety check still runs. One line per item on stderr.
+        // screen: every safety check still runs, and the window reports each move as it would (with
+        // NEODISK_UI_SNAPSHOT, the capture shows the last report). One line per item on stderr.
         if let rawPaths = environment["NEODISK_AUTOTRASH"] {
             var started = false
             tokens.append(track {
@@ -46,7 +61,7 @@ enum DevLaunchHooks {
                             FileHandle.standardError.write(Data("NEODISK_AUTOTRASH: \(path): not in the scan\n".utf8))
                             continue
                         }
-                        let outcome = await model.moveToTrash(node)
+                        let outcome = await window.move(node)
                         let line = switch outcome {
                         case .moved(let bytes): "moved \(bytes) bytes"
                         case .alreadyGone: "already gone"
@@ -58,25 +73,18 @@ enum DevLaunchHooks {
                     FileHandle.standardError.write(Data(
                         "NEODISK_AUTOTRASH: done; root \(model.snapshot?.root.allocatedSize ?? -1) bytes\n".utf8
                     ))
+                    if let snapshotOutput { captureAndQuit(to: snapshotOutput) }
                 }
             })
+            return
         }
 
-        guard let output = environment["NEODISK_UI_SNAPSHOT"] else { return }
-        let delay = environment["NEODISK_SNAPSHOT_DELAY"].flatMap(Double.init) ?? 1.5
+        guard let snapshotOutput else { return }
         var captured = false
         tokens.append(track {
             guard !captured, model.phase == .displaying, !model.catalog.stats.isEmpty || model.store?.nodeCount ?? 0 < 3 else { return }
             captured = true
-            Task { @MainActor in
-                try? await Task.sleep(for: .seconds(delay))
-                if capture(window.window, to: output) {
-                    FileHandle.standardError.write(Data("neodisk: wrote \(output)\n".utf8))
-                } else {
-                    FileHandle.standardError.write(Data("neodisk: capture failed\n".utf8))
-                }
-                g_application_quit(ptr(application))
-            }
+            captureAndQuit(to: snapshotOutput)
         })
     }
 

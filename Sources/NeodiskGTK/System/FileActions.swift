@@ -23,6 +23,13 @@ enum FileActions {
         g_object_unref(raw(launcher))
     }
 
+    /// The desktop's Trash in its file manager, where moved items can be put back.
+    static func openTrash(from window: GPtr?) {
+        let launcher = gtk_uri_launcher_new("trash:///")
+        gtk_uri_launcher_launch(launcher, ptr(window), nil, nil, nil)
+        g_object_unref(raw(launcher))
+    }
+
     static func copyPath(_ path: String, from widget: GPtr?) {
         let clipboard = gtk_widget_get_clipboard(ptr(widget))
         gdk_clipboard_set_text(clipboard, path)

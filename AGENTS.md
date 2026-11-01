@@ -52,7 +52,8 @@ The most used ones; the rest live in `Sources/NeodiskUI/Dev/`.
 - Static Swift runtime links need `--build-system native` for now.
 - Hooks: `NEODISK_AUTOSCAN`, `NEODISK_UI_SNAPSHOT` (GSK render to PNG, then quit; `NEODISK_SNAPSHOT_DELAY`),
   `NEODISK_VIZ_MODE`, `NEODISK_TREEMAP_STYLE`, `NEODISK_ANALYSIS_TAB`, `NEODISK_SELECT`, `NEODISK_SCAN_TIMING`,
-  `NEODISK_AUTOTRASH=<path>[:<path>…]` (moves them as if confirmed; really trashes: temp dirs only).
+  `NEODISK_AUTOTRASH=<path>[:<path>…]` (moves them as if confirmed, reported as the window would; really trashes:
+  temp dirs only; with `NEODISK_UI_SNAPSHOT`, the capture waits for the moves and shows the toast).
   `XDG_CONFIG_HOME` isolates settings. Example:
   `NEODISK_AUTOSCAN=/usr NEODISK_UI_SNAPSHOT=/tmp/shot.png xvfb-run -a -s "-screen 0 1600x1000x24" .build/debug/neodisk`
 

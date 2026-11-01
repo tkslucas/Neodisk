@@ -39,6 +39,9 @@ final class MainWindow {
     private var actions: [String: GPtr] = [:]
     /// Kept while it's out of the window (turned off in Preferences), so it can come back.
     private var trashAction: GObjectRef?
+    /// The moves the toast on screen reports. Another move while it shows adds to it, rather than queuing a
+    /// second toast behind it.
+    private var movedToast: (toast: GObjectRef, count: Int, bytes: Int64)?
     private var tokens: [ObservationToken] = []
 
     init(application: GPtr, model: AppModel) {
@@ -425,6 +428,9 @@ final class MainWindow {
             guard let path = self.model.selectedNode?.path else { return }
             FileActions.copyPath(path, from: self.window)
         }
+        addAction(to: window, "open-trash") { [unowned self] _ in
+            FileActions.openTrash(from: self.window)
+        }
         if let action = addAction(to: window, "move-to-trash", { [unowned self] _ in
             self.moveSelectionToTrash()
         }) {
@@ -487,36 +493,62 @@ final class MainWindow {
         adw_alert_dialog_set_close_response(ptr(dialog), "cancel")
         connectPointer(dialog, "response") { [unowned self] response in
             guard string(from: response?.assumingMemoryBound(to: CChar.self)) == "trash" else { return }
-            self.move(node)
+            Task { await self.move(node) }
         }
         adw_dialog_present(ptr(dialog), ptr(window))
     }
 
-    private func move(_ node: FileNodeRecord) {
-        Task { [weak self] in
-            guard let self else { return }
-            guard let outcome = await self.model.moveToTrash(node) else {
-                gtk_widget_error_bell(ptr(self.window))
-                return
-            }
-            switch outcome {
-            case .moved(let bytes):
-                self.showToast(bytes == 0
-                    ? L("Moved 1 item to the Trash.")
-                    : L("Moved 1 item (%@) to the Trash.", NeodiskFormatters.size(bytes)))
-            case .alreadyGone:
-                self.showToast(L("1 item was already gone."))
-            case .failed(let reason):
-                self.showAlert(heading: L("Couldn't Move “%@” to the Trash", node.name), body: reason)
-            }
+    /// Moves a confirmed item and reports how it went. Nil when another move is still running.
+    @discardableResult
+    func move(_ node: FileNodeRecord) async -> TrashOutcome? {
+        guard let outcome = await model.moveToTrash(node) else {
+            gtk_widget_error_bell(ptr(window))
+            return nil
+        }
+        switch outcome {
+        case .moved(let bytes):
+            reportMoved(bytes: bytes)
+        case .alreadyGone:
+            showToast(L("1 item was already gone."))
+        case .failed(let reason):
+            showAlert(heading: L("Couldn't Move “%@” to the Trash", node.name), body: reason)
+        }
+        return outcome
+    }
+
+    /// No Undo: putting an item back is the file manager's job, and it knows where each one came from.
+    private func reportMoved(bytes: Int64) {
+        let count = (movedToast?.count ?? 0) + 1
+        let total = (movedToast?.bytes ?? 0) + bytes
+        if let previous = movedToast?.toast.pointer {
+            adw_toast_dismiss(ptr(previous))
+        }
+        let text = switch (count, total) {
+        case (1, 0): L("Moved 1 item to the Trash.")
+        case (1, _): L("Moved 1 item (%@) to the Trash.", NeodiskFormatters.size(total))
+        case (_, 0): L("Moved %lld items to the Trash.", Int64(count))
+        default: L("Moved %lld items (%@) to the Trash.", Int64(count), NeodiskFormatters.size(total))
+        }
+        guard let toast = showToast(text, button: (L("Open Trash"), "win.open-trash")) else { return }
+        movedToast = (toast, count, total)
+        connect(toast.pointer, "dismissed") { [weak self, unowned toast] in
+            if self?.movedToast?.toast === toast { self?.movedToast = nil }
         }
     }
 
     /// Plain text: names and paths may hold markup characters.
-    private func showToast(_ text: String) {
-        guard let toast = adw_toast_new(text) else { return }
+    @discardableResult
+    private func showToast(_ text: String, button: (label: String, action: String)? = nil) -> GObjectRef? {
+        guard let toast = adw_toast_new(text) else { return nil }
         adw_toast_set_use_markup(toast, gbool(false))
+        if let button {
+            adw_toast_set_button_label(toast, button.label)
+            adw_toast_set_action_name(toast, button.action)
+        }
+        let kept = GObjectRef(retaining: raw(toast)!)
+        // The overlay takes the constructor's reference.
         adw_toast_overlay_add_toast(ptr(toastOverlay), toast)
+        return kept
     }
 
     /// Reasons run longer than a toast's single line.

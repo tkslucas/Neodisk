@@ -35,7 +35,6 @@ final class CleanupModel {
     @ObservationIgnored private var cachedPolicy: TrashSafetyPolicy?
     @ObservationIgnored private var mountObserver: AnyCancellable?
     @ObservationIgnored private var noticeTask: Task<Void, Never>?
-    @ObservationIgnored private var moveTask: Task<Void, Never>?
     /// Test seams.
     @ObservationIgnored var trashItem: TrashMover.TrashItem = TrashMover.systemTrash
     @ObservationIgnored var makePolicy: @Sendable () -> TrashSafetyPolicy = { TrashSafetyPolicy.live() }
@@ -265,7 +264,7 @@ final class CleanupModel {
         guard !nodes.isEmpty else { return }
         let confirmation = TrashConfirmation(nodes: nodes, scannedAt: snapshot.finishedAt)
         isConfirming = true
-        moveTask = Task { [weak self] in
+        Task { [weak self] in
             guard let self else { return }
             let confirmed = await self.confirm(confirmation)
             self.isConfirming = false

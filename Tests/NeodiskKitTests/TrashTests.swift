@@ -113,6 +113,21 @@ import Testing
         #expect(policy.refusal(forPath: alias, identity: nil) == nil)
     }
 
+    @Test func partsOfAnAppAreRefusedButTheAppIsNot() {
+        let policy = TrashSafetyPolicy(protectedPaths: [])
+        #expect(policy.refusal(forPath: "/Users/me/Apps/Tool.app", identity: nil) == nil)
+        #expect(policy.refusal(forPath: "/Users/me/notes.app.txt", identity: nil) == nil)
+        #expect(policy.refusal(forPath: "/Users/me/.app/cache", identity: nil) == nil)
+        #if os(macOS)
+        #expect(policy.refusal(forPath: "/Users/me/Apps/Tool.app/Contents", identity: nil) == .insideAppBundle)
+        #expect(policy.refusal(
+            forPath: "/Library/Audio/Plug-Ins/Synth.COMPONENT/Contents/Resources/x.bin", identity: nil
+        ) == .insideAppBundle)
+        #else
+        #expect(policy.refusal(forPath: "/home/me/site.app/node_modules", identity: nil) == nil)
+        #endif
+    }
+
     @Test func localizedUserFoldersComeFromUserDirs() {
         let contents = """
         # comment

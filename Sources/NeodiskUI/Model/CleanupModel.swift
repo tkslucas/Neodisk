@@ -64,10 +64,12 @@ final class CleanupModel {
     private var targetID: String? { coordinator.snapshot?.target.id }
     private var store: FileTreeStore? { coordinator.snapshot?.treeStore }
 
+    /// Turned off in Settings, the piles are kept for later but read as empty: the panel is gone, so no view may
+    /// mark them.
     private var pile: CleanupPile {
-        get { targetID.flatMap { piles[$0] } ?? CleanupPile() }
+        get { isEnabled ? targetID.flatMap { piles[$0] } ?? CleanupPile() : CleanupPile() }
         set {
-            guard let targetID else { return }
+            guard let targetID, isEnabled else { return }
             piles[targetID] = newValue.isEmpty ? nil : newValue
         }
     }

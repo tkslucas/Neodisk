@@ -261,6 +261,28 @@ import NeodiskAppModel
         #expect(!model.canToggleCleanup(for: [node]))
     }
 
+    @Test func turningItOffHidesWhatWasCollectedUntilItsBackOn() async throws {
+        let environment = try Environment()
+        defer { environment.tearDown() }
+        try environment.write("a.bin", bytes: 10)
+        let model = environment.makeModel()
+        model.coordinator.replaceCurrentSnapshot(try await environment.scan())
+        let node = try #require(model.store?.node(id: environment.path("a.bin")))
+        model.cleanup.add([node])
+        #expect(model.cleanup.mark(for: node.id) == .collected)
+
+        // The panel goes with the setting, so nothing may stay marked without a way to see or clear it.
+        model.preferences?.allowsMovingToTrash = false
+        try await waitUntil("preference mirrored") { !model.cleanup.isEnabled }
+        #expect(model.cleanup.isEmpty)
+        #expect(model.cleanup.mark(for: node.id) == .none)
+        #expect(model.selectionSummary == nil || model.selectionSummary?.inCleanup == 0)
+
+        model.preferences?.allowsMovingToTrash = true
+        try await waitUntil("preference mirrored") { model.cleanup.isEnabled }
+        #expect(model.cleanup.mark(for: node.id) == .collected)
+    }
+
     @Test func aStoppedScanAsksForARescanNotForPatience() async throws {
         let environment = try Environment()
         defer { environment.tearDown() }

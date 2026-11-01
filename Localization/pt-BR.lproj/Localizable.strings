@@ -454,9 +454,7 @@
 
 /* MARK: - Cleanup and moving to the Trash */
 "%lld items were already gone." = "%lld itens já não existiam.";
-"%lld items" = "%lld itens";
 "1 item was already gone." = "1 item já não existia.";
-"1 item" = "1 item";
 "Add to Cleanup" = "Adicionar à Limpeza";
 "and %lld more" = "e mais %lld";
 "Cleanup" = "Limpeza";
@@ -466,8 +464,6 @@
 "It changed since the scan. Rescan to move it." = "Ele mudou desde a análise. Analise novamente para movê-lo.";
 "Move “%@” to the Trash?" = "Mover “%@” para a Lixeira?";
 "Move %lld items (%@) to the Trash?" = "Mover %lld itens (%@) para a Lixeira?";
-"Move %lld Items to Trash…" = "Mover %lld Itens para a Lixeira…";
-"Move 1 Item to Trash…" = "Mover 1 Item para a Lixeira…";
 "Move Cleanup to Trash…" = "Mover Limpeza para a Lixeira…";
 "Move to Trash" = "Mover para a Lixeira";
 "Move to Trash…" = "Mover para a Lixeira…";
@@ -477,12 +473,9 @@
 "Moving items to the Trash is turned off in Settings." = "Mover itens para a Lixeira está desativado nos Ajustes.";
 "Moving to the Trash…" = "Movendo para a Lixeira…";
 "Neodisk asks before each move and never deletes anything itself. System folders and your home folder are off limits. Turn this off to only look." = "O Neodisk pergunta antes de cada movimentação e nunca exclui nada por conta própria. As pastas do sistema e sua pasta pessoal ficam de fora. Desative para apenas visualizar.";
-"Nothing collected" = "Nada reunido";
-"Nothing moves until you confirm. Items go to the Trash, so you can still get them back." = "Nada é movido até você confirmar. Os itens vão para a Lixeira, então você ainda pode recuperá-los.";
 "Open Trash" = "Abrir a Lixeira";
 "Release to collect" = "Solte para reunir";
 "Remove from Cleanup" = "Remover da Limpeza";
-"Review" = "Revisar";
 "Some of this is in a cloud drive: moving it to the Trash also removes it from the cloud and your other devices." = "Parte disso está em uma unidade na nuvem: movê-lo para a Lixeira também o remove da nuvem e dos seus outros dispositivos.";
 "Some of this shares storage with other files (hard links or clones), so less space may come back." = "Parte disso compartilha armazenamento com outros arquivos (links físicos ou clones), então menos espaço pode ser liberado.";
 "The space comes back when you empty the Trash." = "O espaço é liberado quando você esvazia a Lixeira.";
@@ -507,3 +500,6 @@
 "This scan is from %@: folders may have changed since. Rescan to be sure." = "Esta análise é de %@: as pastas podem ter mudado desde então. Analise novamente para ter certeza.";
 "1 item changed since you collected it and left Cleanup." = "1 item mudou desde que você o juntou e saiu da Limpeza.";
 "%lld items changed since you collected them and left Cleanup." = "%lld itens mudaram desde que você os juntou e saíram da Limpeza.";
+"Reset Tabs" = "Redefinir abas";
+"Percentage" = "Porcentagem";
+"More tabs" = "Mais abas";

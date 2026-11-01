@@ -25,7 +25,6 @@ final class CleanupModel {
     /// Items whose move is running; the views mark them and refuse to act on them.
     private(set) var movingIDs: Set<String> = []
     private(set) var notice: Notice?
-    var isReviewPresented = false
     /// True while a drag of scanned items is under way, so the panel can show where to drop them.
     var isDragInProgress = false
     /// Mirror of the Settings toggle.
@@ -209,7 +208,6 @@ final class CleanupModel {
         guard !isMoving else { return }
         for id in pile.itemIDs { failures[id] = nil }
         pile = CleanupPile()
-        isReviewPresented = false
     }
 
     /// Drops gone items after any tree change; a new tree of the same location keeps its pile, except items
@@ -230,7 +228,6 @@ final class CleanupModel {
     func setEnabled(_ enabled: Bool) {
         guard isEnabled != enabled else { return }
         isEnabled = enabled
-        if !enabled { isReviewPresented = false }
     }
 
     func dismissNotice() {
@@ -265,8 +262,6 @@ final class CleanupModel {
         guard !nodes.isEmpty else { return }
         let confirmation = TrashConfirmation(nodes: nodes, scannedAt: snapshot.finishedAt)
         isConfirming = true
-        // The question goes on the window, not on the review popover.
-        isReviewPresented = false
         moveTask = Task { [weak self] in
             guard let self else { return }
             let confirmed = await self.confirm(confirmation)
@@ -357,7 +352,6 @@ final class CleanupModel {
         }
         guard !parts.isEmpty else { return }
         show(Notice(kind: failed > 0 ? .failed : .moved, text: parts.joined(separator: " ")), for: failed > 0 ? nil : 12)
-        if failed > 0 { isReviewPresented = true }
     }
 
     // MARK: - Confirmation

@@ -15,11 +15,10 @@ final class TreemapNSView: NSView, NSDraggingSource {
     private let labelContainerLayer = CALayer()
     private let selectionLayer = CALayer()
     private let hoverLayer = CALayer()
-    /// Cleanup marks: a wash over collected items, then a halo and a dashed (or, while moving, solid) outline.
+    /// Cleanup marks: a wash over collected items and a hairline around them. Quiet on purpose: the map stays
+    /// readable with a full pile.
     private let cleanupWashLayer = CAShapeLayer()
-    private let cleanupHaloLayer = CAShapeLayer()
     private let cleanupOutlineLayer = CAShapeLayer()
-    private let cleanupMovingLayer = CAShapeLayer()
     /// A press that may become a drag once it travels `dragThreshold`.
     private var pendingDrag: PendingDrag?
     private static let dragThreshold: CGFloat = 4
@@ -58,7 +57,7 @@ final class TreemapNSView: NSView, NSDraggingSource {
         selectionLayer.isHidden = true
         hoverLayer.isHidden = true
 
-        for layer in [cleanupWashLayer, cleanupHaloLayer, cleanupOutlineLayer, cleanupMovingLayer] {
+        for layer in [cleanupWashLayer, cleanupOutlineLayer] {
             layer.isHidden = true
             layer.fillColor = nil
             layer.lineJoin = .round
@@ -68,9 +67,7 @@ final class TreemapNSView: NSView, NSDraggingSource {
         contentLayer.addSublayer(labelContainerLayer)
         // Over the labels so a collected item's name dims with it; under hover and selection.
         contentLayer.addSublayer(cleanupWashLayer)
-        contentLayer.addSublayer(cleanupHaloLayer)
         contentLayer.addSublayer(cleanupOutlineLayer)
-        contentLayer.addSublayer(cleanupMovingLayer)
         // Hover under selection, so the selection ring stays on top when
         // both land on the same cell.
         contentLayer.addSublayer(hoverLayer)
@@ -147,7 +144,7 @@ final class TreemapNSView: NSView, NSDraggingSource {
         // Strokes keep their on-screen width under the zoom transform, like the selection ring.
         let unit = 1 / max(controller.displayTransform.a, 0.001)
         let radius: CGFloat = scene.style == .flat ? 4 : 0
-        let lineWidth = 2 * unit
+        let lineWidth = unit
 
         func path(_ rects: [CGRect], inset: CGFloat) -> CGPath {
             let path = CGMutablePath()
@@ -164,9 +161,7 @@ final class TreemapNSView: NSView, NSDraggingSource {
         effectiveAppearance.performAsCurrentDrawingAppearance {
             colors = CleanupColors(
                 wash: NSColor.windowBackgroundColor.withAlphaComponent(0.6).cgColor,
-                halo: NSColor.windowBackgroundColor.withAlphaComponent(0.85).cgColor,
-                accent: NSColor.controlAccentColor.cgColor,
-                moving: NSColor.secondaryLabelColor.cgColor
+                outline: NSColor.labelColor.withAlphaComponent(0.35).cgColor
             )
         }
 
@@ -176,33 +171,19 @@ final class TreemapNSView: NSView, NSDraggingSource {
         cleanupWashLayer.fillColor = colors.wash
         cleanupWashLayer.isHidden = false
 
-        let outlined = path(marks.collected, inset: lineWidth / 2)
-        cleanupHaloLayer.path = path(marks.collected + marks.moving, inset: lineWidth / 2)
-        cleanupHaloLayer.strokeColor = colors.halo
-        cleanupHaloLayer.lineWidth = lineWidth + unit
-        cleanupHaloLayer.isHidden = false
-
-        cleanupOutlineLayer.path = outlined
-        cleanupOutlineLayer.strokeColor = colors.accent
+        cleanupOutlineLayer.path = path(marks.collected + marks.moving, inset: lineWidth / 2)
+        cleanupOutlineLayer.strokeColor = colors.outline
         cleanupOutlineLayer.lineWidth = lineWidth
-        cleanupOutlineLayer.lineDashPattern = [NSNumber(value: Double(5 * unit)), NSNumber(value: Double(3 * unit))]
-        cleanupOutlineLayer.isHidden = marks.collected.isEmpty
-
-        cleanupMovingLayer.path = path(marks.moving, inset: lineWidth / 2)
-        cleanupMovingLayer.strokeColor = colors.moving
-        cleanupMovingLayer.lineWidth = lineWidth
-        cleanupMovingLayer.isHidden = marks.moving.isEmpty
+        cleanupOutlineLayer.isHidden = false
     }
 
     private struct CleanupColors {
         var wash: CGColor = .clear
-        var halo: CGColor = .clear
-        var accent: CGColor = .clear
-        var moving: CGColor = .clear
+        var outline: CGColor = .clear
     }
 
     private func hideCleanupLayers() {
-        for layer in [cleanupWashLayer, cleanupHaloLayer, cleanupOutlineLayer, cleanupMovingLayer] {
+        for layer in [cleanupWashLayer, cleanupOutlineLayer] {
             layer.isHidden = true
         }
     }

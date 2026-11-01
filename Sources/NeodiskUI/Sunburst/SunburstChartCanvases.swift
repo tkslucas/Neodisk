@@ -79,7 +79,7 @@ struct SunburstHoverOverlay: View, Equatable {
 }
 
 /// Cleanup marks over the rings: a wash toward the window background on collected arcs and what's inside them,
-/// then a halo and a dashed accent outline (solid secondary while moving). The same language as the treemap's.
+/// and a hairline around them. The same language as the treemap's.
 struct SunburstCleanupOverlayCanvas: View, Equatable {
     let overlay: SunburstCleanupOverlay
 
@@ -97,26 +97,11 @@ struct SunburstCleanupOverlayCanvas: View, Equatable {
             }
             context.fill(wash, with: .color(background.opacity(0.6)))
 
-            let outlined = overlay.moving + overlay.collected
-            for segment in outlined {
+            for segment in overlay.moving + overlay.collected {
                 context.stroke(
                     SunburstRenderer.path(for: segment, in: size),
-                    with: .color(background.opacity(0.85)),
-                    lineWidth: 3
-                )
-            }
-            for segment in overlay.collected {
-                context.stroke(
-                    SunburstRenderer.path(for: segment, in: size),
-                    with: .color(.accentColor),
-                    style: StrokeStyle(lineWidth: 2, lineJoin: .round, dash: [5, 3])
-                )
-            }
-            for segment in overlay.moving {
-                context.stroke(
-                    SunburstRenderer.path(for: segment, in: size),
-                    with: .color(.secondary),
-                    style: StrokeStyle(lineWidth: 2, lineJoin: .round)
+                    with: .color(.primary.opacity(0.35)),
+                    style: StrokeStyle(lineWidth: 1, lineJoin: .round)
                 )
             }
         }

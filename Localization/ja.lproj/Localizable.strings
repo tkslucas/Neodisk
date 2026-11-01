@@ -453,9 +453,7 @@
 
 /* MARK: - Cleanup and moving to the Trash */
 "%lld items were already gone." = "%lld 項目はすでにありませんでした。";
-"%lld items" = "%lld 項目";
 "1 item was already gone." = "1 項目はすでにありませんでした。";
-"1 item" = "1 項目";
 "Add to Cleanup" = "クリーンアップに追加";
 "and %lld more" = "ほか %lld 項目";
 "Cleanup" = "クリーンアップ";
@@ -465,8 +463,6 @@
 "It changed since the scan. Rescan to move it." = "スキャン後に変更されました。移動するには再スキャンしてください。";
 "Move “%@” to the Trash?" = "「%@」をゴミ箱に入れますか？";
 "Move %lld items (%@) to the Trash?" = "%lld 項目（%@）をゴミ箱に入れますか？";
-"Move %lld Items to Trash…" = "%lld 項目をゴミ箱に入れる…";
-"Move 1 Item to Trash…" = "1 項目をゴミ箱に入れる…";
 "Move Cleanup to Trash…" = "クリーンアップをゴミ箱に入れる…";
 "Move to Trash" = "ゴミ箱に入れる";
 "Move to Trash…" = "ゴミ箱に入れる…";
@@ -476,12 +472,9 @@
 "Moving items to the Trash is turned off in Settings." = "項目をゴミ箱に入れる機能は設定でオフになっています。";
 "Moving to the Trash…" = "ゴミ箱に入れています…";
 "Neodisk asks before each move and never deletes anything itself. System folders and your home folder are off limits. Turn this off to only look." = "Neodiskは移動のたびに確認し、自分で何かを削除することはありません。システムフォルダとホームフォルダには触れません。見るだけにするにはオフにしてください。";
-"Nothing collected" = "何も集めていません";
-"Nothing moves until you confirm. Items go to the Trash, so you can still get them back." = "確認するまで何も移動しません。項目はゴミ箱に入るので、後から戻せます。";
 "Open Trash" = "ゴミ箱を開く";
 "Release to collect" = "離して集める";
 "Remove from Cleanup" = "クリーンアップから外す";
-"Review" = "確認";
 "Some of this is in a cloud drive: moving it to the Trash also removes it from the cloud and your other devices." = "一部はクラウドドライブにあります。ゴミ箱に入れると、クラウドとほかのデバイスからも削除されます。";
 "Some of this shares storage with other files (hard links or clones), so less space may come back." = "一部はほかのファイルと記憶領域を共有しているため（ハードリンクまたはクローン）、空く容量が少なくなる場合があります。";
 "The space comes back when you empty the Trash." = "容量はゴミ箱を空にしたときに解放されます。";
@@ -506,3 +499,6 @@
 "This scan is from %@: folders may have changed since. Rescan to be sure." = "このスキャンは%@のものです。フォルダが変更されている可能性があります。確実にするには再スキャンしてください。";
 "1 item changed since you collected it and left Cleanup." = "1 項目が集めた後に変更されたため、クリーンアップから外しました。";
 "%lld items changed since you collected them and left Cleanup." = "%lld 項目が集めた後に変更されたため、クリーンアップから外しました。";
+"Reset Tabs" = "タブをリセット";
+"Percentage" = "割合";
+"More tabs" = "その他のタブ";

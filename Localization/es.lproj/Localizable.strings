@@ -454,9 +454,7 @@
 
 /* MARK: - Cleanup and moving to the Trash */
 "%lld items were already gone." = "%lld elementos ya no estaban.";
-"%lld items" = "%lld elementos";
 "1 item was already gone." = "1 elemento ya no estaba.";
-"1 item" = "1 elemento";
 "Add to Cleanup" = "Añadir a Limpieza";
 "and %lld more" = "y %lld más";
 "Cleanup" = "Limpieza";
@@ -466,8 +464,6 @@
 "It changed since the scan. Rescan to move it." = "Ha cambiado desde el análisis. Vuelve a analizar para moverlo.";
 "Move “%@” to the Trash?" = "¿Mover “%@” a la Papelera?";
 "Move %lld items (%@) to the Trash?" = "¿Mover %lld elementos (%@) a la Papelera?";
-"Move %lld Items to Trash…" = "Mover %lld elementos a la Papelera…";
-"Move 1 Item to Trash…" = "Mover 1 elemento a la Papelera…";
 "Move Cleanup to Trash…" = "Mover Limpieza a la Papelera…";
 "Move to Trash" = "Mover a la Papelera";
 "Move to Trash…" = "Mover a la Papelera…";
@@ -477,12 +473,9 @@
 "Moving items to the Trash is turned off in Settings." = "Mover elementos a la Papelera está desactivado en Ajustes.";
 "Moving to the Trash…" = "Moviendo a la Papelera…";
 "Neodisk asks before each move and never deletes anything itself. System folders and your home folder are off limits. Turn this off to only look." = "Neodisk pregunta antes de cada traslado y nunca elimina nada por su cuenta. Las carpetas del sistema y tu carpeta personal quedan fuera de alcance. Desactívalo para solo mirar.";
-"Nothing collected" = "No hay nada reunido";
-"Nothing moves until you confirm. Items go to the Trash, so you can still get them back." = "Nada se mueve hasta que lo confirmes. Los elementos van a la Papelera, así que aún puedes recuperarlos.";
 "Open Trash" = "Abrir la Papelera";
 "Release to collect" = "Suelta para reunir";
 "Remove from Cleanup" = "Quitar de Limpieza";
-"Review" = "Revisar";
 "Some of this is in a cloud drive: moving it to the Trash also removes it from the cloud and your other devices." = "Parte de esto está en una unidad en la nube: al moverlo a la Papelera también se elimina de la nube y de tus otros dispositivos.";
 "Some of this shares storage with other files (hard links or clones), so less space may come back." = "Parte de esto comparte almacenamiento con otros archivos (enlaces duros o clones), así que puede que se libere menos espacio.";
 "The space comes back when you empty the Trash." = "El espacio se libera al vaciar la Papelera.";
@@ -507,3 +500,6 @@
 "This scan is from %@: folders may have changed since. Rescan to be sure." = "Este análisis es de %@: las carpetas pueden haber cambiado desde entonces. Vuelve a analizar para asegurarte.";
 "1 item changed since you collected it and left Cleanup." = "1 elemento cambió desde que lo recogiste y salió de Limpieza.";
 "%lld items changed since you collected them and left Cleanup." = "%lld elementos cambiaron desde que los recogiste y salieron de Limpieza.";
+"Reset Tabs" = "Restablecer pestañas";
+"Percentage" = "Porcentaje";
+"More tabs" = "Más pestañas";

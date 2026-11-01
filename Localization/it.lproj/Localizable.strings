@@ -453,9 +453,7 @@
 
 /* MARK: - Cleanup and moving to the Trash */
 "%lld items were already gone." = "%lld elementi non c'erano già più.";
-"%lld items" = "%lld elementi";
 "1 item was already gone." = "1 elemento non c'era già più.";
-"1 item" = "1 elemento";
 "Add to Cleanup" = "Aggiungi a Pulizia";
 "and %lld more" = "e altri %lld";
 "Cleanup" = "Pulizia";
@@ -465,8 +463,6 @@
 "It changed since the scan. Rescan to move it." = "È cambiato dopo la scansione. Ripeti la scansione per spostarlo.";
 "Move “%@” to the Trash?" = "Spostare “%@” nel Cestino?";
 "Move %lld items (%@) to the Trash?" = "Spostare %lld elementi (%@) nel Cestino?";
-"Move %lld Items to Trash…" = "Sposta %lld elementi nel Cestino…";
-"Move 1 Item to Trash…" = "Sposta 1 elemento nel Cestino…";
 "Move Cleanup to Trash…" = "Sposta Pulizia nel Cestino…";
 "Move to Trash" = "Sposta nel Cestino";
 "Move to Trash…" = "Sposta nel Cestino…";
@@ -476,12 +472,9 @@
 "Moving items to the Trash is turned off in Settings." = "Lo spostamento degli elementi nel Cestino è disattivato nelle Impostazioni.";
 "Moving to the Trash…" = "Spostamento nel Cestino…";
 "Neodisk asks before each move and never deletes anything itself. System folders and your home folder are off limits. Turn this off to only look." = "Neodisk chiede conferma prima di ogni spostamento e non elimina mai nulla da sé. Le cartelle di sistema e la tua cartella personale sono escluse. Disattiva l'opzione per limitarti a guardare.";
-"Nothing collected" = "Nessun elemento raccolto";
-"Nothing moves until you confirm. Items go to the Trash, so you can still get them back." = "Nulla viene spostato finché non confermi. Gli elementi finiscono nel Cestino, così puoi ancora recuperarli.";
 "Open Trash" = "Apri il Cestino";
 "Release to collect" = "Rilascia per raccogliere";
 "Remove from Cleanup" = "Rimuovi da Pulizia";
-"Review" = "Rivedi";
 "Some of this is in a cloud drive: moving it to the Trash also removes it from the cloud and your other devices." = "Una parte si trova in un'unità cloud: spostarla nel Cestino la rimuove anche dal cloud e dagli altri tuoi dispositivi.";
 "Some of this shares storage with other files (hard links or clones), so less space may come back." = "Una parte condivide lo spazio con altri file (hard link o cloni), quindi potresti recuperare meno spazio.";
 "The space comes back when you empty the Trash." = "Lo spazio si libera quando svuoti il Cestino.";
@@ -506,3 +499,6 @@
 "This scan is from %@: folders may have changed since. Rescan to be sure." = "Questa scansione risale a %@: le cartelle potrebbero essere cambiate. Ripeti la scansione per sicurezza.";
 "1 item changed since you collected it and left Cleanup." = "1 elemento è cambiato da quando l'hai raccolto ed è uscito da Pulizia.";
 "%lld items changed since you collected them and left Cleanup." = "%lld elementi sono cambiati da quando li hai raccolti e sono usciti da Pulizia.";
+"Reset Tabs" = "Ripristina schede";
+"Percentage" = "Percentuale";
+"More tabs" = "Altre schede";

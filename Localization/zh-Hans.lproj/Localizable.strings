@@ -453,9 +453,7 @@
 
 /* MARK: - Cleanup and moving to the Trash */
 "%lld items were already gone." = "%lld 个项目已不存在。";
-"%lld items" = "%lld 个项目";
 "1 item was already gone." = "1 个项目已不存在。";
-"1 item" = "1 个项目";
 "Add to Cleanup" = "添加到清理";
 "and %lld more" = "以及另外 %lld 个";
 "Cleanup" = "清理";
@@ -465,8 +463,6 @@
 "It changed since the scan. Rescan to move it." = "自扫描以来它已更改。请重新扫描后再移动。";
 "Move “%@” to the Trash?" = "要将“%@”移到废纸篓吗？";
 "Move %lld items (%@) to the Trash?" = "要将 %lld 个项目（%@）移到废纸篓吗？";
-"Move %lld Items to Trash…" = "将 %lld 个项目移到废纸篓…";
-"Move 1 Item to Trash…" = "将 1 个项目移到废纸篓…";
 "Move Cleanup to Trash…" = "将清理项目移到废纸篓…";
 "Move to Trash" = "移到废纸篓";
 "Move to Trash…" = "移到废纸篓…";
@@ -476,12 +472,9 @@
 "Moving items to the Trash is turned off in Settings." = "已在“设置”中关闭将项目移到废纸篓。";
 "Moving to the Trash…" = "正在移到废纸篓…";
 "Neodisk asks before each move and never deletes anything itself. System folders and your home folder are off limits. Turn this off to only look." = "Neodisk 每次移动前都会询问，自身绝不会删除任何内容。系统文件夹和你的个人文件夹不会被触及。关闭此项即可只查看。";
-"Nothing collected" = "尚未收集任何内容";
-"Nothing moves until you confirm. Items go to the Trash, so you can still get them back." = "在你确认之前不会移动任何内容。项目会移到废纸篓，因此仍可找回。";
 "Open Trash" = "打开废纸篓";
 "Release to collect" = "松开以收集";
 "Remove from Cleanup" = "从清理中移除";
-"Review" = "检查";
 "Some of this is in a cloud drive: moving it to the Trash also removes it from the cloud and your other devices." = "其中部分内容位于云盘中：将其移到废纸篓也会将其从云端和你的其他设备中移除。";
 "Some of this shares storage with other files (hard links or clones), so less space may come back." = "其中部分内容与其他文件共享存储（硬链接或克隆），因此释放的空间可能较少。";
 "The space comes back when you empty the Trash." = "清倒废纸篓后即可释放空间。";
@@ -506,3 +499,6 @@
 "This scan is from %@: folders may have changed since. Rescan to be sure." = "此扫描来自%@：文件夹可能已有变化。请重新扫描以确保准确。";
 "1 item changed since you collected it and left Cleanup." = "1 个项目在收集后发生了变化，已移出清理。";
 "%lld items changed since you collected them and left Cleanup." = "%lld 个项目在收集后发生了变化，已移出清理。";
+"Reset Tabs" = "重置标签页";
+"Percentage" = "百分比";
+"More tabs" = "更多标签页";

@@ -269,7 +269,8 @@ struct NeodiskCommands: Commands {
                     )
                 }
                 .keyboardShortcut(.delete, modifiers: .command)
-                .disabled(model.selectedNode == nil)
+                // Refused items stay enabled: ⌘⌫ then says why. Something inside a collected folder is already in.
+                .disabled(model.selectedNode.map { model.cleanup.mark(for: $0.id) == .inside } ?? true)
 
                 Button {
                     model.cleanup.moveAllToTrash()

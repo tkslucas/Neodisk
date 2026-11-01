@@ -512,3 +512,6 @@
 "1 item can't go to the Trash. %@" = "有 1 个项目无法移到废纸篓。%@";
 "%lld items can't go to the Trash. %@" = "有 %lld 个项目无法移到废纸篓。%@";
 "This is inside a package, which Finder shows as one file (an app, a plug-in, a library). Move the whole package instead." = "此项位于一个包中，访达会将包显示为单个文件（如应用、插件或资源库）。请改为移动整个包。";
+/* Cleanup: hard links and clones */
+"Shared" = "共享";
+"Shares its storage with another file (a hard link or clone), so moving it alone frees no space." = "与另一个文件共享存储（硬链接或克隆），因此单独移动它不会释放空间。";

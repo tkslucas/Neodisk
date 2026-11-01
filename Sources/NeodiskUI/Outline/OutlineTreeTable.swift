@@ -539,6 +539,13 @@ final class OutlineNSTableView: NSTableView {
         super.keyDown(with: event)
     }
 
+    // AppKit's first-column autoresizing only passes on the pane's change, so a table laid out wider than its
+    // pane (bigger text, a shown column) never comes back: refit the first column on every resize.
+    override func resize(withOldSuperviewSize oldSize: NSSize) {
+        super.resize(withOldSuperviewSize: oldSize)
+        if columnAutoresizingStyle == .firstColumnOnlyAutoresizingStyle { sizeToFit() }
+    }
+
     override func mouseDown(with event: NSEvent) {
         isTrackingClick = true
         super.mouseDown(with: event)

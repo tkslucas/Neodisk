@@ -132,6 +132,13 @@ import NeodiskAppModel
         #expect(model.cleanup.itemIDs == [old.id])
         #expect(model.cleanup.notice?.kind == .refused)
 
+        // Inside a collected folder: already in, so its menu item is off and says why.
+        let inside = try #require(store.node(id: environment.path("Old/Deep/b.bin")))
+        #expect(!model.canToggleCleanup(for: inside))
+        #expect(model.cleanupMenuHelp(for: inside) == CleanupModel.Mark.inside.hoverText)
+        #expect(model.canToggleCleanup(for: old))
+        #expect(model.cleanupMenuHelp(for: old) == nil)
+
         // A drag carries the node and its file URL, for the tree on screen only.
         let item = try #require(NodeDragSource.pasteboardItem(forNodeID: environment.path("keep.txt"), model: model))
         let snapshotID = try #require(model.coordinator.snapshot?.id)

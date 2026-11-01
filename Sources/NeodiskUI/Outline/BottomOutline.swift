@@ -234,6 +234,7 @@ struct BottomOutlineTable: NSViewRepresentable {
                     ? column.width : column.width * ratio
                 column.width = max(target, minimum)
             }
+            tableView.sizeToFit()
         }
 
         func apply(snapshot: NeodiskViewModel.OutlineRowsSnapshot) {
@@ -456,15 +457,21 @@ struct BottomOutlineTable: NSViewRepresentable {
 
         // MARK: Columns
 
+        /// Set while the table is rearranged to match the model: each `moveColumn` reports a half-done order.
+        private var isApplyingColumns = false
+
         func applyColumns(_ layout: ItemLayout<OutlineColumn>) {
             guard let tableView, layout != appliedColumns else { return }
             appliedColumns = layout
+            isApplyingColumns = true
+            defer { isApplyingColumns = false }
             for (index, id) in layout.order.enumerated() {
                 let current = tableView.column(withIdentifier: .init(id.rawValue))
                 guard current >= 0 else { continue }
                 if current != index { tableView.moveColumn(current, toColumn: index) }
                 tableView.tableColumns[index].isHidden = layout.isHidden(id)
             }
+            tableView.sizeToFit()
         }
 
         func tableView(_ tableView: NSTableView, shouldReorderColumn columnIndex: Int, toColumn newColumnIndex: Int) -> Bool {
@@ -472,7 +479,7 @@ struct BottomOutlineTable: NSViewRepresentable {
         }
 
         func tableViewColumnDidMove(_ notification: Notification) {
-            guard let tableView else { return }
+            guard let tableView, !isApplyingColumns else { return }
             var layout = appliedColumns
             layout.setVisibleOrder(tableView.tableColumns.filter { !$0.isHidden }.compactMap {
                 OutlineColumn(rawValue: $0.identifier.rawValue)
@@ -487,6 +494,7 @@ struct BottomOutlineTable: NSViewRepresentable {
             if let tableView {
                 let index = tableView.column(withIdentifier: .init(id))
                 if index >= 0 { tableView.tableColumns[index].isHidden = layout.isHidden(column) }
+                tableView.sizeToFit()
             }
             commitColumns(layout)
         }

@@ -93,15 +93,29 @@ enum DevLaunchHooks {
                         "NEODISK_AUTOCOLLECT: found \(nodes.count) of \(paths.count), collected \(model.cleanup.itemIDs.count)\n".utf8
                     ))
                     // NEODISK_AUTOTRASH=1 then moves the pile as if confirmed: every safety check still runs.
-                    if environment["NEODISK_AUTOTRASH"] == "1" {
+                    // =fail fails every move and =hold holds them for a minute first; neither moves anything.
+                    switch environment["NEODISK_AUTOTRASH"] {
+                    case "1":
                         await autoTrash(model: model)
+                    case "fail":
+                        model.cleanup.trashItem = { _ in throw CocoaError(.fileWriteNoPermission) }
+                        await autoTrash(model: model)
+                    case "hold":
+                        model.cleanup.trashItem = { _ in
+                            Thread.sleep(forTimeInterval: 60)
+                            throw CocoaError(.fileWriteNoPermission)
+                        }
+                        model.cleanup.confirm = { _ in true }
+                        model.cleanup.moveAllToTrash()
+                    default:
+                        break
                     }
                     break
                 }
             }
         }
 
-        SidebarSnapshotter.scheduleIfRequested(model: model)
+        PaneSnapshotter.scheduleIfRequested(model: model)
     }
 
     @MainActor

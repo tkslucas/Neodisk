@@ -512,3 +512,6 @@
 "1 item can't go to the Trash. %@" = "1 Objekt kann nicht in den Papierkorb. %@";
 "%lld items can't go to the Trash. %@" = "%lld Objekte können nicht in den Papierkorb. %@";
 "This is inside a package, which Finder shows as one file (an app, a plug-in, a library). Move the whole package instead." = "Das liegt in einem Paket, das der Finder als eine Datei zeigt (eine App, ein Plug-in, eine Mediathek). Verschiebe stattdessen das ganze Paket.";
+/* Cleanup: hard links and clones */
+"Shared" = "Geteilt";
+"Shares its storage with another file (a hard link or clone), so moving it alone frees no space." = "Teilt Speicher mit einer anderen Datei (harter Link oder Klon), daher wird allein dadurch kein Platz frei.";

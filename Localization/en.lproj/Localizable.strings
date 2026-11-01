@@ -512,3 +512,6 @@
 "1 item can't go to the Trash. %@" = "1 item can't go to the Trash. %@";
 "%lld items can't go to the Trash. %@" = "%lld items can't go to the Trash. %@";
 "This is inside a package, which Finder shows as one file (an app, a plug-in, a library). Move the whole package instead." = "This is inside a package, which Finder shows as one file (an app, a plug-in, a library). Move the whole package instead.";
+/* Cleanup: hard links and clones */
+"Shared" = "Shared";
+"Shares its storage with another file (a hard link or clone), so moving it alone frees no space." = "Shares its storage with another file (a hard link or clone), so moving it alone frees no space.";

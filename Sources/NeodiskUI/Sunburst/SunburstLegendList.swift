@@ -52,7 +52,8 @@ struct SunburstLegendList: View {
                     isHeader: true,
                     isSelected: false,
                     isHighlighted: false,
-                    reservesCloudGlyphSlot: model.showsCloudOnlyFiles
+                    reservesCloudGlyphSlot: model.showsCloudOnlyFiles,
+                    cleanupMark: cleanupMark(for: presentation.header)
                 )
                 .padding(.top, 10)
                 .padding(.bottom, 4)
@@ -125,7 +126,8 @@ struct SunburstLegendList: View {
             isHeader: false,
             isSelected: isSelected(row),
             isHighlighted: isHighlighted,
-            reservesCloudGlyphSlot: model.showsCloudOnlyFiles
+            reservesCloudGlyphSlot: model.showsCloudOnlyFiles,
+            cleanupMark: cleanupMark(for: row)
         )
         .contentShape(Rectangle())
         .onHover { isHovering in
@@ -149,6 +151,12 @@ struct SunburstLegendList: View {
         } else {
             rowView
         }
+    }
+
+    /// Rows mark Cleanup as the file lists do.
+    private func cleanupMark(for row: SunburstLegendRow) -> CleanupModel.Mark {
+        guard case .node(let nodeID, _) = row.target else { return .none }
+        return model.cleanup.mark(for: nodeID)
     }
 
     /// Hidden space is the one legend entry whose meaning isn't obvious
@@ -210,6 +218,7 @@ struct SunburstLegendList: View {
                 Divider()
                 Button(LocalizedStringKey(model.cleanupMenuTitle(for: node))) { model.cleanup.toggle(node) }
                     .disabled(!model.canToggleCleanup(for: node))
+                    .help(model.cleanupMenuHelp(for: node) ?? "")
             }
         }
     }
@@ -227,6 +236,7 @@ private struct LegendRowView: View {
     /// Reserve the trailing glyph slot on every row (the cloud-only toggle
     /// is on), so sizes right-align whether or not a row shows the glyph.
     var reservesCloudGlyphSlot: Bool = false
+    var cleanupMark: CleanupModel.Mark = .none
 
     var body: some View {
         HStack(spacing: 9) {
@@ -238,6 +248,10 @@ private struct LegendRowView: View {
                 .foregroundStyle(row.isDimmed ? .secondary : .primary)
                 .lineLimit(1)
                 .truncationMode(.middle)
+            if cleanupMark.isItem {
+                CleanupRowGlyph()
+                    .padding(.leading, -5)
+            }
             Spacer(minLength: 8)
             Text(verbatim: NeodiskFormatters.size(row.size))
                 .neoFont(sizeFont)
@@ -251,6 +265,7 @@ private struct LegendRowView: View {
                     .frame(width: FileSizeLabel.glyphSlotWidth(scale: textScale))
             }
         }
+        .cleanupDimmed(cleanupMark.isMarked)
         .padding(.horizontal, 12)
         .padding(.vertical, isHeader ? 6 : 4)
         .background(

@@ -61,8 +61,19 @@ extension NeodiskViewModel {
         cleanup.isCollected(node.id) ? "Remove from Cleanup" : "Add to Cleanup"
     }
 
+    /// Something inside a collected folder is already in: it can't be added or removed on its own.
     func canToggleCleanup(for node: FileNodeRecord) -> Bool {
-        cleanup.isCollected(node.id) ? !cleanup.isMoving : cleanup.canCollect(node)
+        switch cleanup.mark(for: node.id) {
+        case .collected: !cleanup.isMoving
+        case .none: cleanup.canCollect(node)
+        case .inside, .moving: false
+        }
+    }
+
+    /// Why the Cleanup menu item is off for this node, or nil.
+    func cleanupMenuHelp(for node: FileNodeRecord) -> String? {
+        let mark = cleanup.mark(for: node.id)
+        return mark == .inside || mark == .moving ? mark.hoverText : cleanup.refusalReason(for: node)
     }
 
     /// Inspect > Add to Cleanup (⌘⌫). While a text field is being edited the key keeps its text meaning

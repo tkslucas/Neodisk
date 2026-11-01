@@ -513,3 +513,6 @@
 "1 item can't go to the Trash. %@" = "1 item não pode ir para a Lixeira. %@";
 "%lld items can't go to the Trash. %@" = "%lld itens não podem ir para a Lixeira. %@";
 "This is inside a package, which Finder shows as one file (an app, a plug-in, a library). Move the whole package instead." = "Isto está dentro de um pacote, que o Finder mostra como um único arquivo (um app, um plug-in, uma biblioteca). Mova o pacote inteiro.";
+/* Cleanup: hard links and clones */
+"Shared" = "Compartilhado";
+"Shares its storage with another file (a hard link or clone), so moving it alone frees no space." = "Compartilha armazenamento com outro arquivo (um link físico ou clone), então movê-lo sozinho não libera espaço.";

@@ -512,3 +512,6 @@
 "1 item can't go to the Trash. %@" = "1 elemento non può andare nel Cestino. %@";
 "%lld items can't go to the Trash. %@" = "%lld elementi non possono andare nel Cestino. %@";
 "This is inside a package, which Finder shows as one file (an app, a plug-in, a library). Move the whole package instead." = "Si trova all’interno di un pacchetto, che il Finder mostra come un unico file (un’app, un plug-in, una libreria). Sposta invece l’intero pacchetto.";
+/* Cleanup: hard links and clones */
+"Shared" = "Condiviso";
+"Shares its storage with another file (a hard link or clone), so moving it alone frees no space." = "Condivide lo spazio con un altro file (un hard link o un clone), quindi spostarlo da solo non libera spazio.";

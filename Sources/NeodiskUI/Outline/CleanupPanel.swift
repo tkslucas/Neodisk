@@ -10,10 +10,15 @@ struct CleanupPanel: View {
     let model: NeodiskViewModel
 
     @State private var isTargeted = false
-    @State private var listHeight: CGFloat = 0
     @Environment(\.neoTextScale) private var textScale
 
     private var cleanup: CleanupModel { model.cleanup }
+
+    /// One line of a row; rows with a failure under the name grow past it.
+    private var rowHeight: CGFloat { (22 * textScale).rounded() }
+
+    /// A drag the panel would take: only while items can be collected.
+    private var isInviting: Bool { cleanup.isDragInProgress && cleanup.unavailableReason == nil }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -35,18 +40,14 @@ struct CleanupPanel: View {
             .padding(.top, 8)
             .padding(.bottom, 10)
         }
-        .background(Color.accentColor.opacity(isTargeted ? 0.14 : cleanup.isDragInProgress ? 0.06 : 0))
+        .background(Color.accentColor.opacity(isTargeted ? 0.14 : isInviting ? 0.06 : 0))
         .overlay(CleanupDropTarget(model: model, isTargeted: $isTargeted))
-        .help(cleanup.unavailableReason ?? NSLocalizedString(
-            "Drag files and folders here, or press ⌘⌫, to collect them. Nothing moves until you confirm.",
-            comment: "Cleanup panel tooltip"
-        ))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text("Cleanup"))
         .animation(.easeOut(duration: 0.15), value: cleanup.notice)
         .animation(.easeOut(duration: 0.15), value: cleanup.itemIDs)
         .animation(.easeOut(duration: 0.12), value: isTargeted)
-        .animation(.easeOut(duration: 0.12), value: cleanup.isDragInProgress)
+        .animation(.easeOut(duration: 0.12), value: isInviting)
     }
 
     /// Styled like the list's section headers above it.
@@ -55,6 +56,7 @@ struct CleanupPanel: View {
             Text("Cleanup")
                 .neoFont(11, weight: .semibold)
                 .foregroundStyle(.secondary)
+                .accessibilityAddTraits(.isHeader)
             Spacer(minLength: 4)
             if !cleanup.isEmpty {
                 Text(NeodiskFormatters.size(cleanup.totalSize))
@@ -67,35 +69,54 @@ struct CleanupPanel: View {
         .padding(.horizontal, 4)
     }
 
+    /// How to collect, or why nothing can be collected now.
     private var hint: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Image(systemName: isTargeted ? "trash.fill" : "trash")
-                .foregroundStyle(isTargeted || cleanup.isDragInProgress ? Color.accentColor : .secondary)
-            Text(LocalizedStringKey(hintText))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+                .foregroundStyle(isTargeted || isInviting ? Color.accentColor : .secondary)
+                .frame(width: (16 * textScale).rounded())
+            Group {
+                if let reason = cleanup.unavailableReason {
+                    Text(reason)
+                } else {
+                    Text(LocalizedStringKey(hintText))
+                }
+            }
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
         }
         .neoFont(11)
         .padding(.horizontal, 4)
+        .help(cleanup.unavailableReason == nil ? NSLocalizedString(
+            "Drag files and folders here, or press ⌘⌫, to collect them. Nothing moves until you confirm.",
+            comment: "Cleanup panel tooltip"
+        ) : "")
     }
 
     private var hintText: String {
         if isTargeted { return "Release to collect" }
-        return cleanup.isDragInProgress ? "Drop here to collect" : "Drag items here to review before trashing"
+        return isInviting ? "Drop here to collect" : "Drag items here to review before trashing"
     }
 
-    /// Grows with the items up to about six rows, then scrolls.
+    /// Grows with the items up to six and a half rows, then scrolls: the half row says there's more.
     private var list: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
                 ForEach(cleanup.items, id: \.id) { node in
-                    CleanupItemRow(node: node, failure: cleanup.failures[node.id], model: model)
+                    CleanupItemRow(
+                        node: node,
+                        failure: cleanup.failures[node.id],
+                        isMoving: cleanup.mark(for: node.id) == .moving,
+                        isSelected: model.selectedNodeID == node.id,
+                        minHeight: rowHeight,
+                        model: model
+                    )
                 }
             }
-            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { listHeight = $0 }
         }
         .scrollIndicators(.automatic)
-        .frame(height: min(listHeight, (22 * textScale).rounded() * 6.5))
+        .frame(maxHeight: rowHeight * 6.5)
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     @ViewBuilder
@@ -109,18 +130,40 @@ struct CleanupPanel: View {
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 0)
             } else {
-                Button("Clear") {
-                    cleanup.clear()
+                // Side by side, or stacked like an alert's buttons where a translation doesn't fit.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 6) {
+                        clearButton.fixedSize()
+                        Spacer(minLength: 0)
+                        moveButton.fixedSize()
+                    }
+                    VStack(spacing: 6) {
+                        moveButton
+                        clearButton
+                    }
                 }
-                Spacer(minLength: 0)
-                Button("Move to Trash…") {
-                    cleanup.moveAllToTrash()
-                }
-                .disabled(!cleanup.canMoveToTrash)
             }
         }
         .neoFont(.body)
         .neoControlSize(base: .small)
+    }
+
+    /// Their labels fill the width they're given: the stacked buttons span the panel.
+    private var clearButton: some View {
+        Button {
+            cleanup.clear()
+        } label: {
+            Text("Clear").frame(maxWidth: .infinity)
+        }
+    }
+
+    private var moveButton: some View {
+        Button {
+            cleanup.moveAllToTrash()
+        } label: {
+            Text("Move to Trash…").frame(maxWidth: .infinity)
+        }
+        .disabled(!cleanup.canMoveToTrash)
     }
 }
 
@@ -129,12 +172,16 @@ private struct CleanupNoticeView: View {
     let notice: CleanupModel.Notice
     let model: NeodiskViewModel
 
+    @Environment(\.neoTextScale) private var textScale
+
     var body: some View {
-        HStack(alignment: .top, spacing: 5) {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
             Image(systemName: symbol)
                 .foregroundStyle(tint)
+                .frame(width: (16 * textScale).rounded())
             VStack(alignment: .leading, spacing: 3) {
                 Text(notice.text)
+                    .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 if notice.kind == .moved {
                     Button("Open Trash") {
@@ -153,8 +200,7 @@ private struct CleanupNoticeView: View {
             .foregroundStyle(.tertiary)
             .accessibilityLabel(Text("Dismiss"))
         }
-        .neoFont(10)
-        .foregroundStyle(.secondary)
+        .neoFont(11)
         .padding(.horizontal, 4)
     }
 
@@ -178,77 +224,121 @@ private struct CleanupNoticeView: View {
 }
 
 /// One collected item: click finds it in the map, double-click shows it in Finder; hovering swaps its size for a
-/// remove button.
+/// remove button. The item selected in the map is highlighted, so ⌘⌫ visibly takes it out.
 private struct CleanupItemRow: View {
     let node: FileNodeRecord
     let failure: String?
+    let isMoving: Bool
+    let isSelected: Bool
+    let minHeight: CGFloat
     let model: NeodiskViewModel
 
     @State private var isHovered = false
+    @Environment(\.neoTextScale) private var textScale
+
+    /// A hard link or clone counted under its other name: moving this one alone frees nothing, and "Zero bytes"
+    /// would read as a mistake.
+    private var isShared: Bool {
+        !node.isDirectory && node.allocatedSize == 0 && node.logicalSize > 0
+            && (node.linkCount > 1 || node.cloneInfo != nil)
+    }
+
+    private var sizeText: String {
+        isShared
+            ? NSLocalizedString("Shared", comment: "Cleanup item size: a hard link or clone whose space is counted elsewhere")
+            : NeodiskFormatters.size(node.allocatedSize)
+    }
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            FileCategoryIcon(node: node, palette: model.vizPalette)
-                .frame(width: 14)
-                .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
-            VStack(alignment: .leading, spacing: 1) {
+        content
+            .padding(.horizontal, 4)
+            .padding(.vertical, 3)
+            .frame(minHeight: minHeight)
+            .background(
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(Color.primary.opacity(isSelected ? 0.1 : isHovered ? 0.05 : 0))
+            )
+            .opacity(isMoving ? 0.5 : 1)
+            .contentShape(Rectangle())
+            .onHover { isHovered = $0 }
+            .onTapGesture { model.select(node.id) }
+            // As in the file list: double-click shows the item in Finder.
+            .simultaneousGesture(TapGesture(count: 2).onEnded {
+                guard model.supportsFileActions(node) else { return }
+                model.select(node.id)
+                model.reveal(node)
+            })
+            .contextMenu { menu }
+            .help(isShared ? node.path + "\n" + NSLocalizedString(
+                "Shares its storage with another file (a hard link or clone), so moving it alone frees no space.",
+                comment: "Cleanup item tooltip"
+            ) : node.path)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text(verbatim: "\(node.name), \(sizeText)"))
+            .accessibilityValue(failure.map { Text($0) } ?? Text(verbatim: ""))
+            .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+            .accessibilityAction { model.select(node.id) }
+            .accessibilityAction(named: Text("Reveal in Finder")) { model.reveal(node) }
+            .accessibilityAction(named: Text("Remove from Cleanup")) { model.cleanup.remove([node.id]) }
+    }
+
+    private var content: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                FileCategoryIcon(node: node, palette: model.vizPalette)
+                    .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
                 Text(node.name)
                     .neoFont(12)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                if let failure {
-                    Text(failure)
-                        .neoFont(10)
-                        .foregroundStyle(.red)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                Spacer(minLength: 6)
+                trailing
             }
-            Spacer(minLength: 6)
-            ZStack(alignment: .trailing) {
-                Text(NeodiskFormatters.size(node.allocatedSize))
-                    .neoFont(11)
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-                    .opacity(isHovered ? 0 : 1)
-                Button {
-                    model.cleanup.remove([node.id])
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .neoFont(12)
-                }
-                .buttonStyle(.borderless)
-                .foregroundStyle(.secondary)
-                .disabled(model.cleanup.isMoving)
-                .help(Text("Remove from Cleanup"))
-                .opacity(isHovered ? 1 : 0)
+            // Under the name, as wide as the row.
+            if let failure {
+                Text(failure)
+                    .neoFont(10)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, (16 * textScale).rounded() + 6)
             }
         }
-        .padding(.horizontal, 4)
-        .padding(.vertical, 3)
-        .background(
-            RoundedRectangle(cornerRadius: 5, style: .continuous)
-                .fill(isHovered ? Color.primary.opacity(0.06) : .clear)
-        )
-        .contentShape(Rectangle())
-        .onHover { isHovered = $0 }
-        .onTapGesture { model.select(node.id) }
-        // As in the file list: double-click shows the item in Finder.
-        .simultaneousGesture(TapGesture(count: 2).onEnded {
-            guard model.supportsFileActions(node) else { return }
-            model.select(node.id)
-            model.reveal(node)
-        })
-        .contextMenu {
-            Button("Reveal in Finder") {
-                SystemIntegration.reveal(URL(filePath: node.path))
-            }
-            Divider()
-            Button("Remove from Cleanup") {
+    }
+
+    /// The size, or the remove button while the pointer is over the row.
+    @ViewBuilder
+    private var trailing: some View {
+        if isHovered && !isMoving {
+            Button {
                 model.cleanup.remove([node.id])
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .neoFont(12)
             }
-            .disabled(model.cleanup.isMoving)
+            .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
+            .help(Text("Remove from Cleanup"))
+        } else {
+            Text(sizeText)
+                .neoFont(11)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
         }
-        .help(node.path)
+    }
+
+    /// The file lists' menu, with Remove in place of Add.
+    @ViewBuilder
+    private var menu: some View {
+        if model.supportsFileActions(node) {
+            Button("Reveal in Finder") { model.reveal(node) }
+            Button("Open") { model.open(node) }
+            Button("Copy Path") { model.copyPath(node) }
+            Divider()
+        }
+        Button("Remove from Cleanup") {
+            model.cleanup.remove([node.id])
+        }
+        .disabled(isMoving)
     }
 }
 

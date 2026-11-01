@@ -168,7 +168,7 @@ struct VizHoverTooltip: View {
                         if data.showsCloudGlyph {
                             neutralSymbol("cloud.fill", size: 9)
                         } else {
-                            Color.clear.frame(width: 13, height: 1)
+                            Color.clear.frame(width: (13 * textScale).rounded(), height: 1)
                         }
                         secondaryText
                     }

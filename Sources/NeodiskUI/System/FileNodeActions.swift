@@ -26,7 +26,7 @@ extension View {
                     Divider()
                     Button(LocalizedStringKey(model.cleanupMenuTitle(for: node))) { model.cleanup.toggle(node) }
                         .disabled(!model.canToggleCleanup(for: node))
-                        .help(model.cleanup.refusalReason(for: node) ?? "")
+                        .help(model.cleanupMenuHelp(for: node) ?? "")
                 }
             }
         } primaryAction: { ids in
@@ -103,7 +103,7 @@ extension NSMenu {
             title: NSLocalizedString(model.cleanupMenuTitle(for: node), comment: "File node context menu")
         ) { model.cleanup.toggle(node) }
         item.isEnabled = model.canToggleCleanup(for: node)
-        item.toolTip = model.cleanup.refusalReason(for: node)
+        item.toolTip = model.cleanupMenuHelp(for: node)
         addItem(item)
     }
 }

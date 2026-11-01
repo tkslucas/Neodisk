@@ -130,6 +130,25 @@ import NeodiskAppModel
         #expect(menu.items.map(\.title) == ["File List at Bottom", "File List on the Left", "Hide File List"])
         #expect(menu.items.map(\.state) == [.off, .on, .off])
     }
+
+    /// The picker's own menu is the checklist (a SwiftUI context menu loses the right-click to the toolbar's).
+    @Test func viewPickerMenuChecksShownViewsAndKeepsTheLast() throws {
+        let (model, _, defaults, suite) = try makeModel()
+        defer { removeTestDefaultsSuite(defaults, named: suite) }
+        model.updateLayout {
+            var views = $0.views
+            views.setHidden(.cushion, true)
+            views.setHidden(.flat, true)
+            $0.setViews(views)
+        }
+        let picker = VizViewPicker(views: model.layout.views, current: model.vizView, isEnabled: true, update: model.updateLayout)
+        let coordinator = VizViewPicker.Coordinator()
+        coordinator.picker = picker
+        let menu = NSMenu()
+        coordinator.menuNeedsUpdate(menu)
+        #expect(menu.items.map(\.state) == [.off, .off, .on])
+        #expect(menu.items.map(\.isEnabled) == [true, true, false])
+    }
 }
 
 /// The values written to one defaults key while it's watched.

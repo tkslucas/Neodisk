@@ -165,30 +165,12 @@ public struct ContentView: View {
     }
 
     private var vizModePicker: some View {
-        Picker("View", selection: Binding(get: { model.vizView }, set: { view in model.updateLayout { $0.pick(view) } })) {
-            ForEach(model.layout.views.visible, id: \.self) { view in
-                Label(view.pickerTitle, systemImage: view.systemImage).tag(view)
-            }
-        }
-        .pickerStyle(.segmented)
-        .disabled(model.coordinator.snapshot == nil)
-        .help("Switch views. Right-click to choose which ones show.")
-        .contextMenu {
-            ForEach(VizView.allCases, id: \.self) { view in
-                Toggle(view.menuTitle, isOn: Binding(
-                    get: { !model.layout.views.isHidden(view) },
-                    set: { shown in
-                        model.updateLayout {
-                            var views = $0.views
-                            views.setHidden(view, !shown)
-                            $0.setViews(views)
-                        }
-                    }
-                ))
-                // The last view shown stays.
-                .disabled(!model.layout.views.isHidden(view) && !model.layout.views.canHide(view))
-            }
-        }
+        VizViewPicker(
+            views: model.layout.views,
+            current: model.vizView,
+            isEnabled: model.coordinator.snapshot != nil,
+            update: model.updateLayout
+        )
     }
 
     private var cloudOnlyToggle: some View {
@@ -241,32 +223,6 @@ public struct ContentView: View {
             Label("Settings", systemImage: "gearshape")
         }
         .help("Open Neodisk settings")
-    }
-}
-
-extension VizView {
-    var pickerTitle: LocalizedStringKey {
-        switch self {
-        case .cushion: "Cushion"
-        case .flat: "Flat"
-        case .sunburst: "Sunburst"
-        }
-    }
-
-    var menuTitle: LocalizedStringKey {
-        switch self {
-        case .cushion: "Cushion Treemap"
-        case .flat: "Flat Treemap"
-        case .sunburst: "Sunburst"
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .cushion: "square.split.bottomrightquarter"
-        case .flat: "rectangle.3.group"
-        case .sunburst: "chart.pie"
-        }
     }
 }
 

@@ -231,13 +231,9 @@ final class MainWindow {
             adw_breakpoint_add_setter(breakpoint, ptr(splitView), "collapsed", &collapsed)
         }
         g_value_unset(&collapsed)
-        var hidden = GValue()
-        g_value_init(&hidden, neodisk_boolean_type())
-        g_value_set_boolean(&hidden, gbool(false))
-        for column in outline.secondaryColumns {
-            adw_breakpoint_add_setter(breakpoint, ptr(column), "visible", &hidden)
-        }
-        g_value_unset(&hidden)
+        // Not a setter: the user may hide or show columns meanwhile, and a setter would undo that on unapply.
+        connect(raw(breakpoint), "apply") { [outline] in outline.setCompact(true) }
+        connect(raw(breakpoint), "unapply") { [outline] in outline.setCompact(false) }
         adw_application_window_add_breakpoint(ptr(window), breakpoint)
     }
 

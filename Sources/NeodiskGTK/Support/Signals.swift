@@ -162,6 +162,17 @@ func connectSelectionChanged(_ instance: GPtr?, _ handler: @escaping @MainActor 
     return connectBox(instance, "selection-changed", handler as Handler, unsafeBitCast(trampoline, to: GCallback.self), after: false)
 }
 
+/// `void handler(GListModel*, guint position, guint removed, guint added, gpointer)`.
+@discardableResult
+func connectItemsChanged(_ instance: GPtr?, _ handler: @escaping @MainActor () -> Void) -> gulong {
+    typealias Handler = @MainActor () -> Void
+    let trampoline: @convention(c) (GPtr?, UInt32, UInt32, UInt32, GPtr?) -> Void = { _, _, _, _, data in
+        nonisolated(unsafe) let data = data
+        MainActor.assumeIsolated { box(data, as: Handler.self)() }
+    }
+    return connectBox(instance, "items-changed", handler as Handler, unsafeBitCast(trampoline, to: GCallback.self), after: false)
+}
+
 /// `gboolean handler(GtkWidget*, int x, int y, gboolean keyboard_mode,
 /// GtkTooltip*, gpointer)`.
 @discardableResult

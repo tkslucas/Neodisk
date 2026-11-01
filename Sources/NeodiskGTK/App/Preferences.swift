@@ -35,6 +35,8 @@ final class Preferences {
     var fileCategories = FileCategoryCustomization() { didSet { scheduleSave() } }
     var showsStatistics = true { didSet { scheduleSave() } }
     var showsOutline = true { didSet { scheduleSave() } }
+    /// The file list's column order and hidden columns, as `ItemLayout` stores them.
+    var outlineColumns = "" { didSet { scheduleSave() } }
     /// Folders the user scanned or pinned, most recent first — the
     /// sidebar's Recents, and the snapshot cache's keep list.
     var recentFolders: [String] = [] { didSet { scheduleSave() } }
@@ -107,6 +109,7 @@ final class Preferences {
         var fileCategories: String?
         var showsStatistics: Bool?
         var showsOutline: Bool?
+        var outlineColumns: String?
         var recentFolders: [String]?
         var windowWidth: Int?
         var windowHeight: Int?
@@ -129,6 +132,7 @@ final class Preferences {
         if let value = stored.fileCategories { fileCategories = FileCategoryCustomization(json: value) }
         if let value = stored.showsStatistics { showsStatistics = value }
         if let value = stored.showsOutline { showsOutline = value }
+        if let value = stored.outlineColumns { outlineColumns = value }
         if let value = stored.recentFolders { recentFolders = value }
         if let value = stored.windowWidth { windowWidth = value }
         if let value = stored.windowHeight { windowHeight = value }
@@ -158,6 +162,7 @@ final class Preferences {
             fileCategories: fileCategories.isEmpty ? nil : fileCategories.json,
             showsStatistics: showsStatistics,
             showsOutline: showsOutline,
+            outlineColumns: outlineColumns.isEmpty ? nil : outlineColumns,
             recentFolders: recentFolders,
             windowWidth: windowWidth,
             windowHeight: windowHeight

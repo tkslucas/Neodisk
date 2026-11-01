@@ -18,8 +18,13 @@ final class OutlineView {
     private var rebuildTask: Task<Void, Never>?
     private var isSyncingSelection = false
     private var contextMenu: GPtr?
-    /// Columns a narrow window drops first, so Name keeps its room.
-    private(set) var secondaryColumns: [GPtr] = []
+    private var columns: [OutlineColumn: GPtr] = [:]
+    /// The header menu's check items, one per column that can hide.
+    private var columnActions: [OutlineColumn: GPtr] = [:]
+    private var layout = ItemLayout<OutlineColumn>(pinned: .name)
+    /// A narrow window: secondary columns give way to names, whatever the layout says.
+    private var isCompact = false
+    private var isApplyingLayout = false
     private var tokens: [ObservationToken] = []
 
     private static let cellKey = "neodisk-outline-cell"
@@ -28,31 +33,36 @@ final class OutlineView {
         self.model = model
         columnView = raw(gtk_column_view_new(nil))!
         Widgets.addClasses(columnView, ["data-table"])
-        gtk_column_view_set_reorderable(ptr(columnView), gbool(false))
+        // Dragging a header reorders; Name stays first (`columnsDidMove`).
+        gtk_column_view_set_reorderable(ptr(columnView), gbool(true))
 
         let scrolled = Widgets.scrolled(columnView, horizontalPolicy: GTK_POLICY_AUTOMATIC)
         gtk_widget_set_size_request(ptr(scrolled), -1, 140)
         widget = scrolled
         attach(self, to: widget, key: "neodisk-outline")
 
-        addColumn(L("Name"), expand: true, setup: Self.setupName, bind: { [unowned self] cell, node, row in
+        addColumn(.name, expand: true, setup: Self.setupName, bind: { [unowned self] cell, node, row in
             self.bindName(cell, node: node, row: row)
         })
-        addColumn(L("Size"), fixedWidth: 96, setup: Self.setupRightAligned, bind: { cell, node, _ in
+        addColumn(.size, fixedWidth: 96, setup: Self.setupRightAligned, bind: { cell, node, _ in
             gtk_label_set_text(ptr(cell.label), NeodiskFormatters.size(node.allocatedSize))
         })
-        addColumn(L("Share"), fixedWidth: 120, setup: Self.setupShare, bind: { [unowned self] cell, node, _ in
+        addColumn(.share, fixedWidth: 120, setup: Self.setupShare, bind: { [unowned self] cell, node, _ in
             self.bindShare(cell, node: node)
         })
-        let files = addColumn(L("Files"), fixedWidth: 84, setup: Self.setupRightAligned, bind: { cell, node, _ in
+        addColumn(.files, fixedWidth: 84, setup: Self.setupRightAligned, bind: { cell, node, _ in
             gtk_label_set_text(ptr(cell.label), node.isDirectory ? node.descendantFileCount.formatted() : "")
         })
-        let modified = addColumn(L("Modified"), fixedWidth: 130, setup: Self.setupRightAligned, bind: { cell, node, _ in
+        addColumn(.modified, fixedWidth: 130, setup: Self.setupRightAligned, bind: { cell, node, _ in
             // An mtime of 0 (the epoch) means the filesystem doesn't track it.
             let text = node.lastModified.flatMap { $0.timeIntervalSince1970 > 0 ? $0.formatted(date: .abbreviated, time: .omitted) : nil } ?? ""
             gtk_label_set_text(ptr(cell.label), text)
         })
-        secondaryColumns = [files, modified]
+        installColumnMenu()
+        applyLayout(ItemLayout(stored: model.preferences.outlineColumns, pinned: .name))
+        connectItemsChanged(raw(gtk_column_view_get_columns(ptr(columnView)))) { [unowned self] in
+            self.columnsDidMove()
+        }
 
         let keys = raw(gtk_event_controller_key_new())!
         connectKey(keys) { [unowned self] keyval, state in
@@ -93,8 +103,7 @@ final class OutlineView {
     private typealias Setup = @MainActor () -> Cell
     private typealias Bind = @MainActor (Cell, FileNodeRecord, GPtr) -> Void
 
-    @discardableResult
-    private func addColumn(_ title: String, expand: Bool = false, fixedWidth: Int? = nil, setup: @escaping Setup, bind: @escaping Bind) -> GPtr {
+    private func addColumn(_ id: OutlineColumn, expand: Bool = false, fixedWidth: Int? = nil, setup: @escaping Setup, bind: @escaping Bind) {
         let factory = raw(gtk_signal_list_item_factory_new())!
         connectPointer(factory, "setup") { [unowned self] listItem in
             let cell = setup()
@@ -114,7 +123,7 @@ final class OutlineView {
             bind(cell, node, row)
         }
         // The column takes the factory's reference; the view refs the column.
-        let column = gtk_column_view_column_new(title, ptr(factory))
+        let column = gtk_column_view_column_new(id.title, ptr(factory))
         gtk_column_view_column_set_expand(column, gbool(expand))
         gtk_column_view_column_set_resizable(column, gbool(true))
         if let fixedWidth {
@@ -122,7 +131,90 @@ final class OutlineView {
         }
         gtk_column_view_append_column(ptr(columnView), column)
         g_object_unref(raw(column))
-        return raw(column)!
+        columns[id] = raw(column)!
+    }
+
+    // MARK: - Column layout
+
+    /// Right-clicking any header lists the columns that can hide, checked when shown.
+    private func installColumnMenu() {
+        let group = raw(g_simple_action_group_new())!
+        let menu = raw(g_menu_new())!
+        for id in OutlineColumn.allCases where id != .name {
+            guard let action = raw(g_simple_action_new_stateful("show-\(id.rawValue)", nil, g_variant_new_boolean(gbool(true)))) else {
+                continue
+            }
+            connectPointer(action, "change-state") { [unowned self] variant in
+                guard let variant else { return }
+                var updated = self.layout
+                updated.setHidden(id, g_variant_get_boolean(ptr(variant)) == 0)
+                self.commitLayout(updated)
+            }
+            g_action_map_add_action(ptr(group), ptr(action))
+            g_object_unref(action)
+            columnActions[id] = action
+            g_menu_append(ptr(menu), id.title, "outline.show-\(id.rawValue)")
+        }
+        gtk_widget_insert_action_group(ptr(columnView), "outline", ptr(group))
+        g_object_unref(group)
+        for column in columns.values {
+            gtk_column_view_column_set_header_menu(ptr(column), ptr(menu))
+        }
+        g_object_unref(menu)
+    }
+
+    /// Narrow windows drop the secondary columns; the user's layout comes back when there's room.
+    func setCompact(_ compact: Bool) {
+        guard compact != isCompact else { return }
+        isCompact = compact
+        applyLayout(layout)
+    }
+
+    private func commitLayout(_ updated: ItemLayout<OutlineColumn>) {
+        applyLayout(updated)
+        model.preferences.outlineColumns = updated.isStandard ? "" : updated.stored
+    }
+
+    private func applyLayout(_ updated: ItemLayout<OutlineColumn>) {
+        layout = updated
+        isApplyingLayout = true
+        defer { isApplyingLayout = false }
+        for (index, id) in updated.order.enumerated() {
+            guard let column = columns[id] else { continue }
+            if columnOrder().firstIndex(of: id) != index {
+                // Repositions a column the view already holds.
+                gtk_column_view_insert_column(ptr(columnView), guint(index), ptr(column))
+            }
+            let shown = !updated.isHidden(id) && !(isCompact && id.isSecondary)
+            gtk_column_view_column_set_visible(ptr(column), gbool(shown))
+        }
+        for (id, action) in columnActions {
+            g_simple_action_set_state(ptr(action), g_variant_new_boolean(gbool(!updated.isHidden(id))))
+            // The last shown column can't hide.
+            setActionEnabled(action, updated.isHidden(id) || updated.canHide(id))
+        }
+    }
+
+    private func columnOrder() -> [OutlineColumn] {
+        guard let list = gtk_column_view_get_columns(ptr(columnView)) else { return [] }
+        return (0..<g_list_model_get_n_items(list)).compactMap { index -> OutlineColumn? in
+            guard let item = g_list_model_get_item(list, index) else { return nil }
+            defer { g_object_unref(item) }
+            return columns.first { $0.value == item }?.key
+        }
+    }
+
+    /// A header drag landed. GTK moves a column as a removal then an insertion, so the order is read once both
+    /// are in; a drag that put another column before Name puts Name back.
+    private func columnsDidMove() {
+        guard !isApplyingLayout else { return }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let order = self.columnOrder()
+            guard order.count == self.columns.count, order != self.layout.order else { return }
+            let stored = order.map { self.layout.isHidden($0) ? "-" + $0.rawValue : $0.rawValue }.joined(separator: ",")
+            self.commitLayout(ItemLayout(stored: stored, pinned: .name))
+        }
     }
 
     private static func setupName() -> Cell {
@@ -374,6 +466,25 @@ final class OutlineView {
             [(L("Move to Trash…"), "win.move-to-trash")],
         ], on: columnView, at: point)
     }
+}
+
+/// The file list's columns. Name stays first; the rest reorder by dragging their headers and hide from the
+/// headers' menu.
+enum OutlineColumn: String, CaseIterable {
+    case name, size, share, files, modified
+
+    var title: String {
+        switch self {
+        case .name: L("Name")
+        case .size: L("Size")
+        case .share: L("Share")
+        case .files: L("Files")
+        case .modified: L("Modified")
+        }
+    }
+
+    /// What a narrow window drops first, so Name keeps its room.
+    var isSecondary: Bool { self == .files || self == .modified }
 }
 
 /// The tree list model's child-model callback context: a weak route back

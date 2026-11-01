@@ -179,6 +179,9 @@ package final class ScanWorkspace {
                     metrics = progress
                     display(finished)
                     await persist(finished)
+                case .waitingForPermission:
+                    // Only macOS raises privacy prompts; no shell on this model shows one.
+                    break
                 }
             }
         } catch is CancellationError {

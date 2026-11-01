@@ -63,7 +63,7 @@ package struct SidebarSectionState: Equatable, Sendable {
     }
 }
 
-/// A sidebar row's two lines and tooltip.
+/// A sidebar row's lines.
 package enum SidebarRowText {
     /// Trailing the name: a volume's free space, a folder's scanned size; nil for a folder never scanned.
     package static func size(space: VolumeSpaceInfo?, scannedBytes: Int64?) -> String? {
@@ -81,12 +81,12 @@ package enum SidebarRowText {
         }
     }
 
-    /// The full path, and under it a volume's capacity.
-    package static func tooltip(path: String, space: VolumeSpaceInfo?) -> String {
-        guard let space, space.totalCapacity > 0 else { return path }
-        return path + "\n" + String(
-            format: AppStrings.localized("%@ free of %@", comment: "Sidebar volume tooltip"),
-            NeodiskFormatters.size(space.availableCapacity), NeodiskFormatters.size(space.totalCapacity)
+    /// Under a volume's name, with the free space trailing: what's used of its capacity.
+    package static func usage(space: VolumeSpaceInfo?) -> String? {
+        guard let space, space.totalCapacity > 0 else { return nil }
+        return String(
+            format: AppStrings.localized("%@ of %@ used", comment: "Sidebar volume row"),
+            NeodiskFormatters.size(space.usedBytes), NeodiskFormatters.size(space.totalCapacity)
         )
     }
 }

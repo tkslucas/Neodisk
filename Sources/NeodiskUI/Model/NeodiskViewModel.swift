@@ -749,9 +749,11 @@ final class NeodiskViewModel {
     /// Handles folders dropped onto the window or the sidebar: adds each
     /// one to the Folders section (same rules as Add Folder… — built-in
     /// locations and duplicates are skipped) and starts scanning the
-    /// first. Non-folder drops are ignored.
+    /// first. Non-folder drops are ignored, and so are the app's own items: a drag that started in a map or list
+    /// and slipped is not a request to add a location.
     @discardableResult
     func addDroppedFolders(_ urls: [URL]) -> Bool {
+        guard !cleanup.isDragInProgress else { return false }
         let folderURLs = urls.filter { url in
             (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
         }

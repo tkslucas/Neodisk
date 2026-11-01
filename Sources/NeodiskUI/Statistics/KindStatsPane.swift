@@ -33,21 +33,15 @@ struct KindStatsPane: View {
     private var kindStatsList: some View {
         @Bindable var kinds = model.kinds
         return VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("Group by")
-                    .neoFont(11, weight: .semibold)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Picker("", selection: $kinds.displayMode) {
-                    ForEach(FileKindDisplayMode.allCases) { mode in
-                        Text(LocalizedStringKey(mode.title)).tag(mode)
-                    }
+            // The two choices say what they group by; a "Group by" caption beside them wrapped in a narrow pane.
+            Picker("Group by", selection: $kinds.displayMode) {
+                ForEach(FileKindDisplayMode.allCases) { mode in
+                    Text(LocalizedStringKey(mode.title)).tag(mode)
                 }
-                .pickerStyle(.segmented)
-                .neoControlSize(base: .small)
-                .labelsHidden()
-                .fixedSize()
             }
+            .pickerStyle(.segmented)
+            .neoControlSize(base: .small)
+            .labelsHidden()
             .padding(.horizontal, StatsListMetrics.inset)
             .padding(.vertical, 4)
 

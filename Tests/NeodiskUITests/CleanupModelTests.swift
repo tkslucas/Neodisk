@@ -215,6 +215,22 @@ import NeodiskAppModel
         #expect(!model.canToggleCleanup(for: node))
     }
 
+    @Test func aStoppedScanAsksForARescanNotForPatience() async throws {
+        let environment = try Environment()
+        defer { environment.tearDown() }
+        try environment.write("a.bin", bytes: 10)
+        let model = environment.makeModel()
+        let full = try await environment.scan()
+        let stopped = ScanSnapshot(
+            target: full.target, treeStore: full.treeStore, startedAt: full.startedAt, finishedAt: nil,
+            scanWarnings: [], aggregateStats: full.aggregateStats, isComplete: false
+        )
+        model.coordinator.replaceCurrentSnapshot(stopped)
+        #expect(!model.coordinator.isScanning)
+        let reason = try #require(model.cleanup.unavailableReason)
+        #expect(reason.contains("Rescan"))
+    }
+
     @Test func aRemovalPersistsWithoutReplacingThePreviousScan() async throws {
         let environment = try Environment()
         defer { environment.tearDown() }

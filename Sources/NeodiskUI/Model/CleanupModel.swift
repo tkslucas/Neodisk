@@ -139,8 +139,11 @@ final class CleanupModel {
         if !snapshot.source.isPersistable {
             return NSLocalizedString("This scan was opened from a file, so its items can't be moved.", comment: "Cleanup unavailable")
         }
-        if coordinator.isScanning || !snapshot.isComplete {
+        if coordinator.isScanning {
             return NSLocalizedString("Wait for the scan to finish.", comment: "Cleanup unavailable")
+        }
+        if !snapshot.isComplete {
+            return NSLocalizedString("This scan was stopped early. Rescan to move items to the Trash.", comment: "Cleanup unavailable")
         }
         return nil
     }

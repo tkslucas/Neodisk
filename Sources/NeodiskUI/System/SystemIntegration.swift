@@ -52,8 +52,9 @@ enum SystemIntegration {
         ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
     }
 
+    /// A sheet on the app's window, so it opens where the window is; a free-standing panel only without one.
     @MainActor
-    static func presentScanPanel() -> ScanTarget? {
+    static func presentScanPanel() async -> ScanTarget? {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = true
@@ -62,7 +63,15 @@ enum SystemIntegration {
         panel.prompt = NSLocalizedString("Scan", comment: "Open panel confirm button")
         panel.message = NSLocalizedString("Choose a folder or mounted volume to analyze.", comment: "Open panel message")
 
-        guard panel.runModal() == .OK, let url = panel.url else {
+        let window = NSApp.mainWindow ?? NSApp.windows.first { $0.isVisible && $0.canBecomeMain }
+        // One at a time: Add Folder… again while the panel is open does nothing.
+        if window?.attachedSheet is NSOpenPanel { return nil }
+        let response = if let window, window.attachedSheet == nil {
+            await panel.beginSheetModal(for: window)
+        } else {
+            await panel.begin()
+        }
+        guard response == .OK, let url = panel.url else {
             return nil
         }
 

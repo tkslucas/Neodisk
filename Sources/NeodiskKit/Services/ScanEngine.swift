@@ -127,11 +127,22 @@ public final class ScanEngine: Sendable {
     private let diagnostics: ScanDiagnosticsContext?
     /// Only the real filesystem engine enables this: injected test providers must stay authoritative.
     private let bulkEnumerationEnabled: Bool
+    private let permissionPrompts: PermissionPromptWatch.Configuration?
 
     /// Creates a scanner with the default filesystem-backed enumeration.
     public convenience init() {
+        var contents: DirectoryContentsProvider = ScanEngine.defaultDirectoryContents
+        #if DEBUG
+        // NEODISK_SIMULATE_PERMISSION_WAIT=<folder> (with NEODISK_SCAN_BULK=0) holds that listing a minute, as a prompt.
+        if let held = ProcessInfo.processInfo.environment["NEODISK_SIMULATE_PERMISSION_WAIT"] {
+            contents = { url, keys, options, check in
+                if url.path == held { Thread.sleep(forTimeInterval: 60) }
+                return try ScanEngine.defaultDirectoryContents(url: url, keys: keys, options: options, cancellationCheck: check)
+            }
+        }
+        #endif
         self.init(
-            enumeratedDirectoryContents: ScanEngine.defaultDirectoryContents,
+            enumeratedDirectoryContents: contents,
             bulkEnumerationEnabled: ProcessInfo.processInfo.environment["NEODISK_SCAN_BULK"] != "0"
         )
     }
@@ -139,7 +150,8 @@ public final class ScanEngine: Sendable {
     init(
         enumeratedDirectoryContents: @escaping DirectoryContentsProvider = ScanEngine.defaultDirectoryContents,
         volumeFileSystemTypeProvider: @escaping VolumeFileSystemTypeProvider = ScanEngine.defaultVolumeFileSystemType,
-        bulkEnumerationEnabled: Bool = false
+        bulkEnumerationEnabled: Bool = false,
+        permissionPrompts: PermissionPromptWatch.Configuration? = .standard
     ) {
         #if DEBUG
         let diagnostics = ScanDiagnostics.makeIfEnabled()
@@ -157,6 +169,7 @@ public final class ScanEngine: Sendable {
         self.volumeFileSystemTypeProvider = volumeFileSystemTypeProvider
         self.diagnostics = diagnostics
         self.bulkEnumerationEnabled = bulkEnumerationEnabled
+        self.permissionPrompts = permissionPrompts
     }
 
     convenience init(
@@ -544,6 +557,7 @@ public final class ScanEngine: Sendable {
             volumeFileSystemTypeProvider: volumeFileSystemTypeProvider,
             diagnostics: diagnostics,
             bulkEnumerationEnabled: bulkEnumerationEnabled,
+            permissionPrompts: permissionPrompts,
             baseDepth: baseDepth,
             metrics: metrics,
             warnings: warnings,

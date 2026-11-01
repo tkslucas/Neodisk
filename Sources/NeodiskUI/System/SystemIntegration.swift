@@ -190,6 +190,10 @@ enum SystemIntegration {
     }
 
     nonisolated static func fullDiskAccessStatus() -> FullDiskAccessStatus {
+        #if DEBUG
+        // NEODISK_FULL_DISK_ACCESS=off: captures of the no-access surfaces on a Mac that has access.
+        if ProcessInfo.processInfo.environment["NEODISK_FULL_DISK_ACCESS"] == "off" { return .notGranted }
+        #endif
         let macOSMajorVersion = ProcessInfo.processInfo.operatingSystemVersion.majorVersion
         return fullDiskAccessStatus(
             macOSMajorVersion: macOSMajorVersion,

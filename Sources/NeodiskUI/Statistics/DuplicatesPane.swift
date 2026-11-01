@@ -1,5 +1,5 @@
-// Hashing reads real bytes, so duplicates are found only on an explicit action. Rows are read-only
-// navigation; cleanup happens via Reveal in Finder.
+// Hashing reads real bytes, so duplicates are found only on an explicit action. A copy's row selects it, and
+// drags or ⌘⌫ collect it in Cleanup.
 
 import SwiftUI
 import NeodiskKit

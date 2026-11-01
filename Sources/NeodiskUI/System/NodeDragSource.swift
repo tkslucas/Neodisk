@@ -25,22 +25,28 @@ enum NodeDragSource {
         return NodeDragPayload.pasteboardItem(for: node, snapshotID: snapshotID)
     }
 
-    /// One dragging item for a map view, its image centered under the pointer.
-    static func draggingItem(forNodeID id: String, model: NeodiskViewModel, at point: CGPoint) -> NSDraggingItem? {
-        guard let node = draggableNode(id: id, model: model),
-              let item = pasteboardItem(forNodeID: id, model: model) else { return nil }
-        let image = NodeDragImage.make(for: node)
-        let draggingItem = NSDraggingItem(pasteboardWriter: item)
-        draggingItem.setDraggingFrame(
-            CGRect(
-                x: point.x - image.size.width / 2,
-                y: point.y - image.size.height / 2,
-                width: image.size.width,
-                height: image.size.height
-            ),
-            contents: image
+    /// The dragging items for a map view, the image centered under the pointer: one item's card, or for several
+    /// a single card saying how many (the other items travel without an image of their own).
+    static func draggingItems(forNodeIDs ids: [String], model: NeodiskViewModel, at point: CGPoint) -> [NSDraggingItem] {
+        let pairs = ids.compactMap { id -> (FileNodeRecord, NSPasteboardItem)? in
+            guard let node = draggableNode(id: id, model: model),
+                  let item = pasteboardItem(forNodeID: id, model: model) else { return nil }
+            return (node, item)
+        }
+        guard !pairs.isEmpty else { return [] }
+        let nodes = pairs.map(\.0)
+        let image = nodes.count == 1 ? NodeDragImage.make(for: nodes[0]) : NodeDragImage.make(for: nodes)
+        let frame = CGRect(
+            x: point.x - image.size.width / 2,
+            y: point.y - image.size.height / 2,
+            width: image.size.width,
+            height: image.size.height
         )
-        return draggingItem
+        return pairs.enumerated().map { index, pair in
+            let draggingItem = NSDraggingItem(pasteboardWriter: pair.1)
+            draggingItem.setDraggingFrame(frame, contents: index == 0 ? image : nil)
+            return draggingItem
+        }
     }
 
     static func sessionDidBegin(model: NeodiskViewModel) {
@@ -64,6 +70,25 @@ extension NSTableView {
 enum NodeDragImage {
     @MainActor
     static func make(for node: FileNodeRecord) -> NSImage {
+        make(
+            title: node.name,
+            size: node.allocatedSize,
+            icon: NSWorkspace.shared.icon(forFile: node.path)
+        )
+    }
+
+    /// Several items: how many, their total (a folder's contents counted once), and the system's stacked icon.
+    @MainActor
+    static func make(for nodes: [FileNodeRecord]) -> NSImage {
+        make(
+            title: String(format: NSLocalizedString("%lld items", comment: "Drag image for several items"), nodes.count),
+            size: nodes.reduce(Int64(0)) { $0 &+ $1.allocatedSize },
+            icon: NSWorkspace.shared.icon(forFiles: nodes.map(\.path)) ?? NSWorkspace.shared.icon(forFile: nodes[0].path)
+        )
+    }
+
+    @MainActor
+    private static func make(title: String, size bytes: Int64, icon: NSImage) -> NSImage {
         let scale = OutlineRowMetrics.scale
         let nameFont = NSFont.systemFont(ofSize: 12 * scale, weight: .medium)
         let sizeFont = NSFont.monospacedDigitSystemFont(ofSize: 11 * scale, weight: .regular)
@@ -75,8 +100,8 @@ enum NodeDragImage {
         let sizeAttributes: [NSAttributedString.Key: Any] = [
             .font: sizeFont, .foregroundColor: NSColor.secondaryLabelColor,
         ]
-        let name = node.name as NSString
-        let size = NeodiskFormatters.size(node.allocatedSize) as NSString
+        let name = title as NSString
+        let size = NeodiskFormatters.size(bytes) as NSString
 
         let iconSide = (18 * scale).rounded()
         let padding: CGFloat = 8
@@ -85,7 +110,6 @@ enum NodeDragImage {
         let sizeWidth = ceil(size.size(withAttributes: sizeAttributes).width)
         let height = max(iconSide, ceil(nameFont.ascender - nameFont.descender)) + 2 * 6
         let width = padding + iconSide + gap + nameWidth + gap + sizeWidth + padding
-        let icon = NSWorkspace.shared.icon(forFile: node.path)
 
         return NSImage(size: CGSize(width: width, height: height), flipped: false) { rect in
             let card = NSBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), xRadius: 7, yRadius: 7)

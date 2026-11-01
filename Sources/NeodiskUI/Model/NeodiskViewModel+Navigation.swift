@@ -122,8 +122,8 @@ extension NeodiskViewModel {
         }
         zoomRootID = dir.id == store.root.id ? nil : dir.id
         // When the user explicitly drilled into a folder, land the selection
-        // on its largest child so arrow keys keep working inside.
-        if node.isDirectory {
+        // on its largest child so arrow keys keep working inside. A multi-selection stays as it is.
+        if node.isDirectory, !selection.isMultiple {
             selectLargestChild(of: dir.id, in: store)
         }
         return true
@@ -162,7 +162,7 @@ extension NeodiskViewModel {
         let selectionStaysInside = selectedNodeID.map {
             $0 != node.id && store.isAncestor(node.id, of: $0)
         } ?? false
-        if !selectionStaysInside {
+        if !selectionStaysInside, !selection.isMultiple {
             selectLargestChild(of: node.id, in: store)
         }
         return true
@@ -209,7 +209,8 @@ extension NeodiskViewModel {
         isSteppingDrillHistory = false
         // Keep the selection when it is still inside the map; otherwise land
         // on the largest child, as drilling in does.
-        if let selectedNodeID, selectedNodeID == target || !store.isAncestor(target, of: selectedNodeID) {
+        if !selection.isMultiple, let selectedNodeID,
+           selectedNodeID == target || !store.isAncestor(target, of: selectedNodeID) {
             selectLargestChild(of: target, in: store)
         }
         return true

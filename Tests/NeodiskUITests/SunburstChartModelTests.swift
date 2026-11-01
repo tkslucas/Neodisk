@@ -149,12 +149,40 @@ import NeodiskKit
 
         #expect(didApplyLayout)
         let overlaySegments = model.selectionOverlaySegments(
-            selectedNodeID: selected.nodeID,
+            selection: NodeSelection([selected.nodeID!]),
             selectedAncestorIDs: Set([ancestor.nodeID!, selected.nodeID!, "missing"])
         )
 
         #expect(overlaySegments.map(\.segment.id) == [ancestor.id, selected.id])
         #expect(overlaySegments.map(\.role) == [.ancestor, .selected])
+    }
+
+    /// Every selected arc draws selected (the primary last, on top); only the primary's path draws as
+    /// ancestors, and an ancestor that is itself selected draws selected.
+    @Test func multiSelectionDrawsEveryArcAndOnlyThePrimarysPath() async {
+        let ancestor = makeSegment(id: "ancestor", depth: 0)
+        let primary = makeSegment(id: "primary", depth: 1)
+        let other = makeSegment(id: "other", depth: 1)
+        let service = ImmediateSunburstLayoutService(segments: [ancestor, primary, other])
+        let model = SunburstChartModel(layoutService: service)
+        _ = await model.loadLayout(makeRequest(layoutID: "layout"))
+
+        var selection = NodeSelection()
+        selection.replace(with: [other.nodeID!, "offscreen", primary.nodeID!], primary: primary.nodeID)
+        let segments = model.selectionOverlaySegments(
+            selection: selection, selectedAncestorIDs: [ancestor.nodeID!, primary.nodeID!]
+        )
+        #expect(segments.map(\.segment.id) == [ancestor.id, other.id, primary.id])
+        #expect(segments.map(\.role) == [.ancestor, .selected, .selected])
+
+        // A new member set under the same primary is a new overlay, not the memo of the old one.
+        selection.add(ancestor.nodeID!)
+        selection.add(primary.nodeID!)
+        let grown = model.selectionOverlaySegments(
+            selection: selection, selectedAncestorIDs: [ancestor.nodeID!, primary.nodeID!]
+        )
+        #expect(grown.map(\.segment.id) == [other.id, ancestor.id, primary.id])
+        #expect(grown.allSatisfy { $0.role == .selected })
     }
 
     @Test func applyStyleRecolorsWithoutReLayoutAndKeepsHover() async throws {

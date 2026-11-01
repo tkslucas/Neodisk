@@ -125,4 +125,31 @@ import NeodiskKit
         selection.prepareForRemoval(of: ["/s/c/c1", "/s/a/a2"], in: store)
         #expect(selection.ids == ["/s/a"] && selection.primaryID == "/s/a")
     }
+
+    @Test func aPressOnOrInsideASelectedItemDragsTheSelection() {
+        let store = makeStore()
+        let selection = NodeSelection(["/s/a", "/s/a/a1", "/s/b"])
+        // On a member, or inside a selected folder: the whole selection, top-level.
+        #expect(selection.dragIDs(pressing: "/s/b", mapRootID: "/s", in: store) == ["/s/a", "/s/b"])
+        #expect(selection.dragIDs(pressing: "/s/a/a2", mapRootID: "/s", in: store) == ["/s/a", "/s/b"])
+        // Elsewhere: the pressed item goes alone.
+        #expect(selection.dragIDs(pressing: "/s/c/c1", mapRootID: "/s", in: store) == nil)
+        // Drilled into a selected folder, everything is inside it: that doesn't count as pressing it.
+        #expect(NodeSelection(["/s/a"]).dragIDs(pressing: "/s/a/a1", mapRootID: "/s/a", in: store) == nil)
+        #expect(NodeSelection().dragIDs(pressing: "/s/b", mapRootID: "/s", in: store) == nil)
+    }
+
+    @Test func mapClicksToggleWithCommandOrShift() {
+        #expect(MapClick(command: false, shift: false) == .replace)
+        #expect(MapClick(command: true, shift: false) == .toggle)
+        #expect(MapClick(command: false, shift: true) == .toggle)
+    }
+
+    @Test func containsAncestorFindsASelectedFolderAbove() {
+        let store = makeStore()
+        let selection = NodeSelection(["/s/a", "/s/b"])
+        #expect(selection.containsAncestor(of: "/s/a/a1", in: store))
+        #expect(!selection.containsAncestor(of: "/s/c/c1", in: store))
+        #expect(!NodeSelection(["/s/a"]).containsAncestor(of: "/s/a/a1", in: store))
+    }
 }

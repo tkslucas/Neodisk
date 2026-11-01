@@ -15,7 +15,7 @@ struct SunburstChartView: View {
     /// Non-nil enables the center "go up" affordance and click.
     let parentNode: FileNodeRecord?
     let treeStore: FileTreeStore
-    let selectedNodeID: String?
+    let selection: NodeSelection
     let selectedAncestorIDs: Set<String>
     let depthLimit: Int
     /// Changes reload the layout; color changes only restyle segments (see the `style` onChange).
@@ -46,9 +46,11 @@ struct SunburstChartView: View {
     var cleanup = SunburstCleanupInput()
     /// The hover line for a node in Cleanup, or nil.
     var cleanupHoverText: (String) -> String? = { _ in nil }
-    /// The dragging item a press on this arc starts, or nil when it has nothing to drag.
-    var dragItem: (SunburstSegment, CGPoint) -> NSDraggingItem? = { _, _ in nil }
+    /// The dragging items a press on this arc starts; empty when it has nothing to drag.
+    var dragItems: (SunburstSegment, CGPoint) -> [NSDraggingItem] = { _, _ in [] }
     var onDragSessionChange: (Bool) -> Void = { _ in }
+    /// Edit > Select All while the chart has focus.
+    var onSelectAll: () -> Void = {}
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Owned by SunburstPane, which shares the rendered segments with the
@@ -184,7 +186,7 @@ struct SunburstChartView: View {
                 segments: chartModel.renderedSegments,
                 renderVersion: chartModel.renderedLayoutVersion,
                 selectionSegments: chartModel.selectionOverlaySegments(
-                    selectedNodeID: selectedNodeID,
+                    selection: selection,
                     selectedAncestorIDs: selectedAncestorIDs
                 ),
                 cleanupOverlay: chartModel.cleanupOverlay(
@@ -299,11 +301,11 @@ struct SunburstChartView: View {
             guard !chartModel.isLayoutPending, zoomTransition == nil else { return nil }
             return help(at: location, in: baseChartFrame)
         }
-        let dragProvider: (CGPoint) -> NSDraggingItem? = { location in
+        let dragProvider: (CGPoint) -> [NSDraggingItem] = { location in
             guard !chartModel.isLayoutPending, zoomTransition == nil,
                   !isCenterHit(at: location, in: baseChartFrame),
-                  let segment = hitTest(at: location, in: baseChartFrame) else { return nil }
-            return dragItem(segment, location)
+                  let segment = hitTest(at: location, in: baseChartFrame) else { return [] }
+            return dragItems(segment, location)
         }
 
         SunburstInteractionOverlay(
@@ -313,8 +315,9 @@ struct SunburstChartView: View {
             onKeyDown: keyHandler,
             contextMenu: menuProvider,
             help: helpProvider,
-            dragItem: dragProvider,
-            onDragSessionChange: onDragSessionChange
+            dragItems: dragProvider,
+            onDragSessionChange: onDragSessionChange,
+            onSelectAll: onSelectAll
         )
         .accessibilityHidden(true)
         .allowsHitTesting(!chartModel.isLayoutPending)

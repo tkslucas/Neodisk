@@ -122,6 +122,19 @@ package struct NodeSelection: Equatable, Sendable {
         return false
     }
 
+    /// What a press on a map drags: the selection (top-level) when the press lands on a selected item or inside
+    /// one the map shows, else nil (the pressed item goes alone). An item that is the map's root or holds it
+    /// covers the whole map, so it doesn't count as pressed.
+    package func dragIDs(pressing pressedID: String, mapRootID: String, in store: FileTreeStore) -> [String]? {
+        guard !ids.isEmpty else { return nil }
+        var cursor = store.node(id: pressedID)
+        while let node = cursor, node.id != mapRootID {
+            if members.contains(node.id) { return topLevelIDs(in: store) }
+            cursor = store.parent(of: node.id)
+        }
+        return nil
+    }
+
     /// Without the items inside another selected item: what sizes add up and what moves.
     package func topLevelIDs(in store: FileTreeStore) -> [String] {
         ids.count < 2 ? ids.filter { store.node(id: $0) != nil } : store.topLevelNodeIDs(from: ids)
@@ -155,3 +168,15 @@ package struct NodeSelection: Equatable, Sendable {
         }
     }
 }
+
+/// What a click on a map means: plain replaces the selection; ⌘ or ⇧ toggles the item (a map has no order to
+/// make a range of, as in a Finder icon view). Control is the context menu, never a click.
+package enum MapClick: Equatable, Sendable {
+    case replace
+    case toggle
+
+    package init(command: Bool, shift: Bool) {
+        self = command || shift ? .toggle : .replace
+    }
+}
+

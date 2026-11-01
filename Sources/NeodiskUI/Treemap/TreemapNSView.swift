@@ -13,21 +13,24 @@ final class TreemapNSView: NSView, NSDraggingSource {
     private let contentLayer = CALayer()
     private let imageLayer = CALayer()
     private let labelContainerLayer = CALayer()
-    private let selectionLayer = CALayer()
+    /// One ring per selected item, all in one path.
+    private let selectionLayer = CAShapeLayer()
     private let hoverLayer = CALayer()
     /// Cleanup marks: a wash over collected items and a hairline around them. Quiet on purpose: the map stays
     /// readable with a full pile.
     private let cleanupWashLayer = CAShapeLayer()
     private let cleanupOutlineLayer = CAShapeLayer()
-    /// A press that may become a drag once it travels `dragThreshold`.
-    private var pendingDrag: PendingDrag?
+    /// A press that may become a drag once it travels `dragThreshold`; its click may wait for mouse-up.
+    private var pendingPress: PendingPress?
     private static let dragThreshold: CGFloat = 4
 
-    private struct PendingDrag {
+    private struct PendingPress {
         let start: CGPoint
-        let nodeID: String
-        /// The press landed inside the selected folder: its click waits for mouse-up (see dragCandidate).
-        let defersClick: Bool
+        /// What a drag from here carries; empty when there is nothing to drag.
+        let dragIDs: [String]
+        /// The click that runs at mouse-up unless the press became a drag: a ⌘/⇧-click, or a press on the
+        /// selection, which a drag must keep whole. Nil when the click already ran at mouse-down.
+        let deferredClick: MapClick?
     }
     /// Identity of the scene whose labels are currently materialized.
     private var labeledSceneViewport: TreemapViewport?
@@ -53,7 +56,8 @@ final class TreemapNSView: NSView, NSDraggingSource {
         contentLayer.position = .zero
         imageLayer.anchorPoint = .zero
         imageLayer.position = .zero
-        selectionLayer.borderColor = NSColor.systemYellow.cgColor
+        selectionLayer.strokeColor = NSColor.systemYellow.cgColor
+        selectionLayer.fillColor = nil
         selectionLayer.isHidden = true
         hoverLayer.isHidden = true
 
@@ -121,7 +125,7 @@ final class TreemapNSView: NSView, NSDraggingSource {
             labeledSceneViewport = scene.viewport
         }
 
-        place(selectionLayer, over: controller.selectionRect, borderWidth: 2)
+        placeSelection()
         refreshHoverLayer()
         refreshCleanupLayers()
     }
@@ -147,14 +151,7 @@ final class TreemapNSView: NSView, NSDraggingSource {
         let lineWidth = unit
 
         func path(_ rects: [CGRect], inset: CGFloat) -> CGPath {
-            let path = CGMutablePath()
-            for rect in rects {
-                let inner = rect.insetBy(dx: inset, dy: inset)
-                guard inner.width > 0, inner.height > 0 else { continue }
-                let corner = min(max(radius - inset, 0), inner.width / 2, inner.height / 2)
-                path.addRoundedRect(in: inner, cornerWidth: corner, cornerHeight: corner)
-            }
-            return path
+            Self.ringPath(rects, inset: inset, radius: radius)
         }
 
         var colors = CleanupColors()
@@ -209,6 +206,33 @@ final class TreemapNSView: NSView, NSDraggingSource {
             hoverLayer.borderColor = CGColor(gray: 0, alpha: 0.58)
         }
         place(hoverLayer, over: controller.hoverRect, borderWidth: 1.75)
+    }
+
+    /// Rounded rects drawn inside `rects` (inset by `inset`), corners following the flat tiles' radius.
+    static func ringPath(_ rects: [CGRect], inset: CGFloat, radius: CGFloat) -> CGPath {
+        let path = CGMutablePath()
+        for rect in rects {
+            let inner = rect.insetBy(dx: inset, dy: inset)
+            guard inner.width > 0, inner.height > 0 else { continue }
+            let corner = min(max(radius - inset, 0), inner.width / 2, inner.height / 2)
+            path.addRoundedRect(in: inner, cornerWidth: corner, cornerHeight: corner)
+        }
+        return path
+    }
+
+    /// Every selected item gets the ring one selected item always had: 2pt on screen whatever the zoom, drawn
+    /// inside the item, never thinner than a 2pt item.
+    private func placeSelection() {
+        let rects = controller.selectionRects
+        guard let scene = controller.scene, !rects.isEmpty else {
+            selectionLayer.isHidden = true
+            return
+        }
+        let width = 2 / max(controller.displayTransform.a, 0.001)
+        let rings = rects.map { CGRect(x: $0.minX, y: $0.minY, width: max($0.width, 2), height: max($0.height, 2)) }
+        selectionLayer.path = Self.ringPath(rings, inset: width / 2, radius: scene.style == .flat ? 4 : 0)
+        selectionLayer.lineWidth = width
+        selectionLayer.isHidden = false
     }
 
     /// Compensates the content transform so the border keeps its on-screen width; nil hides the layer.
@@ -403,41 +427,50 @@ final class TreemapNSView: NSView, NSDraggingSource {
     }
 
     // The map has no press-and-drag gesture of its own (pan is scroll, zoom is pinch or ⌥-scroll), so a press
-    // that travels past the threshold always drags the item out. A click still selects on mouse-down.
+    // that travels past the threshold always drags the item out. A plain click on an unselected item selects on
+    // mouse-down; ⌘/⇧-clicks and presses on the selection wait for mouse-up, so a drag never changes the selection.
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
-        pendingDrag = nil
+        pendingPress = nil
         if event.clickCount == 2 {
             // Style-dependent: cushion reveals in Finder, flat drills into
             // folders (see TreemapController.doubleClick).
             controller.doubleClick(at: point)
             return
         }
+        let flags = event.modifierFlags
+        let kind = MapClick(command: flags.contains(.command), shift: flags.contains(.shift))
         let candidate = controller.dragCandidate(at: point)
-        if let candidate {
-            pendingDrag = PendingDrag(start: point, nodeID: candidate.nodeID, defersClick: candidate.isSelection)
-        }
-        if candidate?.isSelection != true {
+        let defers = kind == .toggle || candidate?.carriesSelection == true
+        pendingPress = PendingPress(
+            start: point, dragIDs: candidate?.nodeIDs ?? [], deferredClick: defers ? kind : nil
+        )
+        if !defers {
             controller.click(at: point)
         }
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard let pending = pendingDrag else { return }
+        guard let pending = pendingPress, !pending.dragIDs.isEmpty else { return }
         let point = convert(event.locationInWindow, from: nil)
         guard hypot(point.x - pending.start.x, point.y - pending.start.y) >= Self.dragThreshold else { return }
-        pendingDrag = nil
-        guard let model = controller.model,
-              let item = NodeDragSource.draggingItem(forNodeID: pending.nodeID, model: model, at: pending.start)
-        else { return }
-        beginDraggingSession(with: [item], event: event, source: self)
+        pendingPress = nil
+        guard let model = controller.model else { return }
+        let items = NodeDragSource.draggingItems(forNodeIDs: pending.dragIDs, model: model, at: pending.start)
+        guard !items.isEmpty else { return }
+        beginDraggingSession(with: items, event: event, source: self)
     }
 
     override func mouseUp(with event: NSEvent) {
-        if let pending = pendingDrag, pending.defersClick {
-            controller.click(at: pending.start)
+        if let pending = pendingPress, let click = pending.deferredClick {
+            controller.click(at: pending.start, click)
         }
-        pendingDrag = nil
+        pendingPress = nil
+    }
+
+    /// Edit > Select All (⌘A) on the map: everything the map is rooted at, one level down.
+    override func selectAll(_ sender: Any?) {
+        controller.model?.selectAllInMap()
     }
 
     // MARK: - Dragging source

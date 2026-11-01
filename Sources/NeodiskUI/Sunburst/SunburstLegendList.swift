@@ -171,7 +171,7 @@ struct SunburstLegendList: View {
 
     private func isSelected(_ row: SunburstLegendRow) -> Bool {
         guard case .node(let nodeID, _) = row.target else { return false }
-        return nodeID == model.selectedNodeID
+        return model.selection.contains(nodeID)
     }
 
     /// List-row hover feeds the same model state, so a hovered row highlights itself through this too.

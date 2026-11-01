@@ -14,9 +14,10 @@ struct SunburstInteractionOverlay: NSViewRepresentable {
     let onKeyDown: (NSEvent) -> Bool
     let contextMenu: (CGPoint) -> NSMenu?
     let help: (CGPoint) -> String?
-    /// The item a press at this point drags, or nil when there is nothing to drag there.
-    var dragItem: (CGPoint) -> NSDraggingItem? = { _ in nil }
+    /// The items a press at this point drags; empty when there is nothing to drag there.
+    var dragItems: (CGPoint) -> [NSDraggingItem] = { _ in [] }
     var onDragSessionChange: (Bool) -> Void = { _ in }
+    var onSelectAll: () -> Void = {}
 
     func makeNSView(context: Context) -> InteractionView {
         let view = InteractionView()
@@ -35,8 +36,9 @@ struct SunburstInteractionOverlay: NSViewRepresentable {
         view.onKeyDown = onKeyDown
         view.contextMenu = contextMenu
         view.help = help
-        view.dragItem = dragItem
+        view.dragItems = dragItems
         view.onDragSessionChange = onDragSessionChange
+        view.onSelectAll = onSelectAll
     }
 
     final class InteractionView: NSView, NSDraggingSource {
@@ -46,8 +48,14 @@ struct SunburstInteractionOverlay: NSViewRepresentable {
         var onKeyDown: (NSEvent) -> Bool = { _ in false }
         var contextMenu: (CGPoint) -> NSMenu? = { _ in nil }
         var help: (CGPoint) -> String? = { _ in nil }
-        var dragItem: (CGPoint) -> NSDraggingItem? = { _ in nil }
+        var dragItems: (CGPoint) -> [NSDraggingItem] = { _ in [] }
         var onDragSessionChange: (Bool) -> Void = { _ in }
+        var onSelectAll: () -> Void = {}
+
+        /// Edit > Select All (⌘A) on the chart.
+        override func selectAll(_ sender: Any?) {
+            onSelectAll()
+        }
 
         private static let dragThreshold: CGFloat = 3
         private var trackingArea: NSTrackingArea?
@@ -110,8 +118,10 @@ struct SunburstInteractionOverlay: NSViewRepresentable {
         override func mouseDragged(with event: NSEvent) {
             guard let mouseDownLocation, !didDrag else { return }
             didDrag = didExceedDragThreshold(from: mouseDownLocation, to: eventLocation(event))
-            guard didDrag, let item = dragItem(mouseDownLocation) else { return }
-            beginDraggingSession(with: [item], event: event, source: self)
+            guard didDrag else { return }
+            let items = dragItems(mouseDownLocation)
+            guard !items.isEmpty else { return }
+            beginDraggingSession(with: items, event: event, source: self)
         }
 
         func draggingSession(

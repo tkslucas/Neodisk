@@ -154,18 +154,20 @@ final class SunburstChartModel: ObservableObject {
         renderState.segment(forSegmentID: segmentID)
     }
 
+    /// Every selected arc drawn selected; the path down to the primary one drawn as its ancestors.
     func selectionOverlaySegments(
-        selectedNodeID: String?,
+        selection: NodeSelection,
         selectedAncestorIDs: Set<String>
     ) -> [SunburstSelectionOverlaySegment] {
         let key = SunburstSelectionOverlayCacheKey(
             renderVersion: renderedLayoutVersion,
-            selectedNodeID: selectedNodeID,
-            selectedAncestorIDs: selectedAncestorIDs
+            selectedNodeID: selection.primaryID,
+            selectedAncestorIDs: selectedAncestorIDs,
+            selectionRevision: selection.isMultiple ? selection.revision : 0
         )
         return selectionOverlayCache.segments(for: key) {
             renderState.selectionOverlaySegments(
-                selectedNodeID: selectedNodeID,
+                selection: selection,
                 selectedAncestorIDs: selectedAncestorIDs
             )
         }
@@ -327,6 +329,8 @@ private struct SunburstSelectionOverlayCacheKey: Hashable {
     let renderVersion: Int
     let selectedNodeID: String?
     let selectedAncestorIDs: Set<String>
+    /// A multi-selection's members aren't in the key; its revision stands for them.
+    let selectionRevision: UInt64
 }
 
 private struct SunburstSelectionOverlayCache {
@@ -431,18 +435,20 @@ private struct SunburstChartRenderState {
     }
 
     func selectionOverlaySegments(
-        selectedNodeID: String?,
+        selection: NodeSelection,
         selectedAncestorIDs: Set<String>
     ) -> [SunburstSelectionOverlaySegment] {
-        guard let selectedNodeID else { return [] }
+        guard let selectedNodeID = selection.primaryID else { return [] }
 
         var overlaySegments: [SunburstSelectionOverlaySegment] = []
-        overlaySegments.reserveCapacity(selectedAncestorIDs.count)
+        overlaySegments.reserveCapacity(selectedAncestorIDs.count + selection.count)
 
+        // An ancestor that is itself selected draws as selected, below.
         for segment in segments {
             guard let nodeID = segment.nodeID,
                   nodeID != selectedNodeID,
-                  selectedAncestorIDs.contains(nodeID) else {
+                  selectedAncestorIDs.contains(nodeID),
+                  !selection.contains(nodeID) else {
                 continue
             }
 
@@ -452,6 +458,12 @@ private struct SunburstChartRenderState {
             ))
         }
 
+        // The primary last, so it draws on top.
+        for nodeID in selection.ids where nodeID != selectedNodeID {
+            if let segment = segmentByNodeID[nodeID] {
+                overlaySegments.append(SunburstSelectionOverlaySegment(segment: segment, role: .selected))
+            }
+        }
         if let selectedSegment = segmentByNodeID[selectedNodeID] {
             overlaySegments.append(SunburstSelectionOverlaySegment(
                 segment: selectedSegment,

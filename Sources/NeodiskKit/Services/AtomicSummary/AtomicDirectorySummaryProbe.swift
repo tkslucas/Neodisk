@@ -1,3 +1,8 @@
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 import Foundation
 
 extension AtomicDirectorySummarizer {
@@ -15,15 +20,16 @@ extension AtomicDirectorySummarizer {
     /// `isKnownGeneratedDirectory(at:)` for a path the caller already holds; the traversal checks every folder,
     /// and standardizing a `URL` each time was a visible share of its loop.
     nonisolated static func isKnownGeneratedDirectory(atPath path: String) -> Bool {
-        // A standardized path can only end in that component if the path names it.
-        guard path.contains("CoreSimulator") else { return false }
+        // A standardized path can only end in that component if the path names it. strstr, not `contains`:
+        // Foundation's search was most of this check's cost.
+        guard path.withCString({ strstr($0, "CoreSimulator") != nil }) else { return false }
         return isKnownGeneratedDirectory(at: URL(filePath: path, directoryHint: .isDirectory))
     }
 
     /// `isNodeDependencyLayoutDirectory(at:)` from the path's last two components, without a `URL`.
     nonisolated static func isNodeDependencyLayoutDirectory(atPath path: String) -> Bool {
         var trimmed = Substring(path)
-        if trimmed.count > 1, trimmed.hasSuffix("/") { trimmed = trimmed.dropLast() }
+        if trimmed.utf8.count > 1, trimmed.utf8.last == UInt8(ascii: "/") { trimmed = trimmed.dropLast() }
         guard let slash = trimmed.lastIndex(of: "/") else {
             return isNodeDependencyLayoutDirectory(childName: String(trimmed), parentName: "")
         }

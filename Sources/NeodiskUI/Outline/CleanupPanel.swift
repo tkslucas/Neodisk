@@ -47,8 +47,9 @@ struct CleanupPanel: View {
                 }
             }
             .padding(.horizontal, 10)
+            // Collapsed, the header sits centered between the divider and the sidebar's bottom edge.
             .padding(.top, 8)
-            .padding(.bottom, isExpanded ? 10 : 6)
+            .padding(.bottom, isExpanded ? 10 : 8)
         }
         .background(Color.accentColor.opacity(max(isTargeted ? 0.14 : isInviting ? 0.07 : 0, flash)))
         .overlay(CleanupDropTarget(model: model, isTargeted: $isTargeted))
@@ -106,6 +107,12 @@ struct CleanupPanel: View {
         }
         .padding(.horizontal, 4)
         .contentShape(Rectangle())
+        // The whole header toggles, as the list's section headers do.
+        .onTapGesture {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                model.setSidebarSection(.cleanup, expanded: !isExpanded)
+            }
+        }
         .onHover { isHeaderHovered = $0 }
         .contextMenu { SidebarSectionsMenuItems(model: model) }
     }

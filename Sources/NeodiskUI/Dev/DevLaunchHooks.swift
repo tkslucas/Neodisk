@@ -56,6 +56,18 @@ enum DevLaunchHooks {
             model.analysisTab = tab
         }
 
+        // NEODISK_SIDEBAR_COLLAPSED=<volumes,cloudFiles,folders,cleanup> collapses those sidebar sections (the
+        // rest expanded) for this run.
+        if let raw = environment["NEODISK_SIDEBAR_COLLAPSED"] {
+            let collapsed = Set(raw.split(separator: ",").compactMap { SidebarSection(rawValue: String($0)) })
+            model.devSidebarSectionsOverride = { sections in
+                for section in SidebarSection.allCases {
+                    sections.setExpanded(section, !collapsed.contains(section))
+                }
+            }
+            model.syncSidebarSections()
+        }
+
         // NEODISK_VIZ_MODE=<treemap|sunburst>, NEODISK_TREEMAP_STYLE=<cushion|flat> and
         // NEODISK_OUTLINE_POSITION=<leading|bottom> force that view or file list for this run, hidden or not.
         let mode = environment["NEODISK_VIZ_MODE"].flatMap(VizViewMode.init(rawValue:))

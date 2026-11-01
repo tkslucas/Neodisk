@@ -123,6 +123,8 @@ final class NeodiskViewModel {
     var outlineSort = OutlineSort(field: .size, ascending: false)
     /// Dev hooks pin their forced layout for the run; otherwise the next preferences change would undo it.
     @ObservationIgnored var devLayoutOverride: ((inout WorkspaceLayout) -> Void)?
+    /// The same for the sidebar's sections.
+    @ObservationIgnored var devSidebarSectionsOverride: ((inout SidebarSectionState) -> Void)?
     /// Mirror of the persisted workspace text scale, synced by
     /// bindPreferences — same pattern as treemapStyle. The workspace root
     /// puts it in the environment for SwiftUI; the AppKit surfaces that draw
@@ -482,9 +484,11 @@ final class NeodiskViewModel {
 
     // MARK: Sidebar sections
 
-    private func syncSidebarSections() {
-        guard let preferences, sidebarSections != preferences.sidebarSections else { return }
-        sidebarSections = preferences.sidebarSections
+    func syncSidebarSections() {
+        guard let preferences else { return }
+        var mirrored = preferences.sidebarSections
+        devSidebarSectionsOverride?(&mirrored)
+        if sidebarSections != mirrored { sidebarSections = mirrored }
     }
 
     func isSidebarSectionShown(_ section: SidebarSection) -> Bool {

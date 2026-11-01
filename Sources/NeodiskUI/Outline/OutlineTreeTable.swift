@@ -367,13 +367,7 @@ final class OutlineTableRowView: NSTableRowView {
 
     override func drawSelection(in dirtyRect: NSRect) {
         guard isSelected, selectionHighlightStyle != .none else { return }
-        let visible = visibleRect
-        let rect = NSRect(
-            x: visible.minX + OutlineRowMetrics.selectionInset,
-            y: 0,
-            width: visible.width - OutlineRowMetrics.selectionInset * 2,
-            height: bounds.height
-        )
+        let rect = selectionRect
         let color: NSColor = isEmphasized
             ? .selectedContentBackgroundColor
             : .unemphasizedSelectedContentBackgroundColor
@@ -388,6 +382,15 @@ final class OutlineTableRowView: NSTableRowView {
         ) {
             half.fill()
         }
+    }
+
+    /// Spans the scroll viewport, not `visibleRect`: a row drawn in strips while its pane slides in would
+    /// otherwise bake a clipped, broken highlight into its layer.
+    var selectionRect: NSRect {
+        let viewport = enclosingScrollView.map { convert($0.contentView.bounds, from: $0.contentView) } ?? bounds
+        let minX = max(viewport.minX, bounds.minX) + OutlineRowMetrics.selectionInset
+        let maxX = min(viewport.maxX, bounds.maxX) - OutlineRowMetrics.selectionInset
+        return NSRect(x: minX, y: 0, width: max(0, maxX - minX), height: bounds.height)
     }
 
     /// The halves of a row's selection filled square, so its corners join a selected neighbor's.

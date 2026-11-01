@@ -225,4 +225,19 @@ import NeodiskAppModel
         #expect(OutlineTableRowView.squaredHalves(of: rect, top: true, bottom: false, isFlipped: false)
             == [NSRect(x: 10, y: 12, width: 200, height: 12)])
     }
+
+    @Test func aRowDrawnWhileItsPaneSlidesInKeepsItsWholeHighlight() {
+        // Mid-slide: only the pane's first 50pt are inside the window.
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 300, height: 200),
+            styleMask: .borderless, backing: .buffered, defer: true
+        )
+        let scrollView = NSScrollView(frame: NSRect(x: 250, y: 0, width: 230, height: 100))
+        let row = OutlineTableRowView(frame: NSRect(x: 0, y: 0, width: 230, height: 37))
+        scrollView.documentView = row
+        window.contentView?.addSubview(scrollView)
+        #expect(row.visibleRect.width == 50)
+        let inset = OutlineRowMetrics.selectionInset
+        #expect(row.selectionRect == NSRect(x: inset, y: 0, width: 230 - inset * 2, height: 37))
+    }
 }

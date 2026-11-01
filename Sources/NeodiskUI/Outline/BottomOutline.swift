@@ -142,6 +142,16 @@ struct BottomOutlineTable: NSViewRepresentable {
 
         coordinator.tableView = tableView
         coordinator.scrollView = scrollView
+
+        // A narrower pane drops trailing columns instead of cutting one off.
+        let clipView = scrollView.contentView
+        clipView.postsFrameChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            coordinator,
+            selector: #selector(Coordinator.clipFrameDidChange),
+            name: NSView.frameDidChangeNotification,
+            object: clipView
+        )
         return scrollView
     }
 
@@ -179,17 +189,17 @@ struct BottomOutlineTable: NSViewRepresentable {
         ColumnSpec(
             identifier: "name",
             title: NSLocalizedString("Name", comment: "Bottom outline column header"),
-            width: 320, minWidth: 160, sortField: .name, alignsTrailing: false
+            width: 320, minWidth: 140, sortField: .name, alignsTrailing: false
         ),
         ColumnSpec(
             identifier: "percent",
             title: NSLocalizedString("%", comment: "Bottom outline column header: subtree percentage"),
-            width: 110, minWidth: 70, sortField: .size, alignsTrailing: false
+            width: 100, minWidth: 70, sortField: .size, alignsTrailing: false
         ),
         ColumnSpec(
             identifier: "size",
             title: NSLocalizedString("Size", comment: "Bottom outline column header"),
-            width: 110, minWidth: 80, sortField: .size, alignsTrailing: true
+            width: 90, minWidth: 70, sortField: .size, alignsTrailing: true
         ),
         ColumnSpec(
             identifier: "files",
@@ -199,7 +209,7 @@ struct BottomOutlineTable: NSViewRepresentable {
         ColumnSpec(
             identifier: "modified",
             title: NSLocalizedString("Modified", comment: "Bottom outline column header"),
-            width: 120, minWidth: 90, sortField: .modified, alignsTrailing: true
+            width: 100, minWidth: 80, sortField: .modified, alignsTrailing: true
         ),
     ]
 
@@ -228,6 +238,43 @@ struct BottomOutlineTable: NSViewRepresentable {
             self.model = model
         }
 
+        deinit {
+            NotificationCenter.default.removeObserver(self)
+        }
+
+        @objc func clipFrameDidChange(_ notification: Notification) {
+            fitColumns()
+        }
+
+        /// The inset style's margins either side of the columns.
+        private static let insetPadding: CGFloat = 20
+
+        /// Shows the layout's columns that fit whole, dropping from the trailing end (Name always stays), so a
+        /// narrow pane never cuts a column mid-value. Not persisted: they come back as room does.
+        func fitColumns() {
+            guard let tableView else { return }
+            let spacing = tableView.intercellSpacing.width
+            // Before the first layout there's no width to fit: every layout column shows.
+            let width = scrollView?.contentView.bounds.width ?? 0
+            var room = width > 0 ? width - Self.insetPadding : .greatestFiniteMagnitude
+            var isFull = false
+            for column in tableView.tableColumns {
+                guard let id = OutlineColumn(rawValue: column.identifier.rawValue) else { continue }
+                var shows = !appliedColumns.isHidden(id)
+                if shows {
+                    let needed = (id == .name ? column.minWidth : column.width) + spacing
+                    if id != .name, isFull || room < needed {
+                        isFull = true
+                        shows = false
+                    } else {
+                        room -= needed
+                    }
+                }
+                if column.isHidden == shows { column.isHidden = !shows }
+            }
+            tableView.sizeToFit()
+        }
+
         /// Scales current widths rather than the spec, so a column the user widened stays proportionally wide.
         func applyTextScale(columnMinimums: [String: CGFloat]) {
             guard let tableView else { return }
@@ -247,7 +294,7 @@ struct BottomOutlineTable: NSViewRepresentable {
                     ? column.width : column.width * ratio
                 column.width = max(target, minimum)
             }
-            tableView.sizeToFit()
+            fitColumns()
         }
 
         func apply(snapshot: NeodiskViewModel.OutlineRowsSnapshot) {
@@ -464,9 +511,8 @@ struct BottomOutlineTable: NSViewRepresentable {
                 let current = tableView.column(withIdentifier: .init(id.rawValue))
                 guard current >= 0 else { continue }
                 if current != index { tableView.moveColumn(current, toColumn: index) }
-                tableView.tableColumns[index].isHidden = layout.isHidden(id)
             }
-            tableView.sizeToFit()
+            fitColumns()
         }
 
         func tableView(_ tableView: NSTableView, shouldReorderColumn columnIndex: Int, toColumn newColumnIndex: Int) -> Bool {
@@ -476,9 +522,10 @@ struct BottomOutlineTable: NSViewRepresentable {
         func tableViewColumnDidMove(_ notification: Notification) {
             guard let tableView, !isApplyingColumns else { return }
             var layout = appliedColumns
-            layout.setVisibleOrder(tableView.tableColumns.filter { !$0.isHidden }.compactMap {
+            // Columns dropped for room keep their place: only the layout's hidden ones are out of the order.
+            layout.setVisibleOrder(tableView.tableColumns.compactMap {
                 OutlineColumn(rawValue: $0.identifier.rawValue)
-            })
+            }.filter { !layout.isHidden($0) })
             commitColumns(layout)
         }
 
@@ -486,12 +533,8 @@ struct BottomOutlineTable: NSViewRepresentable {
             guard let id = sender.representedObject as? String, let column = OutlineColumn(rawValue: id) else { return }
             var layout = appliedColumns
             layout.setHidden(column, !layout.isHidden(column))
-            if let tableView {
-                let index = tableView.column(withIdentifier: .init(id))
-                if index >= 0 { tableView.tableColumns[index].isHidden = layout.isHidden(column) }
-                tableView.sizeToFit()
-            }
             commitColumns(layout)
+            fitColumns()
         }
 
         private func commitColumns(_ layout: ItemLayout<OutlineColumn>) {
@@ -507,8 +550,8 @@ struct BottomOutlineTable: NSViewRepresentable {
                 let item = NSMenuItem(title: id.menuTitle, action: #selector(toggleColumn(_:)), keyEquivalent: "")
                 item.target = self
                 item.representedObject = id.rawValue
-                item.state = column.isHidden ? .off : .on
-                item.isEnabled = column.isHidden || appliedColumns.canHide(id)
+                item.state = appliedColumns.isHidden(id) ? .off : .on
+                item.isEnabled = appliedColumns.isHidden(id) || appliedColumns.canHide(id)
                 menu.addItem(item)
             }
         }

@@ -24,7 +24,9 @@ public struct ContentView: View {
         NavigationSplitView(columnVisibility: $model.sidebarVisibility) {
             SidebarPane(model: model)
                 .navigationSplitViewColumnWidth(
-                    min: 210 * textScale, ideal: 250 * textScale, max: 320 * textScale
+                    min: PaneLayout.sidebarMinWidth(scale: model.textScale),
+                    ideal: PaneLayout.sidebarIdealWidth(scale: model.textScale),
+                    max: PaneLayout.sidebarMaxWidth(scale: model.textScale)
                 )
         } detail: {
             detailContent

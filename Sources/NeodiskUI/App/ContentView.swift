@@ -44,6 +44,9 @@ public struct ContentView: View {
             minHeight: minimumSize.height
         )
         .background(SnapshotWindowHider())
+        .background(ToolbarButtonRefresher(state: [
+            model.coordinator.isScanning, model.canRescan, model.coordinator.snapshot != nil, model.cleanup.isEnabled,
+        ]))
         .sheet(isPresented: $model.showWelcomeSheet) {
             WelcomeSheet(model: model)
                 .neoWorkspaceText(scale: textScale)

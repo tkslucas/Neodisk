@@ -69,12 +69,9 @@
 "Theme" = "主题";
 "Scanning" = "扫描";
 "Show hidden files while scanning" = "扫描时显示隐藏文件";
-"Mounted volume scans always include hidden files automatically." = "扫描已装载的宗卷时始终自动包含隐藏文件。";
 "Automatically summarize folders with many small files" = "自动汇总包含大量小文件的文件夹";
 "Scan local cloud files" = "扫描本地云文件";
-"Summarizing folders with thousands of tiny files (like node_modules or caches) dramatically improves scan speed." = "汇总包含数千个微小文件的文件夹（例如 node_modules 或缓存）可以显著提升扫描速度。";
 "When off, scans skip locally synced cloud folders: ~/Library/CloudStorage (Google Drive, Dropbox, OneDrive) and iCloud Drive." = "关闭后，扫描将跳过本地同步的云文件夹：~/Library/CloudStorage（Google Drive、Dropbox、OneDrive）和 iCloud Drive。";
-"Changes apply to the next scan." = "更改将在下次扫描时生效。";
 "When opening a scanned location" = "打开已扫描的位置时";
 "Rescan automatically always refreshes behind the saved results; Smart skips the refresh when the last scan took a while; Show snapshot only always waits for Rescan Now." = "“自动重新扫描”始终在已保存结果的后台刷新；“智能”会在上次扫描耗时较长时跳过刷新；“仅显示快照”则始终等待点按“立即重新扫描”。";
 "When Results Appear" = "显示结果时";
@@ -85,14 +82,12 @@
 "One pattern per line. Trailing “/” matches folders; “*” is a wildcard." = "每行一个模式。末尾加“/”表示匹配文件夹；“*”为通配符。";
 "Add Presets" = "添加预设";
 "Show free space in treemap" = "在矩形树图中显示可用空间";
-"The sunburst always shows free and hidden space for volume scans; this adds them to the treemap too. Hidden space is capacity the scan could not see, such as purgeable space and local snapshots. Applies immediately." = "旭日图在扫描宗卷时始终显示可用空间和隐藏空间；此选项会将它们也添加到矩形树图中。隐藏空间是扫描无法看到的容量，例如可清除空间和本地快照。立即生效。";
 "Workspace" = "工作区";
 "Show Welcome Screen" = "显示欢迎界面";
 "Restore Defaults" = "恢复默认设置";
 
 /* MARK: - 设置：隐私 */
 "Full Disk Access" = "完全磁盘访问权限";
-"Neodisk can scan ordinary folders immediately. For protected macOS locations such as Mail, Safari, Messages, and Library content, grant Full Disk Access in System Settings." = "Neodisk 可以立即扫描普通文件夹。若要扫描 Mail、Safari、Messages 等受保护的 macOS 位置及 Library 内容，请在系统设置中授予完全磁盘访问权限。";
 "Full Disk Access is enabled." = "已启用完全磁盘访问权限。";
 "Full Disk Access is not enabled." = "尚未启用完全磁盘访问权限。";
 "Checking…" = "正在检查…";
@@ -101,12 +96,9 @@
 "Note: running unbundled (swift run), Neodisk inherits its permissions from the terminal that launched it — grant Full Disk Access to that terminal app." = "注意：以非打包方式运行（swift run）时，Neodisk 会继承启动它的终端应用的权限，请为该终端应用授予完全磁盘访问权限。";
 "Moving to the Trash" = "移到废纸篓";
 "Allow moving items to the Trash" = "允许将项目移到废纸篓";
-"Collect items in Cleanup at the bottom of the sidebar, then move them to the Trash after one confirmation. Neodisk never deletes anything itself, and won't touch system folders or your home folder. Turn this off to only look." = "在边栏底部的“清理”中收集项目，确认一次即可将它们移到废纸篓。Neodisk 自身绝不会删除任何内容，也不会触及系统文件夹或你的个人文件夹。关闭此项即可只查看。";
 "Sidebar Folders" = "边栏文件夹";
-"Folders you add are stored locally so they can appear in the sidebar." = "你添加的文件夹会存储在本地，以便显示在边栏中。";
 "Clear Added Folders" = "清除已添加的文件夹";
 "Scan Snapshots" = "扫描快照";
-"After each completed scan, Neodisk keeps the latest results for that location on this Mac so reopening it shows the last scan instantly while a fresh scan runs. Snapshots contain file names, paths, and sizes; they are stored only in Neodisk's local cache and never leave this Mac." = "每次扫描完成后，Neodisk 都会在本 Mac 上保留该位置的最新结果，以便重新打开时立即显示上次扫描结果，同时在后台进行新的扫描。快照包含文件名、路径和大小，仅存储在 Neodisk 的本地缓存中，绝不会离开本 Mac。";
 "Size on disk" = "占用磁盘空间";
 "Calculating…" = "正在计算…";
 "Clear Scan Snapshots" = "清除扫描快照";
@@ -299,7 +291,6 @@
 "Last viewed" = "上次查看的视图";
 "Cushion" = "衬垫";
 "Flat" = "扁平";
-"The view the app starts in. Last viewed restores whatever was on screen when you quit. The toolbar picker switches views any time." = "应用启动时显示的视图。“上次查看的视图”会恢复退出时屏幕上的视图。工具栏中的选择器可随时切换视图。";
 "Color palette" = "调色板";
 "Classic" = "经典";
 "Vivid" = "鲜艳";
@@ -307,7 +298,6 @@
 "Retro" = "复古";
 "Neon" = "霓虹";
 "Colorblind-safe" = "色盲友好";
-"The color set the visualizations draw with. Colorblind-safe stays distinct with common color vision differences. Applies immediately." = "可视化使用的配色方案。色盲友好在常见色觉差异下仍可区分。立即生效。";
 
 /* MARK: - File list position */
 "Name" = "名称";
@@ -350,7 +340,6 @@
 "Update Error" = "更新出错";
 "Updates" = "更新";
 "Check for updates automatically" = "自动检查更新";
-"Neodisk checks GitHub for new versions in the background and always asks before installing anything." = "Neodisk 会在后台检查 GitHub 上的新版本，安装前一定会先询问。";
 "Automatic updates work only in the packaged app." = "自动更新仅在打包的 App 中可用。";
 
 /* MARK: - Help & About */
@@ -378,8 +367,6 @@
 
 /* Settings tabs (2026-07-13) */
 "Advanced" = "高级";
-"Loads the previous scan in the background so the Changes view opens instantly." = "在后台载入上一次扫描，使“变化”视图即刻打开。";
-"Runs the duplicate scan automatically when results appear. Reading file contents can take time and energy on large locations." = "结果显示时自动开始重复项扫描。读取文件内容在较大的位置上可能耗时耗电。";
 /* Hover tooltips (2026-07-13) */
 "Free space · %@" = "可用空间 · %@";
 "Hidden space · %@" = "隐藏空间 · %@";
@@ -395,7 +382,6 @@
 "Zoom In" = "放大";
 "Zoom Out" = "缩小";
 "Actual Size" = "实际大小";
-"Scales the text in the locations sidebar, the file lists, the treemap and sunburst labels, and the statistics panel. Applies immediately. View ▸ Zoom In and Zoom Out (⌘+ and ⌘−) change it without opening Settings." = "缩放位置边栏、文件列表、树状图与旭日图标签以及统计面板中的文字。立即生效。“显示”▸“放大”和“缩小”（⌘+ 和 ⌘−）无需打开设置即可更改。";
 
 /* Linux (GTK) app */
 "%@ free" = "可用 %@";
@@ -407,20 +393,16 @@
 "%@ of scan" = "占扫描的 %@";
 "%lld smaller items · %@" = "%lld 个较小的项目 · %@";
 "Cached Scans" = "已缓存的扫描";
-"Changes apply from the next scan." = "更改将从下一次扫描开始生效。";
+"Saved scans hold file names, paths and sizes, and never leave this computer." = "已保存的扫描包含文件名、路径和大小，绝不会离开这台电脑。";
 "Choose a Location to Scan" = "选择要扫描的位置";
 "Clear" = "清除";
 "Color Palette" = "调色板";
 "Computer" = "计算机";
 "Count folders with very many small files as one item, for faster scans" = "将包含大量小文件的文件夹计为一个项目，以加快扫描";
-"Dot files and folders, like ~/.cache and ~/.local" = "以点开头的文件和文件夹，例如 ~/.cache 和 ~/.local";
-"Draw a volume's free space as a block of its own" = "将宗卷的可用空间绘制为单独的区块";
-"Finished scans are kept so locations reopen instantly and changes can be compared." = "已完成的扫描会被保留，以便位置可以即时重新打开并比较更改。";
 "Follow System" = "跟随系统";
 "Home" = "主文件夹";
 "Include Hidden Files" = "包含隐藏文件";
 "Keyboard Shortcuts" = "键盘快捷键";
-"Locations" = "位置";
 "Main Menu" = "主菜单";
 "Merging changes…" = "正在合并更改…";
 "Select Largest Item Inside" = "选择其中最大的项目";
@@ -430,7 +412,6 @@
 "Preferences" = "偏好设置";
 "Quit" = "退出";
 "Disk space visualizer. Treemap and sunburst views on the NeodiskKit scan engine." = "磁盘空间可视化工具。基于 NeodiskKit 扫描引擎的矩形树图和旭日图视图。";
-"Recent" = "最近";
 "Refreshing…" = "正在刷新…";
 "Saved Scans" = "已保存的扫描";
 "Scans" = "扫描";
@@ -471,7 +452,6 @@
 "Moving items to the Trash is turned off in Preferences." = "已在“偏好设置”中关闭将项目移到废纸篓。";
 "Moving items to the Trash is turned off in Settings." = "已在“设置”中关闭将项目移到废纸篓。";
 "Moving to the Trash…" = "正在移到废纸篓…";
-"Neodisk asks before each move and never deletes anything itself. System folders and your home folder are off limits. Turn this off to only look." = "Neodisk 每次移动前都会询问，自身绝不会删除任何内容。系统文件夹和你的个人文件夹不会被触及。关闭此项即可只查看。";
 "Open Trash" = "打开废纸篓";
 "Remove from Cleanup" = "从清理中移除";
 "Some of this is in a cloud drive: moving it to the Trash also removes it from the cloud and your other devices." = "其中部分内容位于云盘中：将其移到废纸篓也会将其从云端和你的其他设备中移除。";
@@ -527,3 +507,8 @@
 "Couldn't Move %lld Items to the Trash" = "未能将 %lld 个项目移到废纸篓";
 "Select All" = "全选";
 "Add to Selection" = "添加到所选内容";
+"Adds hidden space too: capacity the scan could not see, such as purgeable space and local snapshots." = "同时显示隐藏空间：扫描无法看到的容量，例如可清除空间和本地快照。";
+"Reading file contents can take time and energy on large locations." = "读取文件内容在较大的位置上可能耗时耗电。";
+"For protected macOS locations such as Mail, Safari, Messages, and Library content, grant Full Disk Access in System Settings." = "若要扫描 Mail、Safari、Messages 等受保护的 macOS 位置及 Library 内容，请在系统设置中授予完全磁盘访问权限。";
+"Neodisk never deletes anything itself, and won't touch system folders or your home folder." = "Neodisk 自身绝不会删除任何内容，也不会触及系统文件夹或你的个人文件夹。";
+"Snapshots contain file names, paths, and sizes; they are stored only in Neodisk's local cache and never leave this Mac." = "快照包含文件名、路径和大小，仅存储在 Neodisk 的本地缓存中，绝不会离开本 Mac。";

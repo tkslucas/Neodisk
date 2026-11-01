@@ -8,7 +8,8 @@ import TreemapKit
 
 @MainActor
 enum PreferencesDialog {
-    static func present(model: AppModel, from window: GPtr?) {
+    /// `onScanPage` opens on the Scanning page (a dev hook's capture).
+    static func present(model: AppModel, from window: GPtr?, onScanPage: Bool = false) {
         let preferences = model.preferences
         let dialog = raw(adw_preferences_dialog_new())!
 
@@ -30,16 +31,13 @@ enum PreferencesDialog {
 
         let treemap = group(L("Treemap"))
         addSwitch(to: treemap, title: L("Show Free Space"),
-                  subtitle: L("Draw a volume's free space as a block of its own"),
                   isOn: preferences.showFreeSpace) { preferences.showFreeSpace = $0 }
         adw_preferences_page_add(ptr(viewPage), ptr(treemap))
 
-        let categories = group(
-            L("File Categories"),
-            description: L("To move a file type to another category or a new one, group the Kinds tab by Types and right-click the type. Right-click a category you made to rename or delete it.")
-        )
+        let categories = group(L("File Categories"))
         let resetRow = raw(adw_action_row_new())!
         adw_preferences_row_set_title(ptr(resetRow), L("Reset Categories"))
+        gtk_widget_set_tooltip_text(ptr(resetRow), L("To move a file type to another category or a new one, group the Kinds tab by Types and right-click the type. Right-click a category you made to rename or delete it."))
         let resetButton = raw(gtk_button_new_with_label(L("Reset")))!
         gtk_widget_set_valign(ptr(resetButton), GTK_ALIGN_CENTER)
         gtk_widget_set_sensitive(ptr(resetButton), gbool(!preferences.fileCategories.isEmpty))
@@ -54,16 +52,15 @@ enum PreferencesDialog {
 
         // Scanning.
         let scanPage = page(L("Scanning"), icon: "drive-harddisk-symbolic")
-        let scanning = group(L("Scans"), description: L("Changes apply from the next scan."))
+        let scanning = group(L("Scans"))
         addSwitch(to: scanning, title: L("Include Hidden Files"),
-                  subtitle: L("Dot files and folders, like ~/.cache and ~/.local"),
                   isOn: preferences.includeHiddenFiles) { preferences.includeHiddenFiles = $0 }
         addSwitch(to: scanning, title: L("Summarize Huge Folders"),
-                  subtitle: L("Count folders with very many small files as one item, for faster scans"),
+                  tooltip: L("Count folders with very many small files as one item, for faster scans"),
                   isOn: preferences.autoSummarizeDirectories) { preferences.autoSummarizeDirectories = $0 }
         adw_preferences_page_add(ptr(scanPage), ptr(scanning))
 
-        let storage = group(L("Saved Scans"), description: L("Finished scans are kept so locations reopen instantly and changes can be compared."))
+        let storage = group(L("Saved Scans"), description: L("Saved scans hold file names, paths and sizes, and never leave this computer."))
         let cacheRow = raw(adw_action_row_new())!
         adw_preferences_row_set_title(ptr(cacheRow), L("Cached Scans"))
         adw_action_row_set_subtitle(ptr(cacheRow), L("Calculating…"))
@@ -76,7 +73,7 @@ enum PreferencesDialog {
 
         let trash = group(
             L("Moving to the Trash"),
-            description: L("Neodisk asks before each move and never deletes anything itself. System folders and your home folder are off limits. Turn this off to only look.")
+            description: L("Neodisk never deletes anything itself, and won't touch system folders or your home folder.")
         )
         addSwitch(to: trash, title: L("Allow moving items to the Trash"),
                   isOn: preferences.allowsMovingToTrash) { preferences.allowsMovingToTrash = $0 }
@@ -96,6 +93,7 @@ enum PreferencesDialog {
             }
         }
 
+        if onScanPage { adw_preferences_dialog_set_visible_page(ptr(dialog), ptr(scanPage)) }
         adw_dialog_present(ptr(dialog), ptr(window))
     }
 
@@ -118,14 +116,14 @@ enum PreferencesDialog {
     private static func addSwitch(
         to group: GPtr,
         title: String,
-        subtitle: String? = nil,
+        tooltip: String? = nil,
         isOn: Bool,
         _ changed: @escaping @MainActor (Bool) -> Void
     ) {
         let row = raw(adw_switch_row_new())!
         adw_preferences_row_set_title(ptr(row), title)
-        if let subtitle {
-            adw_action_row_set_subtitle(ptr(row), subtitle)
+        if let tooltip {
+            gtk_widget_set_tooltip_text(ptr(row), tooltip)
         }
         adw_switch_row_set_active(ptr(row), gbool(isOn))
         connectNotify(row, "active") {

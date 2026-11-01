@@ -66,9 +66,6 @@ private struct GeneralSettingsTab: View {
                 )
                 .disabled(!updates.isSupported)
                 if updates.isSupported {
-                    Text("Neodisk checks GitHub for new versions in the background and always asks before installing anything.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
                     Button("Check for Updates…") {
                         updates.checkForUpdates()
                     }
@@ -111,9 +108,6 @@ private struct ViewSettingsTab: View {
                         Text(verbatim: TextScale.title(for: step)).tag(step)
                     }
                 }
-                Text("Scales the text in the locations sidebar, the file lists, the treemap and sunburst labels, and the statistics panel. Applies immediately. View ▸ Zoom In and Zoom Out (⌘+ and ⌘−) change it without opening Settings.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
             }
 
             Section("Visualization") {
@@ -127,32 +121,22 @@ private struct ViewSettingsTab: View {
                         Text(view.menuTitle).tag(DefaultVizView(view))
                     }
                 }
-                Text("The view the app starts in. Last viewed restores whatever was on screen when you quit. The toolbar picker switches views any time.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
 
                 Toggle("Show free space in treemap", isOn: $preferences.showFreeSpace)
-                Text("The sunburst always shows free and hidden space for volume scans; this adds them to the treemap too. Hidden space is capacity the scan could not see, such as purgeable space and local snapshots. Applies immediately.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .help("Adds hidden space too: capacity the scan could not see, such as purgeable space and local snapshots.")
 
                 Picker("Color palette", selection: $preferences.vizPaletteID) {
                     ForEach(VizPalette.all) { palette in
                         Text(LocalizedStringKey(palette.title)).tag(palette.id)
                     }
                 }
-                Text("The color set the visualizations draw with. Colorblind-safe stays distinct with common color vision differences. Applies immediately.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
             }
 
             Section("File Categories") {
-                Text("To move a file type to another category or a new one, group the Kinds tab by Types and right-click the type. Right-click a category you made to rename or delete it.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
                 Button("Reset Categories") {
                     preferences.fileCategoriesJSON = ""
                 }
+                .help("To move a file type to another category or a new one, group the Kinds tab by Types and right-click the type. Right-click a category you made to rename or delete it.")
                 .disabled(preferences.fileCategoriesJSON.isEmpty)
             }
         }
@@ -169,23 +153,12 @@ private struct AdvancedSettingsTab: View {
         Form {
             Section("Scanning") {
                 Toggle("Show hidden files while scanning", isOn: $preferences.includeHiddenFiles)
-                Text("Mounted volume scans always include hidden files automatically.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
                 Toggle(
                     "Automatically summarize folders with many small files",
                     isOn: $preferences.autoSummarizeDirectories
                 )
-                Text("Summarizing folders with thousands of tiny files (like node_modules or caches) dramatically improves scan speed.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
                 Toggle("Scan local cloud files", isOn: $preferences.includeCloudStorage)
-                Text("When off, scans skip locally synced cloud folders: ~/Library/CloudStorage (Google Drive, Dropbox, OneDrive) and iCloud Drive.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                Text("Changes apply to the next scan.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .help("When off, scans skip locally synced cloud folders: ~/Library/CloudStorage (Google Drive, Dropbox, OneDrive) and iCloud Drive.")
                 Picker("When opening a scanned location", selection: Binding(
                     get: { preferences.autoRescanPolicy },
                     set: { preferences.autoRescanPolicy = $0 }
@@ -194,9 +167,7 @@ private struct AdvancedSettingsTab: View {
                         Text(LocalizedStringKey(policy.title)).tag(policy)
                     }
                 }
-                Text("Rescan automatically always refreshes behind the saved results; Smart skips the refresh when the last scan took a while; Show snapshot only always waits for Rescan Now.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                .help("Rescan automatically always refreshes behind the saved results; Smart skips the refresh when the last scan took a while; Show snapshot only always waits for Rescan Now.")
             }
 
             Section("When Results Appear") {
@@ -204,13 +175,8 @@ private struct AdvancedSettingsTab: View {
                     "Prepare the Changes comparison in the background",
                     isOn: $preferences.prepareChangesAfterScan
                 )
-                Text("Loads the previous scan in the background so the Changes view opens instantly.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
                 Toggle("Find duplicate files automatically", isOn: $preferences.autoScanDuplicates)
-                Text("Runs the duplicate scan automatically when results appear. Reading file contents can take time and energy on large locations.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .help("Reading file contents can take time and energy on large locations.")
             }
 
             Section("Exclusions") {
@@ -258,7 +224,7 @@ private struct PrivacySettingsTab: View {
     var body: some View {
         Form {
             Section("Full Disk Access") {
-                Text("Neodisk can scan ordinary folders immediately. For protected macOS locations such as Mail, Safari, Messages, and Library content, grant Full Disk Access in System Settings.")
+                Text("For protected macOS locations such as Mail, Safari, Messages, and Library content, grant Full Disk Access in System Settings.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
 
@@ -297,15 +263,12 @@ private struct PrivacySettingsTab: View {
 
             Section("Moving to the Trash") {
                 Toggle("Allow moving items to the Trash", isOn: $preferences.allowsMovingToTrash)
-                Text("Collect items in Cleanup at the bottom of the sidebar, then move them to the Trash after one confirmation. Neodisk never deletes anything itself, and won't touch system folders or your home folder. Turn this off to only look.")
+                Text("Neodisk never deletes anything itself, and won't touch system folders or your home folder.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
 
             Section("Sidebar Folders") {
-                Text("Folders you add are stored locally so they can appear in the sidebar.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
                 Button("Clear Added Folders") {
                     model.removeSidebarFolders(ids: Set(model.sidebarFolders.map(\.id)))
                     refreshSnapshotCacheSize()
@@ -314,7 +277,7 @@ private struct PrivacySettingsTab: View {
             }
 
             Section("Scan Snapshots") {
-                Text("After each completed scan, Neodisk keeps the latest results for that location on this Mac so reopening it shows the last scan instantly while a fresh scan runs. Snapshots contain file names, paths, and sizes; they are stored only in Neodisk's local cache and never leave this Mac.")
+                Text("Snapshots contain file names, paths, and sizes; they are stored only in Neodisk's local cache and never leave this Mac.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 LabeledContent("Size on disk") {

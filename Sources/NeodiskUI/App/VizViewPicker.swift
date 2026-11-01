@@ -103,14 +103,6 @@ extension VizView {
         }
     }
 
-    var menuTitle: String {
-        switch self {
-        case .cushion: NSLocalizedString("Cushion Treemap", comment: "View menu")
-        case .flat: NSLocalizedString("Flat Treemap", comment: "View menu")
-        case .sunburst: NSLocalizedString("Sunburst", comment: "View menu")
-        }
-    }
-
     var systemImage: String {
         switch self {
         case .cushion: "square.split.bottomrightquarter"

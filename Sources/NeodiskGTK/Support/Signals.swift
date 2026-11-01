@@ -188,18 +188,25 @@ func connectTooltip(_ instance: GPtr?, _ handler: @escaping @MainActor (_ x: Int
 
 // MARK: - Actions
 
-/// Returns the action so the caller can toggle its enabled state.
+/// Returns the action so the caller can toggle its enabled state. A string `state` makes menu items for
+/// "<name>::<value>" radio items; the caller keeps it current with `setActionState`.
 @discardableResult
 @MainActor
 func addAction(
     to map: GPtr?,
     _ name: String,
     stringParameter: Bool = false,
+    state: String? = nil,
     _ handler: @escaping @MainActor (String?) -> Void
 ) -> GPtr? {
     let parameterType = stringParameter ? g_variant_type_new("s") : nil
     defer { if let parameterType { g_variant_type_free(parameterType) } }
-    guard let action = raw(g_simple_action_new(name, parameterType)) else { return nil }
+    let created = if let state {
+        g_simple_action_new_stateful(name, parameterType, g_variant_new_string(state))
+    } else {
+        g_simple_action_new(name, parameterType)
+    }
+    guard let action = raw(created) else { return nil }
     connectPointer(action, "activate") { variant in
         let argument = variant.flatMap { string(from: g_variant_get_string(ptr($0), nil)) }
         handler(argument)
@@ -207,6 +214,30 @@ func addAction(
     g_action_map_add_action(ptr(map), ptr(action))
     g_object_unref(action)
     return action
+}
+
+/// A checkbox in menus. The handler gets the state asked for; `setActionState` shows what took effect.
+@discardableResult
+@MainActor
+func addToggleAction(to map: GPtr?, _ name: String, _ handler: @escaping @MainActor (Bool) -> Void) -> GPtr? {
+    guard let action = raw(g_simple_action_new_stateful(name, nil, g_variant_new_boolean(gbool(true)))) else { return nil }
+    connectPointer(action, "change-state") { variant in
+        guard let variant else { return }
+        handler(g_variant_get_boolean(ptr(variant)) != 0)
+    }
+    g_action_map_add_action(ptr(map), ptr(action))
+    g_object_unref(action)
+    return action
+}
+
+@MainActor
+func setActionState(_ action: GPtr?, _ on: Bool) {
+    g_simple_action_set_state(ptr(action), g_variant_new_boolean(gbool(on)))
+}
+
+@MainActor
+func setActionState(_ action: GPtr?, _ value: String) {
+    g_simple_action_set_state(ptr(action), g_variant_new_string(value))
 }
 
 @MainActor

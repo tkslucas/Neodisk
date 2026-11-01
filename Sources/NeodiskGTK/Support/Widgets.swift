@@ -123,32 +123,49 @@ enum Widgets {
         }
     }
 
-    /// Created into `cache` on first use. The tooltip is off while open, or GTK draws a showing one over the menu.
+    /// Created into `cache` on first use. The tooltip under the pointer is off while open, or GTK draws a showing
+    /// one over the menu.
     static func popupMenu(_ cache: inout GPtr?, sections: [[(String, String)]], on parent: GPtr, at point: CGPoint) {
-        let hadTooltip = gtk_widget_get_has_tooltip(ptr(parent)) != 0
-        if cache == nil {
-            let model = menu(sections)
+        popupMenu(&cache, model: menu(sections), on: parent, at: point)
+    }
+
+    static func popupMenu(_ cache: inout GPtr?, model: GObjectRef, on parent: GPtr, at point: CGPoint) {
+        if let cache {
+            // Labels may follow the selection ("Copy Paths" for several): the items are rebuilt, the popover kept.
+            gtk_popover_menu_set_menu_model(ptr(cache), ptr(model.pointer))
+        } else {
             let popover = raw(gtk_popover_menu_new_from_model(ptr(model.pointer)))!
             gtk_widget_set_parent(ptr(popover), ptr(parent))
             gtk_popover_set_has_arrow(ptr(popover), gbool(false))
-            if hadTooltip {
-                connect(popover, "closed") {
-                    gtk_widget_set_has_tooltip(ptr(parent), gbool(true))
+            connect(popover, "closed") {
+                if let owner = suppressedTooltips.removeValue(forKey: popover) {
+                    gtk_widget_set_has_tooltip(ptr(owner), gbool(true))
                 }
             }
             cache = popover
-        } else {
-            // Labels may follow the selection ("Copy Paths" for several): the items are rebuilt, the popover kept.
-            let model = menu(sections)
-            gtk_popover_menu_set_menu_model(ptr(cache), ptr(model.pointer))
         }
-        if hadTooltip {
-            gtk_widget_set_has_tooltip(ptr(parent), gbool(false))
-            gtk_widget_trigger_tooltip_query(ptr(parent))
+        if let popover = cache, suppressedTooltips[popover] == nil, let owner = tooltipOwner(in: parent, at: point) {
+            suppressedTooltips[popover] = owner
+            gtk_widget_set_has_tooltip(ptr(owner), gbool(false))
+            gtk_widget_trigger_tooltip_query(ptr(owner))
         }
         var rect = GdkRectangle(x: Int32(point.x), y: Int32(point.y), width: 1, height: 1)
         gtk_popover_set_pointing_to(ptr(cache), &rect)
         gtk_popover_popup(ptr(cache))
+    }
+
+    /// Popovers to the widget whose tooltip they turned off.
+    private static var suppressedTooltips: [GPtr: GPtr] = [:]
+
+    /// The widget at `point` (in `parent`'s coordinates), or its nearest ancestor up to `parent`, that has a tooltip.
+    private static func tooltipOwner(in parent: GPtr, at point: CGPoint) -> GPtr? {
+        var widget = raw(gtk_widget_pick(ptr(parent), point.x, point.y, GTK_PICK_DEFAULT))
+        while let current = widget {
+            if gtk_widget_get_has_tooltip(ptr(current)) != 0 { return current }
+            if current == parent { return nil }
+            widget = raw(gtk_widget_get_parent(ptr(current)))
+        }
+        return nil
     }
 
     /// Extra menu item attributes by action: Delete shows as an accelerator (the focused view handles the key),
@@ -158,21 +175,29 @@ enum Widgets {
     ]
 
     static func menu(_ sections: [[(String, String)]]) -> GObjectRef {
+        menu(sections: sections.map(section))
+    }
+
+    static func menu(sections: [GObjectRef]) -> GObjectRef {
         let menu = raw(g_menu_new())!
-        for items in sections {
-            let section = g_menu_new()
-            for (label, action) in items {
-                let item = g_menu_item_new(label, action)
-                for (name, value) in itemAttributes[action] ?? [] {
-                    g_menu_item_set_attribute_value(item, name, g_variant_new_string(value))
-                }
-                g_menu_append_item(section, item)
-                g_object_unref(raw(item))
-            }
-            g_menu_append_section(ptr(menu), nil, ptr(raw(section)))
-            g_object_unref(raw(section))
+        for section in sections {
+            g_menu_append_section(ptr(menu), nil, ptr(section.pointer))
         }
         return GObjectRef(adopting: menu)
+    }
+
+    /// A menu section; append submenus to it with `g_menu_append_submenu`.
+    static func section(_ items: [(String, String)]) -> GObjectRef {
+        let section = raw(g_menu_new())!
+        for (label, action) in items {
+            let item = g_menu_item_new(label, action)
+            for (name, value) in itemAttributes[action] ?? [] {
+                g_menu_item_set_attribute_value(item, name, g_variant_new_string(value))
+            }
+            g_menu_append_item(ptr(section), item)
+            g_object_unref(raw(item))
+        }
+        return GObjectRef(adopting: section)
     }
 }
 
@@ -185,6 +210,7 @@ enum Styles {
     .neodisk-caption { font-size: smaller; }
     .neodisk-statusbar { padding: 4px 12px; border-top: 1px solid alpha(currentColor, 0.12); }
     .neodisk-sidebar-row { padding: 6px 4px; }
+    .neodisk-sidebar-section > box > title { padding: 12px 12px 6px 12px; }
     .neodisk-capacity trough { min-height: 4px; }
     .neodisk-capacity block { min-height: 4px; }
     .neodisk-progress-caption { padding: 2px 12px 6px 12px; }

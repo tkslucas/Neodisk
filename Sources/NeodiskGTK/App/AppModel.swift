@@ -772,9 +772,8 @@ extension AppModel {
         return built
     }
 
-    /// Splices the moved item out off the main actor and shows the result the way a finished scan is shown.
-    /// A scan of the location that took over meanwhile wins: what it lands is the truth. Another location on
-    /// screen: the item leaves this one's saved scan, or reopening it would show it again.
+    /// Splices the moved item out off the main actor and shows the result as a finished scan. A newer scan of the
+    /// location wins; with another location on screen, the item leaves its saved scan so reopening won't show it.
     private func removeFromTree(_ nodeIDs: [String], of snapshot: ScanSnapshot) async {
         guard let current = self.snapshot, current.target.id == snapshot.target.id else {
             await removeFromSavedScan(nodeIDs, of: snapshot.target)

@@ -207,9 +207,8 @@ final class MainWindow {
         adw_toast_overlay_set_child(ptr(toastOverlay), ptr(splitView))
         adw_application_window_set_content(ptr(window), ptr(toastOverlay))
 
-        // Narrow windows: statistics float over the map and secondary outline columns give way to names; narrower
-        // still, the sidebar becomes an overlay too. Only the last matching breakpoint applies, so the narrower one
-        // comes last and repeats the wider one's changes.
+        // Narrow: statistics float and secondary columns give way; narrower, the sidebar floats too. Only the last
+        // matching breakpoint applies, so the narrower one repeats the wider one's changes.
         addBreakpoint("max-width: 900sp", collapsing: [statisticsSplit])
         addBreakpoint("max-width: 760sp", collapsing: [statisticsSplit, splitView])
 
@@ -452,9 +451,7 @@ final class MainWindow {
         }
         for view in VizView.allCases {
             actions["views.\(view.rawValue)"] = addToggleAction(to: viewActions.pointer, view.rawValue) { [unowned self] shown in
-                var views = self.model.preferences.workspaceLayout.views
-                views.setHidden(view, !shown)
-                self.model.preferences.workspaceLayout.setViews(views)
+                self.model.preferences.workspaceLayout.setHidden(view, !shown)
             }
         }
         actions["open-item"] = addAction(to: window, "open-item") { [unowned self] _ in
@@ -534,9 +531,7 @@ final class MainWindow {
         let confirmation = TrashConfirmation(nodes: allowed, scannedAt: model.snapshot?.finishedAt)
         var message = confirmation.message
         if let firstRefusal = refusals.first {
-            message += "\n\n" + (refusals.count == 1
-                ? L("1 item can't go to the Trash. %@", firstRefusal)
-                : L("%lld items can't go to the Trash. %@", Int64(refusals.count), firstRefusal))
+            message += "\n\n" + TrashReport.refused(refusals.count, firstReason: firstRefusal)
         }
         confirm(title: confirmation.title, message: message) { [unowned self] in
             Task { await self.move(allowed) }
@@ -580,7 +575,7 @@ final class MainWindow {
         case .moved(let bytes):
             reportMoved(count: 1, bytes: bytes)
         case .alreadyGone:
-            showToast(L("1 item was already gone."))
+            showToast(TrashReport.alreadyGone(1))
         case .failed(let reason):
             showAlert(heading: L("Couldn't Move “%@” to the Trash", node.name), body: reason)
         }
@@ -596,10 +591,7 @@ final class MainWindow {
         }
         let summary = TrashBatchSummary(outcomes)
         if summary.moved > 0 { reportMoved(count: summary.moved, bytes: summary.bytes) }
-        if summary.gone > 0 {
-            showToast(summary.gone == 1
-                ? L("1 item was already gone.") : L("%lld items were already gone.", Int64(summary.gone)))
-        }
+        if summary.gone > 0 { showToast(TrashReport.alreadyGone(summary.gone)) }
         if let reason = summary.firstFailure {
             showAlert(heading: summary.failed == 1
                 ? L("Couldn't Move 1 Item to the Trash")
@@ -615,13 +607,7 @@ final class MainWindow {
         if let previous = movedToast?.toast.pointer {
             adw_toast_dismiss(ptr(previous))
         }
-        let text = switch (count, total) {
-        case (1, 0): L("Moved 1 item to the Trash.")
-        case (1, _): L("Moved 1 item (%@) to the Trash.", NeodiskFormatters.size(total))
-        case (_, 0): L("Moved %lld items to the Trash.", Int64(count))
-        default: L("Moved %lld items (%@) to the Trash.", Int64(count), NeodiskFormatters.size(total))
-        }
-        guard let toast = showToast(text, button: (L("Open Trash"), "win.open-trash")) else { return }
+        guard let toast = showToast(TrashReport.moved(count, bytes: total), button: (L("Open Trash"), "win.open-trash")) else { return }
         movedToast = (toast, count, total)
         connect(toast.pointer, "dismissed") { [weak self, unowned toast] in
             if self?.movedToast?.toast === toast { self?.movedToast = nil }
@@ -650,9 +636,8 @@ final class MainWindow {
         adw_alert_dialog_set_default_response(ptr(dialog), "close")
         adw_alert_dialog_set_close_response(ptr(dialog), "close")
         adw_dialog_present(ptr(dialog), ptr(window))
-        // libadwaita 1.5 focuses the default response only when another response would take focus first, so a
-        // lone OK starts on the scrollable message instead and Return does nothing. The buttons exist once the
-        // dialog is presented, and it focuses this one as it opens.
+        // libadwaita 1.5 starts a lone OK's dialog on the message, where Return does nothing; once presented,
+        // the button exists and takes the focus as the dialog opens.
         if let button = Widgets.firstDescendant(of: dialog, ofType: gtk_button_get_type()) {
             adw_dialog_set_focus(ptr(dialog), ptr(button))
         }

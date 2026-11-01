@@ -88,11 +88,6 @@ final class CleanupModel {
         return pile.totalSize(in: store)
     }
 
-    /// Exactly a collected item (the views outline these).
-    func isCollected(_ id: String) -> Bool {
-        pile.contains(id) || movingIDs.contains(id)
-    }
-
     /// A collected item or something inside one (the lists dim these).
     func isInsideCollected(_ id: String) -> Bool {
         guard let store, !pile.isEmpty || !movingIDs.isEmpty else { return false }
@@ -236,9 +231,7 @@ final class CleanupModel {
                 ? NSLocalizedString("Added 1 item.", comment: "Cleanup notice, some items refused")
                 : String(format: NSLocalizedString("Added %lld items.", comment: "Cleanup notice, some items refused"), added.count))
         }
-        parts.append(refusedCount == 1
-            ? String(format: NSLocalizedString("1 item can't go to the Trash. %@", comment: "Cleanup notice; the first reason follows"), reason)
-            : String(format: NSLocalizedString("%lld items can't go to the Trash. %@", comment: "Cleanup notice; the first reason follows"), refusedCount, reason))
+        parts.append(TrashReport.refused(refusedCount, firstReason: reason))
         show(Notice(kind: .refused, text: parts.joined(separator: " ")))
     }
 
@@ -384,21 +377,8 @@ final class CleanupModel {
 
     private func report(moved: Int, bytes: Int64, missing: Int, failed: Int) {
         var parts: [String] = []
-        // No "(Zero bytes)": a hard link's other name frees nothing, and the size would read as a mistake.
-        if moved > 0, bytes == 0 {
-            parts.append(moved == 1
-                ? NSLocalizedString("Moved 1 item to the Trash.", comment: "Cleanup result")
-                : String(format: NSLocalizedString("Moved %lld items to the Trash.", comment: "Cleanup result"), moved))
-        } else if moved > 0 {
-            parts.append(moved == 1
-                ? String(format: NSLocalizedString("Moved 1 item (%@) to the Trash.", comment: "Cleanup result"), NeodiskFormatters.size(bytes))
-                : String(format: NSLocalizedString("Moved %lld items (%@) to the Trash.", comment: "Cleanup result"), moved, NeodiskFormatters.size(bytes)))
-        }
-        if missing > 0 {
-            parts.append(missing == 1
-                ? NSLocalizedString("1 item was already gone.", comment: "Cleanup result")
-                : String(format: NSLocalizedString("%lld items were already gone.", comment: "Cleanup result"), missing))
-        }
+        if moved > 0 { parts.append(TrashReport.moved(moved, bytes: bytes)) }
+        if missing > 0 { parts.append(TrashReport.alreadyGone(missing)) }
         if failed > 0 {
             parts.append(failed == 1
                 ? NSLocalizedString("1 item couldn't be moved; it's still in Cleanup.", comment: "Cleanup result")

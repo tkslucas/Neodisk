@@ -1,11 +1,5 @@
-//
-//  SettingsView.swift
-//  Neodisk
-//
-//  Settings window (⌘,): General (appearance, updates, workspace), View
-//  (visualization), Advanced (scanning, results, exclusions) and Privacy
-//  (Full Disk Access status).
-//
+// Settings window (⌘,): General (appearance, updates, workspace), View (visualization), Advanced (scanning,
+// results, exclusions) and Privacy (Full Disk Access status).
 
 import SwiftUI
 import TreemapKit
@@ -251,9 +245,8 @@ private struct PrivacySettingsTab: View {
                     }
                 }
 
-                // Only relevant to dev builds launched via `swift run`, which
-                // have no app bundle (hence no CFBundleIdentifier). Packaged
-                // .apps get their own TCC entry, so this note would just confuse.
+                // Only `swift run` builds (no bundle id) inherit the terminal's permissions; packaged apps get
+                // their own TCC entry.
                 if Bundle.main.bundleIdentifier == nil {
                     Text("Note: running unbundled (swift run), Neodisk inherits its permissions from the terminal that launched it — grant Full Disk Access to that terminal app.")
                         .font(.callout)

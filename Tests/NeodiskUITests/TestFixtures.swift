@@ -24,6 +24,17 @@ func makeIsolatedCache() -> ScanSnapshotCache {
     )
 }
 
+/// A model on preferences in a throwaway defaults suite; tests end with `removeTestDefaultsSuite`.
+@MainActor
+func makePreferencesModel() throws -> (NeodiskViewModel, AppPreferences, UserDefaults, String) {
+    let suite = "NeodiskPreferencesTests-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    let model = NeodiskViewModel(snapshotCache: makeIsolatedCache(), sidebarFolderStore: SidebarFolderStore(defaults: defaults))
+    let preferences = AppPreferences(defaults: defaults)
+    model.preferences = preferences
+    return (model, preferences, defaults, suite)
+}
+
 func makeTestTarget(_ path: String, kind: ScanTargetKind = .folder) -> ScanTarget {
     ScanTarget(url: URL(filePath: path, directoryHint: .isDirectory), kind: kind)
 }

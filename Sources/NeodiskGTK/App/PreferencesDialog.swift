@@ -135,16 +135,12 @@ enum PreferencesDialog {
     private static func addCombo(
         to group: GPtr,
         title: String,
-        subtitle: String? = nil,
         items: [String],
         selected: Int,
         _ changed: @escaping @MainActor (Int) -> Void
     ) {
         let row = raw(adw_combo_row_new())!
         adw_preferences_row_set_title(ptr(row), title)
-        if let subtitle {
-            adw_action_row_set_subtitle(ptr(row), subtitle)
-        }
         var cStrings = items.map { strdup($0) }
         cStrings.append(nil)
         let list = cStrings.withUnsafeBufferPointer { buffer in

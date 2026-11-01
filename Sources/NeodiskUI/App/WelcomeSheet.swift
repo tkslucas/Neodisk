@@ -8,6 +8,7 @@ struct WelcomeSheet: View {
     let model: NeodiskViewModel
 
     @State private var accessStatus: FullDiskAccessStatus = .unknown
+    @Environment(\.neoTextScale) private var textScale
 
     // Unbundled `swift run` builds inherit the launching terminal's access, so step 2 differs from packaged
     // apps.
@@ -18,16 +19,37 @@ struct WelcomeSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            VStack(spacing: 8) {
+        // Scrolls only where large text makes it taller than the screen; otherwise it sizes to its content.
+        ScrollView {
+            content
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .frame(width: (460 * textScale).rounded())
+        .frame(maxHeight: maxHeight)
+        .background(ModalTerminationBehavior())
+        .task { recheck() }
+    }
+
+    /// The screen's height less room for the title bar the sheet hangs from.
+    private var maxHeight: CGFloat {
+        (NSScreen.main?.visibleFrame.height ?? 800) - 120
+    }
+
+    private var content: some View {
+        VStack(alignment: .leading, spacing: 16 * textScale) {
+            VStack(spacing: 8 * textScale) {
                 Image(systemName: "internaldrive.fill")
-                    .font(.system(size: 44))
+                    .neoFont(44)
                     .foregroundStyle(.blue)
                 Text("Welcome to Neodisk")
-                    .font(.title.weight(.semibold))
+                    .neoFont(.title)
+                    .fontWeight(.semibold)
                 Text("Scan folders and disks to see where space is going,\nthen clear out what you don't need.")
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.secondary)
+                    // Every wrapping line takes its full height: a sheet sizes to its ideal height, which cut the
+                    // last line.
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity)
 
@@ -38,6 +60,7 @@ struct WelcomeSheet: View {
                     Text("Explore the treemap").fontWeight(.semibold)
                     Text("Hover to inspect. Click to select. Pinch or scroll to move around. Double-click or right-click to Reveal in Finder. Switch between treemap and sunburst in the toolbar.")
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             } icon: {
                 Image(systemName: "square.grid.3x3.topleft.filled").foregroundStyle(.blue)
@@ -48,6 +71,7 @@ struct WelcomeSheet: View {
                     Text("Clean up safely").fontWeight(.semibold)
                     Text("Drag items to Cleanup at the bottom of the sidebar, or press ⌘⌫. Nothing moves until you confirm, items go to the Trash so you can still get them back, and system folders are off-limits. You can turn this off in Settings.")
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             } icon: {
                 Image(systemName: "trash").foregroundStyle(.blue)
@@ -55,9 +79,9 @@ struct WelcomeSheet: View {
 
             Divider()
 
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 8 * textScale) {
                 HStack {
-                    Text("Full Disk Access").font(.headline)
+                    Text("Full Disk Access").neoFont(.headline)
                     Spacer()
                     switch accessStatus {
                     case .granted:
@@ -69,40 +93,48 @@ struct WelcomeSheet: View {
                     case .unknown:
                         Label("Checking…", systemImage: "questionmark.circle")
                             .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
 
                 if accessStatus == .granted {
                     Text("Neodisk can read protected locations. You can start a complete scan now.")
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 } else {
                     Text("Without it, protected locations (Mail, Safari, Messages, parts of Library) are skipped and totals are underreported. To enable:")
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text(LocalizedStringKey(enableAccessSteps))
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 HStack {
-                    Button("Open Full Disk Access Settings") {
+                    Button {
                         _ = SystemIntegration.prepareAndOpenFullDiskAccessSettings()
+                    } label: {
+                        Text("Open Full Disk Access Settings").neoFont(.body)
                     }
-                    Button("Recheck") { recheck() }
+                    Button { recheck() } label: { Text("Recheck").neoFont(.body) }
                 }
             }
 
             HStack {
                 Spacer()
-                Button("Continue") {
+                Button {
                     model.dismissWelcome()
+                } label: {
+                    Text("Continue").neoFont(.body)
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
             }
         }
-        .padding(24)
-        .frame(width: 460)
-        .background(ModalTerminationBehavior())
-        .task { recheck() }
+        // Its buttons and text follow the workspace text size: the sheet belongs to the window.
+        .neoFont(.body)
+        .neoControlSize()
+        .padding(24 * textScale)
     }
 
     private func recheck() {

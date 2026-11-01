@@ -43,7 +43,7 @@ import Testing
     }
 
     @Test func strideStaysWithinBudget() {
-        #expect(MemoryLayout<FileNodeRecord>.stride <= 104)
+        #expect(MemoryLayout<FileNodeRecord>.stride <= 96)
     }
 
     @Test func commonFieldsRoundTrip() {
@@ -57,6 +57,14 @@ import Testing
         #expect(node.cloneInfo == nil)
         #expect(node.isPackage && !node.isAccessible && node.isSelfAccessible && node.isAutoSummarized)
         #expect(!node.isDirectory && !node.isSymbolicLink && !node.isSynthetic && !node.isDataless)
+    }
+
+    @Test func wideDeviceIDsRoundTrip() {
+        for device: UInt64 in [0, UInt64(UInt32.max), UInt64(UInt32.max) + 1, .max] {
+            let node = record(fileIdentity: .fileSystem(device: device, inode: 42))
+            #expect(node.fileIdentity == .fileSystem(device: device, inode: 42))
+            #expect(node.path == "/a/b")
+        }
     }
 
     @Test func missingDateAndIdentityStayMissing() {

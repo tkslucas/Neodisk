@@ -3,6 +3,32 @@ import Foundation
 @testable import NeodiskKit
 
 @Suite struct HardLinkDeduplicatorTests {
+    /// With nothing to charge, the index still lets go of `nodes`, so the clone pass's writes don't copy it.
+    @Test func noDuplicatesStillDetachesTheIndex() {
+        var nodes = [
+            makeTestDirectoryNode(id: "/root", name: "root", children: []),
+            makeTestFileNode(id: "/root/a", name: "a", size: 1)
+        ]
+        guard case (var indexByID, _)? = NodeIDIndex.building(from: nodes) else {
+            Issue.record("index failed to build")
+            return
+        }
+        var childSlots: [Int32] = [1]
+        HardLinkDeduplicator.applyDeduplication(
+            nodes: &nodes,
+            parentIndices: [-1, 0],
+            childStarts: [0, 1, 1],
+            childSlots: &childSlots,
+            indexByID: &indexByID,
+            hardLinkClaims: [],
+            minimumAllocatedSizeByNodeID: [:]
+        )
+        let before = nodes.withUnsafeBufferPointer { $0.baseAddress }
+        nodes[1] = nodes[1]
+        #expect(nodes.withUnsafeBufferPointer { $0.baseAddress } == before)
+        #expect(indexByID.attached(to: nodes)["/root/a"] == 1)
+    }
+
     private func deduplicatedStore(
         rootID: String,
         nodesByID: [String: FileNodeRecord],

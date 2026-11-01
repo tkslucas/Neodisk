@@ -59,7 +59,7 @@ final class AppModel {
     private(set) var isMovingToTrash = false
     /// What may go to the Trash, for the menus' enabled state. Reads the mount table, so it's built on first
     /// use and again per location; each move checks against a fresh one.
-    @ObservationIgnored private var cachedTrashPolicy: TrashSafetyPolicy?
+    @ObservationIgnored private let trashPolicies = TrashPolicyCache()
 
     /// The statistics tab on screen; it decides what map color means.
     var analysisTab: AnalysisTab = .largest
@@ -170,7 +170,7 @@ final class AppModel {
     func open(_ target: ScanTarget) {
         cancelScan()
         self.target = target
-        cachedTrashPolicy = nil
+        trashPolicies.invalidate()
         resetPerTargetState()
         if target.kind == .folder {
             preferences.noteRecentFolder(target.id)
@@ -261,6 +261,8 @@ final class AppModel {
                     metrics = progress
                 case .warning(let warning):
                     warnings.append(warning)
+                case .waitingForPermission:
+                    break
                 case .partial(let partialStore):
                     guard !behindDisplayedSnapshot else { continue }
                     store = partialStore
@@ -285,6 +287,7 @@ final class AppModel {
     private func display(_ snapshot: ScanSnapshot) {
         let previousFocus = focusID
         self.snapshot = snapshot
+        trashPolicies.warm()
         // The search index builds on the first search, not here: on a large
         // scan it's another gigabyte and a minute of a core.
         store = snapshot.treeStore
@@ -758,23 +761,18 @@ extension AppModel {
             }
         }
         // A mount may have come or gone with the moves.
-        cachedTrashPolicy = nil
+        trashPolicies.invalidate()
+        trashPolicies.warm()
         if !gone.isEmpty {
             await removeFromTree(gone, of: snapshot)
         }
         return outcomes
     }
 
-    private var trashPolicy: TrashSafetyPolicy {
-        if let cachedTrashPolicy { return cachedTrashPolicy }
-        let built = TrashSafetyPolicy.live()
-        cachedTrashPolicy = built
-        return built
-    }
+    private var trashPolicy: TrashSafetyPolicy { trashPolicies.current }
 
-    /// Splices the moved item out off the main actor and shows the result the way a finished scan is shown.
-    /// A scan of the location that took over meanwhile wins: what it lands is the truth. Another location on
-    /// screen: the item leaves this one's saved scan, or reopening it would show it again.
+    /// Splices the moved item out off the main actor and shows the result as a finished scan. A newer scan of the
+    /// location wins; with another location on screen, the item leaves its saved scan so reopening won't show it.
     private func removeFromTree(_ nodeIDs: [String], of snapshot: ScanSnapshot) async {
         guard let current = self.snapshot, current.target.id == snapshot.target.id else {
             await removeFromSavedScan(nodeIDs, of: snapshot.target)

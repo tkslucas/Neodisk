@@ -3,27 +3,21 @@ import TreemapKit
 @testable import NeodiskAppModel
 
 struct WorkspaceLayoutTests {
-    private func hiding(_ view: VizView, in layout: inout WorkspaceLayout) {
-        var views = layout.views
-        views.setHidden(view, true)
-        layout.setViews(views)
-    }
-
     @Test func hidingTheCurrentViewSwitchesToTheFirstShownOne() {
         var layout = WorkspaceLayout(treemapStyle: .flat)
-        hiding(.flat, in: &layout)
+        layout.setHidden(.flat, true)
         #expect(layout.view == .cushion)
-        hiding(.cushion, in: &layout)
+        layout.setHidden(.cushion, true)
         #expect(layout.view == .sunburst)
         #expect(layout.treemapStyle == .cushion)
         // The last one shown stays.
-        hiding(.sunburst, in: &layout)
+        layout.setHidden(.sunburst, true)
         #expect(layout.views.visible == [.sunburst])
     }
 
     @Test func pickingAHiddenViewShowsItAgain() {
         var layout = WorkspaceLayout()
-        hiding(.sunburst, in: &layout)
+        layout.setHidden(.sunburst, true)
         layout.pick(.sunburst)
         #expect(layout.view == .sunburst)
         #expect(layout.views.visible == VizView.allCases)
@@ -31,7 +25,7 @@ struct WorkspaceLayoutTests {
 
     @Test func aHiddenLaunchDefaultGivesWayToTheFirstShownView() {
         var layout = WorkspaceLayout(mode: .sunburst)
-        hiding(.cushion, in: &layout)
+        layout.setHidden(.cushion, true)
         layout.openAtLaunch(.cushion)
         #expect(layout.view == .flat)
         #expect(layout.views.isHidden(.cushion))

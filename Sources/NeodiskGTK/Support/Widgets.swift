@@ -75,14 +75,6 @@ enum Widgets {
         }
     }
 
-    static func setClass(_ widget: GPtr, _ name: String, _ enabled: Bool) {
-        if enabled {
-            gtk_widget_add_css_class(ptr(widget), name)
-        } else {
-            gtk_widget_remove_css_class(ptr(widget), name)
-        }
-    }
-
     static func setVisible(_ widget: GPtr?, _ visible: Bool) {
         gtk_widget_set_visible(ptr(widget), gbool(visible))
     }

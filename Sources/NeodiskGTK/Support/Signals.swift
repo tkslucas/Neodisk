@@ -56,18 +56,6 @@ func connectNotify(_ instance: GPtr?, _ property: String, _ handler: @escaping @
     connectPointer(instance, "notify::\(property)") { _ in handler() }
 }
 
-/// `gboolean handler(GObject*, gpointer)` — close-request and friends;
-/// returning true stops further handlers.
-@discardableResult
-func connectBool(_ instance: GPtr?, _ signal: String, _ handler: @escaping @MainActor () -> Bool) -> gulong {
-    typealias Handler = @MainActor () -> Bool
-    let trampoline: @convention(c) (GPtr?, GPtr?) -> gboolean = { _, data in
-        nonisolated(unsafe) let data = data
-        return MainActor.assumeIsolated { gbool(box(data, as: Handler.self)()) }
-    }
-    return connectBox(instance, signal, handler as Handler, unsafeBitCast(trampoline, to: GCallback.self), after: false)
-}
-
 /// `void handler(GObject*, gpointer arg, gpointer)`: list-item setup/bind, row-activated, action activate.
 @discardableResult
 func connectPointer(_ instance: GPtr?, _ signal: String, _ handler: @escaping @MainActor (GPtr?) -> Void) -> gulong {

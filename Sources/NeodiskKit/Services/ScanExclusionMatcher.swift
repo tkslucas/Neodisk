@@ -111,6 +111,12 @@ public nonisolated struct ScanExclusionMatcher: Sendable {
     /// Whether standardizing `path` would leave it unchanged (absolute, no empty/"."/".." parts, no trailing
     /// slash), so the URL standardization can be skipped.
     static func isLexicallyNormal(_ path: String) -> Bool {
+        #if os(Windows)
+        // `C:/x` is normal when `/x` is.
+        if WindowsPath.isDriveAbsolute(path) {
+            return isLexicallyNormal(String(path.dropFirst(2)))
+        }
+        #endif
         var utf8 = path
         return utf8.withUTF8 { bytes in
             guard let first = bytes.first, first == UInt8(ascii: "/") else { return false }
@@ -133,8 +139,9 @@ public nonisolated struct ScanExclusionMatcher: Sendable {
     }
 
     static func normalizedChildPath(parentPath: String, childName: String) -> String {
-        if parentPath == "/" {
-            return "/" + childName
+        // A root's path already ends in its separator: `/` here, `C:/` on Windows.
+        if parentPath.hasSuffix("/") {
+            return parentPath + childName
         }
         return parentPath + "/" + childName
     }

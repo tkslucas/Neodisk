@@ -118,6 +118,8 @@ final class NeodiskViewModel {
         set { layout.treemapStyle = newValue }
     }
     var showsStatusBar = true
+    /// The main window is on screen; menu commands that act on it disable while it's closed.
+    var isWindowOpen = false
     /// Mirror of the bottom table's persisted header sort, synced by
     /// bindPreferences. The left column ignores it (fixed size order).
     var outlineSort = OutlineSort(field: .size, ascending: false)
@@ -198,6 +200,8 @@ final class NeodiskViewModel {
     var scanWasStopped = false
     /// Shows the first-launch welcome sheet (also reachable from Settings).
     var showWelcomeSheet = false
+    /// A first scan held while the window offers Full Disk Access; starting any scan clears it.
+    private(set) var fullDiskAccessGate: ScanTarget?
 
     // MARK: Scan warnings
 
@@ -337,7 +341,29 @@ final class NeodiskViewModel {
     /// Selecting a location: the scan session picks the restore / refresh /
     /// live-scan branch; see ScanSessionModel.startScan.
     func startScan(_ target: ScanTarget, forcesRescan: Bool = false) {
+        fullDiskAccessGate = nil
         session.startScan(target, forcesRescan: forcesRescan)
+    }
+
+    /// A location the user picked. Without Full Disk Access its first scan would stop at one macOS prompt per
+    /// protected folder, so it offers access first, until the user chooses Scan Anyway.
+    func startChosenScan(_ target: ScanTarget) {
+        guard preferences?.scansWithoutFullDiskAccess == false,
+              warnings.fullDiskAccessStatus == .notGranted,
+              session.hasIndexedSnapshotCache, session.cachedScanInfo[target.id] == nil,
+              coordinator.recentSnapshot(forTargetID: target.id) == nil,
+              PermissionPromptWatch.reachesProtectedFolder(target.url.path) else {
+            startScan(target)
+            return
+        }
+        fullDiskAccessGate = target
+    }
+
+    /// Scan Anyway (remembered), or access granted while the offer was up.
+    func passFullDiskAccessGate(remembering: Bool) {
+        guard let target = fullDiskAccessGate else { return }
+        if remembering { preferences?.scansWithoutFullDiskAccess = true }
+        startScan(target)
     }
 
     var store: FileTreeStore? {
@@ -507,11 +533,6 @@ final class NeodiskViewModel {
 
     /// Showing or hiding Cleanup turns moving to the Trash on or off, as in Settings.
     func setSidebarSection(_ section: SidebarSection, shown: Bool) {
-        if section == .cleanup {
-            preferences?.allowsMovingToTrash = shown
-            cleanup.setEnabled(shown)
-            return
-        }
         updateSidebarSections { $0.setShown(section, shown) }
     }
 
@@ -724,15 +745,17 @@ final class NeodiskViewModel {
             sidebarFolders.append(target)
             sidebarFolderStore.add(target)
         }
-        startScan(target)
+        startChosenScan(target)
     }
 
     /// Handles folders dropped onto the window or the sidebar: adds each
     /// one to the Folders section (same rules as Add Folder… — built-in
     /// locations and duplicates are skipped) and starts scanning the
-    /// first. Non-folder drops are ignored.
+    /// first. Non-folder drops are ignored, and so are the app's own items: a drag that started in a map or list
+    /// and slipped is not a request to add a location.
     @discardableResult
     func addDroppedFolders(_ urls: [URL]) -> Bool {
+        guard !cleanup.isDragInProgress else { return false }
         let folderURLs = urls.filter { url in
             (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
         }
@@ -750,22 +773,46 @@ final class NeodiskViewModel {
             }
         }
         if let firstTarget {
-            startScan(firstTarget)
+            startChosenScan(firstTarget)
         }
         return true
     }
 
-    func removeSidebarFolders(ids requestedIDs: Set<String>) {
+    /// With an undo manager (the sidebar) the removal is undoable and the saved scans stay, so Undo or adding the
+    /// folder again brings them back; the next launch's prune drops them if the folder is still gone. Without one
+    /// (Settings' Clear Added Folders) they go now.
+    func removeSidebarFolders(ids requestedIDs: Set<String>, undoManager: UndoManager? = nil) {
         // A location with a scan in flight (foreground or a demoted background
         // scan) must not be pulled out from under it — dropping its cache mid-
         // scan would orphan the session. Refuse those; Stage 3 disables the UI.
         let ids = requestedIDs.filter { session.activeSession(forTargetID: $0) == nil }
-        guard !ids.isEmpty else { return }
+        let removed = sidebarFolders.enumerated().filter { ids.contains($0.element.id) }
+        guard !removed.isEmpty else { return }
 
-        for target in sidebarFolders where ids.contains(target.id) {
+        for (_, target) in removed {
             sidebarFolderStore.remove(target)
         }
         sidebarFolders.removeAll { ids.contains($0.id) }
+
+        // The location on screen left the sidebar: back to the empty state, so nothing on screen (Rescan
+        // included) points at a location that's no longer listed. A built-in one is still listed. Undo puts the row
+        // back; its scan is kept, so picking it shows the scan again at once.
+        if let shown = coordinator.selectedTarget?.id, ids.contains(shown),
+           !builtInLocations.contains(where: { $0.id == shown }) {
+            session.dismissSnapshotNotice()
+            resetPerScanState()
+            coordinator.clearScan()
+        }
+
+        if let undoManager {
+            undoManager.registerUndo(withTarget: self) { model in
+                MainActor.assumeIsolated {
+                    model.restoreSidebarFolders(removed.map { ($0.offset, $0.element) }, undoManager: undoManager)
+                }
+            }
+            undoManager.setActionName(NSLocalizedString("Remove from Sidebar", comment: "Undo action"))
+            return
+        }
 
         // A removed folder loses its persisted snapshot too — unless it is
         // also a built-in location, which keeps its own cache entry.
@@ -789,6 +836,20 @@ final class NeodiskViewModel {
 
     func restoreCommonSidebarFolders() {
         sidebarFolders = sidebarFolderStore.restoreCommonFolders(keeping: sidebarFolders)
+    }
+
+    /// Undo of a sidebar removal: each folder back where it was; Redo removes them again.
+    private func restoreSidebarFolders(_ removed: [(index: Int, target: ScanTarget)], undoManager: UndoManager) {
+        for (index, target) in removed where !sidebarFolders.contains(where: { $0.id == target.id }) {
+            sidebarFolders.insert(target, at: min(index, sidebarFolders.count))
+        }
+        sidebarFolderStore.save(sidebarFolders)
+        undoManager.registerUndo(withTarget: self) { model in
+            MainActor.assumeIsolated {
+                model.removeSidebarFolders(ids: Set(removed.map(\.target.id)), undoManager: undoManager)
+            }
+        }
+        undoManager.setActionName(NSLocalizedString("Remove from Sidebar", comment: "Undo action"))
     }
 
     /// The location of the last displayed tree, so a newer tree of the same

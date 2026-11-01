@@ -42,8 +42,10 @@ struct DuplicatesPane: View {
             title: Text("Find files with identical content"),
             message: Text(explainerText)
         ) {
-            Button("Find Duplicates") {
+            Button {
                 model.duplicates.startScan()
+            } label: {
+                Text("Find Duplicates").neoFont(11)
             }
             .neoControlSize(base: .small)
             .buttonStyle(.borderedProminent)
@@ -77,8 +79,10 @@ struct DuplicatesPane: View {
                         .lineLimit(1)
                 }
                 Spacer()
-                Button("Cancel") {
+                Button {
                     model.duplicates.cancelScan()
+                } label: {
+                    Text("Cancel").neoFont(11)
                 }
                 .neoControlSize(base: .small)
             }
@@ -124,8 +128,10 @@ struct DuplicatesPane: View {
             symbolSize: 24,
             message: Text(message)
         ) {
-            Button("Try Again") {
+            Button {
                 model.duplicates.startScan()
+            } label: {
+                Text("Try Again").neoFont(11)
             }
             .neoControlSize(base: .small)
         }
@@ -311,17 +317,9 @@ private struct DuplicateGroupDetailView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 6) {
-                Button {
-                    model.duplicates.closeGroup()
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .neoFont(10, weight: .semibold)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .help("Back to duplicates")
-
+            DrillInBackButton(help: "Back to duplicates") {
+                model.duplicates.closeGroup()
+            } title: {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(displayName)
                         .neoFont(11, weight: .semibold)
@@ -331,10 +329,9 @@ private struct DuplicateGroupDetailView: View {
                         .neoFont(10)
                         .foregroundStyle(.secondary)
                 }
-                Spacer()
             }
             .padding(.horizontal, StatsListMetrics.inset)
-            .padding(.vertical, 6)
+            .padding(.vertical, 3)
 
             Divider()
 
@@ -342,7 +339,8 @@ private struct DuplicateGroupDetailView: View {
                 model: model,
                 rows: group.nodeIDs.compactMap { model.store?.node(id: $0) },
                 click: .selectsNode { model.select($0) },
-                selection: model.selection
+                selection: model.selection,
+                onCancel: { model.duplicates.closeGroup() }
             ) { node in
                 FileResultRow(
                     node: node,

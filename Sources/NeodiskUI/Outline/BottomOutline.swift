@@ -73,8 +73,8 @@ struct BottomOutlineTable: NSViewRepresentable {
         tableView.quickLookRequested = { [weak coordinator] in
             coordinator?.toggleQuickLook() ?? false
         }
-        tableView.hierarchyNavigationRequested = { [weak coordinator] direction in
-            coordinator?.navigateHierarchy(direction)
+        tableView.hierarchyNavigationRequested = { [weak coordinator] direction, recursively in
+            coordinator?.navigateHierarchy(direction, recursively: recursively)
         }
         tableView.clickTrackingEnded = { [weak coordinator] in
             coordinator?.resyncSelectionAfterClick()
@@ -448,6 +448,12 @@ struct BottomOutlineTable: NSViewRepresentable {
             rows.count
         }
 
+        /// Typing a name selects the next row that starts with it, as in Finder's lists.
+        func tableView(_ tableView: NSTableView, typeSelectStringFor tableColumn: NSTableColumn?, row: Int) -> String? {
+            guard row < rows.count, tableColumn?.identifier.rawValue == "name" else { return nil }
+            return rows[row].node.name
+        }
+
         func tableView(
             _ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int
         ) -> NSView? {
@@ -457,7 +463,7 @@ struct BottomOutlineTable: NSViewRepresentable {
             case "name":
                 return hostedCell(tableView, reuse: "name") { state in
                     OutlineNameSection(
-                        model: model, row: outlineRow, state: state, truncatesName: true, leadingInset: 0,
+                        model: model, row: outlineRow, state: state, leadingInset: 0,
                         indentPerDepth: indentPerDepth
                     )
                 }
@@ -565,7 +571,7 @@ struct BottomOutlineTable: NSViewRepresentable {
             _ tableView: NSTableView, draggingSession session: NSDraggingSession,
             willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet
         ) {
-            NodeDragSource.sessionDidBegin(model: model)
+            NodeDragSource.tableSessionDidBegin(session, in: tableView, at: screenPoint, model: model)
         }
 
         func tableView(
@@ -581,9 +587,8 @@ struct BottomOutlineTable: NSViewRepresentable {
             guard let tableView,
                   case let row = tableView.clickedRow, row >= 0, row < rows.count else { return }
             let node = rows[row].node
-            guard model.supportsFileActions(node) else { return }
             model.select(node.id)
-            model.reveal(node)
+            model.activate(node)
         }
 
         // MARK: Columns
@@ -666,10 +671,10 @@ struct BottomOutlineTable: NSViewRepresentable {
             return true
         }
 
-        func navigateHierarchy(_ direction: OutlineHierarchyDirection) {
+        func navigateHierarchy(_ direction: OutlineHierarchyDirection, recursively: Bool = false) {
             guard let tableView else { return }
             let performed = OutlineKeyboardNavigation.perform(
-                direction, in: tableView, rows: rows, model: model
+                direction, recursively: recursively, in: tableView, rows: rows, model: model
             )
             if case .selectRow(let row) = performed {
                 scrollToRowVerticalOnly(row)

@@ -55,10 +55,19 @@ enum OutlineKeyboardNavigation {
     @discardableResult
     static func perform(
         _ direction: OutlineHierarchyDirection,
+        recursively: Bool = false,
         in tableView: NSTableView,
         rows: [NeodiskViewModel.OutlineRow],
         model: NeodiskViewModel
     ) -> OutlineHierarchyAction? {
+        // ⌥→ / ⌥← open or close the selected folder and everything below it, expanded or not, as in Finder.
+        if recursively {
+            guard rows.indices.contains(tableView.selectedRow) else { return nil }
+            let row = rows[tableView.selectedRow]
+            guard row.isExpandable else { return nil }
+            model.setExpanded(row.id, direction == .right, recursively: true)
+            return direction == .right ? .expand(row.id) : .collapse(row.id)
+        }
         guard let action = action(
             for: direction,
             selectedRow: tableView.selectedRow,

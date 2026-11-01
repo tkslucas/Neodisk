@@ -441,7 +441,9 @@ final class TreemapView: CanvasDelegate {
         switch button {
         case 3:
             model.select(cell.nodeID)
-            // A "smaller items" cell stands for its folder: no offer to trash the whole folder from it.
+            // A "smaller items" cell stands for its folder: its menu doesn't offer to trash the whole folder,
+            // which would read as trashing the small items. Delete still acts on the selection, now the folder,
+            // outlined whole, and the confirmation names it.
             showContextMenu(at: point, includeTrash: cell.aggregate == nil)
         case 1 where presses >= 2:
             // As on the Mac: flat folders drill in; cushion cells keep reveal-in-file-manager and never drill

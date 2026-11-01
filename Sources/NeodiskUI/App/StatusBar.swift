@@ -93,6 +93,8 @@ struct StatusBar: View {
                 Spacer()
             }
         }
+        // One line at any width or text size: the bar never takes height from the panes.
+        .lineLimit(1)
         .neoFont(11)
         .padding(.horizontal, 10)
         .padding(.vertical, 5)

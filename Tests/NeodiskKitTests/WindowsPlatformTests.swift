@@ -93,7 +93,17 @@ import WinSDK
                 #expect(metadata.fileIdentity == .fileSystem(device: info.volumeSerial, inode: info.fileID))
             } else {
                 #expect(metadata.logicalSize == info.endOfFile, "\(child.name)")
-                #expect(metadata.allocatedSize == info.allocationSize, "\(child.name)")
+                // NTFS refreshes a directory entry only through the link that changed the file, so another
+                // hard link's entry can keep an old allocation: on GitHub's Windows runner, System32 DLLs
+                // compressed through their WinSxS link still list their uncompressed size. Only a single link's
+                // entry is sure to be current.
+                #expect(
+                    info.linkCount > 1 || metadata.allocatedSize == info.allocationSize,
+                    """
+                    \(child.name): listed \(metadata.allocatedSize), file \(info.allocationSize), \
+                    length \(info.endOfFile), links \(info.linkCount), attributes 0x\(String(info.attributes, radix: 16))
+                    """
+                )
                 #expect(metadata.linkCount == 1, "\(child.name)")
             }
         }

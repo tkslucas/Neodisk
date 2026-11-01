@@ -1,9 +1,31 @@
 // Which visualization fills the center pane: the cushion treemap or the
 // sunburst. Raw String so it can persist via AppPreferences.
 
+import TreemapKit
+
 package enum VizViewMode: String, CaseIterable, Sendable {
     case treemap
     case sunburst
+}
+
+/// The views the toolbar picker offers; an `ItemLayout<VizView>` holds which ones it shows.
+package enum VizView: String, CaseIterable, Sendable {
+    case cushion, flat, sunburst
+
+    package init(mode: VizViewMode, style: TreemapStyle) {
+        self = mode == .sunburst ? .sunburst : style == .flat ? .flat : .cushion
+    }
+
+    package var mode: VizViewMode { self == .sunburst ? .sunburst : .treemap }
+
+    /// Nil for Sunburst, which keeps the treemap style for the trip back.
+    package var treemapStyle: TreemapStyle? {
+        switch self {
+        case .cushion: .cushion
+        case .flat: .flat
+        case .sunburst: nil
+        }
+    }
 }
 
 /// Raw String so it can persist via AppPreferences.
@@ -39,4 +61,22 @@ package enum DefaultVizView: String, CaseIterable, Sendable {
     case cushionTreemap
     case flatTreemap
     case sunburst
+
+    package init(_ view: VizView) {
+        switch view {
+        case .cushion: self = .cushionTreemap
+        case .flat: self = .flatTreemap
+        case .sunburst: self = .sunburst
+        }
+    }
+
+    /// Nil for Last viewed.
+    package var view: VizView? {
+        switch self {
+        case .lastViewed: nil
+        case .cushionTreemap: .cushion
+        case .flatTreemap: .flat
+        case .sunburst: .sunburst
+        }
+    }
 }

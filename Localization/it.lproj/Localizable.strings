@@ -274,6 +274,8 @@
 "Hide Locations Sidebar" = "Nascondi barra laterale delle posizioni";
 "Show Statistics" = "Mostra statistiche";
 "Hide Statistics" = "Nascondi statistiche";
+"Hide Status Bar" = "Nascondi barra di stato";
+"Show Status Bar" = "Mostra barra di stato";
 "Go" = "Vai";
 "Back" = "Indietro";
 "Forward" = "Avanti";
@@ -309,26 +311,21 @@
 "The color set the visualizations draw with. Colorblind-safe stays distinct with common color vision differences. Applies immediately." = "Il set di colori con cui disegnano le visualizzazioni. Adatto al daltonismo resta distinguibile con le differenze di visione dei colori più comuni. Si applica subito.";
 
 /* MARK: - File list position */
-"File List" = "Elenco file";
-"Position" = "Posizione";
-"Left of the treemap" = "A sinistra della treemap";
-"Below the treemap" = "Sotto la treemap";
-"Below the treemap shows a wide table with percentage, size, file count, and modified-date columns; click a column header to sort. Applies immediately." = "«Sotto la treemap» mostra una tabella ampia con colonne per percentuale, dimensione, numero di file e data di modifica; fai clic sull'intestazione di una colonna per ordinare. Si applica subito.";
-"Show below Sunburst" = "Mostra sotto la sunburst";
-"Shows the same resizable table below the sunburst. It follows the current drilled folder and never appears to the left. Applies immediately." = "Mostra la stessa tabella ridimensionabile sotto la sunburst. Segue la cartella attualmente aperta e non compare mai a sinistra. Si applica immediatamente.";
 "Name" = "Nome";
 "%" = "%";
 "Size" = "Dimensione";
 "Files" = "File";
 "Modified" = "Modificato";
-"File List Below Treemap" = "Elenco file sotto la treemap";
-"Show File List Below Sunburst" = "Mostra elenco file sotto la sunburst";
+"Hide File List" = "Nascondi elenco file";
+"Show File List" = "Mostra elenco file";
+"File List at Bottom" = "Elenco file in basso";
+"File List on the Left" = "Elenco file a sinistra";
 
 /* MARK: - Sunburst & view switcher */
 "View" = "Vista";
 "Treemap" = "Treemap";
 "Sunburst" = "Sunburst";
-"Switch between cushion treemap, flat treemap, and sunburst views" = "Passa tra treemap a cuscino, treemap piatta e sunburst";
+"Switch views. Right-click to choose which ones show." = "Cambia vista. Fai clic destro per scegliere quali mostrare.";
 "Cushion Treemap" = "Treemap a cuscino";
 "Flat Treemap" = "Treemap piatta";
 "Smaller Items" = "Elementi più piccoli";
@@ -371,7 +368,6 @@
 
 /* MARK: - Cloud-only files */
 "Cloud-Only Files" = "File solo cloud";
-"No cloud-only files in this scan" = "Nessun file solo cloud in questa scansione";
 "Hide cloud-only files (files not downloaded from your cloud drives)" = "Nascondi i file solo cloud (file non scaricati dalle tue unità cloud)";
 "Show cloud-only files (files not downloaded from your cloud drives)" = "Mostra i file solo cloud (file non scaricati dalle tue unità cloud)";
 "%@ · Cloud-only" = "%@ · Solo cloud";

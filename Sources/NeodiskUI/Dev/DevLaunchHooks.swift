@@ -34,24 +34,22 @@ enum DevLaunchHooks {
             model.analysisTab = tab
         }
 
-        // NEODISK_VIZ_MODE=<treemap|sunburst> picks the center visualization
-        // without persisting a preference.
-        if let rawMode = environment["NEODISK_VIZ_MODE"], let mode = VizViewMode(rawValue: rawMode) {
-            model.vizViewMode = mode
-        }
-
-        // NEODISK_TREEMAP_STYLE=<cushion|flat> picks the treemap style without
-        // persisting the preference.
-        if let rawStyle = environment["NEODISK_TREEMAP_STYLE"], let style = TreemapStyle(rawValue: rawStyle) {
-            model.treemapStyle = style
-        }
-
-        // NEODISK_OUTLINE_POSITION=<leading|bottom> docks the file list
-        // without persisting the preference.
-        if let rawPosition = environment["NEODISK_OUTLINE_POSITION"],
-           let position = OutlinePosition(rawValue: rawPosition) {
-            model.devOutlinePositionOverride = position
-            model.outlinePosition = position
+        // NEODISK_VIZ_MODE=<treemap|sunburst>, NEODISK_TREEMAP_STYLE=<cushion|flat> and
+        // NEODISK_OUTLINE_POSITION=<leading|bottom> force that view or file list for this run, hidden or not.
+        let mode = environment["NEODISK_VIZ_MODE"].flatMap(VizViewMode.init(rawValue:))
+        let style = environment["NEODISK_TREEMAP_STYLE"].flatMap(TreemapStyle.init(rawValue:))
+        let position = environment["NEODISK_OUTLINE_POSITION"].flatMap(OutlinePosition.init(rawValue:))
+        if mode != nil || style != nil || position != nil {
+            model.devLayoutOverride = { layout in
+                if let style { layout.treemapStyle = style }
+                if let mode { layout.mode = mode }
+                layout.pick(layout.view)
+                if let position {
+                    layout.listPosition = position
+                    layout.showsListWithTreemap = true
+                }
+            }
+            model.syncWorkspaceLayout()
         }
 
         // NEODISK_UPDATE_STATE=<checking|available|downloading|readyToInstall|

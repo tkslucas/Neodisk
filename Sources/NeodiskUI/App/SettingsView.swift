@@ -122,9 +122,10 @@ private struct ViewSettingsTab: View {
                     set: { preferences.defaultVizView = $0 }
                 )) {
                     Text("Last viewed").tag(DefaultVizView.lastViewed)
-                    Text("Cushion Treemap").tag(DefaultVizView.cushionTreemap)
-                    Text("Flat Treemap").tag(DefaultVizView.flatTreemap)
-                    Text("Sunburst").tag(DefaultVizView.sunburst)
+                    // Only views the toolbar shows; hiding the default one resets it to Last viewed.
+                    ForEach(preferences.workspaceLayout.views.visible, id: \.self) { view in
+                        Text(view.menuTitle).tag(DefaultVizView(view))
+                    }
                 }
                 Text("The view the app starts in. Last viewed restores whatever was on screen when you quit. The toolbar picker switches views any time.")
                     .font(.callout)
@@ -141,27 +142,6 @@ private struct ViewSettingsTab: View {
                     }
                 }
                 Text("The color set the visualizations draw with. Colorblind-safe stays distinct with common color vision differences. Applies immediately.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section("File List") {
-                Picker("Position", selection: Binding(
-                    get: { preferences.outlinePosition },
-                    set: { preferences.outlinePosition = $0 }
-                )) {
-                    Text("Below the treemap").tag(OutlinePosition.bottom)
-                    Text("Left of the treemap").tag(OutlinePosition.leading)
-                }
-                Text("Below the treemap shows a wide table with percentage, size, file count, and modified-date columns; click a column header to sort. Applies immediately.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-
-                Toggle(
-                    "Show below Sunburst",
-                    isOn: $preferences.showFileListBelowSunburst
-                )
-                Text("Shows the same resizable table below the sunburst. It follows the current drilled folder and never appears to the left. Applies immediately.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }

@@ -4,6 +4,7 @@
 import AppKit
 import SwiftUI
 import NeodiskKit
+import NeodiskAppModel
 import TreemapKit
 
 struct NeodiskCommands: Commands {
@@ -121,54 +122,44 @@ struct NeodiskCommands: Commands {
 
             Divider()
 
-            // Same two-preference write as the toolbar picker: Sunburst keeps the treemap style for the trip back.
-            Button {
-                model.preferences?.vizViewMode = .treemap
-                model.preferences?.treemapStyle = .cushion
-            } label: {
-                Label("Cushion Treemap", systemImage: "square.split.bottomrightquarter")
+            // Hidden views stay here as the way back: picking one shows it in the toolbar again.
+            ForEach(Array(VizView.allCases.enumerated()), id: \.element) { index, view in
+                Button {
+                    model.updateLayout { $0.pick(view) }
+                } label: {
+                    Label(view.menuTitle, systemImage: view.systemImage)
+                }
+                .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: [.command, .option])
+                .disabled(model.coordinator.snapshot == nil)
             }
-            .keyboardShortcut("1", modifiers: [.command, .option])
-            .disabled(model.coordinator.snapshot == nil)
-
-            Button {
-                model.preferences?.vizViewMode = .treemap
-                model.preferences?.treemapStyle = .flat
-            } label: {
-                Label("Flat Treemap", systemImage: "rectangle.3.group")
-            }
-            .keyboardShortcut("2", modifiers: [.command, .option])
-            .disabled(model.coordinator.snapshot == nil)
-
-            Button {
-                model.preferences?.vizViewMode = .sunburst
-            } label: {
-                Label("Sunburst", systemImage: "chart.pie")
-            }
-            .keyboardShortcut("3", modifiers: [.command, .option])
-            .disabled(model.coordinator.snapshot == nil)
 
             Divider()
 
-            // Same preference as the Settings picker, independent of Sunburst's opt-in below.
-            Toggle(isOn: Binding(
-                get: { model.outlinePosition == .bottom },
-                set: { model.preferences?.outlinePosition = $0 ? .bottom : .leading }
-            )) {
-                Label("File List Below Treemap", systemImage: "rectangle.bottomthird.inset.filled")
+            Button {
+                model.updateLayout { $0.setListShown(!$0.showsList) }
+            } label: {
+                Label(model.layout.showsList ? "Hide File List" : "Show File List", systemImage: "list.bullet.indent")
             }
             .disabled(model.coordinator.snapshot == nil)
 
-            Toggle(isOn: Binding(
-                get: { model.showsFileListBelowSunburst },
-                set: { model.preferences?.showFileListBelowSunburst = $0 }
-            )) {
-                Label(
-                    "Show File List Below Sunburst",
-                    systemImage: "rectangle.bottomthird.inset.filled"
-                )
+            ForEach(OutlinePosition.menuOrder, id: \.self) { position in
+                Toggle(isOn: Binding(
+                    get: { model.layout.showsList(at: position) },
+                    set: { _ in model.updateLayout { $0.placeList(position) } }
+                )) {
+                    Label(position.menuTitle, systemImage: position.systemImage)
+                }
+                .disabled(model.coordinator.snapshot == nil || !model.layout.canPlaceList(position))
             }
-            .disabled(model.coordinator.snapshot == nil)
+
+            Divider()
+
+            Button {
+                model.setStatusBarShown(!model.showsStatusBar)
+            } label: {
+                Label(model.showsStatusBar ? "Hide Status Bar" : "Show Status Bar", systemImage: "info.square")
+            }
+            .keyboardShortcut("/", modifiers: .command)
         }
 
         // The visualization key handlers own these shortcuts too; the menu intercepts first and calls the same

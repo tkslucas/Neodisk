@@ -274,6 +274,8 @@
 "Hide Locations Sidebar" = "Hide Locations Sidebar";
 "Show Statistics" = "Show Statistics";
 "Hide Statistics" = "Hide Statistics";
+"Hide Status Bar" = "Hide Status Bar";
+"Show Status Bar" = "Show Status Bar";
 "Go" = "Go";
 "Back" = "Back";
 "Forward" = "Forward";
@@ -309,26 +311,21 @@
 "The color set the visualizations draw with. Colorblind-safe stays distinct with common color vision differences. Applies immediately." = "The color set the visualizations draw with. Colorblind-safe stays distinct with common color vision differences. Applies immediately.";
 
 /* MARK: - File list position */
-"File List" = "File List";
-"Position" = "Position";
-"Left of the treemap" = "Left of the treemap";
-"Below the treemap" = "Below the treemap";
-"Below the treemap shows a wide table with percentage, size, file count, and modified-date columns; click a column header to sort. Applies immediately." = "Below the treemap shows a wide table with percentage, size, file count, and modified-date columns; click a column header to sort. Applies immediately.";
-"Show below Sunburst" = "Show below Sunburst";
-"Shows the same resizable table below the sunburst. It follows the current drilled folder and never appears to the left. Applies immediately." = "Shows the same resizable table below the sunburst. It follows the current drilled folder and never appears to the left. Applies immediately.";
 "Name" = "Name";
 "%" = "%";
 "Size" = "Size";
 "Files" = "Files";
 "Modified" = "Modified";
-"File List Below Treemap" = "File List Below Treemap";
-"Show File List Below Sunburst" = "Show File List Below Sunburst";
+"Hide File List" = "Hide File List";
+"Show File List" = "Show File List";
+"File List at Bottom" = "File List at Bottom";
+"File List on the Left" = "File List on the Left";
 
 /* MARK: - Sunburst & view switcher */
 "View" = "View";
 "Treemap" = "Treemap";
 "Sunburst" = "Sunburst";
-"Switch between cushion treemap, flat treemap, and sunburst views" = "Switch between cushion treemap, flat treemap, and sunburst views";
+"Switch views. Right-click to choose which ones show." = "Switch views. Right-click to choose which ones show.";
 "Cushion Treemap" = "Cushion Treemap";
 "Flat Treemap" = "Flat Treemap";
 "Smaller Items" = "Smaller Items";
@@ -371,7 +368,6 @@
 
 /* MARK: - Cloud-only files */
 "Cloud-Only Files" = "Cloud-Only Files";
-"No cloud-only files in this scan" = "No cloud-only files in this scan";
 "Hide cloud-only files (files not downloaded from your cloud drives)" = "Hide cloud-only files (files not downloaded from your cloud drives)";
 "Show cloud-only files (files not downloaded from your cloud drives)" = "Show cloud-only files (files not downloaded from your cloud drives)";
 "%@ · Cloud-only" = "%@ · Cloud-only";

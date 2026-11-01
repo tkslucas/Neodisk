@@ -106,28 +106,23 @@ final class NeodiskViewModel {
     private(set) var sidebarSections = SidebarSectionState()
     /// Set by the toolbar's Cleanup button; the panel flashes once so the eye finds it, then clears it.
     var isCleanupRevealPending = false
-    /// Which visualization the center pane shows (treemap or sunburst).
-    /// Preference mirroring happens where the toolbar switcher binds.
-    /// The diff stays armed across the switch: sunburst has no Δ column to
-    /// render, but switching back to the treemap must not lose the mode.
-    var vizViewMode: VizViewMode = .treemap
-    /// Mirror of the persisted treemap style (cushion or flat), synced by
-    /// bindPreferences — same pattern as vizViewMode.
-    var treemapStyle: TreemapStyle = .cushion
-    /// Mirror of the persisted outline dock position (left column or bottom
-    /// table), synced by bindPreferences — same pattern as vizViewMode.
-    var outlinePosition: OutlinePosition = .bottom
-    /// Separate opt-in for reusing the bottom table under Sunburst. The
-    /// treemap dock position remains independent so switching views never
-    /// moves the treemap's file list.
-    var showsFileListBelowSunburst = false
+    /// Mirror of the persisted WorkspaceLayout: the view, the picker's views and each view's file list. The diff
+    /// stays armed across a switch to Sunburst, so switching back keeps it.
+    private(set) var layout = WorkspaceLayout()
+    var vizViewMode: VizViewMode {
+        get { layout.mode }
+        set { layout.mode = newValue }
+    }
+    var treemapStyle: TreemapStyle {
+        get { layout.treemapStyle }
+        set { layout.treemapStyle = newValue }
+    }
+    var showsStatusBar = true
     /// Mirror of the bottom table's persisted header sort, synced by
     /// bindPreferences. The left column ignores it (fixed size order).
     var outlineSort = OutlineSort(field: .size, ascending: false)
-    /// NEODISK_OUTLINE_POSITION dev hook: pins the dock position for this
-    /// run. Without it, any preferences change would re-sync the persisted
-    /// position over the hook's non-persisted one mid-capture.
-    @ObservationIgnored var devOutlinePositionOverride: OutlinePosition?
+    /// Dev hooks pin their forced layout for the run; otherwise the next preferences change would undo it.
+    @ObservationIgnored var devLayoutOverride: ((inout WorkspaceLayout) -> Void)?
     /// Mirror of the persisted workspace text scale, synced by
     /// bindPreferences — same pattern as treemapStyle. The workspace root
     /// puts it in the environment for SwiftUI; the AppKit surfaces that draw
@@ -459,8 +454,7 @@ final class NeodiskViewModel {
             .sink { [weak self] _ in
                 self?.freeSpace.update()
                 self?.syncVizPalette()
-                self?.syncVizViewMode()
-                self?.syncTreemapStyle()
+                self?.syncWorkspaceLayout()
                 self?.syncCloudOnlyPreference()
                 self?.syncOutlinePreferences()
                 self?.syncLayoutPreferences()
@@ -471,8 +465,7 @@ final class NeodiskViewModel {
             }
         freeSpace.update()
         syncVizPalette()
-        syncVizViewMode()
-        syncTreemapStyle()
+        syncWorkspaceLayout()
         syncCloudOnlyPreference()
         syncOutlinePreferences()
         syncLayoutPreferences()
@@ -571,28 +564,10 @@ final class NeodiskViewModel {
         preferences?.textScale = TextScale.standard
     }
 
-    /// Mirror the persisted treemap style onto the model so the treemap pane
-    /// and breadcrumb re-render when the Settings picker flips.
-    private func syncTreemapStyle() {
-        guard let preferences else { return }
-        if treemapStyle != preferences.treemapStyle {
-            treemapStyle = preferences.treemapStyle
-        }
-    }
-
     private func syncCloudOnlyPreference() {
         guard let preferences else { return }
         if showCloudOnlyFilesPreferred != preferences.showCloudOnlyFiles {
             showCloudOnlyFilesPreferred = preferences.showCloudOnlyFiles
-        }
-    }
-
-    /// Mirror the persisted view-mode preference onto the model so the
-    /// workspace and status bar follow the toolbar switcher.
-    private func syncVizViewMode() {
-        guard let preferences else { return }
-        if vizViewMode != preferences.vizViewMode {
-            vizViewMode = preferences.vizViewMode
         }
     }
 
@@ -601,13 +576,6 @@ final class NeodiskViewModel {
     /// header changes them.
     private func syncOutlinePreferences() {
         guard let preferences else { return }
-        let position = devOutlinePositionOverride ?? preferences.outlinePosition
-        if outlinePosition != position {
-            outlinePosition = position
-        }
-        if showsFileListBelowSunburst != preferences.showFileListBelowSunburst {
-            showsFileListBelowSunburst = preferences.showFileListBelowSunburst
-        }
         if outlineSort != preferences.outlineSort {
             outlineSort = preferences.outlineSort
         }
@@ -622,17 +590,39 @@ final class NeodiskViewModel {
             analysisTabs = preferences.analysisTabs
         }
         // A hidden tab can't stay the lens: the map would color by a tab nobody can see.
-        if analysisTabs.isHidden(analysisTab), let first = analysisTabs.visible.first {
-            analysisTab = first
-        }
+        if analysisTabs.isHidden(analysisTab) { analysisTab = analysisTabs.shown(analysisTab) }
     }
 
     func setAnalysisTabs(_ layout: ItemLayout<AnalysisTab>) {
         preferences?.analysisTabs = layout
         analysisTabs = layout
-        if layout.isHidden(analysisTab), let first = layout.visible.first {
-            analysisTab = first
-        }
+        if layout.isHidden(analysisTab) { analysisTab = layout.shown(analysisTab) }
+    }
+
+    // MARK: Views and panels
+
+    var vizView: VizView { layout.view }
+
+    /// Changes the persisted layout through WorkspaceLayout's rules; the mirror follows at once.
+    func updateLayout(_ change: (inout WorkspaceLayout) -> Void) {
+        guard let preferences else { return }
+        var updated = preferences.workspaceLayout
+        change(&updated)
+        preferences.workspaceLayout = updated
+        syncWorkspaceLayout()
+    }
+
+    func setStatusBarShown(_ shown: Bool) {
+        preferences?.showStatusBar = shown
+        syncWorkspaceLayout()
+    }
+
+    func syncWorkspaceLayout() {
+        guard let preferences else { return }
+        var mirrored = preferences.workspaceLayout
+        devLayoutOverride?(&mirrored)
+        if layout != mirrored { layout = mirrored }
+        if showsStatusBar != preferences.showStatusBar { showsStatusBar = preferences.showStatusBar }
     }
 
     func setOutlineColumns(_ layout: ItemLayout<OutlineColumn>) {

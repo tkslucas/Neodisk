@@ -50,27 +50,6 @@ enum PaneLayout {
     private static func damped(_ scale: Double) -> Double { 1 + (scale - 1) * 0.5 }
 }
 
-/// Sunburst always uses the bottom table to preserve chart width.
-struct WorkspaceFileListVisibility: Equatable {
-    let showsLeading: Bool
-    let showsBottom: Bool
-
-    init(
-        viewMode: VizViewMode,
-        treemapPosition: OutlinePosition,
-        showsBelowSunburst: Bool
-    ) {
-        switch viewMode {
-        case .treemap:
-            showsLeading = treemapPosition == .leading
-            showsBottom = treemapPosition == .bottom
-        case .sunburst:
-            showsLeading = false
-            showsBottom = showsBelowSunburst
-        }
-    }
-}
-
 /// Persisted sizes are clamped on read, never written back, so they return when room does. The analysis
 /// pane concedes first, then the outline; too narrow even for a minimum analysis pane, it floats over the map.
 struct WorkspacePaneMetrics: Equatable {

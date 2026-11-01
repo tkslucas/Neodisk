@@ -137,9 +137,11 @@ public struct ContentView: View {
         ToolbarItem(placement: .principal) {
             vizModePicker
         }
-        // Persistent but disabled when there's nothing to do, per the toolbar contract in AGENTS.md.
-        ToolbarItem(placement: .principal) {
-            cloudOnlyToggle
+        // Only scans with cloud-only files have anything for it to weigh.
+        if model.snapshotHasCloudItems {
+            ToolbarItem(placement: .principal) {
+                cloudOnlyToggle
+            }
         }
 
         // On macOS 26 grouped toolbar items share one glass capsule, which fused the pill onto the buttons;
@@ -162,44 +164,13 @@ public struct ContentView: View {
         }
     }
 
-    /// Picking Sunburst leaves `treemapStyle` untouched so switching back restores it.
-    private enum VizChoice: Hashable {
-        case cushion, flat, sunburst
-    }
-
-    private var vizChoice: Binding<VizChoice> {
-        Binding(
-            get: {
-                if preferences.vizViewMode == .sunburst { return .sunburst }
-                return preferences.treemapStyle == .flat ? .flat : .cushion
-            },
-            set: { choice in
-                switch choice {
-                case .cushion:
-                    preferences.vizViewMode = .treemap
-                    preferences.treemapStyle = .cushion
-                case .flat:
-                    preferences.vizViewMode = .treemap
-                    preferences.treemapStyle = .flat
-                case .sunburst:
-                    preferences.vizViewMode = .sunburst
-                }
-            }
-        )
-    }
-
     private var vizModePicker: some View {
-        Picker("View", selection: vizChoice) {
-            Label("Cushion", systemImage: "square.split.bottomrightquarter")
-                .tag(VizChoice.cushion)
-            Label("Flat", systemImage: "rectangle.3.group")
-                .tag(VizChoice.flat)
-            Label("Sunburst", systemImage: "chart.pie")
-                .tag(VizChoice.sunburst)
-        }
-        .pickerStyle(.segmented)
-        .disabled(model.coordinator.snapshot == nil)
-        .help("Switch between cushion treemap, flat treemap, and sunburst views")
+        VizViewPicker(
+            views: model.layout.views,
+            current: model.vizView,
+            isEnabled: model.coordinator.snapshot != nil,
+            update: model.updateLayout
+        )
     }
 
     private var cloudOnlyToggle: some View {
@@ -207,14 +178,10 @@ public struct ContentView: View {
             Label("Cloud-Only Files", systemImage: "cloud")
         }
         .toggleStyle(.button)
-        .tint(model.snapshotHasCloudItems ? .accentColor : .secondary)
-        .disabled(!model.snapshotHasCloudItems)
         .help(
-            !model.snapshotHasCloudItems
-                ? "No cloud-only files in this scan"
-                : preferences.showCloudOnlyFiles
-                    ? "Hide cloud-only files (files not downloaded from your cloud drives)"
-                    : "Show cloud-only files (files not downloaded from your cloud drives)"
+            preferences.showCloudOnlyFiles
+                ? "Hide cloud-only files (files not downloaded from your cloud drives)"
+                : "Show cloud-only files (files not downloaded from your cloud drives)"
         )
     }
 
@@ -278,13 +245,6 @@ private struct WorkspaceView: View {
     @State private var transientKindStatsPaneWidth: Double?
     @State private var transientBottomOutlinePaneHeight: Double?
 
-    private var fileListVisibility: WorkspaceFileListVisibility {
-        WorkspaceFileListVisibility(
-            viewMode: model.vizViewMode,
-            treemapPosition: model.outlinePosition,
-            showsBelowSunburst: model.showsFileListBelowSunburst
-        )
-    }
 
     private var warningCount: Int {
         model.warnings.visible.count
@@ -320,15 +280,20 @@ private struct WorkspaceView: View {
                 ScanIssuesStrip(model: model, count: warningCount)
             }
 
-            Divider()
-            StatusBar(model: model)
+            if model.showsStatusBar {
+                Divider()
+                StatusBar(model: model)
+                    .contextMenu {
+                        Button("Hide Status Bar") { model.setStatusBarShown(false) }
+                    }
+            }
         }
     }
 
     private func paneMetrics(available: CGSize) -> WorkspacePaneMetrics {
         WorkspacePaneMetrics(
             available: available,
-            showsLeadingOutline: fileListVisibility.showsLeading,
+            showsLeadingOutline: model.layout.showsLeadingList,
             showsAnalysis: model.showKindStats,
             storedOutlineWidth: transientOutlinePaneWidth ?? outlinePaneWidth,
             storedAnalysisWidth: transientKindStatsPaneWidth ?? kindStatsPaneWidth,
@@ -362,7 +327,7 @@ private struct WorkspaceView: View {
     private func workspacePanes(metrics: WorkspacePaneMetrics) -> some View {
         ZStack(alignment: .bottomTrailing) {
             HStack(spacing: 0) {
-                if fileListVisibility.showsLeading {
+                if model.layout.showsLeadingList {
                     OutlinePane(model: model)
                         .frame(width: metrics.outlineWidth)
 
@@ -391,7 +356,7 @@ private struct WorkspaceView: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                     // The bottom dock sits under the map only; the analysis pane keeps its full height.
-                    if fileListVisibility.showsBottom {
+                    if model.layout.showsBottomList {
                         PaneSplitter(
                             size: bottomOutlinePaneSize,
                             range: metrics.bottomOutlineRange,

@@ -513,3 +513,6 @@
 "Neodisk never deletes anything itself, and won't touch system folders or your home folder." = "Neodisk non elimina mai nulla da sé e non tocca le cartelle di sistema né la tua cartella Inizio.";
 "Snapshots contain file names, paths, and sizes; they are stored only in Neodisk's local cache and never leave this Mac." = "Le istantanee contengono nomi dei file, percorsi e dimensioni; sono memorizzate solo nella cache locale di Neodisk e non lasciano mai questo Mac.";
 "%@ of %@ used · %@ free" = "%@ di %@ usati · %@ liberi";
+"Move Left" = "Sposta a sinistra";
+"Move Right" = "Sposta a destra";
+"Statistics Tabs" = "Schede delle statistiche";

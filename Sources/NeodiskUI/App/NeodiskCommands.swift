@@ -103,6 +103,11 @@ struct NeodiskCommands: Commands {
             .keyboardShortcut("k", modifiers: [.control, .command])
             .disabled(model.coordinator.snapshot == nil)
 
+            // Where tabs hidden from the statistics bar's menu come back.
+            Menu("Statistics Tabs") {
+                AnalysisTabsMenuItems(model: model)
+            }
+
             Divider()
 
             // Disabled at the ends rather than silently inert. Like browser zoom, it leaves menus and Settings

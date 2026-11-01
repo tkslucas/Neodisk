@@ -68,6 +68,8 @@ struct BottomOutlineTable: NSViewRepresentable {
         let coordinator = context.coordinator
 
         let tableView = OutlineNSTableView()
+        tableView.copyRequested = { [model] in model.copySelection() }
+        tableView.canCopy = { [model] in model.selectionSupportsFileActions }
         tableView.quickLookRequested = { [weak coordinator] in
             coordinator?.toggleQuickLook() ?? false
         }

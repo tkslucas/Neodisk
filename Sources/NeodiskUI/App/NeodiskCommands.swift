@@ -91,6 +91,8 @@ struct NeodiskCommands: Commands {
             Menu("Sidebar Sections") {
                 SidebarSectionsMenuItems(model: model)
             }
+            // Its sections can't change visibly while the sidebar is hidden.
+            .disabled(model.sidebarVisibility == .detailOnly)
 
             Button {
                 model.showKindStats.toggle()
@@ -182,6 +184,8 @@ struct NeodiskCommands: Commands {
                     .disabled(!model.outlineColumns.isHidden(column) && !model.outlineColumns.canHide(column))
                 }
             }
+            // Columns belong to the bottom table: nothing to see while it isn't showing.
+            .disabled(model.coordinator.snapshot == nil || !model.layout.showsBottomList)
 
             Divider()
 
@@ -191,6 +195,8 @@ struct NeodiskCommands: Commands {
                 Label(model.showsStatusBar ? "Hide Status Bar" : "Show Status Bar", systemImage: "info.square")
             }
             .keyboardShortcut("/", modifiers: .command)
+            // The status bar shows only with a scan on screen.
+            .disabled(model.coordinator.snapshot == nil)
         }
 
         // The visualization key handlers own these shortcuts too; the menu intercepts first and calls the same

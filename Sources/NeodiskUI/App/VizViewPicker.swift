@@ -41,7 +41,11 @@ struct VizViewPicker: NSViewRepresentable {
             }
         }
         control.selectedSegment = visible.firstIndex(of: current) ?? -1
+        // Each segment too: a disabled control alone still drew its segments as clickable.
         control.isEnabled = isEnabled
+        for index in 0..<control.segmentCount where control.isEnabled(forSegment: index) != isEnabled {
+            control.setEnabled(isEnabled, forSegment: index)
+        }
     }
 
     @MainActor

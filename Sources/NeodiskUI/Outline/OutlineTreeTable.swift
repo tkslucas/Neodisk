@@ -22,6 +22,8 @@ struct OutlineTreeTable: NSViewRepresentable {
         let coordinator = context.coordinator
 
         let tableView = OutlineNSTableView()
+        tableView.copyRequested = { [model] in model.copySelection() }
+        tableView.canCopy = { [model] in model.selectionSupportsFileActions }
         tableView.quickLookRequested = { [weak coordinator] in
             coordinator?.toggleQuickLook() ?? false
         }
@@ -512,6 +514,18 @@ final class OutlineRowSelectionState {
 /// unaffected.
 final class OutlineNSTableView: NSTableView {
     var quickLookRequested: () -> Bool = { false }
+    /// Edit > Copy: the selected items, as Finder copies them. Enabled when `canCopy`.
+    var copyRequested: () -> Bool = { false }
+    var canCopy: () -> Bool = { false }
+
+    @objc func copy(_ sender: Any?) {
+        if !copyRequested() { NSSound.beep() }
+    }
+
+    override func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
+        item.action == #selector(copy(_:)) ? canCopy() : super.validateUserInterfaceItem(item)
+    }
+
     var hierarchyNavigationRequested: (OutlineHierarchyDirection) -> Void = { _ in }
     /// The table applies a click's selection at mouseDown but fires the delegate when tracking ends, so
     /// programmatic sync must not "correct" the selection mid-click.
@@ -533,6 +547,11 @@ final class OutlineNSTableView: NSTableView {
         let hierarchyModifiers = event.modifierFlags.intersection([
             .command, .control, .option, .shift,
         ])
+        // ⌘↑ / ⌘↓ belong to the Go menu: reaching here they're disabled (at the scan root, say), so nothing moves.
+        if hierarchyModifiers == .command, event.specialKey == .upArrow || event.specialKey == .downArrow {
+            NSSound.beep()
+            return
+        }
         if hierarchyModifiers.isEmpty {
             switch event.specialKey {
             case .leftArrow:

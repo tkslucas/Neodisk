@@ -30,7 +30,6 @@ enum PreferencesDialog {
 
         let treemap = group(L("Treemap"))
         addSwitch(to: treemap, title: L("Show Free Space"),
-                  subtitle: L("Draw a volume's free space as a block of its own"),
                   isOn: preferences.showFreeSpace) { preferences.showFreeSpace = $0 }
         adw_preferences_page_add(ptr(viewPage), ptr(treemap))
 
@@ -56,14 +55,13 @@ enum PreferencesDialog {
         let scanPage = page(L("Scanning"), icon: "drive-harddisk-symbolic")
         let scanning = group(L("Scans"), description: L("Changes apply from the next scan."))
         addSwitch(to: scanning, title: L("Include Hidden Files"),
-                  subtitle: L("Dot files and folders, like ~/.cache and ~/.local"),
                   isOn: preferences.includeHiddenFiles) { preferences.includeHiddenFiles = $0 }
         addSwitch(to: scanning, title: L("Summarize Huge Folders"),
                   subtitle: L("Count folders with very many small files as one item, for faster scans"),
                   isOn: preferences.autoSummarizeDirectories) { preferences.autoSummarizeDirectories = $0 }
         adw_preferences_page_add(ptr(scanPage), ptr(scanning))
 
-        let storage = group(L("Saved Scans"), description: L("Finished scans are kept so locations reopen instantly and changes can be compared."))
+        let storage = group(L("Saved Scans"))
         let cacheRow = raw(adw_action_row_new())!
         adw_preferences_row_set_title(ptr(cacheRow), L("Cached Scans"))
         adw_action_row_set_subtitle(ptr(cacheRow), L("Calculating…"))
@@ -76,7 +74,7 @@ enum PreferencesDialog {
 
         let trash = group(
             L("Moving to the Trash"),
-            description: L("Neodisk asks before each move and never deletes anything itself. System folders and your home folder are off limits. Turn this off to only look.")
+            description: L("Neodisk never deletes anything itself, and won't touch system folders or your home folder.")
         )
         addSwitch(to: trash, title: L("Allow moving items to the Trash"),
                   isOn: preferences.allowsMovingToTrash) { preferences.allowsMovingToTrash = $0 }

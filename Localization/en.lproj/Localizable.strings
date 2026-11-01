@@ -73,7 +73,6 @@
 "Mounted volume scans always include hidden files automatically." = "Mounted volume scans always include hidden files automatically.";
 "Automatically summarize folders with many small files" = "Automatically summarize folders with many small files";
 "Scan local cloud files" = "Scan local cloud files";
-"Summarizing folders with thousands of tiny files (like node_modules or caches) dramatically improves scan speed." = "Summarizing folders with thousands of tiny files (like node_modules or caches) dramatically improves scan speed.";
 "When off, scans skip locally synced cloud folders: ~/Library/CloudStorage (Google Drive, Dropbox, OneDrive) and iCloud Drive." = "When off, scans skip locally synced cloud folders: ~/Library/CloudStorage (Google Drive, Dropbox, OneDrive) and iCloud Drive.";
 "Changes apply to the next scan." = "Changes apply to the next scan.";
 "When opening a scanned location" = "When opening a scanned location";
@@ -86,14 +85,12 @@
 "One pattern per line. Trailing “/” matches folders; “*” is a wildcard." = "One pattern per line. Trailing “/” matches folders; “*” is a wildcard.";
 "Add Presets" = "Add Presets";
 "Show free space in treemap" = "Show free space in treemap";
-"The sunburst always shows free and hidden space for volume scans; this adds them to the treemap too. Hidden space is capacity the scan could not see, such as purgeable space and local snapshots. Applies immediately." = "The sunburst always shows free and hidden space for volume scans; this adds them to the treemap too. Hidden space is capacity the scan could not see, such as purgeable space and local snapshots. Applies immediately.";
 "Workspace" = "Workspace";
 "Show Welcome Screen" = "Show Welcome Screen";
 "Restore Defaults" = "Restore Defaults";
 
 /* MARK: - Settings: Privacy */
 "Full Disk Access" = "Full Disk Access";
-"Neodisk can scan ordinary folders immediately. For protected macOS locations such as Mail, Safari, Messages, and Library content, grant Full Disk Access in System Settings." = "Neodisk can scan ordinary folders immediately. For protected macOS locations such as Mail, Safari, Messages, and Library content, grant Full Disk Access in System Settings.";
 "Full Disk Access is enabled." = "Full Disk Access is enabled.";
 "Full Disk Access is not enabled." = "Full Disk Access is not enabled.";
 "Checking…" = "Checking…";
@@ -102,12 +99,9 @@
 "Note: running unbundled (swift run), Neodisk inherits its permissions from the terminal that launched it — grant Full Disk Access to that terminal app." = "Note: running unbundled (swift run), Neodisk inherits its permissions from the terminal that launched it — grant Full Disk Access to that terminal app.";
 "Moving to the Trash" = "Moving to the Trash";
 "Allow moving items to the Trash" = "Allow moving items to the Trash";
-"Collect items in Cleanup at the bottom of the sidebar, then move them to the Trash after one confirmation. Neodisk never deletes anything itself, and won't touch system folders or your home folder. Turn this off to only look." = "Collect items in Cleanup at the bottom of the sidebar, then move them to the Trash after one confirmation. Neodisk never deletes anything itself, and won't touch system folders or your home folder. Turn this off to only look.";
 "Sidebar Folders" = "Sidebar Folders";
-"Folders you add are stored locally so they can appear in the sidebar." = "Folders you add are stored locally so they can appear in the sidebar.";
 "Clear Added Folders" = "Clear Added Folders";
 "Scan Snapshots" = "Scan Snapshots";
-"After each completed scan, Neodisk keeps the latest results for that location on this Mac so reopening it shows the last scan instantly while a fresh scan runs. Snapshots contain file names, paths, and sizes; they are stored only in Neodisk's local cache and never leave this Mac." = "After each completed scan, Neodisk keeps the latest results for that location on this Mac so reopening it shows the last scan instantly while a fresh scan runs. Snapshots contain file names, paths, and sizes; they are stored only in Neodisk's local cache and never leave this Mac.";
 "Size on disk" = "Size on disk";
 "Calculating…" = "Calculating…";
 "Clear Scan Snapshots" = "Clear Scan Snapshots";
@@ -300,7 +294,6 @@
 "Last viewed" = "Last viewed";
 "Cushion" = "Cushion";
 "Flat" = "Flat";
-"The view the app starts in. Last viewed restores whatever was on screen when you quit. The toolbar picker switches views any time." = "The view the app starts in. Last viewed restores whatever was on screen when you quit. The toolbar picker switches views any time.";
 "Color palette" = "Color palette";
 "Classic" = "Classic";
 "Vivid" = "Vivid";
@@ -308,7 +301,6 @@
 "Retro" = "Retro";
 "Neon" = "Neon";
 "Colorblind-safe" = "Colorblind-safe";
-"The color set the visualizations draw with. Colorblind-safe stays distinct with common color vision differences. Applies immediately." = "The color set the visualizations draw with. Colorblind-safe stays distinct with common color vision differences. Applies immediately.";
 
 /* MARK: - File list position */
 "Name" = "Name";
@@ -351,7 +343,6 @@
 "Update Error" = "Update Error";
 "Updates" = "Updates";
 "Check for updates automatically" = "Check for updates automatically";
-"Neodisk checks GitHub for new versions in the background and always asks before installing anything." = "Neodisk checks GitHub for new versions in the background and always asks before installing anything.";
 "Automatic updates work only in the packaged app." = "Automatic updates work only in the packaged app.";
 
 /* MARK: - Help & About */
@@ -379,8 +370,6 @@
 
 /* Settings tabs (2026-07-13) */
 "Advanced" = "Advanced";
-"Loads the previous scan in the background so the Changes view opens instantly." = "Loads the previous scan in the background so the Changes view opens instantly.";
-"Runs the duplicate scan automatically when results appear. Reading file contents can take time and energy on large locations." = "Runs the duplicate scan automatically when results appear. Reading file contents can take time and energy on large locations.";
 /* Hover tooltips (2026-07-13) */
 "Free space · %@" = "Free space · %@";
 "Hidden space · %@" = "Hidden space · %@";
@@ -396,7 +385,6 @@
 "Zoom In" = "Zoom In";
 "Zoom Out" = "Zoom Out";
 "Actual Size" = "Actual Size";
-"Scales the text in the locations sidebar, the file lists, the treemap and sunburst labels, and the statistics panel. Applies immediately. View ▸ Zoom In and Zoom Out (⌘+ and ⌘−) change it without opening Settings." = "Scales the text in the locations sidebar, the file lists, the treemap and sunburst labels, and the statistics panel. Applies immediately. View ▸ Zoom In and Zoom Out (⌘+ and ⌘−) change it without opening Settings.";
 
 /* Linux (GTK) app */
 "%@ free" = "%@ free";
@@ -414,9 +402,6 @@
 "Color Palette" = "Color Palette";
 "Computer" = "Computer";
 "Count folders with very many small files as one item, for faster scans" = "Count folders with very many small files as one item, for faster scans";
-"Dot files and folders, like ~/.cache and ~/.local" = "Dot files and folders, like ~/.cache and ~/.local";
-"Draw a volume's free space as a block of its own" = "Draw a volume's free space as a block of its own";
-"Finished scans are kept so locations reopen instantly and changes can be compared." = "Finished scans are kept so locations reopen instantly and changes can be compared.";
 "Follow System" = "Follow System";
 "Home" = "Home";
 "Include Hidden Files" = "Include Hidden Files";
@@ -472,7 +457,6 @@
 "Moving items to the Trash is turned off in Preferences." = "Moving items to the Trash is turned off in Preferences.";
 "Moving items to the Trash is turned off in Settings." = "Moving items to the Trash is turned off in Settings.";
 "Moving to the Trash…" = "Moving to the Trash…";
-"Neodisk asks before each move and never deletes anything itself. System folders and your home folder are off limits. Turn this off to only look." = "Neodisk asks before each move and never deletes anything itself. System folders and your home folder are off limits. Turn this off to only look.";
 "Open Trash" = "Open Trash";
 "Remove from Cleanup" = "Remove from Cleanup";
 "Some of this is in a cloud drive: moving it to the Trash also removes it from the cloud and your other devices." = "Some of this is in a cloud drive: moving it to the Trash also removes it from the cloud and your other devices.";
@@ -528,3 +512,8 @@
 "Couldn't Move %lld Items to the Trash" = "Couldn't Move %lld Items to the Trash";
 "Select All" = "Select All";
 "Add to Selection" = "Add to Selection";
+"Hidden space is capacity the scan could not see, such as purgeable space and local snapshots." = "Hidden space is capacity the scan could not see, such as purgeable space and local snapshots.";
+"Reading file contents can take time and energy on large locations." = "Reading file contents can take time and energy on large locations.";
+"For protected macOS locations such as Mail, Safari, Messages, and Library content, grant Full Disk Access in System Settings." = "For protected macOS locations such as Mail, Safari, Messages, and Library content, grant Full Disk Access in System Settings.";
+"Neodisk never deletes anything itself, and won't touch system folders or your home folder." = "Neodisk never deletes anything itself, and won't touch system folders or your home folder.";
+"Snapshots contain file names, paths, and sizes; they are stored only in Neodisk's local cache and never leave this Mac." = "Snapshots contain file names, paths, and sizes; they are stored only in Neodisk's local cache and never leave this Mac.";

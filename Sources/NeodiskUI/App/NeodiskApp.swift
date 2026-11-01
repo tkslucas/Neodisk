@@ -81,6 +81,8 @@ public struct NeodiskApp: App {
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
         .defaultPosition(.center)
+        // About opens from the app menu only, not as a Window menu item.
+        .commandsRemoved()
     }
 }
 

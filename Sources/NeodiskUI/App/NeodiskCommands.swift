@@ -50,11 +50,22 @@ struct NeodiskCommands: Commands {
             .disabled(!model.coordinator.isScanning)
         }
 
+        CommandGroup(after: .pasteboard) {
+            // Beside Select All, where every Mac app keeps it.
+            Button {
+                model.select(nil)
+            } label: {
+                Label("Deselect All", systemImage: "clear")
+            }
+            .keyboardShortcut("a", modifiers: [.command, .option])
+            .disabled(model.selection.isEmpty)
+        }
+
         CommandGroup(after: .textEditing) {
             Button {
                 model.search.requestFocus()
             } label: {
-                Label("Find", systemImage: "magnifyingglass")
+                Label("Find…", systemImage: "magnifyingglass")
             }
             .keyboardShortcut("f")
             .disabled(model.coordinator.snapshot == nil)
@@ -206,16 +217,6 @@ struct NeodiskCommands: Commands {
             }
             .keyboardShortcut("\\", modifiers: [.command, .option])
             .disabled(!model.canDrillOut)
-
-            Divider()
-
-            Button {
-                model.select(nil)
-            } label: {
-                Label("Deselect All", systemImage: "clear")
-            }
-            .keyboardShortcut("a", modifiers: [.command, .option])
-            .disabled(model.selection.isEmpty)
         }
 
         CommandMenu("Inspect") {

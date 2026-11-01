@@ -260,7 +260,7 @@
 "Dismiss" = "Dismiss";
 
 /* MARK: - Menu bar commands */
-"Find" = "Find";
+"Find…" = "Find…";
 "Show Locations Sidebar" = "Show Locations Sidebar";
 "Hide Locations Sidebar" = "Hide Locations Sidebar";
 "Show Statistics" = "Show Statistics";

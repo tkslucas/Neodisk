@@ -10,12 +10,30 @@ on:
   pull_request:
   workflow_dispatch:
 
+# A newer push to the same PR supersedes the running check.
+concurrency:
+  group: linux-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build-and-test:
     runs-on: ubuntu-24.04
     container: swift:6.4-noble
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+
+      - name: Toolchain id
+        id: toolchain
+        run: echo "id=$(swift --version 2>&1 | sha256sum | cut -c1-12)" >> "$GITHUB_OUTPUT"
+
+      # Resolved dependencies and their builds; our own targets rebuild anyway (checkout resets mtimes).
+      - name: Restore the build cache
+        id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .build
+          key: linux-build-${{ steps.toolchain.outputs.id }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
 
       - name: Install GTK, libadwaita, and zstd development packages
         run: |
@@ -34,5 +52,13 @@ jobs:
       - name: Build
         run: su ci -c "cd '$GITHUB_WORKSPACE' && swift build --build-tests"
 
+      # Quiet: one line per test run plus every failure, instead of a line per test.
       - name: Test
-        run: su ci -c "cd '$GITHUB_WORKSPACE' && swift test --skip-build"
+        run: su ci -c "cd '$GITHUB_WORKSPACE' && swift test --skip-build --quiet"
+
+      - name: Save the build cache
+        if: github.ref == 'refs/heads/main' && steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .build
+          key: ${{ steps.cache.outputs.cache-primary-key }}

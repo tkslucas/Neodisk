@@ -513,3 +513,4 @@
 "For protected macOS locations such as Mail, Safari, Messages, and Library content, grant Full Disk Access in System Settings." = "For protected macOS locations such as Mail, Safari, Messages, and Library content, grant Full Disk Access in System Settings.";
 "Neodisk never deletes anything itself, and won't touch system folders or your home folder." = "Neodisk never deletes anything itself, and won't touch system folders or your home folder.";
 "Snapshots contain file names, paths, and sizes; they are stored only in Neodisk's local cache and never leave this Mac." = "Snapshots contain file names, paths, and sizes; they are stored only in Neodisk's local cache and never leave this Mac.";
+"%@ of %@ used · %@ free" = "%@ of %@ used · %@ free";

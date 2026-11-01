@@ -39,7 +39,7 @@ struct NeodiskCommands: Commands {
                 Label("Rescan", systemImage: "arrow.clockwise")
             }
             .keyboardShortcut("r")
-            .disabled(!model.coordinator.canRescan || model.coordinator.snapshot == nil)
+            .disabled(!model.canRescan)
 
             Button {
                 model.stopScan()

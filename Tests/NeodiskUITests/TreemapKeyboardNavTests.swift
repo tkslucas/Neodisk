@@ -281,7 +281,7 @@ import NeodiskKit
         // The outline and search set selectedNodeID directly, bypassing
         // select(); the widen must still happen (it lives in the didSet).
         model.zoomRootID = fixture.left.id
-        model.selectedNodeID = fixture.rightFile.id
+        model.selection.replace(with: fixture.rightFile.id)
         #expect(model.zoomRootID == fixture.area.id)
     }
 

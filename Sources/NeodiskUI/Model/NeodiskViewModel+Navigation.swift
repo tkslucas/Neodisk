@@ -7,8 +7,9 @@ import NeodiskAppModel
 extension NeodiskViewModel {
     // MARK: - Selection & zoom
 
+    /// A plain click: just this item, or nothing.
     func select(_ nodeID: String?) {
-        selectedNodeID = nodeID  // its didSet widens the map if the node is off-screen
+        selection.replace(with: nodeID)  // its didSet widens the map if the node is off-screen
         if let nodeID {
             revealInOutline(nodeID)
             // With duplicate results on screen, selecting a copy drills into its group; a non-duplicate steps
@@ -20,7 +21,7 @@ extension NeodiskViewModel {
     }
 
     /// Widens the root out to the lowest common ancestor; never narrows (drilling in stays ⌘↓).
-    /// Internal because the caller, selectedNodeID's didSet, lives in NeodiskViewModel.swift.
+    /// Internal because the caller, selection's didSet, lives in NeodiskViewModel.swift.
     func widenRootToShow(_ nodeID: String) {
         guard let store, let currentRootID = effectiveRootID,
               currentRootID != store.root.id,

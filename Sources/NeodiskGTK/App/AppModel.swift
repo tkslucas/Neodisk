@@ -68,7 +68,10 @@ final class AppModel {
     /// The Age tab's drill-in bucket.
     var highlightedAgeBucket: AgeBucket?
 
-    var selectedNodeID: String?
+    /// Every selected item, one of them primary; see NodeSelection.
+    var selection = NodeSelection()
+    /// The primary selected item: what drilling, arrow keys and the breadcrumb act on.
+    var selectedNodeID: String? { selection.primaryID }
     var hoveredNodeID: String?
     /// The folder the visualizations are drilled into; nil is the root.
     var focusID: String? {
@@ -212,7 +215,7 @@ final class AppModel {
         snapshot = nil
         warnings = []
         metrics = ScanMetrics()
-        selectedNodeID = nil
+        selection.clear()
         hoveredNodeID = nil
         focusID = nil
         drillHistory = DrillHistory()
@@ -278,7 +281,6 @@ final class AppModel {
     }
 
     private func display(_ snapshot: ScanSnapshot) {
-        let previousSelection = selectedNodeID
         let previousFocus = focusID
         self.snapshot = snapshot
         // The search index builds on the first search, not here: on a large
@@ -288,7 +290,7 @@ final class AppModel {
         isRefreshing = false
         phase = .displaying
         // A refresh keeps the user's place when it still exists.
-        selectedNodeID = snapshot.treeStore.node(id: previousSelection) == nil ? nil : previousSelection
+        selection.reconcile(with: snapshot.treeStore)
         focusID = snapshot.treeStore.node(id: previousFocus) == nil ? nil : previousFocus
         if snapshot.target.kind == .volume {
             volumeSpace = VolumeSpaceInfo.load(for: snapshot.target.url)
@@ -480,8 +482,8 @@ final class AppModel {
     // MARK: - Selection and focus
 
     func select(_ nodeID: String?) {
-        guard selectedNodeID != nodeID else { return }
-        selectedNodeID = nodeID
+        guard selection.ids != (nodeID.map { [$0] } ?? []) else { return }
+        selection.replace(with: nodeID)
         // A selection outside the drilled-in folder widens the focus to show
         // it, as on the Mac.
         if let nodeID, let store, let focusID, !store.isAncestor(focusID, of: nodeID), focusID != nodeID {
@@ -514,7 +516,7 @@ final class AppModel {
         guard !children.isEmpty else { return false }
         focusID = folder.id == store.rootID ? nil : folder.id
         if node.isDirectory, let largest = children.max(by: { $0.allocatedSize < $1.allocatedSize }) {
-            selectedNodeID = largest.id
+            selection.replace(with: largest.id)
         }
         return true
     }
@@ -529,7 +531,7 @@ final class AppModel {
         guard let store, let focusID else { return }
         let parent = store.parent(of: focusID)?.id
         self.focusID = parent == store.rootID ? nil : parent
-        selectedNodeID = focusID
+        selection.replace(with: focusID)
     }
 
     var canFocusOut: Bool { focusID != nil }
@@ -567,7 +569,7 @@ final class AppModel {
         if let selected = selectedNodeID, selected == target || !store.isAncestor(target, of: selected) {
             let children = store.children(of: target).filter { $0.allocatedSize > 0 }
             if let largest = children.max(by: { $0.allocatedSize < $1.allocatedSize }) {
-                selectedNodeID = largest.id
+                selection.replace(with: largest.id)
             }
         }
         return true
@@ -686,9 +688,7 @@ extension AppModel {
         if let focusID, let kept = store.survivor(of: focusID, removing: removed), kept != focusID {
             self.focusID = kept == store.rootID ? nil : kept
         }
-        if let selectedNodeID, let kept = store.survivor(of: selectedNodeID, removing: removed), kept != selectedNodeID {
-            self.selectedNodeID = kept
-        }
+        selection.prepareForRemoval(of: removed, in: store)
         if let hoveredNodeID, store.isNodeOrDescendant(hoveredNodeID, of: removed) {
             self.hoveredNodeID = nil
         }

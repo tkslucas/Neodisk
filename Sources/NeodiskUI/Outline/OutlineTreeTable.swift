@@ -291,7 +291,7 @@ struct OutlineTreeTable: NSViewRepresentable {
                 lastRevealedID = newID
                 isReportingSelection = true
                 defer { isReportingSelection = false }
-                model.selectedNodeID = newID
+                model.selection.replace(with: newID)
             }
         }
 

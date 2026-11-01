@@ -20,19 +20,26 @@ import NeodiskAppModel
 final class NeodiskViewModel {
     let coordinator: ScanCoordinator
 
-    var selectedNodeID: String? {
+    /// Every selected item, one of them primary; see NodeSelection. Lists and maps write it, every view reads it.
+    var selection = NodeSelection() {
         didSet {
-            guard selectedNodeID != oldValue else { return }
+            guard selection.revision != oldValue.revision else { return }
             // Any selection — from the treemap, outline, sidebar lists, or
-            // search — keeps itself on screen: if it lands outside a
+            // search — keeps its primary on screen: if it lands outside a
             // drilled-in map, widen the root out to reveal it. Done here, not
-            // in select(), because the outline sets selectedNodeID directly.
-            if let selectedNodeID { widenRootToShow(selectedNodeID) }
+            // in select(), because the lists write the selection directly.
+            if let primaryID = selection.primaryID, primaryID != oldValue.primaryID {
+                widenRootToShow(primaryID)
+            }
             // Live-update an open Quick Look panel as the selection moves
             // (arrow-keying through the outline). No-op when it's closed.
             QuickLookPresenter.shared.selectionDidChange(to: selectedNode)
         }
     }
+
+    /// The primary selected item: what single-item features (drilling, arrow keys, the breadcrumb) act on.
+    var selectedNodeID: String? { selection.primaryID }
+
     private(set) var visualizationHover: VisualizationHover?
 
     /// Publish a complete hover identity in one observation transaction.
@@ -426,7 +433,7 @@ final class NeodiskViewModel {
     /// or snapshot takes the screen. Internal (not private): the caller is
     /// the scan session, whose branches decide when a new scan takes over.
     func resetPerScanState() {
-        selectedNodeID = nil
+        selection.clear()
         setVisualizationHover(nil)
         zoomRootID = nil
         drillHistory = DrillHistory()
@@ -481,9 +488,7 @@ final class NeodiskViewModel {
         if let zoomRootID, let kept = store.survivor(of: zoomRootID, removing: removed), kept != zoomRootID {
             self.zoomRootID = kept == store.rootID ? nil : kept
         }
-        if let selectedNodeID, let kept = store.survivor(of: selectedNodeID, removing: removed), kept != selectedNodeID {
-            self.selectedNodeID = kept
-        }
+        selection.prepareForRemoval(of: removed, in: store)
     }
 
     /// Mirror the persisted text scale onto the model, and push it into the
@@ -742,6 +747,11 @@ final class NeodiskViewModel {
         cleanup.snapshotDidChange(snapshot)
 
         guard let snapshot else { return }
+
+        // A newer tree of the same location keeps the selection by path; what's gone leaves it.
+        if isSameLocation, snapshot.isComplete {
+            selection.reconcile(with: snapshot.treeStore)
+        }
 
         // Expand the root row by default so the outline isn't a single line.
         expandOutlineNodes([snapshot.treeStore.root.id])

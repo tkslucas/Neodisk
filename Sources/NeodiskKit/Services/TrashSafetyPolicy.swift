@@ -63,6 +63,10 @@ public struct TrashSafetyPolicy: Sendable {
         #else
         paths += childPaths(of: "/home")
         paths += xdgUserDirectories(homeDirectory: homeDirectory)
+        // A data folder moved out of ~/.local/share, and the Trash inside it.
+        if let dataHome = ProcessInfo.processInfo.environment["XDG_DATA_HOME"], dataHome.hasPrefix("/") {
+            paths += [dataHome, (dataHome as NSString).appendingPathComponent("Trash")]
+        }
         #endif
         // The system's own top-level folders, whatever they're called on this machine.
         for directory in systemFoldersWithProtectedChildren {

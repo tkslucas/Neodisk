@@ -1,29 +1,14 @@
 import AppKit
 import Foundation
 import Testing
-import NeodiskKit
 import NeodiskAppModel
 @testable import NeodiskUI
 
 /// The statistics tabs' and the bottom table's columns' layouts persist, and a hidden tab never stays the lens.
 @MainActor
 @Suite(.serialized) struct LayoutPreferencesTests {
-    private func makeModel() throws -> (NeodiskViewModel, AppPreferences, UserDefaults, String) {
-        let suite = "NeodiskLayoutTests-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        let cacheDirectory = FileManager.default.temporaryDirectory
-            .appending(path: suite, directoryHint: .isDirectory)
-        let model = NeodiskViewModel(
-            snapshotCache: ScanSnapshotCache(directoryURL: cacheDirectory, isLoggingEnabled: false),
-            sidebarFolderStore: SidebarFolderStore(defaults: defaults)
-        )
-        let preferences = AppPreferences(defaults: defaults)
-        model.preferences = preferences
-        return (model, preferences, defaults, suite)
-    }
-
     @Test func hidingTheActiveTabMovesToTheFirstShownOne() throws {
-        let (model, preferences, defaults, suite) = try makeModel()
+        let (model, preferences, defaults, suite) = try makePreferencesModel()
         defer { removeTestDefaultsSuite(defaults, named: suite) }
         model.analysisTab = .age
         var layout = model.analysisTabs
@@ -36,7 +21,7 @@ import NeodiskAppModel
     }
 
     @Test func outlineColumnsPersistWithNamePinned() throws {
-        let (model, preferences, defaults, suite) = try makeModel()
+        let (model, preferences, defaults, suite) = try makePreferencesModel()
         defer { removeTestDefaultsSuite(defaults, named: suite) }
         var layout = model.outlineColumns
         layout.setVisibleOrder([.name, .modified, .size, .percent, .files])
@@ -51,7 +36,7 @@ import NeodiskAppModel
     /// Settings' reset while the table is on screen: rearranging it to match mustn't store the half-done orders
     /// each column move reports.
     @Test func bottomTableFollowsAResetWithoutStoringItsSteps() throws {
-        let (model, _, defaults, suite) = try makeModel()
+        let (model, _, defaults, suite) = try makePreferencesModel()
         defer { removeTestDefaultsSuite(defaults, named: suite) }
         let custom = ItemLayout<OutlineColumn>(stored: "name,modified,files,size,-percent", pinned: .name)
         model.setOutlineColumns(custom)
@@ -80,7 +65,7 @@ import NeodiskAppModel
 
     /// The View menu and the picker go through WorkspaceLayout and persist; its rules are tested on their own.
     @Test func viewsAndFileListPersist() throws {
-        let (model, preferences, defaults, suite) = try makeModel()
+        let (model, preferences, defaults, suite) = try makePreferencesModel()
         defer { removeTestDefaultsSuite(defaults, named: suite) }
         model.updateLayout { $0.pick(.flat) }
         model.updateLayout {
@@ -98,7 +83,7 @@ import NeodiskAppModel
     }
 
     @Test func aHiddenDefaultViewStaysHiddenAtLaunch() throws {
-        let (model, preferences, defaults, suite) = try makeModel()
+        let (model, preferences, defaults, suite) = try makePreferencesModel()
         defer { removeTestDefaultsSuite(defaults, named: suite) }
         preferences.defaultVizView = .sunburst
         model.updateLayout {
@@ -113,7 +98,7 @@ import NeodiskAppModel
     }
 
     @Test func statusBarVisibilityPersists() throws {
-        let (model, _, defaults, suite) = try makeModel()
+        let (model, _, defaults, suite) = try makePreferencesModel()
         defer { removeTestDefaultsSuite(defaults, named: suite) }
         #expect(model.showsStatusBar)
         model.setStatusBarShown(false)
@@ -122,7 +107,7 @@ import NeodiskAppModel
     }
 
     @Test func fileListMenuShowsWhereTheListIs() throws {
-        let (model, _, defaults, suite) = try makeModel()
+        let (model, _, defaults, suite) = try makePreferencesModel()
         defer { removeTestDefaultsSuite(defaults, named: suite) }
         model.updateLayout { $0.placeList(.leading) }
         let menu = NSMenu()
@@ -133,7 +118,7 @@ import NeodiskAppModel
 
     /// The picker's own menu is the checklist (a SwiftUI context menu loses the right-click to the toolbar's).
     @Test func viewPickerMenuChecksShownViewsAndKeepsTheLast() throws {
-        let (model, _, defaults, suite) = try makeModel()
+        let (model, _, defaults, suite) = try makePreferencesModel()
         defer { removeTestDefaultsSuite(defaults, named: suite) }
         model.updateLayout {
             var views = $0.views

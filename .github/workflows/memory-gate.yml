@@ -8,6 +8,11 @@ on:
   workflow_dispatch:
   pull_request:
 
+# A newer push to the same PR supersedes the running gate.
+concurrency:
+  group: memory-gate-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   gate:
     # Fork PRs can't read the internal scripts.

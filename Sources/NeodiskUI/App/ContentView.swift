@@ -44,6 +44,9 @@ public struct ContentView: View {
             minHeight: minimumSize.height
         )
         .background(SnapshotWindowHider())
+        .background(ToolbarButtonRefresher(state: [
+            model.coordinator.isScanning, model.canRescan, model.coordinator.snapshot != nil, model.cleanup.isEnabled,
+        ]))
         .sheet(isPresented: $model.showWelcomeSheet) {
             WelcomeSheet(model: model)
                 .neoWorkspaceText(scale: textScale)
@@ -163,8 +166,12 @@ public struct ContentView: View {
         ToolbarItem(placement: .principal) {
             vizModePicker
         }
-        // Only scans with cloud-only files have anything for it to weigh.
+        // Only scans with cloud-only files have anything for it to weigh. A filter, not a view: on macOS 26 a
+        // spacer keeps it out of the picker's glass capsule.
         if model.snapshotHasCloudItems {
+            if #available(macOS 26.0, *) {
+                ToolbarSpacer(.fixed, placement: .principal)
+            }
             ToolbarItem(placement: .principal) {
                 cloudOnlyToggle
             }
@@ -205,7 +212,7 @@ public struct ContentView: View {
             Label("Cloud-Only Files", systemImage: "cloud")
         }
         .toggleStyle(.button)
-        .help(
+        .neoHelp(
             preferences.showCloudOnlyFiles
                 ? "Hide cloud-only files (files not downloaded from your cloud drives)"
                 : "Show cloud-only files (files not downloaded from your cloud drives)"
@@ -222,15 +229,15 @@ public struct ContentView: View {
             } label: {
                 Label("Stop", systemImage: "stop.circle")
             }
-            .help("Stop the current scan")
+            .neoHelp("Stop the current scan")
         } else {
             Button {
                 model.rescan()
             } label: {
                 Label("Rescan", systemImage: "arrow.clockwise")
             }
-            .disabled(!model.coordinator.canRescan || model.coordinator.snapshot == nil)
-            .help("Scan \(model.coordinator.selectedTarget?.displayName ?? "this location") again")
+            .disabled(!model.canRescan)
+            .neoHelp("Scan \(model.coordinator.selectedTarget?.displayName ?? "this location") again")
         }
 
         // Removed, not disabled, while moving to the Trash is off.
@@ -244,12 +251,12 @@ public struct ContentView: View {
             Label("Statistics", systemImage: "sidebar.right")
         }
         .disabled(model.coordinator.snapshot == nil)
-        .help(model.showKindStats ? "Hide the statistics panel" : "Show the statistics panel")
+        .neoHelp(model.showKindStats ? "Hide the statistics panel" : "Show the statistics panel")
 
         SettingsLink {
             Label("Settings", systemImage: "gearshape")
         }
-        .help("Open Neodisk settings")
+        .neoHelp("Open Neodisk settings")
     }
 }
 
@@ -286,6 +293,27 @@ private struct WorkspaceView: View {
                 workspacePanes(metrics: metrics)
             }
 
+            bottomStrips
+                // Without the status bar under them, the last strip meets the window's rounded bottom edge.
+                .padding(.bottom, model.showsStatusBar || !hasBottomStrip ? 0 : 5)
+
+            if model.showsStatusBar {
+                Divider()
+                StatusBar(model: model)
+                    .contextMenu { WorkspaceLayoutMenuItems(model: model) }
+            }
+        }
+        // The snapshot strip slides in and out instead of jumping the map under the pointer.
+        .animation(.easeInOut(duration: 0.2), value: model.session.snapshotNotice == nil)
+    }
+
+    private var hasBottomStrip: Bool {
+        model.session.snapshotNotice != nil || model.session.supersededScanNotice != nil
+            || model.coordinator.isScanning || model.scanWasStopped || warningCount > 0
+    }
+
+    private var bottomStrips: some View {
+        VStack(spacing: 0) {
             if let notice = model.session.snapshotNotice {
                 VStack(spacing: 0) {
                     Divider()
@@ -314,15 +342,7 @@ private struct WorkspaceView: View {
                 Divider()
                 ScanIssuesStrip(model: model, count: warningCount)
             }
-
-            if model.showsStatusBar {
-                Divider()
-                StatusBar(model: model)
-                    .contextMenu { WorkspaceLayoutMenuItems(model: model) }
-            }
         }
-        // The snapshot strip slides in and out instead of jumping the map under the pointer.
-        .animation(.easeInOut(duration: 0.2), value: model.session.snapshotNotice == nil)
     }
 
     private func paneMetrics(available: CGSize) -> WorkspacePaneMetrics {
@@ -379,7 +399,10 @@ private struct WorkspaceView: View {
                 }
 
                 VStack(spacing: 0) {
-                    TreemapBreadcrumbBar(model: model)
+                    // The sunburst floats its own over the chart's free corner.
+                    if model.vizViewMode != .sunburst {
+                        TreemapBreadcrumbBar(model: model)
+                    }
                     if model.vizViewMode == .sunburst {
                         SunburstPane(model: model)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -513,7 +536,7 @@ private struct ScanIssuesPopover: View {
                         }
                         .padding(.horizontal, 12)
                         .padding(.vertical, 5)
-                        .help(group.details.joined(separator: "\n"))
+                        .neoHelp(group.details.joined(separator: "\n"))
                     }
                 }
                 .padding(.vertical, 6)
@@ -549,7 +572,7 @@ private struct SupersededScanStrip: View {
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
-            .help("Dismiss")
+            .neoHelp("Dismiss")
         }
         .neoFont(11)
         .padding(.horizontal, 10)

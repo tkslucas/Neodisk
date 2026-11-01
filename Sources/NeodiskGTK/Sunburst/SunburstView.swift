@@ -34,7 +34,7 @@ final class SunburstView: CanvasDelegate {
         let layout: SunburstChartLayout
         var segments: [SunburstSegment] { layout.segments }
         let hitIndex: SunburstHitTestIndex
-        let texture: GObjectRef
+        let texture: Texture
         let renderedIDs: Set<String>
     }
 
@@ -128,7 +128,7 @@ final class SunburstView: CanvasDelegate {
               let store = model.store else { return }
         inFlight = inputs
         renderTask = Task { [weak self] in
-            let rendered = await Task.detached(priority: .userInitiated) { () -> (SunburstChartLayout, SunburstRaster?) in
+            let rendered = await Task.detached(priority: .userInitiated) { () -> (SunburstChartLayout, Texture?) in
                 let layout = (try? SunburstLayout.layout(
                     in: store,
                     rootID: inputs.rootID,
@@ -148,12 +148,14 @@ final class SunburstView: CanvasDelegate {
                     palette: inputs.style.palette,
                     isDark: inputs.isDark
                 )
-                return (styled, raster)
+                let texture = raster.flatMap {
+                    makeTexture(pixels: $0.pixels, width: $0.width, height: $0.height, stride: $0.stride, format: GDK_MEMORY_B8G8R8A8_PREMULTIPLIED)
+                }
+                return (styled, texture)
             }.value
             guard let self else { return }
             self.inFlight = nil
-            if let raster = rendered.1,
-               let texture = makeTexture(bgra: raster.pixels, width: raster.width, height: raster.height, stride: raster.stride) {
+            if let texture = rendered.1 {
                 self.frame = Frame(
                     inputs: inputs,
                     layout: rendered.0,
@@ -190,7 +192,7 @@ final class SunburstView: CanvasDelegate {
         }
         let size = frame.inputs.size
         // A resize in progress stretches the last frame until the new one lands.
-        Snapshot.texture(snapshot, frame.texture.pointer, in: CGRect(x: 0, y: 0, width: width, height: height))
+        Snapshot.texture(snapshot, frame.texture.ref.pointer, in: CGRect(x: 0, y: 0, width: width, height: height))
         guard size.width == width, size.height == height else { return }
 
         let geometry = SunburstGeometry(size: size)
@@ -764,19 +766,4 @@ private struct ArcPainter {
         defer { gsk_stroke_free(strokeStyle) }
         gtk_snapshot_append_stroke(ptr(snapshot), path, strokeStyle, &stroke)
     }
-}
-
-/// A GdkTexture over premultiplied BGRA pixels (cairo ARGB32 on
-/// little-endian machines).
-@MainActor
-func makeTexture(bgra pixels: [UInt8], width: Int, height: Int, stride: Int) -> GObjectRef? {
-    guard width > 0, height > 0, pixels.count >= stride * height else { return nil }
-    let bytes = pixels.withUnsafeBytes { buffer in
-        g_bytes_new(buffer.baseAddress, gsize(buffer.count))
-    }
-    defer { g_bytes_unref(bytes) }
-    guard let texture = gdk_memory_texture_new(
-        Int32(width), Int32(height), GDK_MEMORY_B8G8R8A8_PREMULTIPLIED, bytes, gsize(stride)
-    ) else { return nil }
-    return GObjectRef(adopting: raw(texture)!)
 }

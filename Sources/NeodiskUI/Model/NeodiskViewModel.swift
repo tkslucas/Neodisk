@@ -117,7 +117,7 @@ final class NeodiskViewModel {
         get { layout.treemapStyle }
         set { layout.treemapStyle = newValue }
     }
-    var showsStatusBar = true
+    var showsStatusBar = false
     /// The main window is on screen; menu commands that act on it disable while it's closed.
     var isWindowOpen = false
     /// Mirror of the bottom table's persisted header sort, synced by
@@ -721,8 +721,14 @@ final class NeodiskViewModel {
     /// Rescans whatever location is currently open — the explicit ask that
     /// overrides the skipped auto-rescan of a large cached location.
     func rescan() {
-        guard let target = coordinator.selectedTarget, !coordinator.isScanning else { return }
+        guard canRescan, let target = coordinator.selectedTarget else { return }
         startScan(target, forcesRescan: true)
+    }
+
+    /// Rescan acts on the scan on screen: none while the Full Disk Access offer covers it, else Rescan would
+    /// leave the picked location for the one behind the offer.
+    var canRescan: Bool {
+        fullDiskAccessGate == nil && coordinator.canRescan && coordinator.snapshot != nil
     }
 
     /// Opens a "smaller items" cell: its folder's children render

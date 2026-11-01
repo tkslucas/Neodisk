@@ -9,6 +9,15 @@ struct TreemapBreadcrumbBar: View {
     @Environment(\.neoTextScale) private var textScale
 
     let model: NeodiskViewModel
+    /// Over the sunburst's empty corner instead of in a row of its own: no background, larger type, and only as
+    /// wide as the corner the rings leave free.
+    var floatingWidth: CGFloat?
+
+    private var isFloating: Bool { floatingWidth != nil }
+
+    static func floatingHeight(scale: CGFloat) -> CGFloat { (36 * scale).rounded() }
+    /// The crumbs' base point size: the sunburst has the room to make the path easier to read and click.
+    private var fontSize: CGFloat { isFloating ? 13 : 11 }
 
     /// Falls back to the drill root: deselecting must not collapse the bar while the map stays drilled in.
     private var crumbs: [FileNodeRecord] {
@@ -32,13 +41,13 @@ struct TreemapBreadcrumbBar: View {
                 widths: crumbs.indices.map { crumbWidth(crumbs[$0], isLast: $0 == crumbs.count - 1) },
                 separator: separatorWidth,
                 ellipsis: ellipsisWidth,
-                available: geometry.size.width - 16
+                available: min(geometry.size.width, floatingWidth ?? .infinity) - 16
             )
             HStack(spacing: 0) {
                 ForEach(Array(shown.enumerated()), id: \.offset) { position, index in
                     if position > 0 {
                         Image(systemName: "chevron.right")
-                            .neoFont(8, weight: .semibold)
+                            .neoFont(fontSize - 3, weight: .semibold)
                             .foregroundStyle(.tertiary)
                             .padding(.horizontal, 1)
                     }
@@ -50,13 +59,13 @@ struct TreemapBreadcrumbBar: View {
                 }
             }
             .padding(.horizontal, 8)
+            // The window's customize options, as on the map's empty space and the toolbar picker.
+            .contextMenu { WorkspaceLayoutMenuItems(model: model) }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         }
-        .frame(height: (28 * textScale).rounded())
-        .background(.bar)
-        .overlay(alignment: .bottom) { Divider() }
-        // The window's customize options, as on the map's empty space and the toolbar picker.
-        .contextMenu { WorkspaceLayoutMenuItems(model: model) }
+        .frame(height: isFloating ? Self.floatingHeight(scale: textScale) : (28 * textScale).rounded())
+        // In its row the map's own edge closes it; a divider under it only drew a second line.
+        .background(isFloating ? AnyShapeStyle(.clear) : AnyShapeStyle(.bar))
     }
 }
 
@@ -65,6 +74,7 @@ extension TreemapBreadcrumbBar {
         Crumb(
             node: node,
             palette: model.vizPalette,
+            fontSize: fontSize,
             isLast: index == count - 1,
             // Underline the crumb the treemap is rooted at, so the drill depth is legible (only when drilled in).
             isDrillRoot: model.zoomRootID != nil && node.id == model.effectiveRootID
@@ -93,7 +103,7 @@ extension TreemapBreadcrumbBar {
             }
         } label: {
             Image(systemName: "ellipsis")
-                .neoFont(11)
+                .neoFont(fontSize)
                 .foregroundStyle(.secondary)
         }
         .menuStyle(.borderlessButton)
@@ -105,14 +115,14 @@ extension TreemapBreadcrumbBar {
 
     /// Estimated from the font the crumb draws with: icon, spacing and padding included.
     private func crumbWidth(_ node: FileNodeRecord, isLast: Bool) -> CGFloat {
-        let font = NSFont.systemFont(ofSize: 11 * textScale, weight: isLast ? .medium : .regular)
+        let font = NSFont.systemFont(ofSize: fontSize * textScale, weight: isLast ? .medium : .regular)
         let name = (node.name.isEmpty ? "/" : node.name) as NSString
         let text = ceil(name.size(withAttributes: [.font: font]).width)
-        return text + (16 * textScale).rounded() + 3 + 7
+        return text + (FileCategoryIcon.size(fontSize: fontSize) * textScale).rounded() + 3 + 7
     }
 
-    private var separatorWidth: CGFloat { ceil(6 * textScale) + 2 }
-    private var ellipsisWidth: CGFloat { ceil(14 * textScale) + 8 }
+    private var separatorWidth: CGFloat { ceil((fontSize - 5) * textScale) + 2 }
+    private var ellipsisWidth: CGFloat { ceil((fontSize + 3) * textScale) + 8 }
 }
 
 /// Which crumbs a path bar shows in a width: all when they fit; else the first and the last, with as many of the
@@ -151,6 +161,7 @@ enum PathBarFit {
 private struct Crumb: View {
     let node: FileNodeRecord
     let palette: VizPalette
+    let fontSize: CGFloat
     let isLast: Bool
     let isDrillRoot: Bool
     let action: () -> Void
@@ -160,9 +171,9 @@ private struct Crumb: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 3) {
-                FileCategoryIcon(node: node, palette: palette)
+                FileCategoryIcon(node: node, palette: palette, fontSize: fontSize)
                 Text(node.name.isEmpty ? "/" : node.name)
-                    .neoFont(11, weight: isLast ? .medium : .regular)
+                    .neoFont(fontSize, weight: isLast ? .medium : .regular)
                     .underline(isDrillRoot)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -178,6 +189,6 @@ private struct Crumb: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .help(NeodiskFormatters.size(node.allocatedSize))
+        .neoHelp(NeodiskFormatters.size(node.allocatedSize))
     }
 }

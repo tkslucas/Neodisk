@@ -118,7 +118,7 @@ private struct ViewSettingsTab: View {
                 }
 
                 Toggle("Show free space in treemap", isOn: $preferences.showFreeSpace)
-                    .help("Adds hidden space too: capacity the scan could not see, such as purgeable space and local snapshots.")
+                    .neoHelp("Adds hidden space too: capacity the scan could not see, such as purgeable space and local snapshots.")
 
                 Picker("Color palette", selection: $preferences.vizPaletteID) {
                     ForEach(VizPalette.all) { palette in
@@ -131,7 +131,7 @@ private struct ViewSettingsTab: View {
                 Button("Reset Categories") {
                     preferences.fileCategoriesJSON = ""
                 }
-                .help("To move a file type to another category or a new one, group the Kinds tab by Types and right-click the type. Right-click a category you made to rename or delete it.")
+                .neoHelp("To move a file type to another category or a new one, group the Kinds tab by Types and right-click the type. Right-click a category you made to rename or delete it.")
                 .disabled(preferences.fileCategoriesJSON.isEmpty)
             }
         }
@@ -153,7 +153,7 @@ private struct AdvancedSettingsTab: View {
                     isOn: $preferences.autoSummarizeDirectories
                 )
                 Toggle("Scan local cloud files", isOn: $preferences.includeCloudStorage)
-                    .help("When off, scans skip locally synced cloud folders: ~/Library/CloudStorage (Google Drive, Dropbox, OneDrive) and iCloud Drive.")
+                    .neoHelp("When off, scans skip locally synced cloud folders: ~/Library/CloudStorage (Google Drive, Dropbox, OneDrive) and iCloud Drive.")
                 Picker("When opening a scanned location", selection: Binding(
                     get: { preferences.autoRescanPolicy },
                     set: { preferences.autoRescanPolicy = $0 }
@@ -162,7 +162,7 @@ private struct AdvancedSettingsTab: View {
                         Text(LocalizedStringKey(policy.title)).tag(policy)
                     }
                 }
-                .help("Rescan automatically always refreshes behind the saved results; Smart skips the refresh when the last scan took a while; Show snapshot only always waits for Rescan Now.")
+                .neoHelp("Rescan automatically always refreshes behind the saved results; Smart skips the refresh when the last scan took a while; Show snapshot only always waits for Rescan Now.")
             }
 
             Section("When Results Appear") {
@@ -171,7 +171,7 @@ private struct AdvancedSettingsTab: View {
                     isOn: $preferences.prepareChangesAfterScan
                 )
                 Toggle("Find duplicate files automatically", isOn: $preferences.autoScanDuplicates)
-                    .help("Reading file contents can take time and energy on large locations.")
+                    .neoHelp("Reading file contents can take time and energy on large locations.")
             }
 
             Section("Exclusions") {

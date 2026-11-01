@@ -91,6 +91,18 @@ struct SunburstPane: View {
                         chartModel: chartModel
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    // The path floats in the corner the rings leave free, so the chart keeps the full height.
+                    .overlay(alignment: .topLeading) {
+                        GeometryReader { chart in
+                            TreemapBreadcrumbBar(
+                                model: model,
+                                floatingWidth: SunburstChartView.clearWidthAboveRings(
+                                    in: chart.size,
+                                    stripHeight: TreemapBreadcrumbBar.floatingHeight(scale: model.textScale)
+                                )
+                            )
+                        }
+                    }
 
                     // Too narrow for both: the legend and its divider hide.
                     if let resolvedLegendWidth = legend.width {

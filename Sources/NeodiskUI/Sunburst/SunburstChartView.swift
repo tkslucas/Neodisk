@@ -77,7 +77,7 @@ struct SunburstChartView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let baseChartFrame = chartFrame(in: geometry.size)
+            let baseChartFrame = Self.chartFrame(in: geometry.size)
 
             TimelineView(.animation(minimumInterval: nil, paused: zoomTransition == nil)) { timeline in
                 accessibleChart(baseChartFrame: baseChartFrame, now: timeline.date)
@@ -509,7 +509,18 @@ struct SunburstChartView: View {
 
     // MARK: - Geometry helpers
 
-    private func chartFrame(in size: CGSize) -> CGRect {
+    /// How wide a strip of `height` along the chart's top-left can run before it meets the rings' outer edge,
+    /// keeping `gap` from it: all of it when the rings sit lower than the strip.
+    static func clearWidthAboveRings(in size: CGSize, stripHeight: CGFloat, gap: CGFloat = 16) -> CGFloat {
+        let frame = chartFrame(in: size)
+        let radius = frame.width / 2
+        let rise = frame.midY - stripHeight
+        guard rise < radius else { return size.width }
+        let halfChord = (radius * radius - rise * rise).squareRoot()
+        return max(0, frame.midX - halfChord - gap)
+    }
+
+    static func chartFrame(in size: CGSize) -> CGRect {
         let inset = Self.chartPadding
         let width = max(1, size.width - (inset * 2))
         let height = max(1, size.height - (inset * 2))

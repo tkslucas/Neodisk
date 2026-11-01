@@ -103,18 +103,11 @@ private struct ChangeResultsView: View {
                     rows: entries,
                     click: .selectsNode { select(entryID: $0) },
                     selection: model.selection,
-                    keepsLeaderInView: true
+                    keepsLeaderInView: true,
+                    footer: entries.count < list.totalCount(for: filter)
+                        ? footerText(entries: entries, filter: filter) : nil
                 ) { entry in
                     ChangeEntryRow(model: model, entry: entry)
-                }
-
-                if entries.count < list.totalCount(for: filter) {
-                    Divider()
-                    Text(footerText(entries: entries, filter: filter))
-                        .neoFont(10)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, StatsListMetrics.inset)
-                        .padding(.vertical, 4)
                 }
             }
         }
@@ -234,7 +227,7 @@ private struct ChangeEntryRow: View {
         }
         .neoFont(12)
         .cleanupDimmed(cleanupMark.isMarked, onAccent: backgroundProminence == .increased)
-        .help(helpText)
+        .neoHelp(helpText)
     }
 
     private var kindSymbol: String {

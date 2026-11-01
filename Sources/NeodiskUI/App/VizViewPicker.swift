@@ -118,19 +118,14 @@ extension NSMenu {
         return menu
     }
 
-    /// An item's menu on the map ends with the way back for a hidden file list or status bar, since the map
-    /// has hardly any empty space to right-click.
+    /// An item's menu on the map ends with the way back for a hidden file list, since the map has hardly any
+    /// empty space to right-click. The status bar starts hidden, so it waits in the layout menus instead.
     @MainActor
     func addRestoreItems(model: NeodiskViewModel) {
         var restore: [NSMenuItem] = []
         if !model.layout.showsList {
             restore.append(ClosureMenuItem(title: NSLocalizedString("Show File List", comment: "Layout menu")) {
                 model.updateLayout { $0.setListShown(true) }
-            })
-        }
-        if !model.showsStatusBar {
-            restore.append(ClosureMenuItem(title: NSLocalizedString("Show Status Bar", comment: "Layout menu")) {
-                model.setStatusBarShown(true)
             })
         }
         guard !restore.isEmpty else { return }

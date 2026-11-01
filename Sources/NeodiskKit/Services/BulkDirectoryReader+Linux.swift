@@ -1,12 +1,16 @@
-// Linux has no getattrlistbulk: readdir plus one fstatat per entry relative to the open directory.
-// Emits the same records as the Darwin reader. Read-only: open(O_RDONLY), readdir, fstatat, close.
+// Linux has no getattrlistbulk: getdents64 into the context's buffer plus one fstatat per entry relative to the
+// open directory. Emits the same records as the Darwin reader. Read-only: open(O_RDONLY), getdents64, fstatat, close.
 
 #if os(Linux)
+import CLinuxDirent
 import Foundation
 import Glibc
 
 extension BulkDirectoryReader {
-    /// `context` is unused (readdir owns its buffer) but matches the Darwin signature for shared plumbing.
+    /// `struct linux_dirent64`: d_ino (8), d_off (8), d_reclen (2), d_type (1), then the NUL-terminated name.
+    private static let direntRecordLengthOffset = 16
+    private static let direntNameOffset = 19
+
     @discardableResult
     static func readChildren(
         ofDirectory url: URL,
@@ -24,48 +28,44 @@ extension BulkDirectoryReader {
         guard fd >= 0 else {
             throw BulkDirectoryReadError.openFailed(errno)
         }
-        guard let directory = fdopendir(fd) else {
-            let openErrno = errno
-            close(fd)
-            throw BulkDirectoryReadError.openFailed(openErrno)
-        }
-        // closedir closes `fd` too.
-        defer { closedir(directory) }
+        defer { close(fd) }
 
         var emittedCount = 0
+        var bulkCalls = 0
         defer {
-            // One "bulk call" per directory: readdir's batching is invisible
-            // from here, and the per-entry fstatat calls are the real cost.
-            ScanSyscallTally.recordBulkDirectory(category, bulkCalls: 1, entries: emittedCount)
+            ScanSyscallTally.recordBulkDirectory(category, bulkCalls: bulkCalls, entries: emittedCount)
         }
 
-        var directoryDevice: UInt64?
-        var directoryStat = stat()
-        if fstat(fd, &directoryStat) == 0 {
-            directoryDevice = UInt64(directoryStat.st_dev)
+        // Only an entry that can't be stat'd needs the folder's device; most folders never pay the fstat.
+        var directoryDevice: UInt64??
+        func resolvedDirectoryDevice() -> UInt64? {
+            if let directoryDevice { return directoryDevice }
+            var directoryStat = stat()
+            let device = fstat(fd, &directoryStat) == 0 ? UInt64(directoryStat.st_dev) : nil
+            directoryDevice = .some(device)
+            return device
         }
 
+        let buffer = context.buffer
         while true {
             try cancellationCheck()
-            errno = 0
-            guard let entry = readdir(directory) else {
-                if errno != 0 {
-                    throw BulkDirectoryReadError.bulkListFailed(errno)
-                }
-                return emittedCount
+            let filled = neodisk_getdents64(fd, buffer, Context.bufferSize)
+            bulkCalls += 1
+            if filled < 0 {
+                if errno == EINTR { continue }
+                throw BulkDirectoryReadError.bulkListFailed(errno)
             }
-            let child: BulkDirectoryChild? = withUnsafePointer(to: &entry.pointee.d_name) { namePointer in
-                namePointer.withMemoryRebound(to: CChar.self, capacity: 256) { name in
-                    if isDotOrDotDot(name) { return nil }
-                    return makeChild(
-                        name: name,
-                        directoryFD: fd,
-                        directoryDevice: directoryDevice
-                    )
-                }
-            }
-            if let child {
-                try onChild(child)
+            if filled == 0 { return emittedCount }
+            var offset = 0
+            while offset < filled {
+                let record = buffer + offset
+                let recordLength = Int(record.loadUnaligned(fromByteOffset: direntRecordLengthOffset, as: UInt16.self))
+                offset += recordLength
+                let name = UnsafePointer<CChar>(
+                    (record + direntNameOffset).assumingMemoryBound(to: CChar.self)
+                )
+                if isDotOrDotDot(name) { continue }
+                try onChild(makeChild(name: name, directoryFD: fd, directoryDevice: resolvedDirectoryDevice))
                 emittedCount += 1
             }
         }
@@ -81,17 +81,18 @@ extension BulkDirectoryReader {
     private static func makeChild(
         name namePointer: UnsafePointer<CChar>,
         directoryFD: Int32,
-        directoryDevice: UInt64?
+        directoryDevice: () -> UInt64?
     ) -> BulkDirectoryChild {
         let name = String(cString: namePointer)
         var status = stat()
         guard fstatat(directoryFD, namePointer, &status, AT_SYMLINK_NOFOLLOW | LinuxStat.noAutomount) == 0 else {
+            let entryErrno = errno
             return BulkDirectoryChild(
                 name: name,
                 metadata: nil,
-                entryErrno: errno,
+                entryErrno: entryErrno,
                 isHidden: isHiddenName(name),
-                deviceID: directoryDevice,
+                deviceID: directoryDevice(),
                 directoryMountStatus: 0
             )
         }

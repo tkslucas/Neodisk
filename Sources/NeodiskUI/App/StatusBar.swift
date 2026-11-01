@@ -27,7 +27,7 @@ struct StatusBar: View {
                     .fill(Color(rgb: model.visualizationHover?.swatchRGB ?? SyntheticSpaceColors.hiddenSpaceRGB))
                     .frame(width: 10, height: 10)
                 Text("Hidden space on this volume")
-                    .help("Purgeable space, local snapshots, and files the scan could not see.")
+                    .neoHelp("Purgeable space, local snapshots, and files the scan could not see.")
                 Spacer(minLength: 12)
                 if let hiddenSpaceBytes = model.freeSpace.hiddenSpaceBytes {
                     Text(NeodiskFormatters.size(hiddenSpaceBytes))

@@ -154,8 +154,9 @@ final class CleanupModel {
         return policy.refusal(for: node, scanRootID: snapshot.root.id)?.localizedReason
     }
 
+    /// False for what's already in, alone or with its folder.
     func canCollect(_ node: FileNodeRecord) -> Bool {
-        refusalReason(for: node) == nil && !isMoving
+        refusalReason(for: node) == nil && !isMoving && !isInsideCollected(node.id)
     }
 
     // MARK: - Editing
@@ -170,6 +171,9 @@ final class CleanupModel {
     func toggle(_ node: FileNodeRecord) {
         if isCollected(node.id) {
             remove([node.id])
+        } else if isInsideCollected(node.id), let text = Mark.inside.hoverText {
+            NSSound.beep()
+            show(Notice(kind: .refused, text: text))
         } else {
             add([node])
         }

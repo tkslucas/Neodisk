@@ -125,6 +125,12 @@ import NeodiskAppModel
         #expect(model.cleanup.mark(for: environment.path("keep.txt")) == .none)
         #expect(model.cleanup.mark(for: old.id).hoverText != nil)
         #expect(CleanupModel.Mark.none.hoverText == nil)
+        // Already in with its folder: nothing to add, and ⌘⌫ says why instead of doing nothing.
+        let inside = try #require(store.node(id: environment.path("Old/Deep/b.bin")))
+        #expect(!model.canToggleCleanup(for: inside))
+        model.cleanup.toggle(inside)
+        #expect(model.cleanup.itemIDs == [old.id])
+        #expect(model.cleanup.notice?.kind == .refused)
 
         // A drag carries the node and its file URL, for the tree on screen only.
         let item = try #require(NodeDragSource.pasteboardItem(forNodeID: environment.path("keep.txt"), model: model))

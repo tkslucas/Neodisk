@@ -1,7 +1,9 @@
 // The active tab decides what treemap color means (see NeodiskViewModel.vizColorMode).
 
+import AppKit
 import SwiftUI
 import NeodiskKit
+import NeodiskAppModel
 
 enum AnalysisTab: String, CaseIterable, Identifiable, Sendable {
     case largest
@@ -25,27 +27,10 @@ enum AnalysisTab: String, CaseIterable, Identifiable, Sendable {
 
 struct AnalysisPane: View {
     let model: NeodiskViewModel
-    @Namespace private var underlineNamespace
 
     var body: some View {
         VStack(spacing: 0) {
-            // Text tabs, not a segmented picker: bezel padding truncates four localized titles at the default
-            // width.
-            HStack(spacing: 12) {
-                ForEach(AnalysisTab.allCases) { tab in
-                    AnalysisTabButton(
-                        tab: tab,
-                        isActive: model.analysisTab == tab,
-                        namespace: underlineNamespace
-                    ) {
-                        withAnimation(.easeInOut(duration: 0.15)) {
-                            model.analysisTab = tab
-                        }
-                    }
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 10)
+            AnalysisTabBar(model: model)
 
             Divider()
 
@@ -74,8 +59,139 @@ struct AnalysisPane: View {
     }
 }
 
-/// Fixed weight so the active state never shifts layout, and fixed size so narrow panes truncate
-/// instead of rendering tabs at mismatched scales.
+/// Text tabs, not a segmented picker: bezel padding truncates localized titles. Tabs that don't fit go in a »
+/// menu instead of truncating; right-click shows or hides them, and dragging one reorders them.
+private struct AnalysisTabBar: View {
+    let model: NeodiskViewModel
+
+    @Namespace private var underlineNamespace
+    @Environment(\.neoTextScale) private var textScale
+    @State private var width: CGFloat = 0
+    @State private var dragged: AnalysisTab?
+
+    private static let spacing: CGFloat = 12
+    private static let padding: CGFloat = 10
+
+    var body: some View {
+        let (shown, overflow) = fitting()
+        HStack(spacing: Self.spacing) {
+            ForEach(shown) { tab in
+                AnalysisTabButton(
+                    tab: tab,
+                    isActive: model.analysisTab == tab,
+                    namespace: underlineNamespace
+                ) {
+                    select(tab)
+                }
+                .onDrag {
+                    dragged = tab
+                    return NSItemProvider(object: tab.rawValue as NSString)
+                }
+                .onDrop(of: [.plainText], delegate: TabReorderDelegate(target: tab, dragged: $dragged, model: model))
+            }
+            Spacer(minLength: 0)
+            if !overflow.isEmpty {
+                Menu {
+                    ForEach(overflow) { tab in
+                        Button(LocalizedStringKey(tab.title)) { select(tab) }
+                    }
+                } label: {
+                    Image(systemName: "chevron.right.2")
+                        .neoFont(10, weight: .semibold)
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .foregroundStyle(.secondary)
+                .help(Text("More tabs"))
+            }
+        }
+        .padding(.horizontal, Self.padding)
+        // minWidth 0: the bar measures the pane, not its own tabs.
+        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+        .clipped()
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+        .contentShape(Rectangle())
+        .contextMenu { visibilityMenu }
+        .animation(.easeInOut(duration: 0.15), value: model.analysisTabs)
+    }
+
+    @ViewBuilder
+    private var visibilityMenu: some View {
+        let layout = model.analysisTabs
+        ForEach(layout.order) { tab in
+            Toggle(LocalizedStringKey(tab.title), isOn: Binding(
+                get: { !layout.isHidden(tab) },
+                set: { isShown in
+                    var updated = layout
+                    updated.setHidden(tab, !isShown)
+                    model.setAnalysisTabs(updated)
+                }
+            ))
+            .disabled(!layout.isHidden(tab) && !layout.canHide(tab))
+        }
+        Divider()
+        Button("Reset Tabs") {
+            model.setAnalysisTabs(ItemLayout())
+        }
+        .disabled(layout.isStandard)
+    }
+
+    private func select(_ tab: AnalysisTab) {
+        withAnimation(.easeInOut(duration: 0.15)) {
+            model.analysisTab = tab
+        }
+    }
+
+    /// The shown tabs that fit the bar's width, always including the active one, and the rest.
+    private func fitting() -> (shown: [AnalysisTab], overflow: [AnalysisTab]) {
+        let visible = model.analysisTabs.visible
+        let available = width - 2 * Self.padding
+        guard width > 0 else { return (visible, []) }
+        let font = NSFont.systemFont(ofSize: (11 * textScale).rounded(), weight: .medium)
+        let widths = visible.map { tab in
+            (NSLocalizedString(tab.title, comment: "Statistics tab") as NSString)
+                .size(withAttributes: [.font: font]).width.rounded(.up)
+        }
+        func total(_ count: Int) -> CGFloat {
+            widths.prefix(count).reduce(0, +) + Self.spacing * CGFloat(max(count - 1, 0))
+        }
+        if total(visible.count) <= available { return (visible, []) }
+        let room = available - (16 * textScale).rounded() - Self.spacing
+        var count = visible.count - 1
+        while count > 1, total(count) > room { count -= 1 }
+        var shown = Array(visible.prefix(count))
+        if let active = visible.firstIndex(of: model.analysisTab), active >= count {
+            shown[shown.count - 1] = visible[active]
+        }
+        return (shown, visible.filter { !shown.contains($0) })
+    }
+}
+
+/// Moves the dragged tab into each tab's place as it passes over, so the bar reorders under the pointer.
+private struct TabReorderDelegate: DropDelegate {
+    let target: AnalysisTab
+    @Binding var dragged: AnalysisTab?
+    let model: NeodiskViewModel
+
+    func dropEntered(info: DropInfo) {
+        guard let dragged, dragged != target else { return }
+        var layout = model.analysisTabs
+        layout.move(dragged, onto: target)
+        model.setAnalysisTabs(layout)
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: dragged == nil ? .forbidden : .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        defer { dragged = nil }
+        return dragged != nil
+    }
+}
+
+/// Fixed weight so the active state never shifts layout.
 private struct AnalysisTabButton: View {
     @Environment(\.neoTextScale) private var textScale
 
@@ -94,6 +210,7 @@ private struct AnalysisTabButton: View {
                     isActive ? Color.accentColor : isHovering ? Color.primary : Color.secondary
                 )
                 .lineLimit(1)
+                .fixedSize()
                 .padding(.vertical, 7)
                 .overlay(alignment: .bottom) {
                     if isActive {

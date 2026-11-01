@@ -1,5 +1,5 @@
 /// Bumped on every user-visible change so a running build is identifiable
 /// (shown bottom-left in the status bar).
 package enum AppVersion {
-    package static let string = "2.87.1"
+    package static let string = "2.88.0"
 }

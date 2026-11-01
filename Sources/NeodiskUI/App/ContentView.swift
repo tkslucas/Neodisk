@@ -201,10 +201,28 @@ public struct ContentView: View {
         )
     }
 
+    // Each button is its own view reading only the model state it shows, as Cleanup's always was. Inline, they
+    // were rebuilt by every ContentView update, a preferences change made in Settings included (the window
+    // inactive), and after a Theme change stayed drawn dimmed in the key window until hovered; Cleanup's didn't.
     @ViewBuilder
     private var trailingButtons: some View {
-        // One fixed slot: Stop while a scan runs, Rescan otherwise
-        // (grayed out until there is something to rescan).
+        RescanToolbarButton(model: model)
+
+        // Removed, not disabled, while moving to the Trash is off.
+        if model.cleanup.isEnabled {
+            CleanupToolbarButton(model: model)
+        }
+
+        StatisticsToolbarButton(model: model)
+        SettingsToolbarButton()
+    }
+}
+
+/// One fixed slot: Stop while a scan runs, Rescan otherwise (grayed out until there is something to rescan).
+private struct RescanToolbarButton: View {
+    let model: NeodiskViewModel
+
+    var body: some View {
         if model.coordinator.isScanning {
             Button {
                 model.stopScan()
@@ -221,12 +239,13 @@ public struct ContentView: View {
             .disabled(!model.coordinator.canRescan || model.coordinator.snapshot == nil)
             .help("Scan \(model.coordinator.selectedTarget?.displayName ?? "this location") again")
         }
+    }
+}
 
-        // Removed, not disabled, while moving to the Trash is off.
-        if model.cleanup.isEnabled {
-            CleanupToolbarButton(model: model)
-        }
+private struct StatisticsToolbarButton: View {
+    let model: NeodiskViewModel
 
+    var body: some View {
         Button {
             model.showKindStats.toggle()
         } label: {
@@ -234,7 +253,11 @@ public struct ContentView: View {
         }
         .disabled(model.coordinator.snapshot == nil)
         .help(model.showKindStats ? "Hide the statistics panel" : "Show the statistics panel")
+    }
+}
 
+private struct SettingsToolbarButton: View {
+    var body: some View {
         SettingsLink {
             Label("Settings", systemImage: "gearshape")
         }

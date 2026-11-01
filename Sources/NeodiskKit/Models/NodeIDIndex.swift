@@ -204,6 +204,12 @@ nonisolated struct NodeIDIndex: Sendable {
 
     /// This index, reading its keys from `nodes` (the tree it indexes, where
     /// value v is `nodes[v]`) instead of keeping its own copies.
+    /// Drops the index's reference to the nodes it reads keys from, so they mutate in place instead of being
+    /// copied; lookups then need `attached(to:)` again.
+    mutating func detachNodeKeys() {
+        if case .nodes = keys { keys = .strings([]) }
+    }
+
     func attached(to nodes: [FileNodeRecord]) -> NodeIDIndex {
         var index = self
         index.keys = .nodes(nodes)

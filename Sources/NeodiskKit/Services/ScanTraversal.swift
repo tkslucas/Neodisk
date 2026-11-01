@@ -213,12 +213,13 @@ nonisolated final class ScanTraversal {
         publishProgress()
         var leafNodes = [leafResult.node]
         var leafChildSlots: [Int32] = []
+        var leafIndex: NodeIDIndex = [leafResult.node.id: 0]
         HardLinkDeduplicator.applyDeduplication(
             nodes: &leafNodes,
             parentIndices: [-1],
             childStarts: [0, 0],
             childSlots: &leafChildSlots,
-            indexByID: [leafResult.node.id: 0],
+            indexByID: &leafIndex,
             hardLinkClaims: hardLinkClaims,
             minimumAllocatedSizeByNodeID: minimumAllocatedSizeByNodeID
         )

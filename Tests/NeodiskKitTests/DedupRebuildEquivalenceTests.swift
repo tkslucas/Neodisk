@@ -208,10 +208,10 @@ import Testing
             i += familySize
         }
 
-        var nodes = storage.nodes, childSlots = storage.childSlots
+        var nodes = storage.nodes, childSlots = storage.childSlots, indexByID = storage.indexByID
         HardLinkDeduplicator.applyDeduplication(
             nodes: &nodes, parentIndices: storage.parentIndices, childStarts: storage.childStarts,
-            childSlots: &childSlots, indexByID: storage.indexByID,
+            childSlots: &childSlots, indexByID: &indexByID,
             hardLinkClaims: claims, minimumAllocatedSizeByNodeID: minimums
         )
 

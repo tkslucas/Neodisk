@@ -27,8 +27,19 @@ jobs:
 
       # The runner's TEMP uses the 8.3 short form of the profile folder (RUNNER~1), which the scanner spells out
       # in full, so tests that build paths from the temporary directory would disagree with scan ids.
+      # Failing tests also become annotations, so the cause shows on the PR without opening the log.
       - name: Test
-        run: swift test --skip-build
+        run: |
+          swift test --skip-build 2>&1 | Tee-Object -FilePath test.log
+          $code = $LASTEXITCODE
+          if ($code -ne 0) {
+            Select-String -Path test.log -Context 0,2 -Pattern 'recorded an issue|error:|XCTAssert|failed \(|Fatal error|exception|Test run with' |
+              Select-Object -First 30 | ForEach-Object {
+                $next = ($_.Context.PostContext | ForEach-Object { $_.Trim() }) -join ' '
+                "::error::$($_.Line.Trim()) $next"
+              }
+          }
+          exit $code
         env:
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}

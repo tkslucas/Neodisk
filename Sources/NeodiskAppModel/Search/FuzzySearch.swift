@@ -221,6 +221,27 @@ package enum FuzzyMatcher {
         return queryIndex == queryBytes.count ? score : nil
     }
 
+    /// Whether the name contains `query` contiguously; reads the name in place, without allocating.
+    private static func contains(_ query: [UInt8], in name: LowercasedNameBytes) -> Bool {
+        guard !query.isEmpty else { return true }
+        let bytes = name.utf8
+        let folds = name.foldsASCII
+        var start = bytes.startIndex
+        while start != bytes.endIndex {
+            var index = start
+            var matched = 0
+            while matched < query.count, index != bytes.endIndex {
+                let byte = bytes[index]
+                guard (folds && byte >= 0x41 && byte <= 0x5A ? byte | 0x20 : byte) == query[matched] else { break }
+                bytes.formIndex(after: &index)
+                matched += 1
+            }
+            if matched == query.count { return true }
+            bytes.formIndex(after: &start)
+        }
+        return false
+    }
+
     /// Cheap next to scoring, frequent enough that a superseded keystroke stops within microseconds.
     package static let cancellationCheckInterval = 4_096
 
@@ -339,7 +360,8 @@ package enum FuzzyMatcher {
     }
 
     /// Keeps the entries' given order (size-descending lists), since typing must narrow that ranking, not
-    /// replace it with match quality.
+    /// replace it with match quality. So names must contain the query as typed: scattered letters, which only a
+    /// ranking by match quality can sort out, would fill the top of the list with names that merely spell it.
     package static func matchesInEntryOrder(
         query: String,
         entries: [FileSearchEntry],
@@ -350,7 +372,7 @@ package enum FuzzyMatcher {
         var total = 0
         for (index, entry) in entries.enumerated() {
             if index % cancellationCheckInterval == 0, Task.isCancelled { break }
-            guard Self.score(queryBytes: queryBytes, entry: entry) != nil else {
+            guard entry.withLowercasedName({ Self.contains(queryBytes, in: $0) }) else {
                 continue
             }
             total += 1

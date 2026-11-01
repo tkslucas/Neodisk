@@ -143,13 +143,14 @@ enum Text {
         in widget: GPtr,
         maxWidth: Double? = nil,
         bold: Bool = false,
-        scale: Double = 1
+        scale: Double = 1,
+        ellipsize: PangoEllipsizeMode = PANGO_ELLIPSIZE_END
     ) -> GObjectRef? {
         guard let layout = gtk_widget_create_pango_layout(ptr(widget), text) else { return nil }
         let reference = GObjectRef(adopting: raw(layout)!)
         if let maxWidth {
             pango_layout_set_width(layout, Int32(maxWidth * Double(neodisk_pango_scale())))
-            pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END)
+            pango_layout_set_ellipsize(layout, ellipsize)
             pango_layout_set_single_paragraph_mode(layout, gbool(true))
         }
         if bold || scale != 1 {

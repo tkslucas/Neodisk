@@ -340,9 +340,9 @@ final class NeodiskViewModel {
 
     /// Selecting a location: the scan session picks the restore / refresh /
     /// live-scan branch; see ScanSessionModel.startScan.
-    func startScan(_ target: ScanTarget, forcesRescan: Bool = false) {
+    func startScan(_ target: ScanTarget, forcesRescan: Bool = false, previewOnly: Bool = false) {
         fullDiskAccessGate = nil
-        session.startScan(target, forcesRescan: forcesRescan)
+        session.startScan(target, forcesRescan: forcesRescan, previewOnly: previewOnly)
     }
 
     /// A location the user picked. Without Full Disk Access its first scan would stop at one macOS prompt per

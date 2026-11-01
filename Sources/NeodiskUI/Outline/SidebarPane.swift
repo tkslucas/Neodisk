@@ -133,8 +133,9 @@ struct SidebarPane: View {
             }
 
             // A plain click (no ⌘/⇧ multi-select in flight) activates a scan;
-            // modifier clicks only adjust the selection.
-            let modifiers = NSApp.currentEvent?.modifierFlags ?? []
+            // modifier clicks only adjust the selection. Arrow keys only show what's saved: Return opens the rest.
+            let event = NSApp.currentEvent
+            let modifiers = event?.modifierFlags ?? []
             guard newSelection.count == 1,
                   let targetID = newSelection.first,
                   !modifiers.contains(.command),
@@ -143,7 +144,18 @@ struct SidebarPane: View {
                   let target = allTargets.first(where: { $0.id == targetID }) else {
                 return
             }
+            if event?.type == .keyDown {
+                model.startScan(target, previewOnly: true)
+            } else {
+                model.startChosenScan(target)
+            }
+        }
+        .onKeyPress(.return) {
+            guard selection.count == 1, let targetID = selection.first,
+                  targetID != model.coordinator.selectedTarget?.id,
+                  let target = allTargets.first(where: { $0.id == targetID }) else { return .ignored }
             model.startChosenScan(target)
+            return .handled
         }
         .onChange(of: model.coordinator.selectedTarget, initial: true) { _, target in
             // Keep the highlighted row in sync with what is being scanned

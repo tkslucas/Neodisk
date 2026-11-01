@@ -227,7 +227,12 @@ final class TreemapView: CanvasDelegate {
         for label in scene.labels {
             let inset: Double = label.isHeader ? 0 : 4
             let width = max(label.rect.width - 2 * inset, 10)
-            guard let layout = Text.layout(label.text, in: canvas.widget, maxWidth: width, bold: label.isHeader, scale: 0.9) else { continue }
+            // Cell names cut in the middle so siblings like "lib.so.1" and "lib.so.2" stay distinct; header
+            // strips keep the start, where a folder name says the most.
+            let ellipsize = label.isHeader ? PANGO_ELLIPSIZE_END : PANGO_ELLIPSIZE_MIDDLE
+            guard let layout = Text.layout(
+                label.text, in: canvas.widget, maxWidth: width, bold: label.isHeader, scale: 0.9, ellipsize: ellipsize
+            ) else { continue }
             if pango_layout_is_ellipsized(ptr(layout.pointer)) != 0 {
                 // Keep the label only if the first few characters fit.
                 let prefix = String(label.text.prefix(Self.minUsefulTruncatedCharacters)) + "…"

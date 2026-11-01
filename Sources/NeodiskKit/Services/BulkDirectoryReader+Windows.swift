@@ -18,6 +18,9 @@ extension BulkDirectoryReader {
         onChild: (BulkDirectoryChild) throws -> Void
     ) throws -> Int {
         try cancellationCheck()
+        if let count = try indexedChildren(ofDirectory: url, cancellationCheck: cancellationCheck, onChild: onChild) {
+            return count
+        }
 
         // Opening with FILE_FLAG_OPEN_REPARSE_POINT lists a junction or directory symlink's own (empty) contents
         // instead of its target's, the Windows O_NOFOLLOW.

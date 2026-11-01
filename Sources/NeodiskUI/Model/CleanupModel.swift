@@ -320,12 +320,15 @@ final class CleanupModel {
 
         if !gone.isEmpty {
             let goneIDs = gone.map(\.id)
+            // Found duplicates re-run from the hash cache, without reading files, rather than reset with the tree.
+            let rehashesDuplicates = model?.duplicates.results != nil
             if coordinator.snapshot?.target.id == targetID {
                 model?.prepareForRemoval(of: goneIDs, in: snapshot.treeStore)
             }
             if await coordinator.removeNodes(ids: goneIDs, fromTargetID: targetID) {
                 model?.session.persistSplicedSnapshot(rotatesPrevious: false)
-            } else {
+                if rehashesDuplicates { model?.duplicates.startScan() }
+            } else if coordinator.snapshot?.target.id != targetID {
                 // Another location is on screen now: its saved scan still gets the cut.
                 await model?.session.removeNodesFromStoredScan(of: snapshot.target, ids: goneIDs)
             }

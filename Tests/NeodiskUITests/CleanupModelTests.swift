@@ -291,6 +291,30 @@ import NeodiskAppModel
         }
     }
 
+    @Test func duplicateResultsDropWhatWasMovedInsteadOfResetting() async throws {
+        let environment = try Environment()
+        defer { environment.tearDown() }
+        for name in ["one.bin", "two.bin", "three.bin"] {
+            try Data(repeating: 9, count: 1_100_000).write(to: environment.root.appending(path: name))
+        }
+        let model = environment.makeModel()
+        let snapshot = try await environment.scan()
+        model.coordinator.replaceCurrentSnapshot(snapshot)
+        model.duplicates.startScan()
+        try await waitUntil("duplicates found") { model.duplicates.results?.groups.count == 1 }
+        let moved = try #require(model.store?.node(id: environment.path("three.bin")))
+        model.cleanup.add([moved])
+
+        await awaitSnapshotPersist(on: model, of: snapshot.target) {
+            model.cleanup.moveAllToTrash()
+        }
+        // What the tab does when a new tree lands.
+        model.duplicates.loadIfNeeded()
+        try await waitUntil("the group lost the moved copy") {
+            model.duplicates.results?.groups.first?.nodeIDs == [environment.path("one.bin"), environment.path("two.bin")]
+        }
+    }
+
     @Test func aSystemErrorMidBatchKeepsThatItemAndMovesTheRest() async throws {
         let environment = try Environment()
         defer { environment.tearDown() }

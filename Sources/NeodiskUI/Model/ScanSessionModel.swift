@@ -679,8 +679,9 @@ final class ScanSessionModel {
               }).value else { return }
         // The location may have come back on screen while the cut ran; the on-screen path owns it then.
         guard coordinator.snapshot?.target.id != target.id else {
-            await coordinator.removeNodes(ids: ids, fromTargetID: target.id)
-            persistSplicedSnapshot(rotatesPrevious: false)
+            if await coordinator.removeNodes(ids: ids, fromTargetID: target.id) {
+                persistSplicedSnapshot(rotatesPrevious: false)
+            }
             return
         }
         if coordinator.recentSnapshot(forTargetID: target.id) != nil {

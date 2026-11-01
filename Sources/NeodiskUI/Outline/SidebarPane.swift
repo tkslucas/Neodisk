@@ -222,6 +222,7 @@ struct SidebarPane: View {
             size: SidebarRowText.size(space: space, scannedBytes: info?.totalAllocatedSize),
             lastScanned: info?.lastScanDate,
             now: now,
+            isSelected: selection.contains(target.id),
             tooltip: SidebarRowText.tooltip(path: target.id, space: space),
             bar: bar,
             scanProgress: backgroundScanProgress(for: target),

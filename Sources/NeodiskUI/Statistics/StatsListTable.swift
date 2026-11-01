@@ -42,6 +42,8 @@ struct StatsListTable<Row: Identifiable, RowContent: View>: NSViewRepresentable 
     var keepsLeaderInView = false
     /// Esc with the list focused, as the drill-ins' back button.
     var onCancel: (() -> Void)?
+    /// A note after the last row ("Top 500 of 6,000 files"): it scrolls with the list, so only the end shows it.
+    var footer: String?
     @ViewBuilder let content: (Row) -> RowContent
 
     func makeCoordinator() -> StatsListCoordinator {
@@ -119,6 +121,7 @@ struct StatsListTable<Row: Identifiable, RowContent: View>: NSViewRepresentable 
                 click: click,
                 selection: selection,
                 keepsLeaderInView: keepsLeaderInView,
+                footer: footer,
                 textScale: textScale
             )
         )
@@ -133,6 +136,7 @@ final class StatsListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDe
         let click: StatsListClick
         let selection: NodeSelection
         let keepsLeaderInView: Bool
+        var footer: String?
         var textScale: CGFloat = 1
     }
 
@@ -169,10 +173,12 @@ final class StatsListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDe
             return
         }
         pending = nil
-        let sameRows = update.ids == current.ids
+        let sameIDs = update.ids == current.ids
+        // A footer that comes, goes or changes is a row too.
+        let sameRows = sameIDs && update.footer == current.footer
         let newLeader = update.ids.first != current.ids.first
         current = update
-        if !sameRows {
+        if !sameIDs {
             rowByID = Dictionary(update.ids.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
             rowsVersion &+= 1
         }
@@ -217,10 +223,24 @@ final class StatsListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDe
     // MARK: NSTableViewDataSource / Delegate
 
     func numberOfRows(in tableView: NSTableView) -> Int {
-        current.ids.count
+        current.ids.count + (current.footer == nil ? 0 : 1)
+    }
+
+    private func isFooter(_ row: Int) -> Bool {
+        row == current.ids.count && current.footer != nil
+    }
+
+    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
+        isFooter(row) ? StatsListFooterView.height(scale: current.textScale) : tableView.rowHeight
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        if isFooter(row), let footer = current.footer {
+            let view = tableView.makeView(withIdentifier: StatsListFooterView.reuseIdentifier, owner: nil)
+                as? StatsListFooterView ?? StatsListFooterView()
+            view.configure(footer, scale: current.textScale)
+            return view
+        }
         guard row < current.ids.count else { return nil }
         let cell = tableView.makeView(withIdentifier: StatsListCellView.reuseIdentifier, owner: nil)
             as? StatsListCellView ?? StatsListCellView()
@@ -229,6 +249,8 @@ final class StatsListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDe
     }
 
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
+        // The footer is text, not an item: no hover, no selection.
+        if isFooter(row) { return NSTableRowView() }
         let identifier = NSUserInterfaceItemIdentifier("StatsListRow")
         if let reused = tableView.makeView(withIdentifier: identifier, owner: nil) as? OutlineTableRowView {
             return reused
@@ -239,7 +261,14 @@ final class StatsListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDe
     }
 
     func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
-        selectsNodes
+        selectsNodes && row < current.ids.count
+    }
+
+    /// Select All and shift-extends stop at the last item, short of the footer.
+    func tableView(
+        _ tableView: NSTableView, selectionIndexesForProposedSelection proposed: IndexSet
+    ) -> IndexSet {
+        proposed.filteredIndexSet { $0 < current.ids.count }
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
@@ -309,7 +338,7 @@ final class StatsListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDe
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
-        guard let row = tableView?.clickedRow, row >= 0 else {
+        guard let row = tableView?.clickedRow, row >= 0, !isFooter(row) else {
             menu.addAnalysisTabItems(model: model)
             return
         }
@@ -375,6 +404,51 @@ private final class StatsListCellView: NSView, SelectionStateReceiving {
         let trailing = row.bounds.width - frame.maxX
         if hostLeading.constant != leading { hostLeading.constant = leading }
         if hostTrailing.constant != trailing { hostTrailing.constant = trailing }
+    }
+}
+
+/// The list's closing note, on the rows' inset.
+private final class StatsListFooterView: NSTableCellView {
+    static let reuseIdentifier = NSUserInterfaceItemIdentifier("StatsListFooter")
+
+    static func height(scale: CGFloat) -> CGFloat {
+        let font = NSFont.systemFont(ofSize: 10 * scale)
+        return ceil(font.ascender - font.descender + font.leading) + 14
+    }
+
+    private let label = NSTextField(labelWithString: "")
+    private var leading: NSLayoutConstraint!
+
+    init() {
+        super.init(frame: .zero)
+        identifier = Self.reuseIdentifier
+        label.textColor = .secondaryLabelColor
+        label.lineBreakMode = .byTruncatingTail
+        label.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(label)
+        leading = label.leadingAnchor.constraint(equalTo: leadingAnchor)
+        NSLayoutConstraint.activate([
+            leading,
+            label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor),
+            label.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    func configure(_ text: String, scale: CGFloat) {
+        label.stringValue = text
+        label.font = .systemFont(ofSize: 10 * scale)
+    }
+
+    override func layout() {
+        super.layout()
+        // As the rows: the content inset from the row's edge, whatever the .fullWidth style's cell inset.
+        let inset = OutlineRowMetrics.contentInset - frame.minX
+        if leading.constant != inset { leading.constant = inset }
     }
 }
 

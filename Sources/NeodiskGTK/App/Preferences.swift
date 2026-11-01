@@ -37,7 +37,7 @@ final class Preferences {
     var fileCategories = FileCategoryCustomization() { didSet { scheduleSave() } }
     var showsStatistics = true { didSet { scheduleSave() } }
     var showsOutline = true { didSet { scheduleSave() } }
-    var showsStatusBar = true { didSet { scheduleSave() } }
+    var showsStatusBar = false { didSet { scheduleSave() } }
     /// The sidebar's hidden and collapsed sections, as SidebarSectionState lists.
     var sidebarHiddenSections = "" { didSet { scheduleSave() } }
     var sidebarCollapsedSections = "" { didSet { scheduleSave() } }

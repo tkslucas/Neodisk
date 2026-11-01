@@ -424,7 +424,8 @@ final class TreemapController {
         _ = setHoveredCell(cell(at: hoverPoint))
     }
 
-    /// What a press would drag: the selection when it lands on or inside a selected item, else the cell's item.
+    /// What a press would drag: the selection when it lands on or inside a selected item (cushion draws folders only
+    /// as files), else the cell's item.
     /// `carriesSelection` defers the click to mouse-up, so the drag keeps the whole selection.
     func dragCandidate(at point: CGPoint) -> (nodeIDs: [String], carriesSelection: Bool)? {
         guard let model, !model.coordinator.isScanning, let store, let scene, let cell = cell(at: point),

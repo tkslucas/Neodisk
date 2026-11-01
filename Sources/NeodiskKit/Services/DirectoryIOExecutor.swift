@@ -34,10 +34,26 @@ nonisolated final class DirectoryIOExecutor: @unchecked Sendable {
         var isShutDown = false
         var startedThreadCount = 0
         var idleThreadCount = 0
+        var runningCount = 0
+        /// Jobs running at once; callers may queue more so threads never idle between listings.
+        var runningLimit: Int
+        /// The last limit set, read without the lock: only the scan coordinator sets it.
+        private var runningLimitHint = -1
         let maximumThreadCount: Int
 
         init(maximumThreadCount: Int) {
             self.maximumThreadCount = maximumThreadCount
+            runningLimit = maximumThreadCount
+        }
+
+        func setRunningLimit(_ limit: Int) {
+            guard limit != runningLimitHint else { return }
+            runningLimitHint = limit
+            condition.lock()
+            let raised = limit > runningLimit
+            runningLimit = limit
+            if raised { condition.broadcast() }
+            condition.unlock()
         }
 
         func submit(_ job: @escaping (BulkDirectoryReader.Context) -> Void) {
@@ -63,16 +79,18 @@ nonisolated final class DirectoryIOExecutor: @unchecked Sendable {
             let context = BulkDirectoryReader.Context()
             condition.lock()
             while true {
-                if head < jobs.count {
+                if head < jobs.count, runningCount < runningLimit {
                     let job = jobs[head]
                     head += 1
                     if head == jobs.count {
                         jobs.removeAll(keepingCapacity: true)
                         head = 0
                     }
+                    runningCount += 1
                     condition.unlock()
                     job(context)
                     condition.lock()
+                    runningCount -= 1
                 } else if isShutDown {
                     condition.unlock()
                     return
@@ -102,6 +120,11 @@ nonisolated final class DirectoryIOExecutor: @unchecked Sendable {
 
     deinit {
         shared.shutDown()
+    }
+
+    /// Caps listings running at once (at most `workerCount`); queued jobs wait.
+    func setRunningLimit(_ limit: Int) {
+        shared.setRunningLimit(min(max(1, limit), shared.maximumThreadCount))
     }
 
     func run<Result: Sendable>(

@@ -79,6 +79,32 @@ import Foundation
         #expect(try await slow.value)
     }
 
+    @Test func runningLimitCapsConcurrentReads() async throws {
+        final class Gauge: @unchecked Sendable {
+            private let lock = NSLock()
+            private var running = 0
+            private(set) var peak = 0
+            func enter() { lock.withLock { running += 1; peak = max(peak, running) } }
+            func leave() { lock.withLock { running -= 1 } }
+        }
+        let executor = DirectoryIOExecutor(workerCount: 4)
+        executor.setRunningLimit(2)
+        let gauge = Gauge()
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            for _ in 0..<24 {
+                group.addTask {
+                    try await executor.run { _, _ in
+                        gauge.enter()
+                        usleep(2_000)
+                        gauge.leave()
+                    }
+                }
+            }
+            try await group.waitForAll()
+        }
+        #expect((1...2).contains(gauge.peak))
+    }
+
     /// Ids keep the URL's decomposed spelling, which snapshots and rescans rely on, even for composed names.
     @Test func folderIDsKeepTheURLSpellingOfComposedNames() async throws {
         let root = URL(filePath: NSTemporaryDirectory(), directoryHint: .isDirectory)

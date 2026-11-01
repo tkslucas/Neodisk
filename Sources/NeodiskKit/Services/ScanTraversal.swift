@@ -276,6 +276,10 @@ nonisolated final class ScanTraversal {
         // coordinator from an immutable copy.
         let ownedDeviceIDs = self.ownedDeviceIDs
 
+        // Listings queued per reader: each result round-trips through the coordinator before the next dispatch,
+        // so a shallow queue left the I/O threads asleep between folders (the executor still caps readers).
+        let directoryPipelineDepth = usesBulkEnumeration ? 4 : 1
+
         let summarizer = self.atomicDirectorySummarizer
         let summaryWorkerLimit = self.atomicSummaryWorkerLimit
         // The pool bounds actual CPU; this only caps summaries in flight so probes and result plumbing don't
@@ -297,12 +301,15 @@ nonisolated final class ScanTraversal {
             var busySince = ScanProfile.now()
             while true {
                 concurrency.refreshIfDue()
+                directoryIOExecutor.setRunningLimit(
+                    concurrency.traversalWorkerLimit + ProtectedContainers.concurrentReadLimit
+                )
                 while true {
                     let item: ScanWorkItem
                     if activeProtectedDirectoryTasks < ProtectedContainers.concurrentReadLimit,
                        let protectedItem = protectedWorkStack.popLast() {
                         item = protectedItem
-                    } else if activeDirectoryTasks < concurrency.traversalWorkerLimit,
+                    } else if activeDirectoryTasks < concurrency.traversalWorkerLimit * directoryPipelineDepth,
                               let mainItem = workStack.popLast() {
                         item = mainItem
                     } else {

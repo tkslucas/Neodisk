@@ -67,7 +67,8 @@ The most used ones; the rest live in `Sources/NeodiskUI/Dev/`.
   by `TrashSafetyPolicy` and `TrashMover` right before its move. Never delete permanently, never skip the checks,
   and never let a drag move or trash files behind the scan (drags out of the app only copy).
 - Scans stream partial trees, then a final snapshot. The treemap and outline are primary navigation, not extras.
-- Toolbar buttons stay persistent and disable when unusable; they never appear and disappear.
+- Toolbar buttons stay persistent and disable when unusable; they never appear and disappear. The exception: a
+  button tied to a feature turned off in Settings (Cleanup) is removed, not disabled.
 - The scan progress bar is always determinate, never moves backward within a session (fallbacks and phase
   changes included) and is full exactly when the scan is done. Quiet phases hold their value under a caption.
   The drifting stripe sheen (`StripedProgressBar`) is the liveness signal: keep it.

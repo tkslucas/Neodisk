@@ -1,12 +1,6 @@
-//
-//  SidebarPane.swift
-//  Neodisk
-//
-//  Locations sidebar: mounted volumes (each with a kind-colored capacity
-//  bar), detected cloud storage folders, and one flat Folders section —
-//  seeded with the common folders, extended by Add Folder, every row
-//  removable. One click scans.
-//
+// Locations sidebar: mounted volumes (each with a kind-colored capacity bar), detected cloud storage folders, one
+// flat Folders section (the common folders, extended by Add Folder, every row removable), and Cleanup. One click
+// scans. Sections collapse from their header; right-clicking a header picks the sections shown.
 
 import AppKit
 import SwiftUI
@@ -17,7 +11,7 @@ struct SidebarPane: View {
     let model: NeodiskViewModel
 
     @State private var selection: Set<String> = []
-    @State private var capacityByPath: [String: String] = [:]
+    @State private var spaceByPath: [String: VolumeSpaceInfo] = [:]
     @State private var kindBars: [String: VolumeBarData] = [:]
     /// Frames and hover state for the scan-bar hover bubbles, which the List
     /// overlay renders so table cells cannot clip them. Deliberately `@State`
@@ -36,64 +30,77 @@ struct SidebarPane: View {
     }
 
     var body: some View {
-        // The rows show relative "Scanned … ago" strings, which silently go
-        // stale in a long-lived window ("just now" forever); re-evaluate
-        // them once a minute. The timeline date must flow into the rows —
-        // with unchanged inputs SwiftUI skips their bodies and the schedule
-        // alone refreshes nothing.
+        // The rows show relative "Scanned … ago" strings, which silently go stale in a long-lived window; re-evaluate
+        // them once a minute. The timeline date must flow into the rows, or SwiftUI skips their bodies.
         // Cleanup sits below the list, not in a safe-area inset: an inset lets the rows scroll behind it. It's laid
-        // out first, so its lines wrap in full and the list gives up the room; fixed-size text there would raise the
-        // window's minimum height and push the workspace past the window's edges.
+        // out first, so its lines wrap in full and the list gives up the room.
         VStack(spacing: 0) {
             TimelineView(.everyMinute) { context in
                 sidebarList(now: context.date)
             }
-            if model.cleanup.isEnabled, model.coordinator.snapshot != nil {
+            if model.isSidebarSectionShown(.cleanup), model.coordinator.snapshot != nil {
                 CleanupPanel(model: model)
                     .layoutPriority(1)
             }
         }
     }
 
+    private func expansion(of section: SidebarSection) -> Binding<Bool> {
+        Binding(
+            get: { model.sidebarSections.isExpanded(section) },
+            set: { model.setSidebarSection(section, expanded: $0) }
+        )
+    }
+
+    /// A collapsible section whose header offers the sections menu.
+    private func section(
+        _ section: SidebarSection, @ViewBuilder content: () -> some View
+    ) -> some View {
+        Section(isExpanded: expansion(of: section)) {
+            content()
+        } header: {
+            // Scales with the rows; the system's header font wouldn't.
+            Text(LocalizedStringKey(section.titleKey))
+                .neoFont(11, weight: .bold)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .contextMenu { SidebarSectionsMenuItems(model: model) }
+        }
+    }
+
     private func sidebarList(now: Date) -> some View {
         List(selection: $selection) {
-            Section("Volumes") {
-                ForEach(model.volumeLocations) { target in
-                    builtInLocationRow(target, now: now, bar: kindBars[target.id] ?? .empty)
+            if model.isSidebarSectionShown(.volumes) {
+                section(.volumes) {
+                    ForEach(model.volumeLocations) { target in
+                        builtInLocationRow(target, now: now, bar: kindBars[target.id] ?? .empty)
+                    }
                 }
             }
 
-            if !model.cloudLocations.isEmpty {
-                Section("Local Cloud Files") {
+            if model.isSidebarSectionShown(.cloudFiles), !model.cloudLocations.isEmpty {
+                section(.cloudFiles) {
                     ForEach(model.cloudLocations) { target in
                         builtInLocationRow(target, now: now, bar: cloudBar(for: target))
                     }
                 }
             }
 
-            Section("Folders") {
-                ForEach(visibleFolders) { target in
-                    SidebarTargetRow(
-                        target: target,
-                        subtitle: capacityByPath[target.id] ?? target.id,
-                        lastScanned: model.session.cachedScanInfo[target.id]?.lastScanDate,
-                        now: now,
-                        bar: cloudBar(for: target) ?? kindBars[target.id],
-                        scanProgress: backgroundScanProgress(for: target),
-                        onScanBarFrameChange: updateScanBarFrame,
-                        onScanBarHover: updateScanBarHover
-                    )
-                    .tag(target.id)
-                    .contextMenu { removeMenu(clicked: target) }
-                }
+            if model.isSidebarSectionShown(.folders) {
+                section(.folders) {
+                    ForEach(visibleFolders) { target in
+                        row(target, now: now, bar: cloudBar(for: target) ?? kindBars[target.id])
+                            .contextMenu { removeMenu(clicked: target) }
+                    }
 
-                Button {
-                    model.chooseFolderAndScan()
-                } label: {
-                    sidebarActionLabel(title: "Add Folder…", systemImage: "folder.badge.plus")
+                    Button {
+                        model.chooseFolderAndScan()
+                    } label: {
+                        sidebarActionLabel(title: "Add Folder…", systemImage: "folder.badge.plus")
+                    }
+                    .buttonStyle(.plain)
+                    .help("Scan any folder or volume and keep it in the sidebar")
                 }
-                .buttonStyle(.plain)
-                .help("Scan any folder or volume and keep it in the sidebar")
             }
         }
         .listStyle(.sidebar)
@@ -148,12 +155,8 @@ struct SidebarPane: View {
                 selection = []
             }
         }
-        .task {
-            capacityByPath = await Task.detached(priority: .utility) {
-                SystemIntegration.targetCapacityDescriptions()
-            }.value
-        }
         .task(id: kindBarsTaskID) {
+            await loadVolumeSpace()
             await loadKindBars()
         }
     }
@@ -208,31 +211,36 @@ struct SidebarPane: View {
         .contentShape(Rectangle())
     }
 
-    /// One row of the Volumes or Local Cloud Files section: not removable,
-    /// so the context menu only offers Reveal in Finder. Volume rows carry
-    /// the capacity bar.
-    private func builtInLocationRow(
-        _ target: ScanTarget,
-        now: Date,
-        bar: VolumeBarData?
-    ) -> some View {
-        SidebarTargetRow(
+    private func row(_ target: ScanTarget, now: Date, bar: VolumeBarData?) -> some View {
+        let space = target.kind == .volume ? spaceByPath[target.id] : nil
+        let info = model.session.cachedScanInfo[target.id]
+        return SidebarTargetRow(
             target: target,
-            subtitle: capacityByPath[target.id] ?? target.id,
-            lastScanned: model.session.cachedScanInfo[target.id]?.lastScanDate,
+            size: SidebarRowText.size(space: space, scannedBytes: info?.totalAllocatedSize),
+            lastScanned: info?.lastScanDate,
             now: now,
+            tooltip: SidebarRowText.tooltip(path: target.id, space: space),
             bar: bar,
             scanProgress: backgroundScanProgress(for: target),
             onScanBarFrameChange: updateScanBarFrame,
             onScanBarHover: updateScanBarHover
         )
         .tag(target.id)
-        .contextMenu {
-            Button("Reveal in Finder") {
-                SystemIntegration.reveal(target.url)
+    }
+
+    /// One row of the Volumes or Local Cloud Files section: not removable, so the menu only reveals it.
+    private func builtInLocationRow(
+        _ target: ScanTarget,
+        now: Date,
+        bar: VolumeBarData?
+    ) -> some View {
+        row(target, now: now, bar: bar)
+            .contextMenu {
+                Button("Reveal in Finder") {
+                    SystemIntegration.reveal(target.url)
+                }
+                stopScanButton(for: target)
             }
-            stopScanButton(for: target)
-        }
     }
 
     /// A "Stop Scan" item for rows with a running background scan. Foreground
@@ -304,6 +312,18 @@ struct SidebarPane: View {
             + "|\(model.vizPalette.id)"
     }
 
+    /// Free space for the volume rows, refreshed with the bars (mounts and scans change it).
+    private func loadVolumeSpace() async {
+        let urls = model.volumeLocations.map { ($0.id, $0.url) }
+        spaceByPath = await Task.detached(priority: .utility) {
+            var spaces: [String: VolumeSpaceInfo] = [:]
+            for (id, url) in urls {
+                spaces[id] = VolumeSpaceInfo.load(for: url)
+            }
+            return spaces
+        }.value
+    }
+
     private func loadKindBars() async {
         let palette = model.vizPalette
         var bars: [String: VolumeBarData] = [:]
@@ -329,5 +349,19 @@ struct SidebarPane: View {
             }.value
         }
         kindBars = bars
+    }
+}
+
+/// The sections checklist, shared by the headers' menus and View > Sidebar Sections.
+struct SidebarSectionsMenuItems: View {
+    let model: NeodiskViewModel
+
+    var body: some View {
+        ForEach(SidebarSection.allCases, id: \.self) { section in
+            Toggle(LocalizedStringKey(section.titleKey), isOn: Binding(
+                get: { model.isSidebarSectionShown(section) },
+                set: { model.setSidebarSection(section, shown: $0) }
+            ))
+        }
     }
 }

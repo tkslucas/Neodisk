@@ -50,8 +50,8 @@ later); the AppImage bundles them and needs a system as new as Ubuntu 24.04.
 ## About
 
 **Careful cleanup.** Scanning only reads. To free space, collect items in
-Cleanup at the bottom of the sidebar (drag them there from any view, or press
-⌘⌫), review them, and move them to the Trash after one confirmation. Neodisk
+Cleanup at the bottom of the sidebar (drag them there or onto the toolbar's
+trash button from any view, or press ⌘⌫), review them, and move them to the Trash after one confirmation. Neodisk
 never deletes anything itself: items go to the Trash, so you can still get
 them back. It refuses system folders, volumes, your home folder and its standard
 folders, and checks right before each move that the item is still the one it
@@ -82,6 +82,7 @@ macOS app is SwiftUI and AppKit, the Linux app is GTK 4 and libadwaita. See
 - Show Package Contents: apps and bundles stay solid like in Finder until you expand them (macOS)
 - Free and hidden space for volume scans
 - Sidebar volumes show a kind-colored usage bar
+- Sidebar sections collapse from their header; right-click one to choose the sections shown (macOS)
 - Auto-updates via Sparkle (macOS)
 - Multilingual: UI follows the system language: English, Spanish, French, German, Italian, Brazilian Portuguese, Japanese, and Simplified Chinese
 

@@ -100,44 +100,6 @@ import NeodiskKit
         #expect(pasteboard.writtenStrings[.fileURL] == nil)
     }
 
-    @Test func testTargetCapacityDescriptionsSkipsUnavailableVolumes() {
-        let describedURL = URL(filePath: "/Volumes/Example", directoryHint: .isDirectory)
-        let missingURL = URL(filePath: "/Volumes/Missing", directoryHint: .isDirectory)
-
-        let descriptions = SystemIntegration.targetCapacityDescriptions(
-            mountedVolumes: [describedURL, missingURL],
-            capacityDescriptionForURL: { url in
-                url == describedURL ? "1 GB free of 2 GB" : nil
-            }
-        )
-
-        #expect(descriptions == [
-            describedURL.standardizedFileURL.path: "1 GB free of 2 GB"
-        ])
-    }
-
-    @Test func testCapacityDescriptionUsesFinderStyleAvailable() {
-        // Finder counts purgeable space as available (important-usage), so
-        // the sidebar subtitle must too.
-        let description = VolumeSpaceInfo.make(
-            totalCapacity: 2_000_000_000_000,
-            availableCapacity: 512_000_000_000,
-            availableCapacityForImportantUsage: 640_000_000_000
-        ).flatMap(SystemIntegration.capacityDescription(info:))
-
-        #expect(description == "640 GB free of 2 TB")
-    }
-
-    @Test func testCapacityDescriptionFallsBackWhenImportantUsageIsZero() {
-        let description = VolumeSpaceInfo.make(
-            totalCapacity: 2_000_000_000_000,
-            availableCapacity: 512_000_000_000,
-            availableCapacityForImportantUsage: 0
-        ).flatMap(SystemIntegration.capacityDescription(info:))
-
-        #expect(description == "512 GB free of 2 TB")
-    }
-
     @Test func testFullDiskAccessStatusUsesInjectedProbes() {
         #expect(SystemIntegration.fullDiskAccessStatus(
                 macOSMajorVersion: 26,

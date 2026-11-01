@@ -460,8 +460,11 @@
 "and %lld more" = "以及另外 %lld 个";
 "Cleanup" = "清理";
 "Drag files and folders here, or press ⌘⌫, to collect them. Nothing moves until you confirm." = "将文件和文件夹拖到这里，或按 ⌘⌫ 来收集它们。在你确认之前，不会移动任何内容。";
-"Drag items here to review before trashing" = "将项目拖到这里，在移到废纸篓前检查";
-"Drop here to collect" = "拖放到这里以收集";
+"Drag items here" = "将项目拖到这里";
+"Collapse" = "折叠";
+"Expand" = "展开";
+"Sidebar Sections" = "边栏部分";
+"Show Cleanup in the sidebar. Drop items here to collect them." = "在边栏中显示清理。将项目拖放到这里以收集它们。";
 "It changed since the scan. Rescan to move it." = "自扫描以来它已更改。请重新扫描后再移动。";
 "Move “%@” to the Trash?" = "要将“%@”移到废纸篓吗？";
 "Move %lld items (%@) to the Trash?" = "要将 %lld 个项目（%@）移到废纸篓吗？";
@@ -475,7 +478,6 @@
 "Moving to the Trash…" = "正在移到废纸篓…";
 "Neodisk asks before each move and never deletes anything itself. System folders and your home folder are off limits. Turn this off to only look." = "Neodisk 每次移动前都会询问，自身绝不会删除任何内容。系统文件夹和你的个人文件夹不会被触及。关闭此项即可只查看。";
 "Open Trash" = "打开废纸篓";
-"Release to collect" = "松开以收集";
 "Remove from Cleanup" = "从清理中移除";
 "Some of this is in a cloud drive: moving it to the Trash also removes it from the cloud and your other devices." = "其中部分内容位于云盘中：将其移到废纸篓也会将其从云端和你的其他设备中移除。";
 "Some of this shares storage with other files (hard links or clones), so less space may come back." = "其中部分内容与其他文件共享存储（硬链接或克隆），因此释放的空间可能较少。";

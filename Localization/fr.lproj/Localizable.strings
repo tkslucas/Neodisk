@@ -460,8 +460,11 @@
 "and %lld more" = "et %lld de plus";
 "Cleanup" = "Nettoyage";
 "Drag files and folders here, or press ⌘⌫, to collect them. Nothing moves until you confirm." = "Faites glisser des fichiers et des dossiers ici, ou appuyez sur ⌘⌫, pour les rassembler. Rien n'est déplacé tant que vous n'avez pas confirmé.";
-"Drag items here to review before trashing" = "Faites glisser des éléments ici pour les vérifier avant de les jeter";
-"Drop here to collect" = "Déposez ici pour rassembler";
+"Drag items here" = "Faites glisser des éléments ici";
+"Collapse" = "Réduire";
+"Expand" = "Développer";
+"Sidebar Sections" = "Sections de la barre latérale";
+"Show Cleanup in the sidebar. Drop items here to collect them." = "Afficher Nettoyage dans la barre latérale. Déposez des éléments ici pour les rassembler.";
 "It changed since the scan. Rescan to move it." = "Il a changé depuis l'analyse. Réanalysez pour le déplacer.";
 "Move “%@” to the Trash?" = "Placer « %@ » dans la Corbeille ?";
 "Move %lld items (%@) to the Trash?" = "Placer %lld éléments (%@) dans la Corbeille ?";
@@ -475,7 +478,6 @@
 "Moving to the Trash…" = "Placement dans la Corbeille…";
 "Neodisk asks before each move and never deletes anything itself. System folders and your home folder are off limits. Turn this off to only look." = "Neodisk demande avant chaque déplacement et ne supprime jamais rien elle-même. Les dossiers système et votre dossier personnel sont intouchables. Désactivez cette option pour seulement regarder.";
 "Open Trash" = "Ouvrir la Corbeille";
-"Release to collect" = "Relâchez pour rassembler";
 "Remove from Cleanup" = "Retirer du Nettoyage";
 "Some of this is in a cloud drive: moving it to the Trash also removes it from the cloud and your other devices." = "Une partie se trouve dans un stockage cloud : la placer dans la Corbeille la supprime aussi du cloud et de vos autres appareils.";
 "Some of this shares storage with other files (hard links or clones), so less space may come back." = "Une partie partage son stockage avec d'autres fichiers (liens physiques ou clones) : moins d'espace pourrait être libéré.";

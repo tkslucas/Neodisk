@@ -460,8 +460,11 @@
 "and %lld more" = "and %lld more";
 "Cleanup" = "Cleanup";
 "Drag files and folders here, or press ⌘⌫, to collect them. Nothing moves until you confirm." = "Drag files and folders here, or press ⌘⌫, to collect them. Nothing moves until you confirm.";
-"Drag items here to review before trashing" = "Drag items here to review before trashing";
-"Drop here to collect" = "Drop here to collect";
+"Drag items here" = "Drag items here";
+"Collapse" = "Collapse";
+"Expand" = "Expand";
+"Sidebar Sections" = "Sidebar Sections";
+"Show Cleanup in the sidebar. Drop items here to collect them." = "Show Cleanup in the sidebar. Drop items here to collect them.";
 "It changed since the scan. Rescan to move it." = "It changed since the scan. Rescan to move it.";
 "Move “%@” to the Trash?" = "Move “%@” to the Trash?";
 "Move %lld items (%@) to the Trash?" = "Move %lld items (%@) to the Trash?";
@@ -475,7 +478,6 @@
 "Moving to the Trash…" = "Moving to the Trash…";
 "Neodisk asks before each move and never deletes anything itself. System folders and your home folder are off limits. Turn this off to only look." = "Neodisk asks before each move and never deletes anything itself. System folders and your home folder are off limits. Turn this off to only look.";
 "Open Trash" = "Open Trash";
-"Release to collect" = "Release to collect";
 "Remove from Cleanup" = "Remove from Cleanup";
 "Some of this is in a cloud drive: moving it to the Trash also removes it from the cloud and your other devices." = "Some of this is in a cloud drive: moving it to the Trash also removes it from the cloud and your other devices.";
 "Some of this shares storage with other files (hard links or clones), so less space may come back." = "Some of this shares storage with other files (hard links or clones), so less space may come back.";

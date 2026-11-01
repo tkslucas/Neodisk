@@ -35,8 +35,7 @@ public struct TreemapCell: Sendable {
     public let swatchRGB: SIMD3<Float>
     public let surface: CushionSurface
     public let isDirectory: Bool
-    /// Flat style only. Hit-testing prefers the deepest cell, so a container wins only on its visible frame;
-    /// keyboard tile navigation skips containers.
+    /// Flat style only. Hit-testing prefers the deepest cell, so a container wins only on its visible frame.
     public var isContainer: Bool
     /// Set when this cell stands in for several small siblings that would
     /// each be too tiny to render individually. `nodeID` is their parent.

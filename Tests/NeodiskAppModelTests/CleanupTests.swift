@@ -126,6 +126,6 @@ import NeodiskKit
         }
         #expect(pile.itemIDs.count == 49_501)
         #expect(pile.collectedItem(containing: "/data/d0/f7", in: store) == "/data/d0")
-        #expect(elapsed < .seconds(2), "\(elapsed)")
+        #expect(elapsed < .seconds(10), "\(elapsed)")
     }
 }

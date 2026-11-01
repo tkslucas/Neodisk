@@ -231,6 +231,27 @@ extension ScanTimingSuites {
         #expect(!model.sidebarFolders.contains { $0.id == first.id })
     }
 
+    /// Removing the location on screen from the sidebar clears the view instead of leaving an unlisted scan.
+    @Test func testRemovingTheShownFolderClearsTheView() async throws {
+        let environment = try TestEnvironment()
+        defer { environment.tearDown() }
+        let target = makeTestTarget("/stage2/remove-shown")
+        environment.sidebarFolderStore.add(target)
+        let model = environment.makeModel(policy: .automatic)
+        model.session.sourceIdentityProvider = environment.parallelSameDevice
+        model.startScan(target)
+        await awaitSnapshotPersist(on: model, of: target) {
+            environment.scanService.yield(.finished(environment.snapshot(for: target)), scanIndex: 0)
+            environment.scanService.finish(scanIndex: 0)
+        }
+        #expect(model.coordinator.canRescan)
+
+        model.removeSidebarFolders(ids: [target.id])
+        #expect(model.coordinator.selectedTarget == nil)
+        #expect(model.coordinator.snapshot == nil)
+        #expect(!model.coordinator.canRescan)
+    }
+
     // MARK: - Fixtures
 
     private struct TestEnvironment {

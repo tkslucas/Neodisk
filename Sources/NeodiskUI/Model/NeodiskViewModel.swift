@@ -794,6 +794,16 @@ final class NeodiskViewModel {
         }
         sidebarFolders.removeAll { ids.contains($0.id) }
 
+        // The location on screen left the sidebar: back to the empty state, so nothing on screen (Rescan
+        // included) points at a location that's no longer listed. A built-in one is still listed. Undo puts the row
+        // back; its scan is kept, so picking it shows the scan again at once.
+        if let shown = coordinator.selectedTarget?.id, ids.contains(shown),
+           !builtInLocations.contains(where: { $0.id == shown }) {
+            session.dismissSnapshotNotice()
+            resetPerScanState()
+            coordinator.clearScan()
+        }
+
         if let undoManager {
             undoManager.registerUndo(withTarget: self) { model in
                 MainActor.assumeIsolated {

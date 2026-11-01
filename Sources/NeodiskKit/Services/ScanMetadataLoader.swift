@@ -409,10 +409,14 @@ nonisolated struct ScanMetadataLoader: Sendable {
 
     /// Read access only: `.isReadableKey` also probes write access, which macOS reports as modifying apps.
     nonisolated static func isReadablePath(_ url: URL) -> Bool {
-        url.withUnsafeFileSystemRepresentation { path in
+        #if os(Windows)
+        return FileManager.default.isReadableFile(atPath: url.path)
+        #else
+        return url.withUnsafeFileSystemRepresentation { path in
             guard let path else { return false }
             return access(path, R_OK) == 0
         }
+        #endif
     }
 
     private nonisolated static func defaultFileSystemInfo(

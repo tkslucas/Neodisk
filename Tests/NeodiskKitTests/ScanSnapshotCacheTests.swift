@@ -436,17 +436,23 @@ import Testing
         let target = makeTestTarget("/cache/linked")
         try await cache.save(makeFileSnapshot(target: target, files: [("a.bin", 100)]))
         let latestURL = try #require(singleCacheFileURL(in: cacheDirectory))
-        let oldInode = try FileManager.default.attributesOfItem(atPath: latestURL.path)[.systemFileNumber] as? Int
+        let oldInode = try inode(at: latestURL)
 
         try await cache.save(makeFileSnapshot(target: target, files: [("a.bin", 200)]))
 
         let previousURL = try #require(cacheFileURLs(in: cacheDirectory).first { $0.lastPathComponent.contains(".prev.") })
-        let previousInode = try FileManager.default.attributesOfItem(atPath: previousURL.path)[.systemFileNumber] as? Int
-        let newInode = try FileManager.default.attributesOfItem(atPath: latestURL.path)[.systemFileNumber] as? Int
+        let previousInode = try inode(at: previousURL)
+        let newInode = try inode(at: latestURL)
         #expect(previousInode == oldInode)
         #expect(newInode != oldInode)
         #expect(await cache.loadSnapshot(for: target)?.treeStore.node(id: target.id + "/a.bin")?.allocatedSize == 200)
         #expect(await cache.loadPreviousSnapshot(for: target)?.treeStore.node(id: target.id + "/a.bin")?.allocatedSize == 100)
+    }
+
+    /// Boxed as UInt64 on Linux and Int on macOS.
+    private func inode(at url: URL) throws -> UInt64 {
+        let value = try FileManager.default.attributesOfItem(atPath: url.path)[.systemFileNumber]
+        return try #require((value as? UInt64) ?? (value as? Int).map(UInt64.init))
     }
 
     @Test func testFinishSavesWaitsForAnInFlightSaveToLand() async throws {
@@ -469,6 +475,26 @@ import Testing
         #expect(singleCacheFileURL(in: cacheDirectory) != nil)
         _ = try await save.value
         await cache.finishSaves(within: .seconds(60))
+    }
+
+    /// Clearing the cache mid-encode drops the save, and the outcome says so: callers skip the index and sidecars.
+    @Test func testSaveDroppedByAClearReportsItDidNotWrite() async throws {
+        let cacheDirectory = makeTemporaryCacheDirectory()
+        defer { try? FileManager.default.removeItem(at: cacheDirectory) }
+        let cache = ScanSnapshotCache(directoryURL: cacheDirectory, isLoggingEnabled: false)
+        let target = makeTestTarget("/cache/cleared")
+        let gate = EncodeGate()
+        await cache.setEncodeGateForTesting(gate.closure)
+        let save = Task { try await cache.save(makeFileSnapshot(target: target, files: [("a.bin", 100)])) }
+        await gate.waitUntilEntered()
+
+        await cache.removeAll()
+        gate.open()
+
+        #expect(try await save.value.wrote == false)
+        #expect(cacheFileURLs(in: cacheDirectory).isEmpty)
+        await cache.setEncodeGateForTesting(nil)
+        #expect(try await cache.save(makeFileSnapshot(target: target, files: [("a.bin", 100)])).wrote)
     }
 
     @Test func testRemoveSnapshotRemovesPreviousToo() async throws {

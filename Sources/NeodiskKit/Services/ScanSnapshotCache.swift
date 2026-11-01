@@ -47,13 +47,14 @@ public struct CachedScanInfo: Sendable {
         self.cloudOnlyLogicalSize = cloudOnlyLogicalSize
     }
 
-    /// What the index will read back once `snapshot` is saved.
-    public init(snapshot: ScanSnapshot, hasPreviousSnapshot: Bool) {
+    /// What the index will read back once `snapshot` is saved. A splice passes the entry it replaces: the last
+    /// full scan's date and duration stay (they drive auto-rescan).
+    public init(snapshot: ScanSnapshot, hasPreviousSnapshot: Bool, keepingScanTimeOf existing: CachedScanInfo? = nil) {
         let duration = snapshot.finishedAt.map { $0.timeIntervalSince(snapshot.startedAt) }
         let store = snapshot.treeStore
         self.init(
-            lastScanDate: snapshot.finishedAt ?? snapshot.startedAt,
-            lastScanDuration: duration.flatMap { $0 >= 0 ? $0 : nil },
+            lastScanDate: existing?.lastScanDate ?? snapshot.finishedAt ?? snapshot.startedAt,
+            lastScanDuration: existing.map(\.lastScanDuration) ?? duration.flatMap { $0 >= 0 ? $0 : nil },
             nodeCount: store.nodeCount,
             hasPreviousSnapshot: hasPreviousSnapshot,
             totalAllocatedSize: snapshot.aggregateStats.totalAllocatedSize,
@@ -64,6 +65,8 @@ public struct CachedScanInfo: Sendable {
 
 /// Whether a save rotated the prior latest into the previous slot, and whether a previous slot exists afterwards.
 public struct SnapshotSaveOutcome: Sendable {
+    /// False when the save was dropped: the slots were cleared or a newer save claimed them mid-encode.
+    public let wrote: Bool
     public let rotatedPrevious: Bool
     public let hasPreviousSnapshot: Bool
 }
@@ -130,15 +133,15 @@ public actor ScanSnapshotCache {
         return applicationSupportURL.appending(path: "\(cacheFolderName)/ScanCache", directoryHint: .isDirectory)
     }
 
-    /// Unbundled Mac builds (`swift run`, tests) keep their own defaults, so they get their own cache too:
-    /// their sidebar would prune the app's snapshots, and their format changes would fail its decodes.
+    /// Dev builds (`swift run`, tests) get their own cache: their sidebar would prune the app's snapshots, and
+    /// their format changes would fail its decodes.
     nonisolated static var cacheFolderName: String {
         #if os(macOS)
-        if Bundle.main.bundleIdentifier != AppChannel.current.identifier {
-            return "\(AppChannel.current.appName) Dev"
-        }
+        let isDevBuild = Bundle.main.bundleIdentifier != AppChannel.current.identifier
+        #else
+        let isDevBuild = Bundle.main.executablePath?.contains("/.build/") ?? false
         #endif
-        return AppChannel.current.appName
+        return isDevBuild ? "\(AppChannel.current.appName) Dev" : AppChannel.current.appName
     }
 
     public init(
@@ -214,6 +217,7 @@ public actor ScanSnapshotCache {
             // The slots were removed or claimed by a newer save during the encode; writing would
             // resurrect stale bytes.
             return SnapshotSaveOutcome(
+                wrote: false,
                 rotatedPrevious: false,
                 hasPreviousSnapshot: FileManager.default.fileExists(
                     atPath: previousFileURL(forTargetID: targetID).path
@@ -231,9 +235,11 @@ public actor ScanSnapshotCache {
             } else if latestMatches(digest: digest, targetID: snapshot.target.id, at: latestURL) {
                 log("content unchanged for \(snapshot.target.id); keeping previous baseline")
             } else {
-                // Linked, not moved: the old latest stays readable until the new one replaces it.
-                try? FileManager.default.removeItem(at: previousURL)
-                rotatedPrevious = (try? FileManager.default.linkItem(at: latestURL, to: previousURL)) != nil
+                // Linked (copied where links aren't supported), not moved: the old latest stays until the new one lands.
+                let files = FileManager.default
+                try? files.removeItem(at: previousURL)
+                rotatedPrevious = (try? files.linkItem(at: latestURL, to: previousURL)) != nil
+                    || (try? files.copyItem(at: latestURL, to: previousURL)) != nil
             }
         }
 
@@ -244,6 +250,7 @@ public actor ScanSnapshotCache {
             + "\(snapshot.target.id) in \(elapsedDescription(since: start))"
         )
         return SnapshotSaveOutcome(
+            wrote: true,
             rotatedPrevious: rotatedPrevious,
             hasPreviousSnapshot: FileManager.default.fileExists(atPath: previousURL.path)
         )

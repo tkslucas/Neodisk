@@ -640,12 +640,7 @@ final class ScanSessionModel {
               snapshot.isComplete, snapshot.source.isPersistable else { return }
         let existing = cachedScanInfo[snapshot.target.id]
         cachedScanInfo[snapshot.target.id] = CachedScanInfo(
-            lastScanDate: existing?.lastScanDate ?? (snapshot.finishedAt ?? Date()),
-            lastScanDuration: existing?.lastScanDuration,
-            nodeCount: snapshot.treeStore.nodeCount,
-            hasPreviousSnapshot: existing != nil,
-            totalAllocatedSize: snapshot.aggregateStats.totalAllocatedSize,
-            cloudOnlyLogicalSize: Self.cloudOnlyBytes(of: snapshot)
+            snapshot: snapshot, hasPreviousSnapshot: existing != nil, keepingScanTimeOf: existing
         )
         saveSnapshotToCache(snapshot, rotatesPrevious: rotatesPrevious)
     }
@@ -675,12 +670,7 @@ final class ScanSessionModel {
         }
         let existing = cachedScanInfo[target.id]
         cachedScanInfo[target.id] = CachedScanInfo(
-            lastScanDate: existing?.lastScanDate ?? (updated.finishedAt ?? Date()),
-            lastScanDuration: existing?.lastScanDuration,
-            nodeCount: updated.treeStore.nodeCount,
-            hasPreviousSnapshot: existing?.hasPreviousSnapshot ?? false,
-            totalAllocatedSize: updated.aggregateStats.totalAllocatedSize,
-            cloudOnlyLogicalSize: Self.cloudOnlyBytes(of: updated)
+            snapshot: updated, hasPreviousSnapshot: existing?.hasPreviousSnapshot ?? false, keepingScanTimeOf: existing
         )
         saveSnapshotToCache(updated, rotatesPrevious: false)
     }
@@ -692,6 +682,8 @@ final class ScanSessionModel {
             defer { self?.onSnapshotPersistedForTesting?(snapshot) }
             do {
                 let outcome = try await snapshotCache.save(snapshot, rotatesPrevious: rotatesPrevious)
+                // Dropped (cache cleared, or a newer save took over): the sidecars would outlive it.
+                guard outcome.wrote else { return }
                 // The save knows the truth: an unchanged rescan skips the rotation.
                 self?.setHasPreviousSnapshot(
                     outcome.hasPreviousSnapshot, forTargetID: snapshot.target.id
@@ -721,13 +713,6 @@ final class ScanSessionModel {
     /// gone; reflect that in the cache index so the diff toggle disables.
     func markPreviousSnapshotMissing(forTargetID targetID: String) {
         setHasPreviousSnapshot(false, forTargetID: targetID)
-    }
-
-    /// Cloud-only bytes below a snapshot's root, carried into
-    /// `cachedScanInfo` so the sidebar's cloud bar works without decoding.
-    private static func cloudOnlyBytes(of snapshot: ScanSnapshot) -> Int64 {
-        let store = snapshot.treeStore
-        return store.node(id: store.rootID)?.cloudOnlyLogicalSize ?? 0
     }
 
     private func setHasPreviousSnapshot(_ hasPrevious: Bool, forTargetID targetID: String) {

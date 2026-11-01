@@ -350,13 +350,14 @@ final class AppModel {
         Task {
             do {
                 let outcome = try await snapshotCache.save(snapshot, rotatesPrevious: rotatesPrevious)
+                guard outcome.wrote else { return }
                 cachedScans[snapshot.target.id] = CachedScanInfo(
                     snapshot: snapshot, hasPreviousSnapshot: outcome.hasPreviousSnapshot
                 )
+                await saveKindStatsSidecar(for: snapshot)
             } catch {
                 DiagnosticLog.cache.error("could not cache the scan: \(error)")
             }
-            await saveKindStatsSidecar(for: snapshot)
         }
     }
 

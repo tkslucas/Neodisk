@@ -238,7 +238,7 @@ public actor ScanSnapshotCache {
                 // Linked (copied where links aren't supported), not moved: the old latest stays until the new one lands.
                 let files = FileManager.default
                 try? files.removeItem(at: previousURL)
-                rotatedPrevious = (try? files.linkItem(at: latestURL, to: previousURL)) != nil
+                rotatedPrevious = Self.hardLink(latestURL, to: previousURL)
                     || (try? files.copyItem(at: latestURL, to: previousURL)) != nil
             }
         }
@@ -254,6 +254,15 @@ public actor ScanSnapshotCache {
             rotatedPrevious: rotatedPrevious,
             hasPreviousSnapshot: FileManager.default.fileExists(atPath: previousURL.path)
         )
+    }
+
+    /// FileManager's `linkItem` makes a symbolic link on Windows, which would show the new latest as the previous.
+    private static func hardLink(_ source: URL, to destination: URL) -> Bool {
+        #if os(Windows)
+        return WindowsPath.createHardLink(at: destination.path, to: source.path)
+        #else
+        return (try? FileManager.default.linkItem(at: source, to: destination)) != nil
+        #endif
     }
 
     /// Header-only read; files from before the digest existed never match and rotate as before.

@@ -408,6 +408,11 @@ extension ScanEngine {
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
+                #if os(Windows)
+                // The Windows reader covers every volume, and FileManager's enumerator lists a folder it can't
+                // open as empty, which would hide the error.
+                throw error
+                #endif
                 // Fall through: the FileManager path owns error semantics and covers volumes without
                 // getattrlistbulk.
             }

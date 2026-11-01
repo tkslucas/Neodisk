@@ -7,7 +7,8 @@ import Foundation
 import WinSDK
 
 extension BulkDirectoryReader {
-    /// `context` holds the directory-info batch buffer.
+    /// `context` holds the directory-info batch buffer. Failures throw POSIX-domain errors with the system's
+    /// message, which the scan reports as they are: there is no slower path to fall back to.
     @discardableResult
     static func readChildren(
         ofDirectory url: URL,
@@ -25,7 +26,7 @@ extension BulkDirectoryReader {
             access: DWORD(FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES) | DWORD(SYNCHRONIZE)
         )
         guard let handle else {
-            throw BulkDirectoryReadError.openFailed(WindowsFileInfo.posixCode(GetLastError()))
+            throw WindowsFileInfo.error(GetLastError(), path: url.path, url: url)
         }
         defer { CloseHandle(handle) }
 
@@ -41,6 +42,7 @@ extension BulkDirectoryReader {
             ? UInt64(directoryInfo.dwVolumeSerialNumber)
             : nil
 
+        let directoryPath = url.path
         var layout = DirectoryInfoLayout.extended
         while true {
             try cancellationCheck()
@@ -63,13 +65,13 @@ extension BulkDirectoryReader {
                     layout = .both
                     continue
                 }
-                throw BulkDirectoryReadError.bulkListFailed(WindowsFileInfo.posixCode(error))
+                throw WindowsFileInfo.error(error, path: url.path, url: url)
             }
 
             var entry = UnsafeRawPointer(context.buffer)
             while true {
                 let nextOffset = Int(entry.loadUnaligned(as: UInt32.self))
-                if let child = layout.child(at: entry, volumeSerial: volumeSerial) {
+                if let child = layout.child(at: entry, directoryPath: directoryPath, volumeSerial: volumeSerial) {
                     try onChild(child)
                     emittedCount += 1
                 }
@@ -113,7 +115,7 @@ extension BulkDirectoryReader {
         private static let fileNameLengthOffset = 60
         private static let eaSizeOffset = 64
 
-        func child(at entry: UnsafeRawPointer, volumeSerial: UInt64?) -> BulkDirectoryChild? {
+        func child(at entry: UnsafeRawPointer, directoryPath: String, volumeSerial: UInt64?) -> BulkDirectoryChild? {
             let nameByteCount = Int(entry.loadUnaligned(fromByteOffset: Self.fileNameLengthOffset, as: UInt32.self))
             let nameUnits = UnsafeRawBufferPointer(start: entry + fileNameOffset, count: nameByteCount)
             if WindowsFileInfo.isDotOrDotDot(nameUnits) { return nil }
@@ -133,12 +135,20 @@ extension BulkDirectoryReader {
             } else {
                 fileID = entry.loadUnaligned(fromByteOffset: fileIDOffset, as: UInt64.self)
             }
+            let endOfFile = entry.loadUnaligned(fromByteOffset: Self.endOfFileOffset, as: Int64.self)
+            var allocationSize = entry.loadUnaligned(fromByteOffset: Self.allocationSizeOffset, as: Int64.self)
+            if WindowsFileInfo.listsNoAllocation(attributes: attributes, allocationSize: allocationSize, endOfFile: endOfFile),
+               let own = WindowsFileInfo.allocationSize(
+                ofFileAt: ScanEngine.nodeChildPath(parentPath: directoryPath, childName: name)
+               ) {
+                allocationSize = own
+            }
             return WindowsFileInfo.child(
                 name: name,
                 attributes: attributes,
                 reparseTag: reparseTag,
-                allocationSize: entry.loadUnaligned(fromByteOffset: Self.allocationSizeOffset, as: Int64.self),
-                endOfFile: entry.loadUnaligned(fromByteOffset: Self.endOfFileOffset, as: Int64.self),
+                allocationSize: allocationSize,
+                endOfFile: endOfFile,
                 lastWriteTime: entry.loadUnaligned(fromByteOffset: Self.lastWriteTimeOffset, as: Int64.self),
                 fileID: fileID,
                 volumeSerial: volumeSerial,
@@ -151,9 +161,10 @@ extension BulkDirectoryReader {
 /// The one conversion from Windows file information to scanner records, shared by the bulk reader, the
 /// per-item loader and the NTFS index, so every path through the scanner sees the same sizes and identities.
 nonisolated enum WindowsFileInfo {
-    // Hard links: directory info carries no link count, so the walk reports 1 for every file and does no
-    // hard-link dedup, as File Explorer's folder sizes count each link. A per-file open to read the count
-    // measured TODO slower on C:\Windows; the NTFS index reads real counts from the MFT for free.
+    // Hard links: directory info has no link count, so every path reports 1 and a hard-linked file counts once
+    // per link, as File Explorer's folder sizes do. Reading the count costs a per-file open (23-41 us a file on
+    // System32, where 4,426 of 4,513 files are linked into WinSxS), several times the batched listing itself.
+    // The NTFS index reads real counts from the MFT at no extra cost.
 
     static func child(
         name: String,
@@ -228,6 +239,26 @@ nonisolated enum WindowsFileInfo {
         )
     }
 
+    /// Files compressed by the system (WOF, as the component store and CompactOS use) list no allocation in their
+    /// directory entry: 4,327 of 4,513 files in System32. Only the file itself reports its compressed size. A file
+    /// small enough to live inside its MFT record (at most 4 KB) has no clusters either, so those aren't asked.
+    static func listsNoAllocation(attributes: UInt32, allocationSize: Int64, endOfFile: Int64) -> Bool {
+        allocationSize == 0 && endOfFile > 4096
+            && attributes & UInt32(FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT) == 0
+            && attributes & cloudOnlyAttributes == 0
+    }
+
+    /// The allocation the file system reports for the file itself, compressed or sparse; nil if it can't be opened.
+    static func allocationSize(ofFileAt path: String) -> Int64? {
+        guard let handle = open(path: path, access: DWORD(FILE_READ_ATTRIBUTES)) else { return nil }
+        defer { CloseHandle(handle) }
+        var standard = FILE_STANDARD_INFO()
+        guard GetFileInformationByHandleEx(
+            handle, FileStandardInfo, &standard, DWORD(MemoryLayout<FILE_STANDARD_INFO>.size)
+        ) else { return nil }
+        return max(standard.AllocationSize.QuadPart, 0)
+    }
+
     /// FILE_ATTRIBUTE_OFFLINE | FILE_ATTRIBUTE_RECALL_ON_OPEN | FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS.
     static let cloudOnlyAttributes: UInt32 = 0x0000_1000 | 0x0004_0000 | 0x0040_0000
 
@@ -236,9 +267,9 @@ nonisolated enum WindowsFileInfo {
         tag & 0x2000_0000 != 0
     }
 
-    /// Hidden in File Explorer, or a dot name as on the other platforms.
+    /// Hidden as File Explorer and FileManager's `skipsHiddenFiles` see it: the attribute, not a dot name.
     static func isHidden(name: String, attributes: UInt32) -> Bool {
-        attributes & UInt32(FILE_ATTRIBUTE_HIDDEN) != 0 || BulkDirectoryReader.isHiddenName(name)
+        attributes & UInt32(FILE_ATTRIBUTE_HIDDEN) != 0
     }
 
     /// NTFS file IDs are the 64-bit file reference (record number and sequence) with zero above it; only ReFS
@@ -318,7 +349,8 @@ nonisolated enum WindowsFileInfo {
             lastWriteTime: info.lastWriteTime,
             fileID: info.fileID,
             volumeSerial: info.volumeSerial,
-            linkCount: info.linkCount,
+            // As the reader reports it (see above), so a relisted item matches the walk.
+            linkCount: 1,
             isReadable: includeVolumeDetails ? isReadableDirectory(path, attributes: info.attributes) : true,
             volumeUsedCapacity: volumeUsed
         )
@@ -455,6 +487,46 @@ nonisolated enum WindowsPath {
 
     static func string(fromNullTerminated buffer: [WCHAR]) -> String {
         String(decoding: buffer.prefix { $0 != 0 }, as: UTF16.self)
+    }
+
+    static func createHardLink(at path: String, to existingPath: String) -> Bool {
+        withWidePath(path) { linkPath in
+            withWidePath(existingPath) { CreateHardLinkW(linkPath, $0, nil) }
+        }
+    }
+
+    /// `.` and `..` resolved without touching the disk, in `URL.path` form: forward slashes, a drive root keeps
+    /// its slash (`C:/`), nothing climbs above a drive or share. Foundation's `standardizedFileURL` turns `C:/`
+    /// into a path under the current directory.
+    static func lexicallyStandardized(_ path: String) -> String {
+        let isUNC = path.hasPrefix("//") || path.hasPrefix("\\\\")
+        var components: [Substring] = []
+        for component in path.split(whereSeparator: { $0 == "/" || $0 == "\\" }) {
+            switch component {
+            case ".": continue
+            case "..": if components.count > (isUNC ? 2 : 1) { components.removeLast() }
+            default: components.append(component)
+            }
+        }
+        let joined = components.joined(separator: "/")
+        if isUNC { return "//" + joined }
+        if components.count == 1, components[0].hasSuffix(":") { return joined + "/" }
+        return path.hasPrefix("/") && !isDriveAbsolute(String(path.dropFirst())) ? "/" + joined : joined
+    }
+
+    static func isDriveRoot(_ path: String) -> Bool {
+        let standardized = lexicallyStandardized(path)
+        return standardized.utf16.count == 3 && isDriveAbsolute(standardized)
+    }
+
+    /// A scan root as the scanner spells it: standardized, and a symlinked root resolved as on the other
+    /// platforms. Drive roots and shares are taken as given; Foundation's resolution mangles them.
+    static func normalizedRootURL(_ url: URL) -> URL {
+        var path = lexicallyStandardized(url.path)
+        if !isDriveRoot(path), !path.hasPrefix("//") {
+            path = lexicallyStandardized(URL(filePath: path).resolvingSymlinksInPath().path)
+        }
+        return URL(filePath: path, directoryHint: url.hasDirectoryPath ? .isDirectory : .inferFromPath)
     }
 
     /// `C:\…` or `C:/…`.

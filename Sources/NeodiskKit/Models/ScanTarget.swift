@@ -35,6 +35,9 @@ public struct ScanTarget: Identifiable, Hashable, Sendable {
     }
 
     private nonisolated static func normalizedURL(from url: URL) -> URL {
+        #if os(Windows)
+        return WindowsPath.normalizedRootURL(url)
+        #else
         let standardizedURL = url.standardizedFileURL
         let path = standardizedURL.path
 
@@ -51,6 +54,7 @@ public struct ScanTarget: Identifiable, Hashable, Sendable {
         }
 
         return normalizedRootURL(from: standardizedURL)
+        #endif
     }
 
     private nonisolated static func normalizedRootURL(from url: URL) -> URL {
@@ -65,6 +69,10 @@ public struct ScanTarget: Identifiable, Hashable, Sendable {
             options: []
         )
     ) -> ScanTargetKind {
+        #if os(Windows)
+        // Drive roots; a volume mounted in a folder is a reparse point the scan never enters.
+        return WindowsPath.isDriveRoot(url.path) ? .volume : .folder
+        #else
         let path = url.standardizedFileURL.path
         if path == "/" {
             return .volume
@@ -76,6 +84,7 @@ public struct ScanTarget: Identifiable, Hashable, Sendable {
 
         let mountedVolumePaths = Set(mountedVolumeURLs.map { $0.standardizedFileURL.path })
         return mountedVolumePaths.contains(path) ? .volume : .folder
+        #endif
     }
 
     public nonisolated static func displayName(for url: URL) -> String {

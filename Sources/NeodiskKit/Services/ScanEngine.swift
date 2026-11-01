@@ -177,7 +177,7 @@ public final class ScanEngine: Sendable {
     ) throws -> DirectoryEnumerationResult {
         var rootEnumerationError: Error?
         var localizedFailures: [DirectoryEnumerationFailure] = []
-        let rootPath = url.standardizedFileURL.path
+        let rootPath = Self.standardizedPath(url)
         return try enumeratedDirectoryContents(
             url: url,
             keys: keys,
@@ -189,7 +189,7 @@ public final class ScanEngine: Sendable {
                     includingPropertiesForKeys: keys,
                     options: options,
                     errorHandler: { failedURL, error in
-                        if failedURL.standardizedFileURL.path == rootPath {
+                        if Self.standardizedPath(failedURL) == rootPath {
                             rootEnumerationError = error
                             return false
                         }
@@ -207,6 +207,14 @@ public final class ScanEngine: Sendable {
             enumerationError: { rootEnumerationError },
             localizedEnumerationFailures: { localizedFailures }
         )
+    }
+
+    private nonisolated static func standardizedPath(_ url: URL) -> String {
+        #if os(Windows)
+        WindowsPath.lexicallyStandardized(url.path)
+        #else
+        url.standardizedFileURL.path
+        #endif
     }
 
     private nonisolated static func defaultVolumeFileSystemType(for url: URL) -> String? {

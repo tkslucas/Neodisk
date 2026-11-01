@@ -33,6 +33,11 @@ struct StatsEmptyState<Action: View>: View {
 }
 
 extension StatsEmptyState where Action == EmptyView {
+    /// A finished scan with no files to rank: an empty or unreadable folder.
+    static var noFiles: Self {
+        Self(symbol: "doc", message: Text("No files to show"))
+    }
+
     init(symbol: String, symbolSize: CGFloat = 28, title: Text? = nil, message: Text) {
         self.init(symbol: symbol, symbolSize: symbolSize, title: title, message: message) {
             EmptyView()

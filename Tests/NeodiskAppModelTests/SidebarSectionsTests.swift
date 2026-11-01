@@ -15,13 +15,14 @@ struct SidebarSectionsTests {
         #expect(SidebarSectionState(hidden: "bogus,,folders").hidden == [.folders])
     }
 
-    /// Cleanup's visibility is the Trash preference, never a stored flag.
-    @Test func cleanupIsShownExactlyWhenEnabled() {
-        var state = SidebarSectionState(hidden: "cleanup")
-        state.setShown(.cleanup, false)
-        #expect(state.hidden.isEmpty)
+    /// Cleanup shows when it's enabled and not hidden; hiding it is stored like any section.
+    @Test func cleanupNeedsEnabledAndShown() {
+        var state = SidebarSectionState()
         #expect(state.isShown(.cleanup, cleanupEnabled: true))
         #expect(!state.isShown(.cleanup, cleanupEnabled: false))
+        state.setShown(.cleanup, false)
+        #expect(state.storedHidden == "cleanup")
+        #expect(!state.isShown(.cleanup, cleanupEnabled: true))
         #expect(state.isShown(.volumes, cleanupEnabled: false))
     }
 

@@ -3,7 +3,7 @@ import Testing
 import NeodiskAppModel
 @testable import NeodiskUI
 
-/// Sidebar sections persist, and Cleanup's checkbox is the Settings switch for moving to the Trash.
+/// Sidebar sections persist; hiding Cleanup leaves the Settings switch for moving to the Trash alone.
 @MainActor
 @Suite(.serialized) struct SidebarSectionPreferencesTests {
     @Test func hiddenAndCollapsedSectionsPersist() throws {
@@ -17,18 +17,16 @@ import NeodiskAppModel
         #expect(!reloaded.isExpanded(.volumes))
     }
 
-    @Test func uncheckingCleanupTurnsMovingToTheTrashOff() async throws {
+    @Test func hidingCleanupKeepsMovingToTheTrashOn() throws {
         let (model, preferences, defaults, suite) = try makePreferencesModel()
         defer { removeTestDefaultsSuite(defaults, named: suite) }
+        let wasAllowed = preferences.allowsMovingToTrash
         model.setSidebarSection(.cleanup, shown: false)
-        #expect(!preferences.allowsMovingToTrash)
-        #expect(!model.cleanup.isEnabled)
-        // Re-enabled in Settings, the section comes back (the preference sink delivers on the main queue).
-        preferences.allowsMovingToTrash = true
-        for _ in 0..<50 where !model.isSidebarSectionShown(.cleanup) {
-            try await Task.sleep(for: .milliseconds(10))
-        }
-        #expect(model.isSidebarSectionShown(.cleanup))
+        #expect(!model.isSidebarSectionShown(.cleanup))
+        #expect(preferences.allowsMovingToTrash == wasAllowed)
+        #expect(model.cleanup.isEnabled == wasAllowed)
+        model.setSidebarSection(.cleanup, shown: true)
+        #expect(model.isSidebarSectionShown(.cleanup) == wasAllowed)
     }
 
     @Test func revealingCleanupOpensTheSidebarAndExpandsIt() throws {

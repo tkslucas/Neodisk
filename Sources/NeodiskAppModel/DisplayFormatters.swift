@@ -40,8 +40,9 @@ private final class FormatterCache: @unchecked Sendable {
     func relativeDate(_ date: Date, relativeTo now: Date) -> String {
         lock.lock()
         defer { lock.unlock() }
-        // Sub-minute ages read as "in 0 seconds" quirks; pin them.
-        if abs(date.timeIntervalSince(now)) < 60 {
+        // Sub-minute ages read as "in 0 seconds" quirks, and a date a little ahead of `now` (a clock that ticks once a
+        // minute) as "in 1 minute": these labels are about the past, so pin both.
+        if date.timeIntervalSince(now) > -60 {
             return AppStrings.localized("just now", comment: "Relative time for a very recent scan")
         }
         return relativeDateFormatter.localizedString(for: date, relativeTo: now)
@@ -58,7 +59,7 @@ private final class FormatterCache: @unchecked Sendable {
 /// gives the same strings.
 private final class FormatterCache: Sendable {
     func relativeDate(_ date: Date, relativeTo now: Date) -> String {
-        if abs(date.timeIntervalSince(now)) < 60 {
+        if date.timeIntervalSince(now) > -60 {
             return AppStrings.localized("just now", comment: "Relative time for a very recent scan")
         }
         // The style measures against the real clock; shift the date so the

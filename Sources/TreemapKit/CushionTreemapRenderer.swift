@@ -5,10 +5,7 @@
 import CoreGraphics
 #endif
 #if canImport(Foundation)
-import Foundation  // ProcessInfo for the concurrent chunk count; CG geometry off Darwin
-#endif
-#if canImport(Dispatch)
-import Dispatch
+import Foundation  // CG geometry off Darwin
 #endif
 
 public enum CushionTreemapRenderer {
@@ -75,7 +72,7 @@ public enum CushionTreemapRenderer {
     }
     #endif
 
-    /// Cells never overlap, so concurrent chunks write disjoint pixels.
+    /// Cells never overlap, but row bands balance better than cell chunks: one big cell no longer pins a core.
     private nonisolated static func renderCells(
         _ cells: [TreemapCell],
         origin: CGPoint,
@@ -85,49 +82,29 @@ public enum CushionTreemapRenderer {
         height: Int,
         bytesPerRow: Int
     ) {
-        #if canImport(Dispatch)
         nonisolated(unsafe) let base = base
-        let chunkCount = max(1, min(cells.count, ProcessInfo.processInfo.activeProcessorCount))
-        let chunkSize = (cells.count + chunkCount - 1) / max(1, chunkCount)
-
-        DispatchQueue.concurrentPerform(iterations: chunkCount) { chunkIndex in
-            // Ceil-divided chunks can start past the end (10 cells / 8 cores), and start..<end would trap.
-            let start = min(chunkIndex * chunkSize, cells.count)
-            let end = min(start + chunkSize, cells.count)
-            for index in start..<end {
+        TreemapRasterTarget.forEachRowBand(height: height) { rows in
+            for cell in cells {
                 rasterize(
-                    cell: cells[index],
+                    cell: cell,
                     origin: origin,
                     scale: scale,
+                    rows: rows,
                     into: base,
                     width: width,
-                    height: height,
                     bytesPerRow: bytesPerRow
                 )
             }
         }
-        #else
-        for cell in cells {
-            rasterize(
-                cell: cell,
-                origin: origin,
-                scale: scale,
-                into: base,
-                width: width,
-                height: height,
-                bytesPerRow: bytesPerRow
-            )
-        }
-        #endif
     }
 
     private nonisolated static func rasterize(
         cell: TreemapCell,
         origin: CGPoint,
         scale: Double,
+        rows: Range<Int>,
         into base: UnsafeMutablePointer<UInt8>,
         width: Int,
-        height: Int,
         bytesPerRow: Int
     ) {
         // Pixel bounds relative to the render origin; consistent rounding on
@@ -136,8 +113,8 @@ public enum CushionTreemapRenderer {
         let originY = Double(origin.y)
         let x0 = max(0, Int(((Double(cell.rect.minX) - originX) * scale).rounded()))
         let x1 = min(width, Int(((Double(cell.rect.maxX) - originX) * scale).rounded()))
-        let y0 = max(0, Int(((Double(cell.rect.minY) - originY) * scale).rounded()))
-        let y1 = min(height, Int(((Double(cell.rect.maxY) - originY) * scale).rounded()))
+        let y0 = max(rows.lowerBound, Int(((Double(cell.rect.minY) - originY) * scale).rounded()))
+        let y1 = min(rows.upperBound, Int(((Double(cell.rect.maxY) - originY) * scale).rounded()))
         guard x1 > x0, y1 > y0 else { return }
 
         let surface = cell.surface
@@ -240,16 +217,6 @@ public enum CushionTreemapRenderer {
                 px += 1
             }
         }
-    }
-
-    /// The factor a cell's sRGB fill is drawn at, at `point` (view coordinates): the raster's scalar shading,
-    /// for reading the color under a label without touching pixels.
-    public nonisolated static func shade(of surface: CushionSurface, at point: CGPoint) -> Double {
-        let gx = surface.xa + surface.xb * Double(point.x)
-        let gy = surface.ya + surface.yb * Double(point.y)
-        let normalLength = (gx * gx + gy * gy + 1).squareRoot()
-        let dot = (-gx * light.x - gy * light.y + light.z) / normalLength
-        return (ambient + diffuse * max(0, dot)).squareRoot()
     }
 
     /// Branch-free `UInt32(d)` for [0, 2^31) via the 2^52 mantissa trick; the stdlib conversions carry

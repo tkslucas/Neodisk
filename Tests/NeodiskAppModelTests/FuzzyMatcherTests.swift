@@ -76,6 +76,20 @@ import Testing
         #expect(allIDs.first == "/huge-movie.mov")
     }
 
+    /// A size-ordered filter keeps only names containing the query: scattered letters would bury the real hits.
+    @Test func entryOrderMatchesNeedTheQueryAsTyped() {
+        let entries = [
+            FileSearchEntry(id: "/macOS-AI-light.heic", lowercasedName: "macos-ai-light.heic", allocatedSize: 900),
+            FileSearchEntry(id: "/Mail.app", lowercasedName: "mail.app", allocatedSize: 500),
+            FileSearchEntry(id: "/MailCore.framework", lowercasedName: "mailcore.framework", allocatedSize: 100),
+            FileSearchEntry(id: "/voicemail.db", lowercasedName: "voicemail.db", allocatedSize: 50),
+        ]
+        let (ids, total) = FuzzyMatcher.matchesInEntryOrder(query: "MAIL", entries: entries, limit: 10)
+        #expect(ids == ["/Mail.app", "/MailCore.framework", "/voicemail.db"])
+        #expect(total == 3)
+        #expect(FuzzyMatcher.matchesInEntryOrder(query: "mailx", entries: entries, limit: 10).totalMatches == 0)
+    }
+
     @Test func testEmptyQueryPreservesEntryOrder() {
         let entries = [
             FileSearchEntry(id: "/big", lowercasedName: "big", allocatedSize: 100),

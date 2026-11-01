@@ -247,7 +247,7 @@ private struct RescanToolbarButton: View {
             } label: {
                 Label("Rescan", systemImage: "arrow.clockwise")
             }
-            .disabled(!model.coordinator.canRescan || model.coordinator.snapshot == nil)
+            .disabled(!model.canRescan)
             .help("Scan \(model.coordinator.selectedTarget?.displayName ?? "this location") again")
         }
     }

@@ -232,6 +232,9 @@ final class OutlineController {
         case 1:
             return NeodiskFormatters.size(node.allocatedSize)
         case 2:
+            // A match's share of its folder means something different per row, so search leaves it out, as the
+            // other apps' match lists do.
+            guard resultIDs == nil else { return "" }
             let total = store.parent(of: node.id)?.allocatedSize ?? store.root.allocatedSize
             return NeodiskFormatters.percentage(part: node.allocatedSize, total: total) ?? ""
         case 3:

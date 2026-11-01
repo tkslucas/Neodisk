@@ -225,17 +225,25 @@ struct OutlineKeyboardNavigationTests {
         #expect(folderRect.maxY <= clip.bounds.maxY)
     }
 
-    @Test func tableRoutesOnlyUnmodifiedHorizontalArrows() throws {
+    @Test func tableRoutesPlainAndOptionHorizontalArrows() throws {
         let tableView = OutlineNSTableView()
-        var received: [OutlineHierarchyDirection] = []
-        tableView.hierarchyNavigationRequested = { received.append($0) }
+        var received: [String] = []
+        tableView.hierarchyNavigationRequested = { direction, recursively in
+            received.append("\(direction)\(recursively ? "-all" : "")")
+        }
 
         tableView.keyDown(with: try arrowEvent(.left))
         tableView.keyDown(with: try arrowEvent(.right))
-        #expect(received == [.left, .right])
+        #expect(received == ["left", "right"])
+
+        // ⌥ alone opens or closes everything below; other modifiers stay with the table.
+        tableView.keyDown(with: try arrowEvent(.right, modifiers: .option))
+        tableView.keyDown(with: try arrowEvent(.left, modifiers: .option))
+        #expect(received == ["left", "right", "right-all", "left-all"])
 
         tableView.keyDown(with: try arrowEvent(.right, modifiers: .command))
-        #expect(received == [.left, .right])
+        tableView.keyDown(with: try arrowEvent(.right, modifiers: [.option, .shift]))
+        #expect(received.count == 4)
     }
 
     private func action(

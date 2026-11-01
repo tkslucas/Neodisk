@@ -16,39 +16,32 @@ struct AnalysisTabBar: View {
     var body: some View {
         ViewThatFits(in: .horizontal) {
             AnalysisSegmentedControl(model: model)
-            Picker("Statistics", selection: Binding(get: { model.analysisTab }, set: { model.analysisTab = $0 })) {
-                ForEach(model.analysisTabs.visible) { tab in
-                    Text(LocalizedStringKey(tab.title)).tag(tab)
+            NeoPopUpPicker(
+                options: model.analysisTabs.visible.map { ($0.localizedTitle, $0) },
+                selection: Binding(get: { model.analysisTab }, set: { model.analysisTab = $0 }),
+                accessibilityLabel: NSLocalizedString("Statistics", comment: "Statistics tabs"),
+                contextMenu: {
+                    let menu = NSMenu()
+                    menu.autoenablesItems = false
+                    menu.addAnalysisTabMoveItems(model: model, moving: model.analysisTab)
+                    menu.addAnalysisTabItems(model: model)
+                    return menu
                 }
-            }
-            .pickerStyle(.menu)
-            .labelsHidden()
-            .fixedSize()
+            )
             .frame(maxWidth: .infinity, alignment: .leading)
-            .contextMenu { AnalysisTabsMenuItems(model: model, moving: model.analysisTab) }
         }
-        .neoControlSize(base: .small)
         .padding(.horizontal, StatsListMetrics.inset)
         .padding(.vertical, 6)
         .frame(minWidth: 0, maxWidth: .infinity)
     }
 }
 
-/// Which tabs show, for the pane's SwiftUI menus (its headers and empty space) and View > Statistics Tabs; the
-/// pop-up's menu also moves its tab.
+/// Which tabs show, for the pane's SwiftUI menus (its headers and empty space) and View > Statistics Tabs.
 struct AnalysisTabsMenuItems: View {
     let model: NeodiskViewModel
-    var moving: AnalysisTab?
 
     var body: some View {
         let layout = model.analysisTabs
-        if let moving, let index = layout.visible.firstIndex(of: moving) {
-            Button("Move Left") { model.moveAnalysisTab(moving, to: index - 1) }
-                .disabled(index == 0)
-            Button("Move Right") { model.moveAnalysisTab(moving, to: index + 1) }
-                .disabled(index == layout.visible.count - 1)
-            Divider()
-        }
         ForEach(layout.order) { tab in
             Toggle(LocalizedStringKey(tab.title), isOn: Binding(
                 get: { !layout.isHidden(tab) },
@@ -81,7 +74,24 @@ extension NeodiskViewModel {
 }
 
 extension NSMenu {
-    /// AppKit's copy of AnalysisTabsMenuItems, for menus AppKit builds: the control's and the lists' empty space.
+    /// Move Left and Move Right for a shown tab, then a separator.
+    @MainActor func addAnalysisTabMoveItems(model: NeodiskViewModel, moving tab: AnalysisTab) {
+        let visible = model.analysisTabs.visible
+        guard let index = visible.firstIndex(of: tab) else { return }
+        let left = ClosureMenuItem(title: NSLocalizedString("Move Left", comment: "Statistics tab menu")) {
+            model.moveAnalysisTab(tab, to: index - 1)
+        }
+        left.isEnabled = index > 0
+        addItem(left)
+        let right = ClosureMenuItem(title: NSLocalizedString("Move Right", comment: "Statistics tab menu")) {
+            model.moveAnalysisTab(tab, to: index + 1)
+        }
+        right.isEnabled = index < visible.count - 1
+        addItem(right)
+        addItem(.separator())
+    }
+
+    /// AppKit's copy of AnalysisTabsMenuItems, for menus AppKit builds: the controls' and the lists' empty space.
     @MainActor func addAnalysisTabItems(model: NeodiskViewModel) {
         let layout = model.analysisTabs
         for tab in layout.order {
@@ -131,11 +141,8 @@ private struct AnalysisSegmentedControl: NSViewRepresentable {
         control.onPick = { [weak coordinator] index in coordinator?.pick(index) }
         control.onMove = { [weak coordinator] from, to in coordinator?.move(from: from, to: to) }
 
-        let size = NSControl.ControlSize(context.environment.controlSize)
-        if control.controlSize != size {
-            control.controlSize = size
-            control.font = .systemFont(ofSize: NSFont.systemFontSize(for: size))
-        }
+        // Titles follow the workspace text like every label beside them; the control size only gives them room.
+        control.applyNeoText(base: .small, scale: context.environment.neoTextScale)
         let tabs = model.analysisTabs.visible
         if coordinator.tabs != tabs {
             coordinator.tabs = tabs
@@ -176,17 +183,7 @@ private struct AnalysisSegmentedControl: NSViewRepresentable {
             menu.removeAllItems()
             guard let model else { return }
             if let index = control?.menuSegment, tabs.indices.contains(index) {
-                let left = ClosureMenuItem(title: NSLocalizedString("Move Left", comment: "Statistics tab menu")) {
-                    [weak self] in self?.move(from: index, to: index - 1)
-                }
-                left.isEnabled = index > 0
-                menu.addItem(left)
-                let right = ClosureMenuItem(title: NSLocalizedString("Move Right", comment: "Statistics tab menu")) {
-                    [weak self] in self?.move(from: index, to: index + 1)
-                }
-                right.isEnabled = index < tabs.count - 1
-                menu.addItem(right)
-                menu.addItem(.separator())
+                menu.addAnalysisTabMoveItems(model: model, moving: tabs[index])
             }
             menu.addAnalysisTabItems(model: model)
         }
@@ -286,17 +283,6 @@ final class TabSegmentedControl: NSSegmentedControl {
             let end = start + weight / total * bounds.width
             defer { start = end }
             return start...end
-        }
-    }
-}
-
-private extension NSControl.ControlSize {
-    init(_ size: ControlSize) {
-        switch size {
-        case .mini: self = .mini
-        case .small: self = .small
-        case .large, .extraLarge: self = .large
-        default: self = .regular
         }
     }
 }

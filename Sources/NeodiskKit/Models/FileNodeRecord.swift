@@ -14,10 +14,11 @@ public struct FileNodeRecord: Identifiable, Sendable {
     /// `lastModified` as seconds since the reference date; NaN for nil.
     private let modifiedSeconds: Double
     /// A filesystem identity's device and inode (`Flags.hasDeviceInode`).
-    private let device: UInt64
     private let inode: UInt64
     private let fileCount: UInt32
     private let links: UInt32
+    /// Device ids nearly always fit 32 bits, which keeps the stride at 96; wider ones go in `extras`.
+    private let device: UInt32
     private let flags: Flags
     private let extras: Extras?
 
@@ -38,6 +39,7 @@ public struct FileNodeRecord: Identifiable, Sendable {
     private final class Extras: Sendable {
         let path: String?
         let resourceIdentifier: Data?
+        let wideDevice: UInt64?
         let cloneInfo: CloneInfo?
         let cloudOnlyLogicalSize: Int64
         let summarizedClones: SummarizedClones?
@@ -45,12 +47,14 @@ public struct FileNodeRecord: Identifiable, Sendable {
         init(
             path: String?,
             resourceIdentifier: Data?,
+            wideDevice: UInt64?,
             cloneInfo: CloneInfo?,
             cloudOnlyLogicalSize: Int64,
             summarizedClones: SummarizedClones?
         ) {
             self.path = path
             self.resourceIdentifier = resourceIdentifier
+            self.wideDevice = wideDevice
             self.cloneInfo = cloneInfo
             self.cloudOnlyLogicalSize = cloudOnlyLogicalSize
             self.summarizedClones = summarizedClones
@@ -67,7 +71,7 @@ public struct FileNodeRecord: Identifiable, Sendable {
     }
     public var fileIdentity: FileIdentity? {
         if flags.contains(.hasDeviceInode) {
-            return .fileSystem(device: device, inode: inode)
+            return .fileSystem(device: extras?.wideDevice ?? UInt64(device), inode: inode)
         }
         return extras?.resourceIdentifier.map { .resourceIdentifier($0) }
     }
@@ -193,10 +197,12 @@ public struct FileNodeRecord: Identifiable, Sendable {
         if isAutoSummarized { flags.insert(.autoSummarized) }
         if isDataless { flags.insert(.dataless) }
         var resourceIdentifier: Data?
+        var wideDevice: UInt64?
         switch fileIdentity {
         case .fileSystem(let device, let inode):
             flags.insert(.hasDeviceInode)
-            self.device = device
+            self.device = UInt32(truncatingIfNeeded: device)
+            wideDevice = device > UInt32.max ? device : nil
             self.inode = inode
         case .resourceIdentifier(let data):
             resourceIdentifier = data
@@ -209,11 +215,12 @@ public struct FileNodeRecord: Identifiable, Sendable {
         self.flags = flags
 
         let pathOverride = path == id ? nil : path
-        if pathOverride != nil || resourceIdentifier != nil || cloneInfo != nil || cloudOnlyLogicalSize != 0
+        if pathOverride != nil || resourceIdentifier != nil || wideDevice != nil || cloneInfo != nil || cloudOnlyLogicalSize != 0
             || summarizedClones != nil {
             extras = Extras(
                 path: pathOverride,
                 resourceIdentifier: resourceIdentifier,
+                wideDevice: wideDevice,
                 cloneInfo: cloneInfo,
                 cloudOnlyLogicalSize: cloudOnlyLogicalSize,
                 summarizedClones: summarizedClones

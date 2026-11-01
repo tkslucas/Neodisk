@@ -9,6 +9,8 @@ import NeodiskAppModel
 @Observable
 final class AgeStatsModel {
     private(set) var catalog: AgeCatalog = .empty
+    /// Whether `catalog` is a finished build rather than the empty placeholder, so an empty one can say so.
+    private(set) var isCatalogBuilt = false
 
     /// Every countable node modified in that bucket's period, largest first.
     let drill: StatsDrillInList<AgeBucket>
@@ -34,6 +36,7 @@ final class AgeStatsModel {
     func reset() {
         catalogBuildTask?.cancel()
         catalog = .empty
+        isCatalogBuilt = false
         loadedSnapshotID = nil
         rebuildThrottle.reset()
     }
@@ -47,6 +50,7 @@ final class AgeStatsModel {
         loadedSnapshotID = nil
         if snapshot == nil {
             catalog = .empty
+            isCatalogBuilt = false
             rebuildThrottle.reset()
         }
     }
@@ -76,6 +80,7 @@ final class AgeStatsModel {
             guard !Task.isCancelled, let self else { return }
             self.rebuildThrottle.noteBuildDuration(buildDuration)
             self.catalog = catalog
+            self.isCatalogBuilt = true
         }
     }
 

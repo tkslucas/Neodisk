@@ -239,6 +239,12 @@ struct OutlineTreeTable: NSViewRepresentable {
             rows.count
         }
 
+        /// Typing a name selects the next row that starts with it, as in Finder's lists.
+        func tableView(_ tableView: NSTableView, typeSelectStringFor tableColumn: NSTableColumn?, row: Int) -> String? {
+            guard row < rows.count else { return nil }
+            return rows[row].node.name
+        }
+
         func tableView(
             _ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int
         ) -> NSView? {
@@ -280,7 +286,7 @@ struct OutlineTreeTable: NSViewRepresentable {
             _ tableView: NSTableView, draggingSession session: NSDraggingSession,
             willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet
         ) {
-            NodeDragSource.sessionDidBegin(model: model)
+            NodeDragSource.tableSessionDidBegin(session, in: tableView, at: screenPoint, model: model)
         }
 
         func tableView(
@@ -533,6 +539,13 @@ final class OutlineNSTableView: NSTableView {
     var clickTrackingEnded: () -> Void = {}
     /// Select All picks exactly this list's rows, as in Finder, though ⌘A arrives as a ⌘ key.
     private(set) var isSelectingAll = false
+
+    /// Esc: true when the list handled it (a statistics drill-in goes back).
+    var cancelRequested: () -> Bool = { false }
+
+    override func cancelOperation(_ sender: Any?) {
+        if !cancelRequested() { super.cancelOperation(sender) }
+    }
 
     override func selectAll(_ sender: Any?) {
         isSelectingAll = true

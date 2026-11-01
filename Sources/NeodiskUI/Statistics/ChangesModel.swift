@@ -113,10 +113,10 @@ final class ChangesModel {
         comparisonDate = nil
     }
 
-    /// A loaded list now compares against the wrong generation; the pane recomputes only if on screen.
-    func snapshotWasRotated(for target: ScanTarget) {
-        guard coordinator.snapshot?.target.id == target.id,
-              loadedSnapshotID != nil else { return }
+    /// The snapshot files moved under the list (or under a load that found the save in flight); the pane
+    /// recomputes only if on screen.
+    func snapshotWasSaved(for target: ScanTarget) {
+        guard coordinator.snapshot?.target.id == target.id else { return }
         loadTask?.cancel()
         loadTask = nil
         loadGeneration += 1

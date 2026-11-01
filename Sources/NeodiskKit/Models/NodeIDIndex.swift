@@ -240,10 +240,14 @@ nonisolated struct NodeIDIndex: Sendable {
 
     /// Returns the per-node hashes so storage keeps them, or nil when two nodes share an ID.
     static func building(from nodes: [FileNodeRecord]) -> (index: NodeIDIndex, hashes: [UInt64])? {
+        building(from: nodes, hashes: parallelHashes(of: nodes))
+    }
+
+    /// `hashes[i]` must be `FNV1a.hash(nodes[i].id)`, as a decode that hashed while building the ids has them.
+    static func building(from nodes: [FileNodeRecord], hashes: [UInt64]) -> (index: NodeIDIndex, hashes: [UInt64])? {
         let nodeCount = nodes.count
         guard nodeCount > 0 else { return (NodeIDIndex(), []) }
-
-        let hashes = parallelHashes(of: nodes)
+        precondition(hashes.count == nodeCount)
         var shardCounts = [Int](repeating: 0, count: shardCount)
         for hash in hashes {
             shardCounts[shardIndex(for: hash)] += 1

@@ -110,27 +110,35 @@ nonisolated struct VolumeBarData: Equatable, Sendable {
     }
 }
 
+/// A capacity bar's hover bubble, in window coordinates. The sidebar's tooltip layer draws it: inside the List
+/// cell the row would clip it.
+struct VolumeBarBubble: Equatable {
+    /// The row's target, so a late contract from one bar never hides another's bubble.
+    let ownerID: String
+    let label: String
+    let size: Int64
+    /// Center of the hovered stretch.
+    let midX: CGFloat
+    let barFrame: CGRect
+    var isExpanded: Bool
+}
+
 struct VolumeCapacityBar: View {
     @Environment(\.neoTextScale) private var textScale
 
     /// Sentinel hover ID for the empty (free-space) track after the
     /// segments.
     private static let freeTrackID = "free-track"
-    /// Gap between the tooltip's tail tip and the top of the bar.
-    private static let tooltipGap: CGFloat = 6
 
     let data: VolumeBarData
+    let ownerID: String
+    var onBubble: (VolumeBarBubble) -> Void = { _ in }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// The segment (or free track) the pointer is over; drives the bubble's
-    /// expanded/contracted state.
+    /// The segment (or free track) the pointer is over.
     @State private var hoveredSegmentID: String?
-    /// The segment the bubble describes. Outlives `hoveredSegmentID` so the
-    /// contract animation keeps its content and place instead of vanishing.
-    @State private var shownSegmentID: String?
-    /// Measured bubble size; the tooltip stays invisible until the first
-    /// measurement lands so it never flashes at an unclamped position.
-    @State private var tooltipSize: CGSize = .zero
+    /// The last bubble reported. Outlives the hover so the contract animation keeps its content and place.
+    @State private var bubble: VolumeBarBubble?
     /// Pending delayed unhover; sliding across adjacent segments cancels it
     /// so the bubble never contracts and re-expands mid-bar.
     @State private var unhoverTask: Task<Void, Never>?
@@ -147,7 +155,7 @@ struct VolumeCapacityBar: View {
                             }
                         }
                         .frame(width: geometry.size.width * segment.fraction)
-                        .onHover { hover(segment.id, isHovering: $0) }
+                        .onHover { hover(segment.id, isHovering: $0, bar: geometry.frame(in: .global)) }
                 }
                 // The empty track stands for free space; hover-sensitive so
                 // it can answer with the available capacity.
@@ -155,106 +163,114 @@ struct VolumeCapacityBar: View {
                     .fill(Color.clear)
                     .frame(maxWidth: .infinity)
                     .contentShape(Rectangle())
-                    .onHover { hover(Self.freeTrackID, isHovering: $0) }
+                    .onHover { hover(Self.freeTrackID, isHovering: $0, bar: geometry.frame(in: .global)) }
             }
             .frame(maxHeight: .infinity)
             .background(Color.primary.opacity(0.12))
             .clipShape(Capsule())
-            .overlay(alignment: .topLeading) {
-                // Mounted through the whole contract animation; only scale and opacity animate, so it always
-                // plays in place.
-                if let info = shownInfo(barWidth: geometry.size.width) {
-                    tooltip(
-                        info: info,
-                        barWidth: geometry.size.width,
-                        isExpanded: hoveredSegmentID != nil
-                    )
-                }
-            }
         }
         // Segments are the information here — a hairline bar next to
         // scaled text hides the small ones entirely.
         .frame(height: (5 * textScale).rounded())
-        .onPreferenceChange(VolumeBarTooltipSizeKey.self) { tooltipSize = $0 }
+        .onDisappear { contract(animated: false) }
     }
 
-    /// Leaving contracts after a grace period, so hopping segments (enter may arrive after exit) repositions
-    /// the bubble instead of replaying the cycle. Only the expanded flip animates.
-    private func hover(_ id: String, isHovering: Bool) {
+    /// Leaving contracts after a grace period, so hopping segments (enter may arrive after exit) moves the
+    /// bubble instead of replaying the cycle. Only the expand and contract animate.
+    private func hover(_ id: String, isHovering: Bool, bar: CGRect) {
         if isHovering {
             unhoverTask?.cancel()
             unhoverTask = nil
-            shownSegmentID = id
-            if hoveredSegmentID == nil {
-                withAnimation(reduceMotion ? .easeOut(duration: 0.1) : .spring(duration: 0.28)) {
-                    hoveredSegmentID = id
-                }
+            hoveredSegmentID = id
+            guard let next = bubble(for: id, bar: bar) else {
+                contract(animated: true)
+                return
+            }
+            if bubble?.isExpanded == true {
+                report(next)
             } else {
-                hoveredSegmentID = id
+                withAnimation(reduceMotion ? .easeOut(duration: 0.1) : .spring(duration: 0.28)) { report(next) }
             }
         } else if hoveredSegmentID == id {
             unhoverTask?.cancel()
             unhoverTask = Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(70))
                 guard !Task.isCancelled else { return }
-                withAnimation(.easeIn(duration: 0.14)) {
-                    hoveredSegmentID = nil
-                }
+                hoveredSegmentID = nil
+                contract(animated: true)
             }
         }
     }
 
-    // MARK: - Tooltip
-
-    private struct HoverInfo {
-        let label: String
-        let size: Int64
-        /// Center of the hovered stretch, in bar coordinates.
-        let midX: CGFloat
+    private func contract(animated: Bool) {
+        guard var collapsed = bubble, collapsed.isExpanded else { return }
+        collapsed.isExpanded = false
+        if animated {
+            withAnimation(.easeIn(duration: 0.14)) { report(collapsed) }
+        } else {
+            report(collapsed)
+        }
     }
 
-    private func shownInfo(barWidth: CGFloat) -> HoverInfo? {
-        guard let shownSegmentID else { return nil }
-        if shownSegmentID == Self.freeTrackID {
+    private func report(_ next: VolumeBarBubble) {
+        bubble = next
+        onBubble(next)
+    }
+
+    private func bubble(for id: String, bar: CGRect) -> VolumeBarBubble? {
+        func make(_ label: String, _ size: Int64, midX: CGFloat) -> VolumeBarBubble {
+            VolumeBarBubble(
+                ownerID: ownerID, label: label, size: size, midX: bar.minX + midX, barFrame: bar, isExpanded: true
+            )
+        }
+        if id == Self.freeTrackID {
             guard let available = data.availableSize, !data.segments.isEmpty else { return nil }
-            let usedWidth = barWidth * data.segments.reduce(0) { $0 + $1.fraction }
-            return HoverInfo(label: "Available", size: available, midX: (usedWidth + barWidth) / 2)
+            let usedWidth = bar.width * data.segments.reduce(0) { $0 + $1.fraction }
+            return make("Available", available, midX: (usedWidth + bar.width) / 2)
         }
         var x: CGFloat = 0
         for segment in data.segments {
-            let width = barWidth * segment.fraction
-            if segment.id == shownSegmentID {
-                return HoverInfo(label: segment.label, size: segment.size, midX: x + (width / 2))
+            let width = bar.width * segment.fraction
+            if segment.id == id {
+                return make(segment.label, segment.size, midX: x + (width / 2))
             }
             x += width
         }
         return nil
     }
+}
 
-    /// Clamps to the bar's width while the tail keeps pointing at the stretch. Hidden until its size is
-    /// measured; position never animates.
-    private func tooltip(info: HoverInfo, barWidth: CGFloat, isExpanded: Bool) -> some View {
+/// Draws a capacity bar's bubble above the bar, clamped to the bar's width while the tail keeps pointing at
+/// the stretch. Hidden until its size is measured; only scale and opacity animate, so it plays in place.
+struct VolumeBarBubbleOverlay: View {
+    let bubble: VolumeBarBubble
+    /// The overlay's own window-space origin, to bring the bubble's frames into it.
+    let origin: CGPoint
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var tooltipSize: CGSize = .zero
+
+    /// Gap between the tooltip's tail tip and the top of the bar.
+    private static let tooltipGap: CGFloat = 6
+
+    var body: some View {
+        let bar = bubble.barFrame.offsetBy(dx: -origin.x, dy: -origin.y)
+        let midX = bubble.midX - origin.x
         let width = tooltipSize.width
-        let offsetX = min(max(info.midX - (width / 2), 0), max(barWidth - width, 0))
-        let tailX = width > 0 ? info.midX - offsetX : nil
-        let anchor: UnitPoint = if let tailX, width > 0 {
-            UnitPoint(x: tailX / width, y: 1)
-        } else {
-            .bottom
-        }
-        return VolumeBarTooltip(
-            label: info.label,
-            size: info.size,
-            tailX: tailX
-        )
-        .fixedSize()
-        .background(GeometryReader { proxy in
-            Color.clear.preference(key: VolumeBarTooltipSizeKey.self, value: proxy.size)
-        })
-        .scaleEffect(isExpanded || reduceMotion ? 1 : 0.35, anchor: anchor)
-        .opacity(tooltipSize == .zero || !isExpanded ? 0 : 1)
-        .offset(x: offsetX, y: -(tooltipSize.height + Self.tooltipGap))
-        .allowsHitTesting(false)
+        let offsetX = min(max(midX - (width / 2), bar.minX), max(bar.maxX - width, bar.minX))
+        let tailX = width > 0 ? midX - offsetX : nil
+        let anchor: UnitPoint = if let tailX, width > 0 { UnitPoint(x: tailX / width, y: 1) } else { .bottom }
+        VolumeBarTooltip(label: bubble.label, size: bubble.size, tailX: tailX)
+            .fixedSize()
+            .background(GeometryReader { proxy in
+                Color.clear.preference(key: VolumeBarTooltipSizeKey.self, value: proxy.size)
+            })
+            .scaleEffect(bubble.isExpanded || reduceMotion ? 1 : 0.35, anchor: anchor)
+            .opacity(tooltipSize == .zero || !bubble.isExpanded ? 0 : 1)
+            // A bar scrolled to the top keeps its bubble inside the sidebar, over the bar.
+            .offset(x: offsetX, y: max(bar.minY - tooltipSize.height - Self.tooltipGap, 0))
+            .allowsHitTesting(false)
+            .onPreferenceChange(VolumeBarTooltipSizeKey.self) { tooltipSize = $0 }
     }
 }
 

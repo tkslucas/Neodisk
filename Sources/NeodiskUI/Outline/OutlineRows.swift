@@ -5,14 +5,15 @@ import NeodiskKit
 
 // MARK: - Hosted row content
 
-/// The name never truncates: it slides under the pinned trailing cluster and the tree scrolls horizontally.
+/// A long name truncates in the middle, as in Finder, with the full name as its tooltip.
 struct OutlineNameSection: View {
     let model: NeodiskViewModel
     let row: NeodiskViewModel.OutlineRow
     let state: OutlineRowSelectionState
-    /// The bottom table's name column truncates in place (middle ellipsis)
-    /// instead of panning; the left pane keeps the full-width pan behavior.
-    var truncatesName = false
+    /// Where the chevron's slot starts: the left pane's edge inset, or the bottom table's name column edge.
+    var leadingInset = OutlineRowMetrics.nameLeadingInset
+    /// Each level's indentation; the bottom table narrows it for deep trees.
+    var indentPerDepth = OutlineRowMetrics.indentPerDepth
     /// Never read, but makes a text-size change a change to the view's value; otherwise a reused cell keeps
     /// the old font and widths (issue #10).
     var scale = OutlineRowMetrics.scale
@@ -22,13 +23,13 @@ struct OutlineNameSection: View {
         // Slot widths and glyph sizes come from OutlineRowMetrics, which the
         // AppKit table also measures against — see the mirror note there.
         HStack(spacing: OutlineRowMetrics.rowSpacing) {
-            Color.clear
-                .frame(width: CGFloat(row.depth) * OutlineRowMetrics.indentPerDepth, height: 1)
-
             Group {
                 if row.isExpandable {
                     Button {
-                        model.toggleExpansion(row.node.id)
+                        // Option-click opens or closes everything below, as in Finder.
+                        model.toggleExpansion(
+                            row.node.id, recursively: NSApp.currentEvent?.modifierFlags.contains(.option) == true
+                        )
                     } label: {
                         Image(systemName: "chevron.right")
                             .font(.system(
@@ -51,13 +52,20 @@ struct OutlineNameSection: View {
                 .foregroundStyle(iconColor)
                 .frame(width: OutlineRowMetrics.iconSlotWidth)
 
-            Text(row.node.name)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .fixedSize(horizontal: !truncatesName, vertical: false)
-                .foregroundStyle(state.showsAccentSelection
-                    ? AnyShapeStyle(.white)
-                    : AnyShapeStyle(.primary))
+            // The whole name when it fits; otherwise the middle gives way and the tooltip holds the rest.
+            ViewThatFits(in: .horizontal) {
+                Text(row.node.name)
+                    .lineLimit(1)
+                    .fixedSize()
+                Text(row.node.name)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(row.node.name)
+            }
+            .layoutPriority(1)
+            .foregroundStyle(state.showsAccentSelection
+                ? AnyShapeStyle(.white)
+                : AnyShapeStyle(.primary))
 
             if cleanupMark.isItem {
                 CleanupRowGlyph(pointSize: OutlineRowMetrics.fontSize, onAccent: state.showsAccentSelection)
@@ -67,7 +75,7 @@ struct OutlineNameSection: View {
         }
         .font(.system(size: OutlineRowMetrics.fontSize))
         .cleanupDimmed(cleanupMark.isMarked, onAccent: state.showsAccentSelection)
-        .padding(.leading, OutlineRowMetrics.contentInset)
+        .padding(.leading, leadingInset + CGFloat(row.depth) * indentPerDepth)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
 

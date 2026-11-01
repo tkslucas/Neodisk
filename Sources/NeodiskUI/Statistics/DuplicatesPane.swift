@@ -42,8 +42,10 @@ struct DuplicatesPane: View {
             title: Text("Find files with identical content"),
             message: Text(explainerText)
         ) {
-            Button("Find Duplicates") {
+            Button {
                 model.duplicates.startScan()
+            } label: {
+                Text("Find Duplicates").neoFont(11)
             }
             .neoControlSize(base: .small)
             .buttonStyle(.borderedProminent)
@@ -77,12 +79,14 @@ struct DuplicatesPane: View {
                         .lineLimit(1)
                 }
                 Spacer()
-                Button("Cancel") {
+                Button {
                     model.duplicates.cancelScan()
+                } label: {
+                    Text("Cancel").neoFont(11)
                 }
                 .neoControlSize(base: .small)
             }
-            .padding(.horizontal, 10)
+            .padding(.horizontal, StatsListMetrics.inset)
             .padding(.vertical, 7)
 
             Divider()
@@ -124,8 +128,10 @@ struct DuplicatesPane: View {
             symbolSize: 24,
             message: Text(message)
         ) {
-            Button("Try Again") {
+            Button {
                 model.duplicates.startScan()
+            } label: {
+                Text("Try Again").neoFont(11)
             }
             .neoControlSize(base: .small)
         }
@@ -163,7 +169,7 @@ private struct DuplicateResultsView: View {
                 .disabled(!model.duplicates.canScan)
                 .help("Search for duplicates again")
             }
-            .padding(.horizontal, 10)
+            .padding(.horizontal, StatsListMetrics.inset)
             .padding(.vertical, 7)
 
             Divider()
@@ -184,7 +190,7 @@ private struct DuplicateResultsView: View {
                 Text(unreadableText)
                     .neoFont(10)
                     .foregroundStyle(.secondary)
-                    .padding(.horizontal, 10)
+                    .padding(.horizontal, StatsListMetrics.inset)
                     .padding(.vertical, 4)
             }
         }
@@ -256,9 +262,11 @@ private struct DuplicateGroupRow: View {
                 Text(copiesText)
                     .foregroundStyle(.secondary)
                     .neoFont(10)
+                    .lineLimit(1)
             }
+            .layoutPriority(1)
 
-            Spacer(minLength: 8)
+            Spacer(minLength: 0)
 
             // Pure APFS-clone groups share their blocks, so removing a copy
             // frees ~nothing: label them instead of showing a misleading 0.
@@ -309,17 +317,9 @@ private struct DuplicateGroupDetailView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 6) {
-                Button {
-                    model.duplicates.closeGroup()
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .neoFont(10, weight: .semibold)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .help("Back to duplicates")
-
+            DrillInBackButton(help: "Back to duplicates") {
+                model.duplicates.closeGroup()
+            } title: {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(displayName)
                         .neoFont(11, weight: .semibold)
@@ -329,10 +329,9 @@ private struct DuplicateGroupDetailView: View {
                         .neoFont(10)
                         .foregroundStyle(.secondary)
                 }
-                Spacer()
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
+            .padding(.horizontal, StatsListMetrics.inset)
+            .padding(.vertical, 3)
 
             Divider()
 
@@ -340,7 +339,8 @@ private struct DuplicateGroupDetailView: View {
                 model: model,
                 rows: group.nodeIDs.compactMap { model.store?.node(id: $0) },
                 click: .selectsNode { model.select($0) },
-                selection: model.selection
+                selection: model.selection,
+                onCancel: { model.duplicates.closeGroup() }
             ) { node in
                 FileResultRow(
                     node: node,

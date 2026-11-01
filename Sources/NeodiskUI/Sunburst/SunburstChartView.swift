@@ -43,6 +43,8 @@ struct SunburstChartView: View {
     /// handled so unhandled keys continue up the responder chain.
     let onKeyDown: (NSEvent) -> Bool
     let contextMenu: (SunburstSegment) -> NSMenu?
+    /// Right-click off every arc (background, center hole).
+    var emptySpaceMenu: () -> NSMenu? = { nil }
     /// Collected and moving items, drawn over the finished layout; a change never re-lays out.
     var cleanup = SunburstCleanupInput()
     /// The hover line for a node in Cleanup, or nil.
@@ -239,18 +241,21 @@ struct SunburstChartView: View {
                         .allowsHitTesting(false)
                         .transition(.opacity)
                 } else {
+                    // A long name shrinks a little, then truncates, rather than shrinking past legibility; the
+                    // size may shrink further, in a very small hole.
                     VStack(spacing: 1) {
                         Text(verbatim: centerTitle)
                             .neoFont(.headline)
                             .truncationMode(.middle)
+                            .minimumScaleFactor(0.8)
                         Text(verbatim: centerSizeText)
                             .neoFont(.callout)
                             .monospacedDigit()
                             .foregroundStyle(.secondary)
+                            .minimumScaleFactor(0.6)
                     }
                     .lineLimit(1)
-                    .minimumScaleFactor(0.6)
-                    .frame(width: centerAffordanceSize(in: chartFrame) * 0.8)
+                    .frame(width: centerAffordanceSize(in: chartFrame) * 0.9)
                         .position(x: chartFrame.midX, y: chartFrame.midY)
                         .allowsHitTesting(false)
                         .transition(.opacity)
@@ -297,10 +302,8 @@ struct SunburstChartView: View {
             return onKeyDown(event)
         }
         let menuProvider: (CGPoint) -> NSMenu? = { location in
-            guard !chartModel.isLayoutPending, zoomTransition == nil,
-                  let segment = hitTest(at: location, in: baseChartFrame) else {
-                return nil
-            }
+            guard !chartModel.isLayoutPending, zoomTransition == nil else { return nil }
+            guard let segment = hitTest(at: location, in: baseChartFrame) else { return emptySpaceMenu() }
             return contextMenu(segment)
         }
         let helpProvider: (CGPoint) -> String? = { location in

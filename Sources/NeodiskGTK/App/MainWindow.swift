@@ -534,9 +534,7 @@ final class MainWindow {
         let confirmation = TrashConfirmation(nodes: allowed, scannedAt: model.snapshot?.finishedAt)
         var message = confirmation.message
         if let firstRefusal = refusals.first {
-            message += "\n\n" + (refusals.count == 1
-                ? L("1 item can't go to the Trash. %@", firstRefusal)
-                : L("%lld items can't go to the Trash. %@", Int64(refusals.count), firstRefusal))
+            message += "\n\n" + TrashReport.refused(refusals.count, firstReason: firstRefusal)
         }
         confirm(title: confirmation.title, message: message) { [unowned self] in
             Task { await self.move(allowed) }
@@ -580,7 +578,7 @@ final class MainWindow {
         case .moved(let bytes):
             reportMoved(count: 1, bytes: bytes)
         case .alreadyGone:
-            showToast(L("1 item was already gone."))
+            showToast(TrashReport.alreadyGone(1))
         case .failed(let reason):
             showAlert(heading: L("Couldn't Move “%@” to the Trash", node.name), body: reason)
         }
@@ -596,10 +594,7 @@ final class MainWindow {
         }
         let summary = TrashBatchSummary(outcomes)
         if summary.moved > 0 { reportMoved(count: summary.moved, bytes: summary.bytes) }
-        if summary.gone > 0 {
-            showToast(summary.gone == 1
-                ? L("1 item was already gone.") : L("%lld items were already gone.", Int64(summary.gone)))
-        }
+        if summary.gone > 0 { showToast(TrashReport.alreadyGone(summary.gone)) }
         if let reason = summary.firstFailure {
             showAlert(heading: summary.failed == 1
                 ? L("Couldn't Move 1 Item to the Trash")
@@ -615,13 +610,7 @@ final class MainWindow {
         if let previous = movedToast?.toast.pointer {
             adw_toast_dismiss(ptr(previous))
         }
-        let text = switch (count, total) {
-        case (1, 0): L("Moved 1 item to the Trash.")
-        case (1, _): L("Moved 1 item (%@) to the Trash.", NeodiskFormatters.size(total))
-        case (_, 0): L("Moved %lld items to the Trash.", Int64(count))
-        default: L("Moved %lld items (%@) to the Trash.", Int64(count), NeodiskFormatters.size(total))
-        }
-        guard let toast = showToast(text, button: (L("Open Trash"), "win.open-trash")) else { return }
+        guard let toast = showToast(TrashReport.moved(count, bytes: total), button: (L("Open Trash"), "win.open-trash")) else { return }
         movedToast = (toast, count, total)
         connect(toast.pointer, "dismissed") { [weak self, unowned toast] in
             if self?.movedToast?.toast === toast { self?.movedToast = nil }

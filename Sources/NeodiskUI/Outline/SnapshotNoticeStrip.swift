@@ -45,7 +45,7 @@ struct SnapshotNoticeStrip: View {
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
-            .help("Keep the snapshot and dismiss")
+            .neoHelp("Keep the snapshot and dismiss")
         }
         .lineLimit(1)
         .neoFont(11)

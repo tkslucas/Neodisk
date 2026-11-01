@@ -145,7 +145,7 @@ struct CleanupPanel: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .strokeBorder(tint.opacity(highlighted ? 0.8 : 0.4), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
         )
-        .help(cleanup.unavailableReason ?? NSLocalizedString(
+        .neoHelp(cleanup.unavailableReason ?? NSLocalizedString(
             "Drag files and folders here, or press ⌘⌫, to collect them. Nothing moves until you confirm.",
             comment: "Cleanup panel tooltip"
         ))
@@ -251,7 +251,7 @@ struct CleanupToolbarButton: View {
         }
         .overlay(CleanupDropTarget(model: model, isTargeted: $isTargeted))
         .disabled(model.coordinator.snapshot == nil)
-        .help("Show Cleanup in the sidebar. Drop items here to collect them.")
+        .neoHelp("Show Cleanup in the sidebar. Drop items here to collect them.")
         .accessibilityValue(count > 0
             ? Text(AppStrings.plural(count, one: "%@ item", other: "%@ items", count.formatted()))
             : Text(verbatim: ""))
@@ -359,7 +359,7 @@ private struct CleanupItemRow: View {
                 model.reveal(node)
             })
             .contextMenu { menu }
-            .help(isShared ? node.path + "\n" + NSLocalizedString(
+            .neoHelp(isShared ? node.path + "\n" + NSLocalizedString(
                 "Shares its storage with another file (a hard link or clone), so moving it alone frees no space.",
                 comment: "Cleanup item tooltip"
             ) : node.path)
@@ -407,7 +407,7 @@ private struct CleanupItemRow: View {
             }
             .buttonStyle(.borderless)
             .foregroundStyle(.secondary)
-            .help(Text("Remove from Cleanup"))
+            .neoHelp("Remove from Cleanup")
         } else {
             Text(sizeText)
                 .neoFont(11)

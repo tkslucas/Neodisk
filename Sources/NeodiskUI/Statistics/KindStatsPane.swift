@@ -73,7 +73,7 @@ struct KindStatsPane: View {
                         totalAllocatedSize: stat.totalAllocatedSize,
                         totalSize: totalSize
                     )
-                    .help("Show every file of this kind")
+                    .neoHelp("Show every file of this kind")
                     .contextMenu { categoryMenu(for: stat.kind) }
                 }
             }

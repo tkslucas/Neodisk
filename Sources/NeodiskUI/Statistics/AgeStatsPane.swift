@@ -67,7 +67,7 @@ struct AgeStatsPane: View {
                     .onTapGesture {
                         model.ages.openFileList(for: stat)
                     }
-                    .help("Show every file modified in this period")
+                    .neoHelp("Show every file modified in this period")
                 }
                 .environment(\.defaultMinListRowHeight, 20)
             }

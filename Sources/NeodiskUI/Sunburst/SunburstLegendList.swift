@@ -147,7 +147,7 @@ struct SunburstLegendList: View {
         }
 
         if let helpText = helpText(for: row) {
-            rowView.help(helpText)
+            rowView.neoHelp(helpText)
         } else {
             rowView
         }
@@ -219,7 +219,7 @@ struct SunburstLegendList: View {
                 Divider()
                 Button(model.cleanupMenuTitle(for: nodes)) { model.cleanup.toggle(nodes) }
                     .disabled(!model.canToggleCleanup(for: nodes))
-                    .help(model.cleanupMenuHelp(for: nodes) ?? "")
+                    .help(model.cleanupMenuHelp(for: nodes) ?? "") // a menu item: .help becomes its toolTip
             }
         }
     }

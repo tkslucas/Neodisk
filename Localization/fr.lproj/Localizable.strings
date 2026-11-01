@@ -358,7 +358,6 @@
 "Support Neodisk…" = "Soutenir Neodisk…";
 "Support" = "Soutenir";
 "License" = "Licence";
-"Privacy" = "Confidentialité";
 "Version %@" = "Version %@";
 
 /* MARK: - Cloud-only files */
@@ -528,3 +527,15 @@
 "Statistics Tabs" = "Onglets des statistiques";
 "Top %@ of %@ files" = "%@ premiers fichiers sur %@";
 "No files to show" = "Aucun fichier à afficher";
+
+/* Windows app */
+"Commands" = "Commandes";
+"Location" = "Emplacement";
+"Locations" = "Emplacements";
+"Status" = "État";
+"Local Disk" = "Disque local";
+"Drive" = "Lecteur";
+"Show in File Explorer" = "Afficher dans l'Explorateur de fichiers";
+"More" = "Plus";
+"Scan progress" = "Progression de l'analyse";
+"Couldn't Scan" = "Analyse impossible";

@@ -91,13 +91,7 @@ struct SidebarPane: View {
                             .contextMenu { removeMenu(clicked: target) }
                     }
 
-                    Button {
-                        model.chooseFolderAndScan()
-                    } label: {
-                        sidebarActionLabel(title: "Add Folder…", systemImage: "folder.badge.plus")
-                    }
-                    .buttonStyle(.plain)
-                    .help("Scan any folder or volume and keep it in the sidebar")
+                    addFolderRow
                 }
             }
         }
@@ -193,20 +187,25 @@ struct SidebarPane: View {
         model.session.activeSession(forTargetID: targetID) != nil
     }
 
-    /// The sidebar's full-width action button look (Add Folder…).
-    private func sidebarActionLabel(title: String, systemImage: String) -> some View {
-        HStack {
-            Spacer()
-            Label(LocalizedStringKey(title), systemImage: systemImage)
-                .neoFont(13, weight: .medium)
-            Spacer()
+    /// The last Folders row: a quiet item on the rows' icon and name columns, not a button slab inside the list.
+    private var addFolderRow: some View {
+        Button {
+            model.chooseFolderAndScan()
+        } label: {
+            HStack(spacing: (8 * textScale).rounded()) {
+                Image(systemName: "plus.circle")
+                    .neoFont(15)
+                    .frame(width: (22 * textScale).rounded())
+                Text("Add Folder…")
+                    .neoFont(13)
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(.secondary)
+            .padding(.vertical, 1)
+            .contentShape(Rectangle())
         }
-        .padding(.vertical, (7 * textScale).rounded())
-        .background(
-            RoundedRectangle(cornerRadius: 7)
-                .fill(Color.primary.opacity(0.07))
-        )
-        .contentShape(Rectangle())
+        .buttonStyle(.plain)
+        .help("Scan any folder or volume and keep it in the sidebar")
     }
 
     private func row(_ target: ScanTarget, now: Date, bar: VolumeBarData?) -> some View {

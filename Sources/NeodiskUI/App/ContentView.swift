@@ -70,6 +70,7 @@ public struct ContentView: View {
         }
         .toolbar { toolbarContent }
         .navigationTitle(windowTitle)
+        .navigationSubtitle(windowSubtitle)
         .alert(
             "Something went wrong",
             isPresented: Binding(
@@ -106,30 +107,31 @@ public struct ContentView: View {
         }
     }
 
+    /// The location in the title, its size in the subtitle beneath it.
     private var windowTitle: String {
-        Self.windowTitle(
-            targetName: model.coordinator.selectedTarget?.displayName,
+        model.coordinator.selectedTarget?.displayName ?? AppChannel.current.appName
+    }
+
+    private var windowSubtitle: String {
+        Self.windowSubtitle(
             targetKind: model.coordinator.selectedTarget?.kind,
             finderUsedBytes: model.freeSpace.finderUsedBytes,
             scannedTotalBytes: model.coordinator.snapshot?.aggregateStats.totalAllocatedSize
         )
     }
 
-    /// Volume scans title the system's "used" figure so the window agrees with Finder and the legend.
-    nonisolated static func windowTitle(
-        targetName: String?,
+    /// Volume scans state the system's "used" figure so the window agrees with Finder and the legend.
+    nonisolated static func windowSubtitle(
         targetKind: ScanTargetKind?,
         finderUsedBytes: Int64?,
         scannedTotalBytes: Int64?
     ) -> String {
-        guard let targetName else { return AppChannel.current.appName }
         let total: Int64? = if targetKind == .volume, let finderUsedBytes {
             finderUsedBytes
         } else {
             scannedTotalBytes
         }
-        guard let total else { return targetName }
-        return "\(targetName) (\(NeodiskFormatters.size(total)))"
+        return total.map(NeodiskFormatters.size) ?? ""
     }
 
     @ToolbarContentBuilder

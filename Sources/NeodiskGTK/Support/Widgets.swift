@@ -104,6 +104,17 @@ enum Widgets {
         }
     }
 
+    /// The first widget of `type` under `root`, depth first.
+    static func firstDescendant(of root: GPtr, ofType type: GType) -> GPtr? {
+        var child = gtk_widget_get_first_child(ptr(root))
+        while let current = child {
+            if g_type_check_instance_is_a(ptr(raw(current)), type) != 0 { return raw(current) }
+            if let found = firstDescendant(of: raw(current)!, ofType: type) { return found }
+            child = gtk_widget_get_next_sibling(current)
+        }
+        return nil
+    }
+
     /// Removes a list box's rows. Not `gtk_list_box_remove_all`: it removes every child, and a row menu's popover
     /// parented to the list isn't a row, so it would loop on it forever.
     static func removeAllRows(of list: GPtr) {

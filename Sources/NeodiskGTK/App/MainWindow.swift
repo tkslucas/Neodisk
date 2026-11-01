@@ -612,6 +612,12 @@ final class MainWindow {
         adw_alert_dialog_set_default_response(ptr(dialog), "close")
         adw_alert_dialog_set_close_response(ptr(dialog), "close")
         adw_dialog_present(ptr(dialog), ptr(window))
+        // libadwaita 1.5 focuses the default response only when another response would take focus first, so a
+        // lone OK starts on the scrollable message instead and Return does nothing. The buttons exist once the
+        // dialog is presented, and it focuses this one as it opens.
+        if let button = Widgets.firstDescendant(of: dialog, ofType: gtk_button_get_type()) {
+            adw_dialog_set_focus(ptr(dialog), ptr(button))
+        }
     }
 
     private func chooseFolder() {

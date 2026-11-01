@@ -334,13 +334,13 @@ struct SidebarPane: View {
             guard let sidecar = await model.session.loadKindStatsSidecar(forTargetID: target.id) else {
                 continue
             }
-            let url = target.url
             let scannedBytes = info.totalAllocatedSize
             let isVolume = target.kind == .volume
+            let space = spaceByPath[target.id]
             bars[target.id] = await Task.detached(priority: .utility) {
                 isVolume
                     ? VolumeBarData.make(
-                        space: VolumeSpaceInfo.load(for: url),
+                        space: space,
                         sidecar: sidecar,
                         scannedBytes: scannedBytes,
                         palette: palette

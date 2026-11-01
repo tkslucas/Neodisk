@@ -117,7 +117,7 @@ final class NeodiskViewModel {
         get { layout.treemapStyle }
         set { layout.treemapStyle = newValue }
     }
-    var showsStatusBar = true
+    var showsStatusBar = false
     /// The main window is on screen; menu commands that act on it disable while it's closed.
     var isWindowOpen = false
     /// Mirror of the bottom table's persisted header sort, synced by

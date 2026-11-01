@@ -179,6 +179,13 @@ struct OutlineSearchResultsList: View {
     let model: NeodiskViewModel
     let results: SearchModel.Results
 
+    private var footerText: String {
+        String(
+            format: NSLocalizedString("Top %@ of %@ matches — refine to narrow", comment: "Search results footer"),
+            results.ids.count.formatted(), results.totalMatches.formatted()
+        )
+    }
+
     var body: some View {
         if results.ids.isEmpty {
             Spacer()
@@ -195,7 +202,8 @@ struct OutlineSearchResultsList: View {
                 rows: results.ids.compactMap { model.store?.node(id: $0) },
                 click: .selectsNode { model.select($0) },
                 selection: model.selection,
-                keepsLeaderInView: true
+                keepsLeaderInView: true,
+                footer: results.ids.count < results.totalMatches ? footerText : nil
             ) { node in
                 FileResultRow(
                     node: node,
@@ -203,15 +211,6 @@ struct OutlineSearchResultsList: View {
                     includeCloudOnly: model.showsCloudOnlyFiles,
                     cleanup: model.cleanup
                 )
-            }
-
-            if results.ids.count < results.totalMatches {
-                Divider()
-                Text("Top \(results.ids.count.formatted()) of \(results.totalMatches.formatted()) matches — refine to narrow")
-                    .neoFont(10)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
             }
         }
     }

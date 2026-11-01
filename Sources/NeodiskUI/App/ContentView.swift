@@ -163,8 +163,12 @@ public struct ContentView: View {
         ToolbarItem(placement: .principal) {
             vizModePicker
         }
-        // Only scans with cloud-only files have anything for it to weigh.
+        // Only scans with cloud-only files have anything for it to weigh. A filter, not a view: on macOS 26 a
+        // spacer keeps it out of the picker's glass capsule.
         if model.snapshotHasCloudItems {
+            if #available(macOS 26.0, *) {
+                ToolbarSpacer(.fixed, placement: .principal)
+            }
             ToolbarItem(placement: .principal) {
                 cloudOnlyToggle
             }
@@ -286,6 +290,27 @@ private struct WorkspaceView: View {
                 workspacePanes(metrics: metrics)
             }
 
+            bottomStrips
+                // Without the status bar under them, the last strip meets the window's rounded bottom edge.
+                .padding(.bottom, model.showsStatusBar || !hasBottomStrip ? 0 : 5)
+
+            if model.showsStatusBar {
+                Divider()
+                StatusBar(model: model)
+                    .contextMenu { WorkspaceLayoutMenuItems(model: model) }
+            }
+        }
+        // The snapshot strip slides in and out instead of jumping the map under the pointer.
+        .animation(.easeInOut(duration: 0.2), value: model.session.snapshotNotice == nil)
+    }
+
+    private var hasBottomStrip: Bool {
+        model.session.snapshotNotice != nil || model.session.supersededScanNotice != nil
+            || model.coordinator.isScanning || model.scanWasStopped || warningCount > 0
+    }
+
+    private var bottomStrips: some View {
+        VStack(spacing: 0) {
             if let notice = model.session.snapshotNotice {
                 VStack(spacing: 0) {
                     Divider()
@@ -314,15 +339,7 @@ private struct WorkspaceView: View {
                 Divider()
                 ScanIssuesStrip(model: model, count: warningCount)
             }
-
-            if model.showsStatusBar {
-                Divider()
-                StatusBar(model: model)
-                    .contextMenu { WorkspaceLayoutMenuItems(model: model) }
-            }
         }
-        // The snapshot strip slides in and out instead of jumping the map under the pointer.
-        .animation(.easeInOut(duration: 0.2), value: model.session.snapshotNotice == nil)
     }
 
     private func paneMetrics(available: CGSize) -> WorkspacePaneMetrics {
@@ -379,7 +396,10 @@ private struct WorkspaceView: View {
                 }
 
                 VStack(spacing: 0) {
-                    TreemapBreadcrumbBar(model: model)
+                    // The sunburst floats its own over the chart's free corner.
+                    if model.vizViewMode != .sunburst {
+                        TreemapBreadcrumbBar(model: model)
+                    }
                     if model.vizViewMode == .sunburst {
                         SunburstPane(model: model)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)

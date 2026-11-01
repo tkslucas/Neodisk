@@ -83,7 +83,7 @@ final class AppPreferences: ObservableObject {
     @AppStorage("showFileListWithTreemap") var showFileListWithTreemap = true
     /// Opts into the bottom table under the sunburst; it is never shown to the chart's left.
     @AppStorage("showFileListBelowSunburst") var showFileListBelowSunburst = false
-    @AppStorage("showStatusBar") var showStatusBar = true
+    @AppStorage("showStatusBar") var showStatusBar = false
     /// The toolbar picker's views, as an ItemLayout string.
     @AppStorage("vizViews") var vizViewsRaw = ""
     /// The bottom outline table's header sort (column + direction). The
@@ -157,7 +157,7 @@ final class AppPreferences: ObservableObject {
         _showFileListBelowSunburst = AppStorage(
             wrappedValue: false, "showFileListBelowSunburst", store: defaults
         )
-        _showStatusBar = AppStorage(wrappedValue: true, "showStatusBar", store: defaults)
+        _showStatusBar = AppStorage(wrappedValue: false, "showStatusBar", store: defaults)
         _vizViewsRaw = AppStorage(wrappedValue: "", "vizViews", store: defaults)
         _outlineSortFieldRaw = AppStorage(
             wrappedValue: OutlineSortField.size.rawValue, "outlineSortField", store: defaults
@@ -342,7 +342,7 @@ final class AppPreferences: ObservableObject {
         outlinePositionRaw = OutlinePosition.bottom.rawValue
         showFileListWithTreemap = true
         showFileListBelowSunburst = false
-        showStatusBar = true
+        showStatusBar = false
         vizViewsRaw = ""
         prepareChangesAfterScan = true
         autoScanDuplicates = false

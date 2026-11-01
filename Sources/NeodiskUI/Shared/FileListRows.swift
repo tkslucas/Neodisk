@@ -116,12 +116,17 @@ struct FileCategoryIcon: View {
     let node: FileNodeRecord
     /// The active palette, so tints follow the colorblind Settings toggle.
     let palette: VizPalette
+    /// The text it sits beside, which it scales with.
+    var fontSize: CGFloat = 11
+
+    /// Its slot's width at 100%.
+    static func size(fontSize: CGFloat) -> CGFloat { fontSize + 5 }
 
     var body: some View {
         Image(systemName: FileKindClassifier.categorySymbol(forID: categoryID))
-            .neoFont(11, weight: .medium)
+            .neoFont(fontSize, weight: .medium)
             .foregroundStyle(iconColor)
-            .frame(width: (16 * textScale).rounded())
+            .frame(width: (Self.size(fontSize: fontSize) * textScale).rounded())
     }
 
     private var categoryID: String {

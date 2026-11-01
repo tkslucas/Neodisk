@@ -94,10 +94,11 @@ import NeodiskAppModel
     @Test func statusBarVisibilityPersists() throws {
         let (model, _, defaults, suite) = try makePreferencesModel()
         defer { removeTestDefaultsSuite(defaults, named: suite) }
-        #expect(model.showsStatusBar)
-        model.setStatusBarShown(false)
+        // Hidden until asked for: the toolbar's subtitle and the scan strip already say what it would.
         #expect(!model.showsStatusBar)
-        #expect(!AppPreferences(defaults: defaults).showStatusBar)
+        model.setStatusBarShown(true)
+        #expect(model.showsStatusBar)
+        #expect(AppPreferences(defaults: defaults).showStatusBar)
     }
 
     @Test func fileListMenuShowsWhereTheListIs() throws {
@@ -200,10 +201,11 @@ private final class DefaultsWrites: NSObject {
 
         let itemMenu = NSMenu()
         itemMenu.addRestoreItems(model: model)
-        #expect(titles(itemMenu.items) == ["Show File List", "Show Status Bar"])
+        // The status bar is hidden by default, so it isn't offered on every item: the layout menus have it.
+        #expect(titles(itemMenu.items) == ["Show File List"])
         for item in itemMenu.items where !item.isSeparatorItem {
             _ = item.target?.perform(item.action, with: item)
         }
-        #expect(model.layout.showsList && model.showsStatusBar)
+        #expect(model.layout.showsList && !model.showsStatusBar)
     }
 }

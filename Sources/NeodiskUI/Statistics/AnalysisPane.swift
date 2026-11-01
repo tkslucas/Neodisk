@@ -140,7 +140,8 @@ struct StatsFileListView: View {
                     click: .selectsNode { model.select($0) },
                     selection: model.selection,
                     keepsLeaderInView: true,
-                    onCancel: onClose
+                    onCancel: onClose,
+                    footer: visibleIDs.count < totalMatches ? footerText : nil
                 ) { node in
                     FileResultRow(
                         node: node,
@@ -150,14 +151,6 @@ struct StatsFileListView: View {
                     )
                 }
 
-                if visibleIDs.count < totalMatches {
-                    Divider()
-                    Text(footerText)
-                        .neoFont(10)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, StatsListMetrics.inset)
-                        .padding(.vertical, 4)
-                }
             }
         }
     }

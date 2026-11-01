@@ -21,7 +21,7 @@
 
 /* MARK: - 欢迎 / 空状态 */
 "Choose a Folder or Disk" = "选择文件夹或磁盘";
-"Start from the sidebar, drop a folder into the window,\nor choose a location manually." = "从边栏开始，将文件夹拖入窗口，\n或手动选择位置。";
+"Pick a location in the sidebar or drop a folder here." = "在边栏中选择位置，或将文件夹拖到这里。";
 "Choose Folder…" = "选择文件夹…";
 "Scan %@" = "扫描 %@";
 

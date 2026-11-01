@@ -21,7 +21,7 @@
 
 /* MARK: - Welcome / empty state */
 "Choose a Folder or Disk" = "Choose a Folder or Disk";
-"Start from the sidebar, drop a folder into the window,\nor choose a location manually." = "Start from the sidebar, drop a folder into the window,\nor choose a location manually.";
+"Pick a location in the sidebar or drop a folder here." = "Pick a location in the sidebar or drop a folder here.";
 "Choose Folder…" = "Choose Folder…";
 "Scan %@" = "Scan %@";
 

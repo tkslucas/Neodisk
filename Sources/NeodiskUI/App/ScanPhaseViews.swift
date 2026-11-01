@@ -13,34 +13,33 @@ struct WelcomeView: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            Image(systemName: "internaldrive.fill")
-                .neoFont(56)
-                .foregroundStyle(.blue)
+            Image(systemName: "internaldrive")
+                .neoFont(48, weight: .light)
+                .foregroundStyle(.secondary)
 
             Text("Choose a Folder or Disk")
                 .neoFont(22, weight: .semibold)
 
-            Text("Start from the sidebar, drop a folder into the window,\nor choose a location manually.")
+            Text("Pick a location in the sidebar or drop a folder here.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
 
+            // The default button ends the row; the menu's Add Folder… keeps ⌘O.
             HStack(spacing: 10) {
-                Button {
-                    model.chooseFolderAndScan()
-                } label: {
-                    Text("Choose Folder…").neoFont(.body)
-                }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut("o")
-
                 if let startupVolume {
                     Button {
                         model.startScan(startupVolume)
                     } label: {
                         Text("Scan \(startupVolume.displayName)").neoFont(.body)
                     }
-                    .buttonStyle(.bordered)
                 }
+
+                Button {
+                    model.chooseFolderAndScan()
+                } label: {
+                    Text("Choose Folder…").neoFont(.body)
+                }
+                .keyboardShortcut(.defaultAction)
             }
             .neoControlSize()
             .padding(.top, 6)

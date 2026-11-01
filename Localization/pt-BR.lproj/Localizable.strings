@@ -22,7 +22,7 @@
 
 /* MARK: - Welcome / empty state */
 "Choose a Folder or Disk" = "Escolha uma Pasta ou Disco";
-"Start from the sidebar, drop a folder into the window,\nor choose a location manually." = "Comece pela barra lateral, arraste uma pasta para a janela\nou escolha um local manualmente.";
+"Pick a location in the sidebar or drop a folder here." = "Escolha um local na barra lateral ou arraste uma pasta para cá.";
 "Choose Folder…" = "Escolher Pasta…";
 "Scan %@" = "Analisar %@";
 

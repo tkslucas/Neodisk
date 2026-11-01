@@ -21,7 +21,7 @@
 
 /* MARK: - Welcome / empty state */
 "Choose a Folder or Disk" = "フォルダまたはディスクを選択";
-"Start from the sidebar, drop a folder into the window,\nor choose a location manually." = "サイドバーから始めるか、ウインドウにフォルダをドロップするか、\n手動で場所を選択してください。";
+"Pick a location in the sidebar or drop a folder here." = "サイドバーで場所を選ぶか、ここにフォルダをドロップしてください。";
 "Choose Folder…" = "フォルダを選択…";
 "Scan %@" = "%@をスキャン";
 

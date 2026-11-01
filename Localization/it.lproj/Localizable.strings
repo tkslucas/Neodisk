@@ -21,7 +21,7 @@
 
 /* MARK: - Welcome / empty state */
 "Choose a Folder or Disk" = "Scegli una cartella o un disco";
-"Start from the sidebar, drop a folder into the window,\nor choose a location manually." = "Inizia dalla barra laterale, trascina una cartella nella finestra\no scegli manualmente una posizione.";
+"Pick a location in the sidebar or drop a folder here." = "Scegli una posizione nella barra laterale o trascina qui una cartella.";
 "Choose Folder…" = "Scegli cartella…";
 "Scan %@" = "Analizza %@";
 

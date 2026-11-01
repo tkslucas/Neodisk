@@ -255,6 +255,7 @@
 "Add Folder…" = "フォルダを追加…";
 "Scan any folder or volume and keep it in the sidebar" = "任意のフォルダやボリュームをスキャンしてサイドバーに保持";
 "Scanned %@" = "スキャン: %@";
+"Couldn't be read" = "読み取れませんでした";
 "Remove from Sidebar" = "サイドバーから削除";
 "Remove %lld Folders from Sidebar" = "%lld個のフォルダをサイドバーから削除";
 

@@ -255,6 +255,7 @@
 "Add Folder…" = "Ordner hinzufügen …";
 "Scan any folder or volume and keep it in the sidebar" = "Scanne beliebige Ordner oder Volumes und behalte sie in der Seitenleiste";
 "Scanned %@" = "%@ gescannt";
+"Couldn't be read" = "Nicht lesbar";
 "Remove from Sidebar" = "Aus Seitenleiste entfernen";
 "Remove %lld Folders from Sidebar" = "%lld Ordner aus Seitenleiste entfernen";
 

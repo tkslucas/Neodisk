@@ -256,6 +256,7 @@
 "Add Folder…" = "Añadir carpeta…";
 "Scan any folder or volume and keep it in the sidebar" = "Analiza cualquier carpeta o volumen y consérvalo en la barra lateral";
 "Scanned %@" = "Analizado %@";
+"Couldn't be read" = "No se pudo leer";
 "Remove from Sidebar" = "Quitar de la barra lateral";
 "Remove %lld Folders from Sidebar" = "Quitar %lld carpetas de la barra lateral";
 

@@ -507,11 +507,6 @@ final class NeodiskViewModel {
 
     /// Showing or hiding Cleanup turns moving to the Trash on or off, as in Settings.
     func setSidebarSection(_ section: SidebarSection, shown: Bool) {
-        if section == .cleanup {
-            preferences?.allowsMovingToTrash = shown
-            cleanup.setEnabled(shown)
-            return
-        }
         updateSidebarSections { $0.setShown(section, shown) }
     }
 

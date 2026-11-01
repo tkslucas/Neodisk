@@ -39,6 +39,8 @@ struct SidebarPane: View {
             if model.isSidebarSectionShown(.cleanup), model.coordinator.snapshot != nil {
                 CleanupPanel(model: model)
                     .layoutPriority(1)
+                    // Its empty drop area answers a right-click like the list's empty space.
+                    .contextMenu { SidebarSectionsMenuItems(model: model) }
             }
         }
     }
@@ -360,8 +362,15 @@ struct SidebarSectionsMenuItems: View {
     let model: NeodiskViewModel
 
     var body: some View {
-        // Local Cloud Files only where there are some.
-        let sections = SidebarSection.allCases.filter { $0 != .cloudFiles || !model.cloudLocations.isEmpty }
+        // A section is offered only where it can show: Local Cloud Files where there are some, Cleanup with a scan
+        // on screen and moving to the Trash allowed.
+        let sections = SidebarSection.allCases.filter { section in
+            switch section {
+            case .cloudFiles: !model.cloudLocations.isEmpty
+            case .cleanup: model.cleanup.isEnabled && model.coordinator.snapshot != nil
+            default: true
+            }
+        }
         ForEach(sections, id: \.self) { section in
             Toggle(LocalizedStringKey(section.titleKey), isOn: Binding(
                 get: { model.isSidebarSectionShown(section) },

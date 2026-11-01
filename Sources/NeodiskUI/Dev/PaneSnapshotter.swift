@@ -45,8 +45,8 @@ enum PaneSnapshotter {
             if let welcomePath {
                 // Taller than the sheet; it sits at the top, so a cut line shows as one.
                 await render(
-                    WelcomeSheet(model: model), size: CGSize(width: 460, height: 820),
-                    scale: 1, dark: dark, to: welcomePath
+                    WelcomeSheet(model: model), size: CGSize(width: 460 * scale, height: 820 * scale),
+                    scale: scale, dark: dark, to: welcomePath
                 )
             }
             if let tabBarPath {
@@ -75,7 +75,7 @@ enum PaneSnapshotter {
         window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         window.alphaValue = 0
         let host = NSHostingView(rootView: view
-            .environment(\.neoTextScale, scale)
+            .neoWorkspaceText(scale: scale)
             .frame(width: size.width, height: size.height, alignment: .topLeading)
             .background(Color(nsColor: .windowBackgroundColor)))
         host.frame = CGRect(origin: .zero, size: size)

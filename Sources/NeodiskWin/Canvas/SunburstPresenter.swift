@@ -507,8 +507,10 @@ final class SunburstPresenter {
 
     /// The largest folder arc on the first ring, to drill into.
     var benchmarkDrillTarget: String? {
-        frame?.segments.first { $0.depth == 0 && !$0.isAggregate && $0.nodeID != nil && $0.parentFolderID != nil }?.nodeID
-            ?? frame?.segments.first { !$0.isAggregate && $0.nodeID != nil }?.nodeID
+        frame?.segments.first { segment in
+            segment.depth == 0 && !segment.isAggregate
+                && segment.nodeID.flatMap { model.store?.node(id: $0)?.isDirectory } == true
+        }?.nodeID
     }
 }
 

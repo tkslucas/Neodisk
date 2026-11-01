@@ -142,7 +142,11 @@ struct WheelDrillLatch {
 /// Windows' "Animation effects" setting (off under reduced motion).
 @MainActor
 var systemAnimationsEnabled: Bool {
-    if ProcessInfo.processInfo.environment["NEODISK_CANVAS_ANIMATIONS"] == "0" { return false }
+    switch ProcessInfo.processInfo.environment["NEODISK_CANVAS_ANIMATIONS"] {
+    case "0": return false
+    case "1": return true
+    default: break
+    }
     var enabled: WindowsBool = true
     guard SystemParametersInfoW(UINT(SPI_GETCLIENTAREAANIMATION), 0, &enabled, 0) else { return true }
     return enabled.boolValue

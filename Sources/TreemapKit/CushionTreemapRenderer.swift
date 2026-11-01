@@ -242,16 +242,6 @@ public enum CushionTreemapRenderer {
         }
     }
 
-    /// The factor a cell's sRGB fill is drawn at, at `point` (view coordinates): the raster's scalar shading,
-    /// for reading the color under a label without touching pixels.
-    public nonisolated static func shade(of surface: CushionSurface, at point: CGPoint) -> Double {
-        let gx = surface.xa + surface.xb * Double(point.x)
-        let gy = surface.ya + surface.yb * Double(point.y)
-        let normalLength = (gx * gx + gy * gy + 1).squareRoot()
-        let dot = (-gx * light.x - gy * light.y + light.z) / normalLength
-        return (ambient + diffuse * max(0, dot)).squareRoot()
-    }
-
     /// Branch-free `UInt32(d)` for [0, 2^31) via the 2^52 mantissa trick; the stdlib conversions carry
     /// per-lane trap checks or generic paths and measured 10x slower.
     private nonisolated static func truncateToU32(_ d: SIMD8<Double>) -> SIMD8<UInt32> {

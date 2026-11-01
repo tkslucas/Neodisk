@@ -68,6 +68,11 @@ final class TreemapNSView: NSView, NSDraggingSource {
         }
 
         contentLayer.addSublayer(imageLayer)
+        // The labels' soft glow, one pass over all of them; each label draws its own tight edge.
+        labelContainerLayer.shadowColor = NSColor.black.cgColor
+        labelContainerLayer.shadowOpacity = Float(TreemapScene.labelGlowShadow.opacity)
+        labelContainerLayer.shadowRadius = TreemapScene.labelGlowShadow.radius
+        labelContainerLayer.shadowOffset = .zero
         contentLayer.addSublayer(labelContainerLayer)
         // Over the labels so a collected item's name dims with it; under hover and selection.
         contentLayer.addSublayer(cleanupWashLayer)
@@ -260,15 +265,10 @@ final class TreemapNSView: NSView, NSDraggingSource {
         let fileFont = NSFont.systemFont(ofSize: fontSize, weight: .medium)
         let headerFont = NSFont.systemFont(ofSize: fontSize, weight: .semibold)
         let backingScale = window?.backingScaleFactor ?? 2
-        // Text contrasts with its own cell, whatever the appearance: white on a soft shadow over dark fills,
-        // near-black without one over light fills.
-        let darkText = NSColor.black.withAlphaComponent(0.85)
         for label in scene.labels {
             guard let layer = Self.labelLayer(
                 for: label,
                 font: label.isHeader ? headerFont : fileFont,
-                textColor: label.isOnDarkFill ? .white : darkText,
-                shadowOpacity: label.isOnDarkFill ? 0.6 : 0,
                 backingScale: backingScale
             ) else { continue }
             labelContainerLayer.addSublayer(layer)
@@ -279,18 +279,17 @@ final class TreemapNSView: NSView, NSDraggingSource {
     static let minUsefulTruncatedCharacters = 4
 
     /// CATextLayer draws nothing once a string overflows its bounds (through macOS 26), so the text is
-    /// pre-ellipsized to the frame.
+    /// pre-ellipsized to the frame. White on every fill and appearance, with the scene's tight dark edge (the
+    /// container adds the glow).
     static func labelLayer(
         for label: TreemapScene.CellLabel,
         font: NSFont,
-        textColor: NSColor,
-        shadowOpacity: Float,
         backingScale: CGFloat
     ) -> CATextLayer? {
         let inset: CGFloat = label.isHeader ? 0 : 4
         let width = max(label.rect.width - 2 * inset, 10)
         let attributes: [NSAttributedString.Key: Any] = [
-            .font: font, .foregroundColor: textColor,
+            .font: font, .foregroundColor: NSColor.white,
         ]
         let fitted = Self.endTruncated(label.text, attributes: attributes, width: width)
         if fitted != label.text, fitted.count - 1 < Self.minUsefulTruncatedCharacters {
@@ -301,8 +300,8 @@ final class TreemapNSView: NSView, NSDraggingSource {
         textLayer.alignmentMode = label.isHeader ? .left : .center
         textLayer.contentsScale = backingScale
         textLayer.shadowColor = NSColor.black.cgColor
-        textLayer.shadowOpacity = shadowOpacity
-        textLayer.shadowRadius = 2
+        textLayer.shadowOpacity = Float(TreemapScene.labelEdgeShadow.opacity)
+        textLayer.shadowRadius = TreemapScene.labelEdgeShadow.radius
         textLayer.shadowOffset = .zero
 
         let height = ceil(font.ascender - font.descender) + 2
@@ -380,8 +379,7 @@ final class TreemapNSView: NSView, NSDraggingSource {
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
-        // Flat fills composite against the window background, and label colors follow the fills: rebuild both
-        // for the new appearance.
+        // Flat fills composite against the window background: rebuild the map for the new appearance.
         labeledSceneViewport = nil
         refreshDisplay(contentsChanged: false)
         controller.appearanceChanged()

@@ -852,18 +852,3 @@ import NeodiskKit
         #expect(catalog.rgb(forKindID: "zzz-unknown") == FileKindCatalog.otherRGB)
     }
 }
-
-/// Label text follows the fill under it, not the appearance.
-@Suite struct TreemapLabelContrastTests {
-    @Test func saturatedAndDeepFillsTakeLightText() {
-        #expect(TreemapScene.isDarkFill(SIMD3(0.37, 0.23, 0.88)))   // deep purple
-        #expect(TreemapScene.isDarkFill(SIMD3(0.31, 0.43, 0.71)))   // mid blue
-        #expect(TreemapScene.isDarkFill(SIMD3(0.13, 0.13, 0.15)))   // near black
-    }
-
-    @Test func paleFillsTakeDarkText() {
-        #expect(!TreemapScene.isDarkFill(SIMD3(0.98, 0.93, 0.55)))  // pale yellow
-        #expect(!TreemapScene.isDarkFill(SIMD3(0.54, 0.91, 0.50)))  // light green
-        #expect(!TreemapScene.isDarkFill(SIMD3(0.95, 0.95, 0.96)))  // near white
-    }
-}

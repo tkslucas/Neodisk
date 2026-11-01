@@ -256,22 +256,22 @@ final class TreemapView: CanvasDelegate {
 
         Snapshot.texture(snapshot, frame.texture.pointer, in: mapped(frame.scene.renderBounds, mapping))
 
-        // Text contrasts with its own cell, whatever the appearance (the scene decides, as on the Mac).
-        let darkText = RGBA(red: 0, green: 0, blue: 0, alpha: 0.85)
+        // White on every fill and appearance, over the scene's tight dark edge and soft glow (as on the Mac).
+        let shadows = [TreemapScene.labelEdgeShadow, TreemapScene.labelGlowShadow].map {
+            GskShadow(
+                color: RGBA(red: 0, green: 0, blue: 0, alpha: Float($0.opacity)).gdk,
+                dx: 0, dy: 0, radius: Float($0.radius)
+            )
+        }
         let isStretched = mapping != .identity
         if !isStretched {
             for label in frame.labels {
                 let rect = label.label.rect
                 let inset: Double = label.label.isHeader ? 0 : 4
                 let origin = CGPoint(x: rect.minX + inset, y: rect.midY - label.size.height / 2)
-                if label.label.isOnDarkFill {
-                    var shadow = GskShadow(color: RGBA(red: 0, green: 0, blue: 0, alpha: 0.6).gdk, dx: 0, dy: 0, radius: 2)
-                    gtk_snapshot_push_shadow(ptr(snapshot), &shadow, 1)
-                    Snapshot.layout(snapshot, label.layout.pointer, at: origin, RGBA.white)
-                    gtk_snapshot_pop(ptr(snapshot))
-                } else {
-                    Snapshot.layout(snapshot, label.layout.pointer, at: origin, darkText)
-                }
+                gtk_snapshot_push_shadow(ptr(snapshot), shadows, gsize(shadows.count))
+                Snapshot.layout(snapshot, label.layout.pointer, at: origin, RGBA.white)
+                gtk_snapshot_pop(ptr(snapshot))
             }
         }
 

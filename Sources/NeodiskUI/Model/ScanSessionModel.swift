@@ -716,6 +716,8 @@ final class ScanSessionModel {
                 } else {
                     // Content-identical rescan: the previous slot still describes the right generation.
                     self?.diff.snapshotWasRestored(for: snapshot.target)
+                    // A removal rewrote the latest in place: a list loaded before the write is the old diff.
+                    if !rotatesPrevious { self?.changes.snapshotWasRotated(for: snapshot.target) }
                 }
                 // Kind stats ride along so the next restore of this
                 // snapshot starts with a colored map.

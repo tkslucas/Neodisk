@@ -1,7 +1,7 @@
 import AppKit
 import Foundation
 import Testing
-import NeodiskKit
+@testable import NeodiskKit
 import NeodiskAppModel
 @testable import NeodiskUI
 
@@ -235,6 +235,44 @@ import NeodiskAppModel
         #expect(saved.treeStore.node(id: environment.path("b.bin")) != nil)
         // The scan saved before stays the latest's baseline: nothing rotated into the previous slot.
         #expect(await environment.cache.loadPreviousSnapshot(for: snapshot.target) == nil)
+    }
+
+    @Test func theChangesListCatchesUpWithAMove() async throws {
+        let environment = try Environment()
+        defer { environment.tearDown() }
+        try environment.write("a.bin", bytes: 10)
+        try environment.write("b.bin", bytes: 10)
+        try await environment.cache.save(try await environment.scan())
+        try environment.write("c.bin", bytes: 20)
+        let snapshot = try await environment.scan()
+        try await environment.cache.save(snapshot)
+        // The diff of these two scans is on disk, as after any scan.
+        _ = await environment.cache.comparison(for: snapshot, entryLimit: ChangesModel.entryLimit)
+        SidebarFolderStore(defaults: environment.defaults).add(snapshot.target)
+        let model = environment.makeModel()
+        try await waitUntil("previous scan indexed") {
+            model.session.cachedScanInfo[snapshot.target.id]?.hasPreviousSnapshot == true
+        }
+        model.coordinator.replaceCurrentSnapshot(snapshot)
+        let moved = try #require(model.store?.node(id: environment.path("a.bin")))
+        model.cleanup.add([moved])
+
+        // The pane reloads the moment the cut tree lands, before its save is written.
+        let (release, releaser) = AsyncStream<Void>.makeStream()
+        await environment.cache.setEncodeGateForTesting { for await _ in release {} }
+        await awaitSnapshotPersist(on: model, of: snapshot.target) {
+            model.cleanup.moveAllToTrash()
+            Task { @MainActor in
+                try await waitUntil("cut on screen") { model.store?.node(id: moved.id) == nil }
+                model.changes.loadIfNeeded()
+                try await waitUntil("list loaded") { model.changes.list != nil }
+                releaser.finish()
+            }
+        }
+        model.changes.loadIfNeeded()
+        try await waitUntil("the move shows as a deletion") {
+            model.changes.list?.deletedEntries.map(\.path).contains(moved.path) == true
+        }
     }
 
     @Test func aSystemErrorMidBatchKeepsThatItemAndMovesTheRest() async throws {

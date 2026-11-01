@@ -22,7 +22,7 @@
 
 /* MARK: - Bienvenida / estado vacío */
 "Choose a Folder or Disk" = "Elige una carpeta o un disco";
-"Start from the sidebar, drop a folder into the window,\nor choose a location manually." = "Empieza desde la barra lateral, arrastra una carpeta a la ventana\no elige una ubicación manualmente.";
+"Pick a location in the sidebar or drop a folder here." = "Elige una ubicación en la barra lateral o arrastra una carpeta aquí.";
 "Choose Folder…" = "Elegir carpeta…";
 "Scan %@" = "Analizar %@";
 

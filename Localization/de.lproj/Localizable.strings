@@ -21,7 +21,7 @@
 
 /* MARK: - Welcome / empty state */
 "Choose a Folder or Disk" = "Ordner oder Datenträger wählen";
-"Start from the sidebar, drop a folder into the window,\nor choose a location manually." = "Beginne in der Seitenleiste, ziehe einen Ordner ins Fenster\noder wähle einen Ort manuell aus.";
+"Pick a location in the sidebar or drop a folder here." = "Wähle einen Ort in der Seitenleiste oder ziehe einen Ordner hierher.";
 "Choose Folder…" = "Ordner wählen …";
 "Scan %@" = "%@ scannen";
 

@@ -212,6 +212,8 @@ public final class ScanEngine: Sendable {
     private nonisolated static func defaultVolumeFileSystemType(for url: URL) -> String? {
         #if os(Linux)
         return LinuxMountTable.fileSystemType(forPath: url.path)
+        #elseif os(Windows)
+        return WindowsVolume.root(for: url.path).flatMap(WindowsVolume.information(root:))?.fileSystemName
         #else
         var fileSystemStats = statfs()
         let result = url.withUnsafeFileSystemRepresentation { path in

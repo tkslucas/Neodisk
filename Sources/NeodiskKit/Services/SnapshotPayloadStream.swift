@@ -46,6 +46,8 @@ nonisolated final class PayloadDecompressor: PayloadByteSource {
     #elseif canImport(CZstd)
     private let context: OpaquePointer
     private var inputPosition = 0
+    #elseif os(Windows)
+    private let decoder: WindowsPayloadCodec.Decoder
     #endif
 
     /// LZFSE doesn't record the decompressed size; payloads compress about
@@ -84,6 +86,13 @@ nonisolated final class PayloadDecompressor: PayloadByteSource {
             self.maximumBytes = maximumBytes
             expectedSizeBound = maximumBytes
         }
+        #elseif os(Windows)
+        decoder = try WindowsPayloadCodec.Decoder(compressed: compressed, maximumBytes: maximumBytes)
+        declaredSize = decoder.declaredSize
+        self.maximumBytes = decoder.declaredSize
+        expectedSizeBound = decoder.declaredSize
+        #else
+        throw ScanSnapshotCacheError.corruptData("payload compression unavailable")
         #endif
     }
 
@@ -157,6 +166,14 @@ nonisolated final class PayloadDecompressor: PayloadByteSource {
             producedCount += output.pos
             return output.pos
         }
+        #elseif os(Windows)
+        let produced = try decoder.read(into: destination, count: count)
+        guard produced <= maximumBytes - producedCount else {
+            throw ScanSnapshotCacheError.corruptData("invalid or oversized compressed payload")
+        }
+        producedCount += produced
+        isFinished = decoder.isFinished
+        return produced
         #else
         throw ScanSnapshotCacheError.corruptData("payload compression unavailable")
         #endif

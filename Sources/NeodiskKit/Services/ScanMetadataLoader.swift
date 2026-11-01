@@ -2,6 +2,8 @@
 import Darwin
 #elseif canImport(Glibc)
 import Glibc
+#elseif os(Windows)
+import WinSDK
 #endif
 import Foundation
 
@@ -232,6 +234,10 @@ nonisolated struct ScanMetadataLoader: Sendable {
         // corelibs-foundation's resource values disagree with lstat (link counts, allocated sizes).
         ScanSyscallTally.recordMetadataLoad()
         return try LinuxStat.metadata(for: url, includeVolumeDetails: includeVolumeDetails)
+        #elseif os(Windows)
+        // Resource values follow reparse points; the handle read matches the bulk reader.
+        ScanSyscallTally.recordMetadataLoad()
+        return try WindowsFileInfo.metadata(for: url, includeVolumeDetails: includeVolumeDetails)
         #else
         let keys = includeVolumeDetails ? Self.rootResourceKeys : Self.scanResourceKeys
         ScanSyscallTally.recordMetadataLoad()
@@ -268,6 +274,9 @@ nonisolated struct ScanMetadataLoader: Sendable {
         #if os(Linux)
         ScanSyscallTally.recordMetadataLoad()
         return try LinuxStat.metadata(for: url)
+        #elseif os(Windows)
+        ScanSyscallTally.recordMetadataLoad()
+        return try WindowsFileInfo.metadata(for: url)
         #else
         ScanSyscallTally.recordMetadataLoad()
         #if DEBUG
@@ -304,6 +313,10 @@ nonisolated struct ScanMetadataLoader: Sendable {
         // Same lstat as the bulk reader (see `metadata(for:)`); the
         // enumerator's prefetched values only stand in if the item vanished.
         if let metadata = try? LinuxStat.metadata(for: url, includeVolumeDetails: includeVolumeDetails) {
+            return metadata
+        }
+        #elseif os(Windows)
+        if let metadata = try? WindowsFileInfo.metadata(for: url, includeVolumeDetails: includeVolumeDetails) {
             return metadata
         }
         #endif
@@ -405,6 +418,14 @@ nonisolated struct ScanMetadataLoader: Sendable {
         for url: URL,
         diagnostics: ScanDiagnosticsContext? = nil
     ) -> (identity: FileIdentity?, linkCount: UInt64) {
+        #if os(Windows)
+        guard let handle = WindowsFileInfo.open(path: url.path, access: DWORD(FILE_READ_ATTRIBUTES)) else {
+            return (nil, 1)
+        }
+        defer { CloseHandle(handle) }
+        guard let info = WindowsFileInfo.HandleInfo(handle) else { return (nil, 1) }
+        return (FileIdentity(device: info.volumeSerial, inode: info.fileID), info.linkCount)
+        #else
         var fileStat = stat()
         #if DEBUG
         let start = diagnostics?.start()
@@ -429,6 +450,7 @@ nonisolated struct ScanMetadataLoader: Sendable {
             ),
             max(UInt64(fileStat.st_nlink), 1)
         )
+        #endif
     }
 
     private nonisolated static func fileIdentity(

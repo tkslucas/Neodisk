@@ -40,8 +40,13 @@ nonisolated enum BulkDirectoryReader {
     /// Never use from two reads at once; workers and `ContextPool` enforce ownership explicitly instead of
     /// relying on tasks staying on one OS thread.
     final class Context: @unchecked Sendable {
+        #if os(Windows)
+        /// Directory-info records carry the full UTF-16 name and fixed fields, about 100 bytes plus the name each.
+        static let bufferSize = 64 * 1024
+        #else
         static let bufferSize = 16 * 1024
-        fileprivate let buffer = UnsafeMutableRawPointer.allocate(
+        #endif
+        let buffer = UnsafeMutableRawPointer.allocate(
             byteCount: bufferSize,
             alignment: 16
         )

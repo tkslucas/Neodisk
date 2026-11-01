@@ -6,6 +6,8 @@ import Foundation
 import Darwin
 #elseif canImport(Glibc)
 import Glibc
+#elseif os(Windows)
+import WinSDK
 #endif
 
 public nonisolated enum ScanSourceProfile: Sendable {
@@ -98,6 +100,28 @@ public nonisolated enum ScanSourceProfile: Sendable {
             return nil
         }
         return flag("queue/rotational") == true || flag("removable") == true
+    }
+    #elseif os(Windows)
+    /// The drive type and the disk's seek penalty: network shares fan out poorly, removable drives, spinning
+    /// disks and FAT/exFAT stay moderate. The device is the volume serial, as in file identities.
+    static func probe(for url: URL) -> (profile: ScanSourceProfile, deviceID: UInt64?) {
+        guard let root = WindowsVolume.root(for: url.path),
+              let volume = WindowsVolume.information(root: root) else {
+            return (.unsupported, nil)
+        }
+        switch Int32(WindowsVolume.driveType(root: root)) {
+        case DRIVE_REMOTE:
+            return (.network, volume.serial)
+        case DRIVE_RAMDISK:
+            return (.localParallel, volume.serial)
+        case DRIVE_FIXED where volume.fileSystemName == "ntfs" || volume.fileSystemName == "refs":
+            let rotational = WindowsVolume.incursSeekPenalty(root: root) == true
+            return (rotational ? .localConservative : .localParallel, volume.serial)
+        case DRIVE_FIXED, DRIVE_REMOVABLE, DRIVE_CDROM:
+            return (.localConservative, volume.serial)
+        default:
+            return (.unsupported, volume.serial)
+        }
     }
     #else
     static func probe(for url: URL) -> (profile: ScanSourceProfile, deviceID: UInt64?) {

@@ -101,9 +101,17 @@ public nonisolated struct DiagnosticLog: Sendable {
     private static let mirrorsToStandardError: Bool = {
         let environment = ProcessInfo.processInfo.environment
         if environment["NEODISK_LOG_STDERR"] == "0" { return false }
-        return Bundle.main.bundleIdentifier == nil || isatty(STDERR_FILENO) != 0
+        return Bundle.main.bundleIdentifier == nil || isStandardErrorTerminal
             || environment["NEODISK_LOG_STDERR"] == "1" || ScanTiming.isEnabled
     }()
+
+    private static var isStandardErrorTerminal: Bool {
+        #if os(Windows)
+        _isatty(2) != 0
+        #else
+        isatty(STDERR_FILENO) != 0
+        #endif
+    }
 
     /// Local time with its UTC offset, `2026-10-09T08:07:09.699-07:00`.
     private static let timestampStyle = Date.ISO8601FormatStyle(includingFractionalSeconds: true, timeZone: .current)

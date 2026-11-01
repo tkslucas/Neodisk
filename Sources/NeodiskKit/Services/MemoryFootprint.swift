@@ -1,10 +1,12 @@
 import Foundation
 #if canImport(Darwin)
 import Darwin
+#elseif os(Windows)
+import WinSDK
 #endif
 
 /// The process's memory as the system charges it: physical footprint on macOS
-/// (Activity Monitor's Memory column), resident set size on Linux.
+/// (Activity Monitor's Memory column), resident set size on Linux, the working set on Windows.
 public nonisolated enum MemoryFootprint {
     public struct Reading: Sendable, Equatable {
         public let current: UInt64
@@ -22,6 +24,11 @@ public nonisolated enum MemoryFootprint {
         }
         guard result == KERN_SUCCESS else { return nil }
         return Reading(current: info.phys_footprint, peak: UInt64(max(info.ledger_phys_footprint_peak, 0)))
+        #elseif os(Windows)
+        var counters = PROCESS_MEMORY_COUNTERS()
+        counters.cb = DWORD(MemoryLayout<PROCESS_MEMORY_COUNTERS>.size)
+        guard K32GetProcessMemoryInfo(GetCurrentProcess(), &counters, counters.cb) else { return nil }
+        return Reading(current: UInt64(counters.WorkingSetSize), peak: UInt64(counters.PeakWorkingSetSize))
         #else
         guard let status = try? String(contentsOfFile: "/proc/self/status", encoding: .utf8) else { return nil }
         func kilobytes(_ key: String) -> UInt64? {

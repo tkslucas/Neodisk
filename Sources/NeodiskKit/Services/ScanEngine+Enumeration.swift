@@ -702,7 +702,8 @@ extension ScanEngine {
     /// Shared by every bulk enumerator so child ids stay byte-identical; a drift would split one node in two.
     /// Callers pass their own id scheme's base; only the join must not vary.
     nonisolated static func nodeChildPath(parentPath: String, childName: String) -> String {
-        parentPath == "/" ? "/" + childName : parentPath + "/" + childName
+        // A root's path already ends in its separator: `/` here, `C:/` on Windows.
+        parentPath.hasSuffix("/") ? parentPath + childName : parentPath + "/" + childName
     }
 
     nonisolated static func includedChildURL(_ childURL: URL, under parentURL: URL, behavior: ScanBehavior) -> Bool {

@@ -70,6 +70,9 @@ public struct TrashSafetyPolicy: Sendable {
         // Every account's home folder, and every mount point and its alias.
         paths += childPaths(of: "/Users")
         paths += childPaths(of: "/Volumes")
+        #elseif os(Windows)
+        // Every account's profile folder.
+        paths += windowsProfilesFolders().flatMap(childPaths(of:))
         #else
         paths += childPaths(of: "/home")
         paths += xdgUserDirectories(homeDirectory: homeDirectory)
@@ -237,6 +240,10 @@ public struct TrashSafetyPolicy: Sendable {
         "Library/Group Containers", "Library/Keychains", "Library/Mobile Documents", "Library/Preferences",
         ".ssh", ".gnupg",
     ]
+    #elseif os(Windows)
+    static var systemPaths: [String] { windowsSystemPaths() }
+    static var systemFoldersWithProtectedChildren: [String] { windowsFoldersWithProtectedChildren() }
+    static var homeFolderNames: [String] { windowsHomeFolderNames }
     #else
     static let systemPaths = [
         "/", "/bin", "/boot", "/dev", "/etc", "/home", "/lib", "/lib32", "/lib64", "/libx32", "/media", "/mnt",
@@ -268,7 +275,10 @@ public struct TrashSafetyPolicy: Sendable {
     }
 
     static func isTrashName(_ component: Substring, inLocalShare: Bool) -> Bool {
-        component == ".Trash" || component == ".Trashes" || component.hasPrefix(".Trash-")
+        #if os(Windows)
+        if isWindowsRecycleBinName(component) { return true }
+        #endif
+        return component == ".Trash" || component == ".Trashes" || component.hasPrefix(".Trash-")
             || (component == "Trash" && inLocalShare)
     }
 
@@ -291,6 +301,8 @@ public struct TrashSafetyPolicy: Sendable {
     private static func mountedVolumePaths() -> [String] {
         #if os(Linux)
         return LinuxMountTable.current().map(\.mountPoint)
+        #elseif os(Windows)
+        return WindowsVolume.logicalDriveRoots()
         #else
         let urls = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: nil, options: []) ?? []
         return urls.map(\.path)
@@ -312,7 +324,7 @@ public struct TrashSafetyPolicy: Sendable {
     }
     #endif
 
-    private static func childPaths(of directory: String) -> [String] {
+    static func childPaths(of directory: String) -> [String] {
         let names = (try? FileManager.default.contentsOfDirectory(atPath: directory)) ?? []
         return names.map { (directory as NSString).appendingPathComponent($0) }
     }
@@ -321,6 +333,9 @@ public struct TrashSafetyPolicy: Sendable {
 
     /// Lexical only: `NSString.standardizingPath` would consult the disk and drop `/private`.
     static func standardized(_ path: String) -> String {
+        #if os(Windows)
+        return windowsStandardized(path)
+        #else
         var components: [Substring] = []
         for component in path.split(separator: "/", omittingEmptySubsequences: true) {
             switch component {
@@ -330,12 +345,17 @@ public struct TrashSafetyPolicy: Sendable {
             }
         }
         return "/" + components.joined(separator: "/")
+        #endif
     }
 
     private static func realPath(_ path: String) -> String? {
+        #if os(Windows)
+        return windowsSystemSpelling(path).flatMap(WindowsPath.resolved)
+        #else
         guard let resolved = realpath(path, nil) else { return nil }
         defer { free(resolved) }
         return String(cString: resolved)
+        #endif
     }
 
     private static func key(_ path: String) -> String {

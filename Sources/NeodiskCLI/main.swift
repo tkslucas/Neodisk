@@ -109,7 +109,11 @@ func parseOptions(_ arguments: [String]) -> CLIOptions? {
 // MARK: - Progress reporting (stderr)
 
 struct ProgressReporter {
+    #if os(Windows)
+    private let isTTY = _isatty(2) != 0
+    #else
     private let isTTY = isatty(STDERR_FILENO) != 0
+    #endif
     private var lastPrintedWidth = 0
     private var lastPrint = ContinuousClock.now
     private var hasPrinted = false

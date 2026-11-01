@@ -35,7 +35,8 @@ The most used ones; the rest live in `Sources/NeodiskUI/Dev/`.
 - `NEODISK_SNAPSHOT_DIR=<dir>`: isolate the snapshot cache from the developer's real one.
 - Headless runs share the `Neodisk` UserDefaults domain with your `swift run` sessions: check
   `defaults read Neodisk <key>` before concluding a feature regressed.
-- The sidebar's material background renders blank in offscreen captures; verify the sidebar by tests and a human look.
+- The sidebar's material background renders blank in offscreen captures: `NEODISK_SIDEBAR_SNAPSHOT=<out.png>`
+  renders the sidebar alone (`NEODISK_SNAPSHOT_APPEARANCE=light` for light mode).
 
 ## Linux
 

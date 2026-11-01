@@ -54,9 +54,8 @@ package struct CleanupPile: Equatable, Sendable {
         return nil
     }
 
-    /// Adds the ids that exist in `store`. A folder replaces the collected items inside it; an item inside a
-    /// collected folder, or inside another id added with it, is already in. Returns the ids actually added.
-    /// O((ids + pile) × depth).
+    /// Adds the ids in `store`, in O((ids + pile) × depth): a folder replaces the collected items inside it, and an
+    /// item inside a collected or added folder is already in. Returns the ids actually added.
     @discardableResult
     package mutating func add(_ ids: [String], in store: FileTreeStore) -> [String] {
         let candidates = ids.filter { collectedItem(containing: $0, in: store) == nil }

@@ -1,4 +1,5 @@
-// The progress bar a sidebar row shows while its location scans in the background, plus its hover bubble.
+// The progress bar a sidebar row shows while its location scans in the background, and the layer that draws the
+// sidebar bars' hover bubbles above the List, where no row clips them.
 
 import SwiftUI
 import NeodiskKit
@@ -23,11 +24,21 @@ struct SidebarScanTooltipData: Equatable {
 /// Kept out of SidebarPane's state: frames change every scroll tick, which would re-run the whole pane
 /// body. Only the tooltip layer observes this.
 @MainActor
-final class SidebarScanTooltipStore: ObservableObject {
+final class SidebarTooltipStore: ObservableObject {
     /// Global frames of visible background-scan bars, keyed by target ID.
     @Published private(set) var barFrames: [String: CGRect] = [:]
     /// The bar currently hovered, if any.
     @Published private(set) var hoveredTargetID: String?
+    /// The capacity bar bubble shown or contracting, if any.
+    @Published private(set) var capacityBubble: VolumeBarBubble?
+
+    /// Called inside the bar's animation, so the layer expands and contracts with it. A late contract from
+    /// another bar is ignored.
+    func setCapacityBubble(_ bubble: VolumeBarBubble) {
+        if !bubble.isExpanded, let current = capacityBubble, current.ownerID != bubble.ownerID { return }
+        guard capacityBubble != bubble else { return }
+        capacityBubble = bubble
+    }
 
     /// Records a bar's global frame, or forgets the bar on nil (its row left
     /// the table). Never animated: the bubble must track scrolling exactly.
@@ -58,7 +69,7 @@ final class SidebarScanTooltipStore: ObservableObject {
 }
 
 /// Bound to the session's progress state so ~10Hz churn re-renders only this bar, never the row or List.
-/// Frame and hover reports go to `SidebarScanTooltipStore` for the same reason.
+/// Frame and hover reports go to `SidebarTooltipStore` for the same reason.
 struct SidebarScanBar: View {
     let targetID: String
     @ObservedObject var progress: ScanProgressState
@@ -95,8 +106,8 @@ struct SidebarScanBar: View {
 
 /// The only observer of the tooltip store. Bar frames arrive in global coordinates (the leaf is hosted in
 /// AppKit's table), so they're converted back into overlay space.
-struct SidebarScanTooltipLayer: View {
-    @ObservedObject var store: SidebarScanTooltipStore
+struct SidebarTooltipLayer: View {
+    @ObservedObject var store: SidebarTooltipStore
     /// Resolves a target's running background scan; nil once it stops.
     let progressFor: (String) -> ScanProgressState?
 
@@ -121,6 +132,11 @@ struct SidebarScanTooltipLayer: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .overlay(alignment: .topLeading) {
+                if let bubble = store.capacityBubble {
+                    VolumeBarBubbleOverlay(bubble: bubble, origin: overlayFrame.origin)
+                }
+            }
         }
         .allowsHitTesting(false)
     }
@@ -153,7 +169,8 @@ struct SidebarScanTooltipOverlay: View {
         .opacity(tooltipSize == .zero || !isHovering ? 0 : 1)
         .offset(
             x: barFrame.midX - (tooltipSize.width / 2),
-            y: barFrame.minY - tooltipSize.height - Self.tooltipGap
+            // A bar scrolled to the top keeps its bubble inside the sidebar, over the bar.
+            y: max(barFrame.minY - tooltipSize.height - Self.tooltipGap, 0)
         )
         .allowsHitTesting(false)
         .onPreferenceChange(VolumeBarTooltipSizeKey.self) { tooltipSize = $0 }

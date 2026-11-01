@@ -37,10 +37,10 @@ package struct WorkspaceLayout: Equatable {
         open(view)
     }
 
-    /// Hiding the current view switches to the first one still shown.
-    package mutating func setViews(_ layout: ItemLayout<VizView>) {
-        views = layout
-        open(layout.shown(view))
+    /// Hiding the current view switches to the first one still shown; the last one shown stays.
+    package mutating func setHidden(_ view: VizView, _ hidden: Bool) {
+        views.setHidden(view, hidden)
+        open(views.shown(self.view))
     }
 
     /// A hidden launch default gives way to the first shown view; nil keeps the last one.

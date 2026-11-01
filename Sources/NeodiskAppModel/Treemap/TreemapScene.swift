@@ -31,6 +31,19 @@ package struct TreemapScene: Sendable {
         package let text: String
         package let rect: CGRect
         package var isHeader = false
+        /// The fill under the text is dark: draw it light (with a shadow), else dark. Read from the cell's own
+        /// color, not the appearance, so a deep purple in light mode or a pale yellow in dark mode stays legible.
+        package var isOnDarkFill = false
+    }
+
+    /// Relative luminance below which white text wins. Above the WCAG crossover (0.18): saturated mid-tones
+    /// read better in white, which also carries a shadow, while pale fills keep dark text.
+    package nonisolated static let labelLightTextLuminance: Float = 0.3
+
+    package nonisolated static func isDarkFill(_ rgb: SIMD3<Float>) -> Bool {
+        func linear(_ c: Float) -> Float { c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4) }
+        let luminance = 0.2126 * linear(rgb.x) + 0.7152 * linear(rgb.y) + 0.0722 * linear(rgb.z)
+        return luminance < labelLightTextLuminance
     }
 
     package let rootID: String
@@ -331,7 +344,8 @@ package struct TreemapScene: Sendable {
                         // The view drops the name if the strip is too narrow for a useful (≥4-character) truncation.
                         if !headerRect.isEmpty {
                             labels.append(CellLabel(
-                                id: node.id, text: node.name, rect: headerRect, isHeader: true
+                                id: node.id, text: node.name, rect: headerRect, isHeader: true,
+                                isOnDarkFill: isDarkFill(rgb)
                             ))
                         }
                     }
@@ -479,13 +493,21 @@ package struct TreemapScene: Sendable {
             if style == .flat, node.isDirectory {
                 if visiblePart.width >= flatFolderLabelMinCellWidth(scale: labelScale),
                    visiblePart.height >= flatFolderLabelMinCellHeight(scale: labelScale) {
-                    labels.append(CellLabel(id: node.id, text: node.name, rect: visiblePart))
+                    labels.append(CellLabel(
+                        id: node.id, text: node.name, rect: visiblePart, isOnDarkFill: isDarkFill(rgb)
+                    ))
                 }
             } else if visiblePart.width >= labelMinCellWidth(scale: labelScale),
                       visiblePart.height >= labelMinCellHeight(scale: labelScale),
                       visiblePart.width * visiblePart.height
                         >= labelMinCellArea(scale: labelScale) {
-                labels.append(CellLabel(id: node.id, text: node.name, rect: visiblePart))
+                // A cushion's shading darkens its fill well away from the light, so test the pixel under the text.
+                let fill = style == .flat ? rgb : rgb * Float(CushionTreemapRenderer.shade(
+                    of: surface, at: CGPoint(x: visiblePart.midX, y: visiblePart.midY)
+                ))
+                labels.append(CellLabel(
+                    id: node.id, text: node.name, rect: visiblePart, isOnDarkFill: isDarkFill(fill)
+                ))
             }
         }
 

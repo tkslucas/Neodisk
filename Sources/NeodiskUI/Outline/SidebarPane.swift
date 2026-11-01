@@ -13,15 +13,17 @@ struct SidebarPane: View {
     @State private var selection: Set<String> = []
     @State private var spaceByPath: [String: VolumeSpaceInfo] = [:]
     @State private var kindBars: [String: VolumeBarData] = [:]
-    /// Frames and hover state for the scan-bar hover bubbles, which the List
+    /// Frames and hover state for the bars' hover bubbles, which the List
     /// overlay renders so table cells cannot clip them. Deliberately `@State`
     /// and not `@StateObject`: the pane owns the store's lifetime but must
     /// not subscribe to its per-scroll-tick churn — only the overlay's
-    /// `SidebarScanTooltipLayer` observes it.
-    @State private var scanTooltips = SidebarScanTooltipStore()
+    /// `SidebarTooltipLayer` observes it.
+    @State private var tooltips = SidebarTooltipStore()
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.neoTextScale) private var textScale
+    /// The window's: removing folders from the sidebar is undoable.
+    @Environment(\.undoManager) private var undoManager
 
     /// Sidebar folders, minus any that duplicate a built-in location.
     private var visibleFolders: [ScanTarget] {
@@ -39,6 +41,8 @@ struct SidebarPane: View {
             if model.isSidebarSectionShown(.cleanup), model.coordinator.snapshot != nil {
                 CleanupPanel(model: model)
                     .layoutPriority(1)
+                    // Its empty drop area answers a right-click like the list's empty space.
+                    .contextMenu { SidebarSectionsMenuItems(model: model) }
             }
         }
     }
@@ -54,14 +58,16 @@ struct SidebarPane: View {
     private func section(
         _ section: SidebarSection, @ViewBuilder content: () -> some View
     ) -> some View {
-        Section(isExpanded: expansion(of: section)) {
+        let isExpanded = expansion(of: section)
+        return Section(isExpanded: isExpanded) {
             content()
         } header: {
-            // Scales with the rows; the system's header font wouldn't.
+            // Scales with the rows; the system's header font wouldn't. The whole header toggles, not just its chevron.
             Text(LocalizedStringKey(section.titleKey))
                 .neoFont(11, weight: .bold)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
+                .onTapGesture { withAnimation { isExpanded.wrappedValue.toggle() } }
                 .contextMenu { SidebarSectionsMenuItems(model: model) }
         }
     }
@@ -88,29 +94,27 @@ struct SidebarPane: View {
                 section(.folders) {
                     ForEach(visibleFolders) { target in
                         row(target, now: now, bar: cloudBar(for: target) ?? kindBars[target.id])
-                            .contextMenu { removeMenu(clicked: target) }
+                            .contextMenu { rowMenu(for: target, removable: true) }
                     }
 
-                    Button {
-                        model.chooseFolderAndScan()
-                    } label: {
-                        sidebarActionLabel(title: "Add Folder…", systemImage: "folder.badge.plus")
-                    }
-                    .buttonStyle(.plain)
-                    .help("Scan any folder or volume and keep it in the sidebar")
+                    addFolderRow
                 }
             }
         }
         .listStyle(.sidebar)
+        // Right-clicking empty space offers the sections, so a hidden one can always come back. Rows keep their own menus.
+        .contextMenu(forSelectionType: String.self) { ids in
+            if ids.isEmpty {
+                SidebarSectionsMenuItems(model: model)
+            }
+        }
         .overlay {
-            SidebarScanTooltipLayer(
-                store: scanTooltips,
+            SidebarTooltipLayer(
+                store: tooltips,
                 progressFor: backgroundScanProgress(forTargetID:)
             )
         }
-        .dropDestination(for: URL.self) { urls, _ in
-            model.addDroppedFolders(urls)
-        }
+        .addLocationDropTarget(model: model)
         .onDeleteCommand {
             removeSelectedFolders()
         }
@@ -135,11 +139,11 @@ struct SidebarPane: View {
                   let targetID = newSelection.first,
                   !modifiers.contains(.command),
                   !modifiers.contains(.shift),
-                  targetID != model.coordinator.selectedTarget?.id,
+                  targetID != model.coordinator.selectedTarget?.id || model.fullDiskAccessGate != nil,
                   let target = allTargets.first(where: { $0.id == targetID }) else {
                 return
             }
-            model.startScan(target)
+            model.startChosenScan(target)
         }
         .onChange(of: model.coordinator.selectedTarget, initial: true) { _, target in
             // Keep the highlighted row in sync with what is being scanned
@@ -181,11 +185,11 @@ struct SidebarPane: View {
     }
 
     private func updateScanBarFrame(targetID: String, frame: CGRect?) {
-        scanTooltips.setFrame(frame, forTargetID: targetID)
+        tooltips.setFrame(frame, forTargetID: targetID)
     }
 
     private func updateScanBarHover(targetID: String, isHovering: Bool) {
-        scanTooltips.setHovering(isHovering, targetID: targetID, reduceMotion: reduceMotion)
+        tooltips.setHovering(isHovering, targetID: targetID, reduceMotion: reduceMotion)
     }
 
     /// True while any scan (foreground or background) runs for this location.
@@ -193,20 +197,25 @@ struct SidebarPane: View {
         model.session.activeSession(forTargetID: targetID) != nil
     }
 
-    /// The sidebar's full-width action button look (Add Folder…).
-    private func sidebarActionLabel(title: String, systemImage: String) -> some View {
-        HStack {
-            Spacer()
-            Label(LocalizedStringKey(title), systemImage: systemImage)
-                .neoFont(13, weight: .medium)
-            Spacer()
+    /// The last Folders row: a quiet item on the rows' icon and name columns, not a button slab inside the list.
+    private var addFolderRow: some View {
+        Button {
+            model.chooseFolderAndScan()
+        } label: {
+            HStack(spacing: (8 * textScale).rounded()) {
+                Image(systemName: "plus.circle")
+                    .neoFont(15)
+                    .frame(width: (22 * textScale).rounded())
+                Text("Add Folder…")
+                    .neoFont(13)
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(.secondary)
+            .padding(.vertical, 1)
+            .contentShape(Rectangle())
         }
-        .padding(.vertical, (7 * textScale).rounded())
-        .background(
-            RoundedRectangle(cornerRadius: 7)
-                .fill(Color.primary.opacity(0.07))
-        )
-        .contentShape(Rectangle())
+        .buttonStyle(.plain)
+        .help("Scan any folder or volume and keep it in the sidebar")
     }
 
     private func row(_ target: ScanTarget, now: Date, bar: VolumeBarData?) -> some View {
@@ -217,68 +226,66 @@ struct SidebarPane: View {
             size: SidebarRowText.size(space: space, scannedBytes: info?.totalAllocatedSize),
             lastScanned: info?.lastScanDate,
             now: now,
-            tooltip: SidebarRowText.tooltip(path: target.id, space: space),
+            isSelected: selection.contains(target.id),
+            usage: SidebarRowText.usage(space: space),
             bar: bar,
             scanProgress: backgroundScanProgress(for: target),
             onScanBarFrameChange: updateScanBarFrame,
-            onScanBarHover: updateScanBarHover
+            onScanBarHover: updateScanBarHover,
+            onCapacityBubble: tooltips.setCapacityBubble
         )
         .tag(target.id)
     }
 
-    /// One row of the Volumes or Local Cloud Files section: not removable, so the menu only reveals it.
+    /// One row of the Volumes or Local Cloud Files section: not removable.
     private func builtInLocationRow(
         _ target: ScanTarget,
         now: Date,
         bar: VolumeBarData?
     ) -> some View {
         row(target, now: now, bar: bar)
-            .contextMenu {
-                Button("Reveal in Finder") {
-                    SystemIntegration.reveal(target.url)
-                }
-                stopScanButton(for: target)
-            }
-    }
-
-    /// A "Stop Scan" item for rows with a running background scan. Foreground
-    /// scans have the scan page's own stop controls, so they are excluded.
-    @ViewBuilder
-    private func stopScanButton(for target: ScanTarget) -> some View {
-        if model.session.activeSessions[target.id] != nil {
-            Divider()
-            Button("Stop Scan") {
-                model.session.stopSession(forTargetID: target.id)
-            }
-        }
+            .contextMenu { rowMenu(for: target, removable: false) }
     }
 
     private var selectedFolderIDs: Set<String> {
         selection.intersection(visibleFolders.map(\.id))
     }
 
+    /// A row's menu: scan it fresh (or stop its background scan), reveal it, and for Folders rows remove it.
     @ViewBuilder
-    private func removeMenu(clicked target: ScanTarget) -> some View {
-        let ids = selectedFolderIDs.contains(target.id) ? selectedFolderIDs : [target.id]
+    private func rowMenu(for target: ScanTarget, removable: Bool) -> some View {
+        if model.session.activeSessions[target.id] != nil, target.id != model.coordinator.selectedTarget?.id {
+            // A background scan; the displayed one has the scan page's own stop control.
+            Button("Stop Scan") {
+                model.session.stopSession(forTargetID: target.id)
+            }
+        } else {
+            Button(model.session.cachedScanInfo[target.id] == nil ? "Scan" : "Rescan") {
+                model.startScan(target, forcesRescan: true)
+            }
+            .disabled(isScanning(target.id))
+        }
+        Divider()
         Button("Reveal in Finder") {
             SystemIntegration.reveal(target.url)
         }
-        stopScanButton(for: target)
-        Divider()
-        // Refuse removal while a scan is in flight — dropping the cache mid-
-        // scan would orphan the session (the model guard backs this). A bulk
-        // remove stays live as long as one selected folder is idle.
-        Button(ids.count > 1 ? "Remove \(ids.count) Folders from Sidebar" : "Remove from Sidebar") {
-            model.removeSidebarFolders(ids: ids)
-            selection.subtract(ids)
+        if removable {
+            let ids = selectedFolderIDs.contains(target.id) ? selectedFolderIDs : [target.id]
+            Divider()
+            // Refuse removal while a scan is in flight — dropping the cache mid-scan would orphan the session (the
+            // model guard backs this). A bulk remove stays live as long as one selected folder is idle.
+            Button(ids.count > 1 ? "Remove \(ids.count) Folders from Sidebar" : "Remove from Sidebar") {
+                model.removeSidebarFolders(ids: ids, undoManager: undoManager)
+                selection.subtract(ids)
+            }
+            .disabled(ids.allSatisfy { isScanning($0) })
         }
-        .disabled(ids.allSatisfy { isScanning($0) })
     }
 
     private func removeSelectedFolders() {
         let ids = selectedFolderIDs
         guard !ids.isEmpty else { return }
-        model.removeSidebarFolders(ids: ids)
+        model.removeSidebarFolders(ids: ids, undoManager: undoManager)
         selection.subtract(ids)
     }
 
@@ -355,8 +362,15 @@ struct SidebarSectionsMenuItems: View {
     let model: NeodiskViewModel
 
     var body: some View {
-        // Local Cloud Files only where there are some.
-        let sections = SidebarSection.allCases.filter { $0 != .cloudFiles || !model.cloudLocations.isEmpty }
+        // A section is offered only where it can show: Local Cloud Files where there are some, Cleanup with a scan
+        // on screen and moving to the Trash allowed.
+        let sections = SidebarSection.allCases.filter { section in
+            switch section {
+            case .cloudFiles: !model.cloudLocations.isEmpty
+            case .cleanup: model.cleanup.isEnabled && model.coordinator.snapshot != nil
+            default: true
+            }
+        }
         ForEach(sections, id: \.self) { section in
             Toggle(LocalizedStringKey(section.titleKey), isOn: Binding(
                 get: { model.isSidebarSectionShown(section) },

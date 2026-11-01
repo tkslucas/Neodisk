@@ -260,17 +260,15 @@ final class TreemapNSView: NSView, NSDraggingSource {
         let fileFont = NSFont.systemFont(ofSize: fontSize, weight: .medium)
         let headerFont = NSFont.systemFont(ofSize: fontSize, weight: .semibold)
         let backingScale = window?.backingScaleFactor ?? 2
-        // Both styles composite over the window background, so light mode
-        // needs dark text (and no shadow); dark mode keeps white-on-shadow.
-        let lightLabels = !isDarkAppearance
-        let textColor: NSColor = lightLabels
-            ? NSColor.black.withAlphaComponent(0.85) : .white
+        // Text contrasts with its own cell, whatever the appearance: white on a soft shadow over dark fills,
+        // near-black without one over light fills.
+        let darkText = NSColor.black.withAlphaComponent(0.85)
         for label in scene.labels {
             guard let layer = Self.labelLayer(
                 for: label,
                 font: label.isHeader ? headerFont : fileFont,
-                textColor: textColor,
-                shadowOpacity: lightLabels ? 0 : 0.9,
+                textColor: label.isOnDarkFill ? .white : darkText,
+                shadowOpacity: label.isOnDarkFill ? 0.6 : 0,
                 backingScale: backingScale
             ) else { continue }
             labelContainerLayer.addSublayer(layer)
@@ -382,8 +380,8 @@ final class TreemapNSView: NSView, NSDraggingSource {
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
-        // Both styles composite against the window background and adapt
-        // their label colors — rebuild both for the new appearance.
+        // Flat fills composite against the window background, and label colors follow the fills: rebuild both
+        // for the new appearance.
         labeledSceneViewport = nil
         refreshDisplay(contentsChanged: false)
         controller.appearanceChanged()

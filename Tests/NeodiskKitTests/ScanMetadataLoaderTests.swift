@@ -3,6 +3,8 @@ import Foundation
 @testable import NeodiskKit
 
 @Suite struct ScanMetadataLoaderTests {
+    // The Windows walk counts each hard link: directory info has no link count (see WindowsFileInfo).
+    #if !os(Windows)
     @Test func testMissingLinkCountMetadataUsesLstatFallback() throws {
         let rootURL = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -21,6 +23,7 @@ import Foundation
         #expect(metadata.linkCount == 2)
         #expect(metadata.fileIdentity != nil)
     }
+    #endif
 
     @Test func testFailedLinkCountFallbackUsesConservativeCount() throws {
         let rootURL = try makeTemporaryDirectory()
@@ -43,8 +46,8 @@ import Foundation
     }
 
     // The injected probes exercise the URLResourceValues path; Linux
-    // reads every item with lstat instead (LinuxStat.metadata).
-    #if !os(Linux)
+    // reads every item with lstat instead (LinuxStat.metadata), Windows through its own handle (WindowsFileInfo).
+    #if !os(Linux) && !os(Windows)
     @Test func testMissingLinkCountOnVolumeWithoutHardLinksSkipsLstatAfterProbe() throws {
         let rootURL = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -91,8 +94,8 @@ import Foundation
     #endif
 
     // The injected probes exercise the URLResourceValues path; Linux
-    // reads every item with lstat instead (LinuxStat.metadata).
-    #if !os(Linux)
+    // reads every item with lstat instead (LinuxStat.metadata), Windows through its own handle (WindowsFileInfo).
+    #if !os(Linux) && !os(Windows)
     @Test func testMissingLinkCountOnHardLinkCapableVolumeStillUsesLstatWithCachedProbe() throws {
         let rootURL = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -142,8 +145,8 @@ import Foundation
     #endif
 
     // The injected probes exercise the URLResourceValues path; Linux
-    // reads every item with lstat instead (LinuxStat.metadata).
-    #if !os(Linux)
+    // reads every item with lstat instead (LinuxStat.metadata), Windows through its own handle (WindowsFileInfo).
+    #if !os(Linux) && !os(Windows)
     @Test func testNoHardLinkProbeWithoutVolumeRootDoesNotCacheWholeRoot() throws {
         let rootWithoutVolumeURL = try makeTemporaryDirectory()
         let rootWithVolumeURL = try makeTemporaryDirectory()

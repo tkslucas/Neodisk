@@ -501,7 +501,6 @@
 "%lld items changed since you collected them and left Cleanup." = "%lld éléments ont changé depuis que vous les avez collectés et ont quitté le Nettoyage.";
 "Reset Tabs" = "Réinitialiser les onglets";
 "Percentage" = "Pourcentage";
-"More tabs" = "Autres onglets";
 "It's locked. Unlock it in Get Info to move it." = "Il est verrouillé. Déverrouillez-le dans Lire les informations pour le déplacer.";
 "Moved 1 item to the Trash." = "1 élément placé dans la Corbeille.";
 "Moved %lld items to the Trash." = "%lld éléments placés dans la Corbeille.";

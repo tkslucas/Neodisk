@@ -12,6 +12,28 @@ extension AtomicDirectorySummarizer {
         return Array(components.suffix(3)) == ["Library", "Developer", "CoreSimulator"]
     }
 
+    /// `isKnownGeneratedDirectory(at:)` for a path the caller already holds; the traversal checks every folder,
+    /// and standardizing a `URL` each time was a visible share of its loop.
+    nonisolated static func isKnownGeneratedDirectory(atPath path: String) -> Bool {
+        // A standardized path can only end in that component if the path names it.
+        guard path.contains("CoreSimulator") else { return false }
+        return isKnownGeneratedDirectory(at: URL(filePath: path, directoryHint: .isDirectory))
+    }
+
+    /// `isNodeDependencyLayoutDirectory(at:)` from the path's last two components, without a `URL`.
+    nonisolated static func isNodeDependencyLayoutDirectory(atPath path: String) -> Bool {
+        var trimmed = Substring(path)
+        if trimmed.count > 1, trimmed.hasSuffix("/") { trimmed = trimmed.dropLast() }
+        guard let slash = trimmed.lastIndex(of: "/") else {
+            return isNodeDependencyLayoutDirectory(childName: String(trimmed), parentName: "")
+        }
+        let name = trimmed[trimmed.index(after: slash)...]
+        guard name == "node_modules" || name == ".pnpm" || name.hasPrefix("@") else { return false }
+        let parent = trimmed[..<slash]
+        let parentName = parent.lastIndex(of: "/").map { parent[parent.index(after: $0)...] } ?? parent
+        return isNodeDependencyLayoutDirectory(childName: String(name), parentName: String(parentName))
+    }
+
     nonisolated static func isNodeDependencyLayoutDirectory(at url: URL) -> Bool {
         isNodeDependencyLayoutDirectory(
             childName: url.lastPathComponent,

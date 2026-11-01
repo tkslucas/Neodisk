@@ -479,7 +479,7 @@ final class SunburstView: CanvasDelegate {
         inputs: Inputs
     ) {
         let painter = ArcPainter(geometry: SunburstGeometry(size: size), palette: inputs.style.palette, isDark: inputs.isDark)
-        let metrics = SunburstRingMetrics(depthLimit: Self.depthLimit)
+        let metrics = SunburstLayout.ringMetrics(of: zoom.animatedSegments)
         switch presentation.phase {
         case .zooming(let progress):
             guard let focus = zoom.focus else { return }

@@ -37,6 +37,56 @@ public enum SunburstLayout {
         hiddenSpaceLabel: String = "Hidden Space",
         cancellationCheck: CancellationCheck
     ) throws -> [SunburstSegment] {
+        let full = try layOut(
+            in: treeStore, rootID: rootID, depthLimit: depthLimit, minimumAngle: minimumAngle,
+            freeSpaceBytes: freeSpaceBytes, hiddenSpaceBytes: hiddenSpaceBytes,
+            expandedAggregateIDs: expandedAggregateIDs, includeCloudOnly: includeCloudOnly,
+            freeSpaceLabel: freeSpaceLabel, hiddenSpaceLabel: hiddenSpaceLabel, cancellationCheck: cancellationCheck
+        )
+        // Rings are sized for the depth the chart shows, so a shallow tree, or one with a single deep branch,
+        // gets thick rings instead of one thin ring in an empty pane.
+        let rings = fittedRingCount(of: full, depthLimit: depthLimit)
+        guard rings < depthLimit else { return full }
+        return try layOut(
+            in: treeStore, rootID: rootID, depthLimit: rings, minimumAngle: minimumAngle,
+            freeSpaceBytes: freeSpaceBytes, hiddenSpaceBytes: hiddenSpaceBytes,
+            expandedAggregateIDs: expandedAggregateIDs, includeCloudOnly: includeCloudOnly,
+            freeSpaceLabel: freeSpaceLabel, hiddenSpaceLabel: hiddenSpaceLabel, cancellationCheck: cancellationCheck
+        )
+    }
+
+    /// A ring counts when its arcs cover at least this share of the circle; deeper, sparser rings are left to
+    /// drilling in.
+    public nonisolated static let minimumRingCoverage: Double = 0.1
+
+    /// The rings a layout needs: down to the deepest ring that still covers `minimumRingCoverage`, at least one.
+    public nonisolated static func fittedRingCount(of segments: [SunburstSegment], depthLimit: Int) -> Int {
+        var coverage = [Double](repeating: 0, count: max(depthLimit, 1))
+        for segment in segments where segment.depth < coverage.count {
+            coverage[segment.depth] += (segment.endAngle - segment.startAngle) / (.pi * 2)
+        }
+        let deepest = coverage.lastIndex { $0 >= minimumRingCoverage } ?? 0
+        return deepest + 1
+    }
+
+    /// The ring geometry a laid-out chart was drawn with, for transitions that remap its arcs.
+    public nonisolated static func ringMetrics(of segments: [SunburstSegment]) -> SunburstRingMetrics {
+        SunburstRingMetrics(depthLimit: (segments.map(\.depth).max() ?? 0) + 1)
+    }
+
+    private nonisolated static func layOut<Tree: SunburstTreeReading>(
+        in treeStore: Tree,
+        rootID: String,
+        depthLimit: Int,
+        minimumAngle: Double,
+        freeSpaceBytes: Int64?,
+        hiddenSpaceBytes: Int64?,
+        expandedAggregateIDs: Set<String>,
+        includeCloudOnly: Bool,
+        freeSpaceLabel: String,
+        hiddenSpaceLabel: String,
+        cancellationCheck: CancellationCheck
+    ) throws -> [SunburstSegment] {
         guard depthLimit > 0 else { return [] }
         try cancellationCheck()
         guard let root = treeStore.node(id: rootID) else { return [] }

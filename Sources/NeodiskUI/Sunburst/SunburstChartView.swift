@@ -209,7 +209,7 @@ struct SunburstChartView: View {
                 SunburstZoomTransitionCanvas(
                     state: zoomTransition,
                     presentation: zoomPresentation,
-                    metrics: SunburstRingMetrics(depthLimit: depthLimit)
+                    metrics: SunburstLayout.ringMetrics(of: zoomTransition.animatedSegments)
                 )
                 .frame(width: chartFrame.width, height: chartFrame.height)
                 .position(x: chartFrame.midX, y: chartFrame.midY)

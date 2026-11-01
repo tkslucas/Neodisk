@@ -111,3 +111,33 @@ import Testing
         #expect(metrics.boundaryRadius(ringIndex: -2) < metrics.boundaryRadius(ringIndex: -1))
     }
 }
+
+/// Rings fit the depth the chart shows: a sparse deep branch doesn't thin the rings everyone else sits in.
+@Suite struct SunburstRingFitTests {
+    private func segment(depth: Int, share: Double) -> SunburstSegment {
+        SunburstSegment(
+            id: "\(depth)-\(share)", nodeID: nil, label: "", startAngle: 0, endAngle: share * .pi * 2,
+            innerRadius: 0, outerRadius: 0, depth: depth,
+            colorToken: SunburstColorToken(midpoint: 0, depth: depth, role: .normal),
+            totalSize: 1, isAggregate: false
+        )
+    }
+
+    @Test func aSparseDeepBranchDoesNotSetTheRingCount() {
+        // Apps fill ring 0; one folder's contents cover 4% of rings 1-7.
+        let segments = [segment(depth: 0, share: 1)] + (1..<8).map { segment(depth: $0, share: 0.04) }
+        #expect(SunburstLayout.fittedRingCount(of: segments, depthLimit: 8) == 1)
+    }
+
+    @Test func ringsThatCoverEnoughStay() {
+        let segments = [segment(depth: 0, share: 1), segment(depth: 1, share: 0.6), segment(depth: 2, share: 0.15),
+                        segment(depth: 3, share: 0.05)]
+        #expect(SunburstLayout.fittedRingCount(of: segments, depthLimit: 8) == 3)
+        #expect(SunburstLayout.ringMetrics(of: segments).depthLimit == 4)
+    }
+
+    @Test func neverMoreThanTheLimit() {
+        let segments = (0..<10).map { segment(depth: $0, share: 1) }
+        #expect(SunburstLayout.fittedRingCount(of: segments, depthLimit: 8) == 8)
+    }
+}

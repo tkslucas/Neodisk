@@ -114,12 +114,15 @@ public struct TrashMover: Sendable {
         self.trashItem = trashItem
     }
 
-    /// FileManager's Trash on Apple platforms (Finder can put items back). Linux apps pass GIO's.
+    /// FileManager's Trash on Apple platforms (Finder can put items back), the Recycle Bin on Windows (File
+    /// Explorer can). Linux apps pass GIO's.
     public static let systemTrash: TrashItem = { url in
         #if canImport(Darwin)
         var resulting: NSURL?
         try FileManager.default.trashItem(at: url, resultingItemURL: &resulting)
         return resulting as URL?
+        #elseif os(Windows)
+        return try WindowsRecycleBin.live.recycle(url)
         #else
         throw CocoaError(.featureUnsupported)
         #endif

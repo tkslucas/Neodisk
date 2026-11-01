@@ -1703,6 +1703,33 @@ import Foundation
         #expect(abs((metrics.progressFraction) - (0.5 * 0.9)) <= 0.0001)
     }
 
+    @Test func testPreparationSpanPrecedesTraversalWithoutSteppingBack() {
+        var metrics = ScanMetrics()
+        metrics.preparationSpan = 0.4
+        metrics.preparationFraction = 0.5
+        metrics.recalculateProgress()
+        #expect(abs(metrics.progressFraction - 0.2) <= 0.0001)
+
+        metrics.preparationFraction = 1
+        metrics.filesVisited = 10
+        metrics.completedTraversalWeight = 0.5
+        metrics.recalculateProgress()
+        #expect(abs(metrics.progressFraction - (0.4 + 0.5 * 0.5)) <= 0.0001)
+
+        // A table read abandoned partway hands the rest of the bar to the walk from where it stopped.
+        var fallback = ScanMetrics()
+        fallback.preparationSpan = 0.4
+        fallback.preparationFraction = 0.75
+        fallback.recalculateProgress()
+        let reached = fallback.progressFraction
+        fallback.preparationSpan = 0.4 * 0.75
+        fallback.preparationFraction = 1
+        fallback.filesVisited = 1
+        fallback.completedTraversalWeight = 0.01
+        fallback.recalculateProgress()
+        #expect(fallback.progressFraction >= reached)
+    }
+
     @Test func testDirectoryScanProgressStaysLowWhenLittleWeightIsCompleted() {
         var metrics = ScanMetrics()
         metrics.filesVisited = 5_000

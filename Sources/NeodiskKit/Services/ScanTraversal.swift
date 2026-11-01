@@ -164,6 +164,8 @@ nonisolated final class ScanTraversal {
             // Seeds the pool heartbeat's base metrics; otherwise a root-leaf scan (package root) runs its whole
             // summary with the heartbeat dropping every emission.
             maybeEmitProgress()
+            let volumeIndex = await prepareVolumeIndex(rootMetadata: rootMetadata)
+            defer { volumeIndex?.end() }
 
             ScanTiming.note(
                 "workers traversal=\(concurrency.traversalWorkerLimit) "
@@ -192,6 +194,92 @@ nonisolated final class ScanTraversal {
             ScanProfile.emit()
             await pool.cancelAndFinish(with: error)
             throw error
+        }
+    }
+
+    /// Reads the target volume's file table first where that's possible (see `NTFSScanAccelerator`); directory
+    /// reads then come from memory. The bar fills its preparation span meanwhile and, should the table prove
+    /// unusable, the walk continues from wherever the bar got to.
+    private func prepareVolumeIndex(rootMetadata: NodeMetadata) async -> VolumeIndexLease? {
+        guard NTFSScanAccelerator.isAvailable, baseDepth == 0,
+              rootMetadata.isDirectory, !rootMetadata.isSymbolicLink else {
+            return nil
+        }
+        let span = NTFSScanAccelerator.preparationSpan
+        let base = metrics
+        let targetPath = target.url.path
+        let pool = summaryPool
+        let continuation = self.continuation
+        let state = PreparationState()
+        let lease = await withTaskCancellationHandler {
+            await withCheckedContinuation { (resume: CheckedContinuation<VolumeIndexLease?, Never>) in
+                let thread = Thread {
+                    let lease = NTFSScanAccelerator.prepare(
+                        targetPath: targetPath,
+                        progress: { fraction in
+                            guard let fraction = state.advance(to: fraction) else { return }
+                            var progress = base
+                            progress.preparationSpan = span
+                            progress.preparationFraction = fraction
+                            progress.recalculateProgress()
+                            if let pool {
+                                pool.publishProgressBase(progress)
+                            } else {
+                                continuation.yield(.progress(progress))
+                            }
+                        },
+                        isCancelled: { state.isCancelled }
+                    )
+                    resume.resume(returning: lease)
+                }
+                thread.name = "com.neodisk.file-table"
+                thread.start()
+            }
+        } onCancel: {
+            state.cancel()
+        }
+        // On a fallback the walk takes the rest of the bar from where reading the table left it.
+        let reached = state.fraction
+        metrics.preparationSpan = lease == nil ? span * reached : span
+        metrics.preparationFraction = 1
+        metrics.recalculateProgress()
+        publishProgress()
+        return lease
+    }
+
+    private nonisolated final class PreparationState: @unchecked Sendable {
+        private let lock = NSLock()
+        private var cancelled = false
+        private var reached = 0.0
+        private var lastEmission = ContinuousClock.now - .seconds(1)
+
+        var isCancelled: Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            return cancelled
+        }
+
+        var fraction: Double {
+            lock.lock()
+            defer { lock.unlock() }
+            return reached
+        }
+
+        func cancel() {
+            lock.lock()
+            cancelled = true
+            lock.unlock()
+        }
+
+        /// The fraction to publish, or nil while emissions are throttled.
+        func advance(to fraction: Double) -> Double? {
+            lock.lock()
+            defer { lock.unlock() }
+            reached = max(reached, fraction)
+            let now = ContinuousClock.now
+            guard now - lastEmission >= .milliseconds(100) || fraction >= 1 else { return nil }
+            lastEmission = now
+            return reached
         }
     }
 

@@ -32,6 +32,11 @@ public struct ScanMetrics: Sendable {
     public var isCheckingChanges = false
     /// Lets the strip say so instead of looking like a long rescan. The root-relist path never sets it.
     public var isFullScanFallback = false
+    /// The bar's share for work before traversal (reading a volume's file table); zero when there is none.
+    /// Traversal fills the span after it.
+    var preparationSpan = 0.0
+    /// Progress through that work (0...1).
+    var preparationFraction = 0.0
 
     /// Assembly is ~20% of wall time on real scans, so it gets a visible slice. Internal because the
     /// incremental rescan band must stay below it or the bar steps back when finalization begins.
@@ -86,7 +91,10 @@ public struct ScanMetrics: Sendable {
 
         let hasStarted = filesVisited > 0 || directoriesVisited > 0 || discoveredItems > 0
         let minimumVisibleProgress = hasStarted ? 0.01 : 0
-        progressFraction = max(progressFraction, max(traversalFraction * Self.traversalSpan, minimumVisibleProgress))
+        let preparationSpan = min(max(self.preparationSpan, 0), Self.traversalSpan)
+        let fraction = preparationSpan * min(max(preparationFraction, 0), 1)
+            + traversalFraction * (Self.traversalSpan - preparationSpan)
+        progressFraction = max(progressFraction, max(fraction, minimumVisibleProgress))
     }
 }
 

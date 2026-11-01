@@ -248,6 +248,7 @@
 "Add Folder…" = "Add Folder…";
 "Scan any folder or volume and keep it in the sidebar" = "Scan any folder or volume and keep it in the sidebar";
 "Scanned %@" = "Scanned %@";
+"Couldn't be read" = "Couldn't be read";
 "Remove from Sidebar" = "Remove from Sidebar";
 "Remove %lld Folders from Sidebar" = "Remove %lld Folders from Sidebar";
 

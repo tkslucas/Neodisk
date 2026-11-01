@@ -248,6 +248,7 @@
 "Add Folder…" = "添加文件夹…";
 "Scan any folder or volume and keep it in the sidebar" = "扫描任意文件夹或宗卷，并将其保留在边栏中";
 "Scanned %@" = "已扫描 %@";
+"Couldn't be read" = "无法读取";
 "Remove from Sidebar" = "从边栏中移除";
 "Remove %lld Folders from Sidebar" = "从边栏中移除 %lld 个文件夹";
 

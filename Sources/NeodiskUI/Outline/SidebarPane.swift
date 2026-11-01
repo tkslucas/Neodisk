@@ -221,7 +221,11 @@ struct SidebarPane: View {
         let info = model.session.cachedScanInfo[target.id]
         return SidebarTargetRow(
             target: target,
-            size: SidebarRowText.size(space: space, scannedBytes: info?.totalAllocatedSize),
+            size: SidebarRowText.size(
+                space: space,
+                scannedBytes: info?.totalAllocatedSize,
+                unreadable: info?.totalAllocatedSize == 0 && wasRefused(target)
+            ),
             lastScanned: info?.lastScanDate,
             now: now,
             isSelected: selection.contains(target.id),
@@ -233,6 +237,17 @@ struct SidebarPane: View {
             onCapacityBubble: tooltips.setCapacityBubble
         )
         .tag(target.id)
+    }
+
+    /// A scan that came back empty because the location itself refused access, as far as this session's scans
+    /// tell (an empty folder reads its size instead).
+    private func wasRefused(_ target: ScanTarget) -> Bool {
+        let snapshot = model.coordinator.snapshot?.target.id == target.id
+            ? model.coordinator.snapshot
+            : model.coordinator.recentSnapshot(forTargetID: target.id)
+        return snapshot?.scanWarnings.contains {
+            $0.category == .permissionDenied && ScanTarget(url: URL(filePath: $0.path)).id == target.id
+        } ?? false
     }
 
     /// One row of the Volumes or Local Cloud Files section: not removable.

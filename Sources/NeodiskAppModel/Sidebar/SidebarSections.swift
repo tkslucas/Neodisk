@@ -66,7 +66,11 @@ package struct SidebarSectionState: Equatable, Sendable {
 /// A sidebar row's two lines and tooltip.
 package enum SidebarRowText {
     /// Trailing the name: a volume's free space, a folder's scanned size; nil for a folder never scanned.
-    package static func size(space: VolumeSpaceInfo?, scannedBytes: Int64?) -> String? {
+    /// A folder whose scan was refused says so rather than "Zero bytes".
+    package static func size(space: VolumeSpaceInfo?, scannedBytes: Int64?, unreadable: Bool = false) -> String? {
+        if unreadable {
+            return AppStrings.localized("Couldn't be read", comment: "Sidebar row whose scan was refused access")
+        }
         if let space, space.totalCapacity > 0 {
             let free = NeodiskFormatters.size(space.availableCapacity)
             return String(format: AppStrings.localized("%@ free", comment: "Sidebar volume row"), free)

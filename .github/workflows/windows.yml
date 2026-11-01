@@ -1,0 +1,29 @@
+name: Windows
+
+# Builds the shared core and diskscan, and runs the core suites, on Windows, so a change made and tested on
+# macOS or Linux can't silently break the Windows build. Swift is pinned to the release the port is tested
+# with; the runner image brings Visual Studio's C++ tools and the Windows SDK it needs.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Swift 6.4.2
+        uses: compnerd/gha-setup-swift@v0.5.1
+        with:
+          swift-version: swift-6.4.2-release
+          swift-build: 6.4.2-RELEASE
+
+      - name: Build
+        run: swift build --build-tests
+
+      - name: Test
+        run: swift test --skip-build

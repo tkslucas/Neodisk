@@ -23,7 +23,7 @@ core is Swift, and its GTK app is Swift talking to GTK's C API.
                 │ macOS: NeodiskUI     │  │ Linux: NeodiskGTK    │
                 │ SwiftUI + AppKit     │  │ GTK 4 + libadwaita   │
                 └──────────────────────┘  └──────────────────────┘
-                                          (Windows: planned, below)
+                                          (Windows: core done, app below)
 ```
 
 `diskscan` (NeodiskCLI) is a third consumer of the core, on every platform.
@@ -42,7 +42,7 @@ reuses the same code instead of a translation of it.
 
 ## What's shared and what isn't
 
-**Shared core** (builds and tests on macOS and Linux):
+**Shared core** (builds and tests on macOS, Linux and Windows):
 
 | Target | What it owns |
 |---|---|
@@ -76,19 +76,21 @@ type (`Color(rgb:)` in SwiftUI, `GdkRGBA` in GTK).
 Platform differences below the UI stay inside the core behind
 `#if canImport(...)` / `#if os(...)`, so the apps never see them:
 
-| Concern | Apple platforms | Linux |
-|---|---|---|
-| Directory enumeration | `getattrlistbulk` batches | `readdir` + `fstatat` relative to the open directory (`BulkDirectoryReader+Linux.swift`) |
-| Per-item metadata | URLResourceValues, lstat fallback | lstat through the same conversion as the reader (`LinuxStat`) |
-| Allocated size | `ATTR_FILE_ALLOCSIZE` | `st_blocks × 512` |
-| Incremental rescans | FSEvents journal replay | none (no persistent journal); every rescan is a full scan |
-| Filesystem type / profile | `statfs.f_fstypename`, `MNT_LOCAL` | `/proc/self/mountinfo` (`LinuxMountTable`) + sysfs rotational/removable flags |
-| Volume capacity | important-usage capacity (purgeable counts as free) | `statvfs`, df's used/available split (root reserve excluded) |
-| Snapshot compression | LZFSE (Compression framework) | zstd (libzstd) |
-| SHA-256 | CryptoKit | swift-crypto |
-| Packages, clones, dataless files, firmlinks | APFS/Finder semantics | not applicable |
-| Name tie-break in sort order | `localizedStandardCompare` | byte-level natural order (ICU is too slow for the hot path) |
-| File type descriptions | Launch Services (UTType) | GIO / shared-mime-info, installed by the app |
+| Concern | Apple platforms | Linux | Windows |
+|---|---|---|---|
+| Directory enumeration | `getattrlistbulk` batches | `readdir` + `fstatat` relative to the open directory (`BulkDirectoryReader+Linux.swift`) | `GetFileInformationByHandleEx` directory-info batches (`FileIdExtdDirectoryInfo`, 64 KiB) from one handle, no per-entry open (`BulkDirectoryReader+Windows.swift`) |
+| Per-item metadata | URLResourceValues, lstat fallback | lstat through the same conversion as the reader (`LinuxStat`) | one handle opened without following reparse points, through the same conversion as the reader (`WindowsFileInfo`) |
+| Allocated size | `ATTR_FILE_ALLOCSIZE` | `st_blocks × 512` | `AllocationSize` |
+| Identity, hard links | device + inode, link count | device + inode, link count | volume serial + file ID; the walk counts every link (directory info has no link count) |
+| Links and mount points | never followed (`O_NOFOLLOW`, mount status) | never followed, device changes | name-surrogate reparse points (symlinks, junctions, mounted volumes) are leaves, never followed |
+| Incremental rescans | FSEvents journal replay | none (no persistent journal); every rescan is a full scan | none yet (the USN change journal is the candidate) |
+| Filesystem type / profile | `statfs.f_fstypename`, `MNT_LOCAL` | `/proc/self/mountinfo` (`LinuxMountTable`) + sysfs rotational/removable flags | `GetVolumeInformationW`, `GetDriveTypeW`, the disk's seek penalty (`WindowsVolume`) |
+| Volume capacity | important-usage capacity (purgeable counts as free) | `statvfs`, df's used/available split (root reserve excluded) | `GetDiskFreeSpaceExW`, File Explorer's used/free |
+| Snapshot compression | LZFSE (Compression framework) | zstd (libzstd) | XPRESS with Huffman (Compression API), in 1 MB chunks |
+| SHA-256 | CryptoKit | swift-crypto | swift-crypto |
+| Packages, clones, dataless files, firmlinks | APFS/Finder semantics | not applicable | cloud-only files (recall-on-access) count as dataless |
+| Name tie-break in sort order | `localizedStandardCompare` | byte-level natural order (ICU is too slow for the hot path) | as Linux |
+| File type descriptions | Launch Services (UTType) | GIO / shared-mime-info, installed by the app | the app's job |
 
 ## The GTK app
 
@@ -112,28 +114,18 @@ cross-platform UI layer. A small support layer keeps the calls readable:
   Swift. Its snapshot vfunc draws through GtkSnapshot, so the treemap and
   sunburst stay on GTK's GPU renderer.
 
-## Adding Windows
+## Windows
 
-The plan follows the Linux port:
+The core follows the Linux port: `#if os(Windows)` branches and `+Windows.swift` files next to the Linux ones,
+behind the same internal interfaces, using the toolchain's `WinSDK` and `ucrt` modules (see the table above).
+Paths are `URL.path` spellings (`C:/Users/x`); Win32 calls get them with backslashes, and with the `\\?\` prefix
+past `MAX_PATH` (`WindowsPath`). Trash checks compare paths case-insensitively and treat every drive as a child of
+one root. Moving to the Recycle Bin is not wired up yet: `TrashMover.systemTrash` throws.
 
-1. **Core platform layer** (`#if os(Windows)` next to the Linux branches):
-   - `FindFirstFileExW` with `FIND_FIRST_EX_LARGE_FETCH` / `FindExInfoBasic`,
-     or `NtQueryDirectoryFile` batches, for enumeration.
-   - `FILE_STANDARD_INFO.AllocationSize` or `GetCompressedFileSizeW` for
-     allocated size.
-   - The volume serial number plus the 128-bit file ID for identity.
-   - `GetDiskFreeSpaceExW` for capacity.
-   - The NTFS **USN change journal** for incremental rescans. It's a real
-     persistent journal, so Windows can have FSEvents-style incremental
-     rescans where Linux can't.
-   - The Compression API (XPRESS) or vendored zstd for snapshots.
-   - swift-crypto for hashing.
-2. **Shell:** a `NeodiskWinUI` target using WinUI 3 through
-   [swift-winrt](https://github.com/thebrowsercompany/swift-winrt) (the
-   route The Browser Company took for Arc on Windows), with the treemap
-   raster drawn through Direct2D. It sits over the same `NeodiskAppModel`
-   the other two apps use.
-3. `Package.swift` gains an `#elseif os(Windows)` block like the Linux one.
+The app (`NeodiskWin`, in progress) is Swift over Win32 with Direct2D and DirectWrite for drawing, over the same
+`NeodiskAppModel` the other two apps use. WinUI 3 would need swift-winrt projections generated or vendored and the
+Windows App Runtime on every machine, while the surfaces that matter (treemap, sunburst) are Direct2D either way.
+`Package.swift` declares it in an `#if os(Windows)` block like the Linux one.
 
 ## Where logic goes
 

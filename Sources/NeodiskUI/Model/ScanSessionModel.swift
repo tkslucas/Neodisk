@@ -560,14 +560,7 @@ final class ScanSessionModel {
         let date = snapshot.finishedAt ?? snapshot.startedAt
         guard let info = cachedScanInfo[snapshot.target.id],
               abs(info.lastScanDate.timeIntervalSince(date)) > 1 else { return }
-        cachedScanInfo[snapshot.target.id] = CachedScanInfo(
-            lastScanDate: date,
-            lastScanDuration: snapshot.finishedAt.map { $0.timeIntervalSince(snapshot.startedAt) },
-            nodeCount: snapshot.treeStore.nodeCount,
-            hasPreviousSnapshot: info.hasPreviousSnapshot,
-            totalAllocatedSize: snapshot.aggregateStats.totalAllocatedSize,
-            cloudOnlyLogicalSize: Self.cloudOnlyBytes(of: snapshot)
-        )
+        cachedScanInfo[snapshot.target.id] = CachedScanInfo(snapshot: snapshot, hasPreviousSnapshot: info.hasPreviousSnapshot)
     }
 
     private func restoreCachedSnapshot(
@@ -636,14 +629,7 @@ final class ScanSessionModel {
         // Optimistic: saving usually rotates the latest snapshot into the previous slot; the save's outcome
         // corrects it (an unchanged rescan skips the rotation).
         let hadCachedSnapshot = cachedScanInfo[snapshot.target.id] != nil
-        cachedScanInfo[snapshot.target.id] = CachedScanInfo(
-            lastScanDate: snapshot.finishedAt ?? Date(),
-            lastScanDuration: snapshot.finishedAt.map { $0.timeIntervalSince(snapshot.startedAt) },
-            nodeCount: snapshot.treeStore.nodeCount,
-            hasPreviousSnapshot: hadCachedSnapshot,
-            totalAllocatedSize: snapshot.aggregateStats.totalAllocatedSize,
-            cloudOnlyLogicalSize: Self.cloudOnlyBytes(of: snapshot)
-        )
+        cachedScanInfo[snapshot.target.id] = CachedScanInfo(snapshot: snapshot, hasPreviousSnapshot: hadCachedSnapshot)
         saveSnapshotToCache(snapshot)
     }
 

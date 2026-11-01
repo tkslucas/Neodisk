@@ -16,6 +16,14 @@ func removeTestDefaultsSuite(_ defaults: UserDefaults, named suiteName: String) 
     try? FileManager.default.removeItem(at: plist)
 }
 
+/// A cache in a fresh temp folder (created only on a save): tests never touch a real cache.
+func makeIsolatedCache() -> ScanSnapshotCache {
+    ScanSnapshotCache(
+        directoryURL: FileManager.default.temporaryDirectory.appending(path: "NeodiskTestCache-\(UUID().uuidString)"),
+        isLoggingEnabled: false
+    )
+}
+
 func makeTestTarget(_ path: String, kind: ScanTargetKind = .folder) -> ScanTarget {
     ScanTarget(url: URL(filePath: path, directoryHint: .isDirectory), kind: kind)
 }

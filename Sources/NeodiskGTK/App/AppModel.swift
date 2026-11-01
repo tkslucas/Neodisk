@@ -270,7 +270,7 @@ final class AppModel {
                     progress.progressFraction = 1
                     metrics = progress
                     display(finished)
-                    await persist(finished)
+                    persist(finished)
                 }
             }
         } catch is CancellationError {
@@ -344,15 +344,31 @@ final class AppModel {
         searchIndexIdleTask = nil
     }
 
-    /// `rotatesPrevious: false` after a move to the Trash: the last full scan stays the baseline.
-    private func persist(_ snapshot: ScanSnapshot, rotatesPrevious: Bool = true) async {
-        do {
-            try await snapshotCache.save(snapshot, rotatesPrevious: rotatesPrevious)
-        } catch {
-            DiagnosticLog.cache.error("could not cache the scan: \(error)")
+    /// Outside the scan task, so opening another location can't cancel the save. `rotatesPrevious: false` after
+    /// a move to the Trash: the last full scan stays the baseline.
+    private func persist(_ snapshot: ScanSnapshot, rotatesPrevious: Bool = true) {
+        Task {
+            do {
+                let outcome = try await snapshotCache.save(snapshot, rotatesPrevious: rotatesPrevious)
+                cachedScans[snapshot.target.id] = CachedScanInfo(
+                    snapshot: snapshot, hasPreviousSnapshot: outcome.hasPreviousSnapshot
+                )
+            } catch {
+                DiagnosticLog.cache.error("could not cache the scan: \(error)")
+            }
+            await saveKindStatsSidecar(for: snapshot)
         }
-        await refreshCachedScans()
-        await saveKindStatsSidecar(for: snapshot)
+    }
+
+    /// GTK's shutdown can't await: blocks until saves still encoding land, for at most a few seconds.
+    func finishPendingSaves() {
+        let cache = snapshotCache
+        let done = DispatchSemaphore(value: 0)
+        Task.detached {
+            await cache.finishSaves(within: .seconds(10))
+            done.signal()
+        }
+        done.wait()
     }
 
     /// Lets the sidebar's capacity bars color themselves without decoding the snapshot.
@@ -386,8 +402,8 @@ final class AppModel {
 
     /// Re-indexes the snapshot cache, keeping only snapshots of locations
     /// the app still offers (volumes, home, recent folders).
-    func refreshCachedScans(keeping locations: Set<String>? = nil) async {
-        var keep = locations ?? Set(cachedScans.keys)
+    func refreshCachedScans(keeping locations: Set<String>) async {
+        var keep = locations
         keep.formUnion(preferences.recentFolders)
         if let target { keep.insert(target.id) }
         cachedScans = await snapshotCache.pruneAndIndex(keepingTargetIDs: keep)
@@ -770,7 +786,7 @@ extension AppModel {
         guard let updated, self.snapshot?.id == current.id, !isScanning else { return }
         moveOffRemoved(Set(nodeIDs), in: current.treeStore)
         display(updated)
-        await persist(updated, rotatesPrevious: false)
+        persist(updated, rotatesPrevious: false)
     }
 
     private func removeFromSavedScan(_ nodeIDs: [String], of target: ScanTarget) async {
@@ -779,7 +795,7 @@ extension AppModel {
             try? saved.removingNodes(ids: nodeIDs)
         }.value
         guard let updated else { return }
-        await persist(updated, rotatesPrevious: false)
+        persist(updated, rotatesPrevious: false)
     }
 
     /// A selection, hover or drill root inside the removed item moves to the folder that held it, so the views

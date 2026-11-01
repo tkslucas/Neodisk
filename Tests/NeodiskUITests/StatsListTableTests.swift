@@ -26,7 +26,7 @@ struct StatsListTableTests {
     }
 
     @Test func followsTheModelSelectionWithoutReportingIt() {
-        let coordinator = StatsListCoordinator(model: NeodiskViewModel())
+        let coordinator = StatsListCoordinator(model: NeodiskViewModel(snapshotCache: makeIsolatedCache()))
         let table = makeTable(coordinator)
         var reported: [String] = []
         let click = StatsListClick.selectsNode { reported.append($0) }
@@ -41,7 +41,7 @@ struct StatsListTableTests {
     }
 
     @Test func clickingARowSelectsItsNode() {
-        let coordinator = StatsListCoordinator(model: NeodiskViewModel())
+        let coordinator = StatsListCoordinator(model: NeodiskViewModel(snapshotCache: makeIsolatedCache()))
         let table = makeTable(coordinator)
         var reported: [String] = []
         coordinator.apply(update(["a", "b", "c"], click: .selectsNode { reported.append($0) }))
@@ -52,7 +52,7 @@ struct StatsListTableTests {
     }
 
     @Test func newRowsKeepTheSelectionOnItsNode() {
-        let coordinator = StatsListCoordinator(model: NeodiskViewModel())
+        let coordinator = StatsListCoordinator(model: NeodiskViewModel(snapshotCache: makeIsolatedCache()))
         let table = makeTable(coordinator)
         let click = StatsListClick.selectsNode { _ in }
         coordinator.apply(update(["a", "b", "c"], click: click, selectedID: "c"))
@@ -64,7 +64,7 @@ struct StatsListTableTests {
     }
 
     @Test func drillInRowsHoldNoSelection() {
-        let coordinator = StatsListCoordinator(model: NeodiskViewModel())
+        let coordinator = StatsListCoordinator(model: NeodiskViewModel(snapshotCache: makeIsolatedCache()))
         let table = makeTable(coordinator)
         coordinator.apply(update(["kind.mov", "kind.jpg"], click: .opens { _ in }, selectedID: "kind.mov"))
 

@@ -24,7 +24,10 @@ final class NeodiskApplication {
         g_set_application_name(AppChannel.current.appName)
         connect(app, "startup") { [unowned self] in self.startup() }
         connect(app, "activate") { [unowned self] in self.activate() }
-        connect(app, "shutdown") { [unowned self] in self.preferences.saveNow() }
+        connect(app, "shutdown") { [unowned self] in
+            self.preferences.saveNow()
+            self.model.finishPendingSaves()
+        }
     }
 
     func run() -> Int32 {

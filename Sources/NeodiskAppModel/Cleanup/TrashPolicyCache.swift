@@ -22,12 +22,14 @@ package final class TrashPolicyCache {
         return built
     }
 
-    package func warm() {
-        guard policy == nil, !isWarming else { return }
+    /// The warm-up's task (nil when there's nothing to warm), for a test to await.
+    @discardableResult
+    package func warm() -> Task<Void, Never>? {
+        guard policy == nil, !isWarming else { return nil }
         isWarming = true
         let make = make
         let generation = generation
-        Task {
+        return Task {
             let built = await Task.detached(priority: .utility) { make() }.value
             guard generation == self.generation else { return }
             isWarming = false

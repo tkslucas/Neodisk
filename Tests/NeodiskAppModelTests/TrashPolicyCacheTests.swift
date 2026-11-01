@@ -17,12 +17,9 @@ struct TrashPolicyCacheTests {
     @Test func warmBuildsOnceOffTheMainThread() async throws {
         let builds = Builds()
         let cache = TrashPolicyCache { builds.record(); return TrashSafetyPolicy(protectedPaths: ["/kept"]) }
-        cache.warm()
-        cache.warm()
-        for _ in 0..<200 where builds.count == 0 {
-            try await Task.sleep(for: .milliseconds(5))
-        }
-        try await Task.sleep(for: .milliseconds(50))
+        let warming = try #require(cache.warm())
+        #expect(cache.warm() == nil)
+        await warming.value
         #expect(cache.current.refusal(forPath: "/kept", identity: nil) == .protectedLocation)
         #expect(builds.count == 1 && builds.onMain == 0)
 

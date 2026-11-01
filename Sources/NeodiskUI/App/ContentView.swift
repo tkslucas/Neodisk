@@ -184,7 +184,8 @@ public struct ContentView: View {
             views: model.layout.views,
             current: model.vizView,
             isEnabled: model.coordinator.snapshot != nil,
-            update: model.updateLayout
+            update: model.updateLayout,
+            menuItems: { NSMenu.workspaceLayoutItems(model: model) }
         )
     }
 
@@ -298,9 +299,7 @@ private struct WorkspaceView: View {
             if model.showsStatusBar {
                 Divider()
                 StatusBar(model: model)
-                    .contextMenu {
-                        Button("Hide Status Bar") { model.setStatusBarShown(false) }
-                    }
+                    .contextMenu { WorkspaceLayoutMenuItems(model: model) }
             }
         }
     }

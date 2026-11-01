@@ -118,13 +118,16 @@ import NeodiskAppModel
             $0.setHidden(.cushion, true)
             $0.setHidden(.flat, true)
         }
-        let picker = VizViewPicker(views: model.layout.views, current: model.vizView, isEnabled: true, update: model.updateLayout)
+        let picker = VizViewPicker(
+            views: model.layout.views, current: model.vizView, isEnabled: true, update: model.updateLayout,
+            menuItems: { NSMenu.workspaceLayoutItems(model: model) }
+        )
         let coordinator = VizViewPicker.Coordinator()
         coordinator.picker = picker
         let menu = NSMenu()
         coordinator.menuNeedsUpdate(menu)
-        #expect(menu.items.map(\.state) == [.off, .off, .on])
-        #expect(menu.items.map(\.isEnabled) == [true, true, false])
+        #expect(menu.items.prefix(3).map(\.state) == [.off, .off, .on])
+        #expect(menu.items.prefix(3).map(\.isEnabled) == [true, true, false])
     }
 }
 
@@ -158,7 +161,7 @@ private final class DefaultsWrites: NSObject {
     @Test func checklistHidesAndRestoresViewsAndKeepsTheLastOne() throws {
         let (model, _, defaults, suite) = try makePreferencesModel()
         defer { removeTestDefaultsSuite(defaults, named: suite) }
-        func items() -> [NSMenuItem] { NSMenu.viewChecklist(model: model).items }
+        func items() -> [NSMenuItem] { Array(NSMenu.workspaceLayout(model: model).items.prefix(3)) }
         #expect(items().map(\.state) == [.on, .on, .on])
 
         let sunburst = try #require(items().last)
@@ -174,5 +177,33 @@ private final class DefaultsWrites: NSObject {
         let restore = try #require(items().last)
         _ = restore.target?.perform(restore.action, with: restore)
         #expect(!model.layout.views.isHidden(.sunburst))
+    }
+}
+
+/// With the file list and status bar hidden, the window's own menus bring them back, not only the View menu.
+@MainActor
+@Suite(.serialized) struct LayoutRestoreMenuTests {
+    @Test func hiddenFileListAndStatusBarComeBackFromTheMapsMenus() throws {
+        let (model, _, defaults, suite) = try makePreferencesModel()
+        defer { removeTestDefaultsSuite(defaults, named: suite) }
+        func titles(_ items: [NSMenuItem]) -> [String] { items.filter { !$0.isSeparatorItem }.map(\.title) }
+
+        let empty = NSMenu()
+        empty.addRestoreItems(model: model)
+        #expect(empty.items.isEmpty)
+        #expect(titles(NSMenu.workspaceLayoutItems(model: model)).contains("Hide File List"))
+
+        model.updateLayout { $0.setListShown(false) }
+        model.setStatusBarShown(false)
+        let layout = titles(NSMenu.workspaceLayoutItems(model: model))
+        #expect(layout.contains("Show File List") && layout.contains("Show Status Bar"))
+
+        let itemMenu = NSMenu()
+        itemMenu.addRestoreItems(model: model)
+        #expect(titles(itemMenu.items) == ["Show File List", "Show Status Bar"])
+        for item in itemMenu.items where !item.isSeparatorItem {
+            _ = item.target?.perform(item.action, with: item)
+        }
+        #expect(model.layout.showsList && model.showsStatusBar)
     }
 }

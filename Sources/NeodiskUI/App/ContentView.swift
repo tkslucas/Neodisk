@@ -132,7 +132,7 @@ public struct ContentView: View {
         if targetKind == .volume, let finderUsedBytes {
             guard let freeBytes else { return NeodiskFormatters.size(finderUsedBytes) }
             return String(
-                format: NSLocalizedString("%@ used of %@ · %@ free", comment: "Window subtitle for a scanned volume"),
+                format: NSLocalizedString("%@ of %@ used · %@ free", comment: "Window subtitle for a scanned volume"),
                 NeodiskFormatters.size(finderUsedBytes),
                 NeodiskFormatters.size(finderUsedBytes + freeBytes),
                 NeodiskFormatters.size(freeBytes)

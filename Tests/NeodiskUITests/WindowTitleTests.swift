@@ -13,7 +13,7 @@ import NeodiskKit
             finderUsedBytes: 411_000_000_000,
             freeBytes: 83_000_000_000,
             scannedTotalBytes: 380_000_000_000
-        ) == "411 GB used of 494 GB · 83 GB free")
+        ) == "411 GB of 494 GB used · 83 GB free")
     }
 
     @Test func volumeScansWithoutFreeSpaceStateUsedAlone() {

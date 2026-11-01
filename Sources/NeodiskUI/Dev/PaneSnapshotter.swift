@@ -38,7 +38,7 @@ enum PaneSnapshotter {
                     }
                 }
                 await render(
-                    bars, size: CGSize(width: 440 * scale, height: CGFloat(widths.count) * 34 * scale),
+                    bars, size: CGSize(width: 440 * scale, height: CGFloat(widths.count * 34) * scale),
                     scale: scale, dark: dark, to: tabBarPath
                 )
             }

@@ -179,6 +179,37 @@ import NeodiskKit
         model.stopScan()
     }
 
+    @Test func testSnapshotNoticeHidesOnItsOwnAndStillHoldsTheSkippedRescan() async throws {
+        let environment = try TestEnvironment()
+        defer { environment.tearDown() }
+        let target = makeTestTarget("/cache-vm/notice-lifetime")
+        environment.sidebarFolderStore.add(target)
+        try await environment.cache.save(makeSimpleSnapshot(target: target))
+
+        let model = environment.makeModel(policy: .snapshotOnly)
+        model.session.snapshotNoticeLifetime = .milliseconds(50)
+        try await waitUntilAsync("prune indexes the snapshot") {
+            model.session.cachedScanInfo[target.id] != nil
+        }
+        model.startScan(target)
+        try await waitUntilAsync("notice shown") { model.session.snapshotNotice?.targetID == target.id }
+        try await waitUntilAsync("notice hides on its own") { model.session.snapshotNotice == nil }
+
+        // Gone from view, the skipped rescan still waits for an explicit one.
+        model.startScan(target)
+        #expect(environment.scanService.scanCount == 0)
+
+        // Another location and back: a new notice; its close button dismisses it.
+        model.session.snapshotNoticeLifetime = .seconds(60)
+        let other = makeTestTarget("/cache-vm/notice-other")
+        model.startScan(other)
+        model.stopScan()
+        model.startScan(target)
+        try await waitUntilAsync("notice shown again") { model.session.snapshotNotice?.targetID == target.id }
+        model.session.dismissSnapshotNotice()
+        #expect(model.session.snapshotNotice == nil)
+    }
+
     @Test func testAutomaticPolicyAutoRescansSlowLocationWithoutNotice() async throws {
         let environment = try TestEnvironment()
         defer { environment.tearDown() }

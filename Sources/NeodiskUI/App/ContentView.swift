@@ -270,6 +270,11 @@ private struct WorkspaceView: View {
                 workspacePanes(metrics: metrics)
             }
 
+            if let notice = model.session.snapshotNotice {
+                Divider()
+                SnapshotNoticeStrip(model: model, notice: notice)
+            }
+
             if let superseded = model.session.supersededScanNotice {
                 Divider()
                 SupersededScanStrip(displayName: superseded.displayName) {
@@ -336,7 +341,7 @@ private struct WorkspaceView: View {
     }
 
     private func workspacePanes(metrics: WorkspacePaneMetrics) -> some View {
-        ZStack(alignment: .bottomTrailing) {
+        Group {
             HStack(spacing: 0) {
                 if model.layout.showsLeadingList {
                     OutlinePane(model: model)
@@ -413,9 +418,6 @@ private struct WorkspaceView: View {
             }
             .animation(.easeInOut(duration: 0.22), value: model.showKindStats)
             .clipped()
-
-            SnapshotNoticePanel(model: model)
-                .animation(.easeInOut(duration: 0.2), value: model.session.snapshotNotice)
         }
     }
 }

@@ -156,6 +156,10 @@ void ndw_a11y_destroy(NdwA11y *a11y);
 /* Names a standard control for assistive technology (an edit field has no label of its own). */
 int32_t ndw_set_accessible_name(void *hwnd, const uint16_t *name);
 
+/* Sets a control's accessible value (what a screen reader reads after its name) and raises the value-change
+ * event, so a focused control announces the change. */
+int32_t ndw_set_accessible_value(void *hwnd, const uint16_t *value);
+
 /* Shows a popup menu at screen pixels and returns the chosen item's id, 0 for none (TrackPopupMenu with
  * TPM_RETURNCMD, whose BOOL result Swift would import as Bool). */
 int32_t ndw_track_popup_menu(void *menu, int32_t x, int32_t y, void *owner);

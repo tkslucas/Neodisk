@@ -62,6 +62,19 @@ extern "C" int32_t ndw_set_accessible_name(void *hwnd, const uint16_t *name) {
                : -1;
 }
 
+extern "C" int32_t ndw_set_accessible_value(void *hwnd, const uint16_t *value) {
+    ComPtr<IAccPropServices> services;
+    if (FAILED(CoCreateInstance(CLSID_AccPropServices, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&services)))) {
+        return -1;
+    }
+    if (FAILED(services->SetHwndPropStr(static_cast<HWND>(hwnd), OBJID_CLIENT, CHILDID_SELF, PROPID_ACC_VALUE,
+                                        reinterpret_cast<LPCWSTR>(value)))) {
+        return -1;
+    }
+    NotifyWinEvent(EVENT_OBJECT_VALUECHANGE, static_cast<HWND>(hwnd), OBJID_CLIENT, CHILDID_SELF);
+    return 0;
+}
+
 extern "C" int32_t ndw_track_popup_menu(void *menu, int32_t x, int32_t y, void *owner) {
     return static_cast<int32_t>(TrackPopupMenu(static_cast<HMENU>(menu), TPM_RETURNCMD | TPM_RIGHTBUTTON, x, y, 0,
                                                static_cast<HWND>(owner), nullptr));

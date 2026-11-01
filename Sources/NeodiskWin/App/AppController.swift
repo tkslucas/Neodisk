@@ -14,6 +14,7 @@ final class AppController {
     private var outline: OutlineController!
     /// The treemap and sunburst.
     private var canvas: VizCanvas?
+    private var canvasAccessibility: (name: String, value: String) = ("", "")
     private var observations: [ChangeObservation] = []
     private var workspace: ScanWorkspace { model.workspace }
 
@@ -179,6 +180,23 @@ final class AppController {
         _ = model.settings.paletteID
         canvas?.mode = model.settings.vizMode == .sunburst ? .sunburst : .treemap
         canvas?.modelDidChange()
+        updateCanvasAccessibility()
+    }
+
+    /// The chart reads as its view's name, with the selected item (or the folder shown) as its value, so
+    /// moving through it with the arrow keys is announced.
+    private func updateCanvasAccessibility() {
+        let isSunburst = model.settings.vizMode == .sunburst
+        let name = isSunburst ? L("Sunburst") : L("Treemap")
+        var value = ""
+        if let store = workspace.store,
+           let node = workspace.selectedNode ?? workspace.focusedRootID.flatMap({ store.node(id: $0) }) {
+            value = "\(node.name), \(NeodiskFormatters.size(node.allocatedSize))"
+        }
+        guard name != canvasAccessibility.name || value != canvasAccessibility.value else { return }
+        canvasAccessibility = (name, value)
+        _ = ndw_set_accessible_name(window.canvas, name.wide)
+        _ = ndw_set_accessible_value(window.canvas, value.wide)
     }
 
     // MARK: - Item actions (the maps' context menu)

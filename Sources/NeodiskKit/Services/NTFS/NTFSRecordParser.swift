@@ -114,6 +114,8 @@ nonisolated struct NTFSFileRecord: Sendable {
     var hasReparsePoint = false
     /// Nil when the reparse data is non-resident (rare: only very large reparse buffers).
     var reparseTag: UInt32?
+    /// Where non-resident reparse data starts, so its tag can be read from the volume.
+    var reparseDataCluster: Int64?
     var hasAttributeList = false
     /// Resident attribute lists only, decoded only when asked.
     var attributeList: [NTFSAttributeListEntry] = []
@@ -137,6 +139,7 @@ nonisolated struct NTFSFileRecord: Sendable {
         unnamedDataRuns.removeAll(keepingCapacity: true)
         hasReparsePoint = false
         reparseTag = nil
+        reparseDataCluster = nil
         hasAttributeList = false
         attributeList.removeAll(keepingCapacity: true)
         attributeListIsResident = true
@@ -317,6 +320,16 @@ nonisolated enum NTFSRecordParser {
                 if value.count >= 4 {
                     record.reparseTag = u32(value, 0)
                 }
+            } else if attribute.count >= 0x40, u64(attribute, 0x10) == 0 {
+                let runsOffset = Int(u16(attribute, 0x20))
+                guard runsOffset >= 0x40, runsOffset <= attribute.count else { throw NTFSRecordError.badAttribute }
+                var runs: [NTFSDataRun] = []
+                try decodeDataRuns(
+                    UnsafeRawBufferPointer(rebasing: attribute[runsOffset...]),
+                    startingVCN: 0,
+                    into: &runs
+                )
+                record.reparseDataCluster = runs.first?.lcn
             }
 
         default:

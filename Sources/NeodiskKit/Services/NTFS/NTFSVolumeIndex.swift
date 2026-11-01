@@ -34,6 +34,30 @@ nonisolated final class NTFSVolumeIndex: @unchecked Sendable {
     static let rootRecord: UInt32 = 5
     /// Records below this are the volume's own metadata files, which directory listings never show.
     static let firstUserRecord: UInt32 = 16
+    static let wofReparseTag: UInt32 = 0x8000_0017
+
+    /// The attributes and tag a directory listing shows for what `$STANDARD_INFORMATION` stores, as measured
+    /// against FileIdExtdDirectoryInfo on Windows 11: the directory bit comes from the record header, bit 0x40000
+    /// is never listed, a file with none reads as FILE_ATTRIBUTE_NORMAL, and the system-compression filter hides
+    /// its reparse point and sparse bit, so those files list as plain files.
+    static func listedAttributes(
+        stored: UInt32,
+        reparseTag: UInt32,
+        isDirectory: Bool
+    ) -> (attributes: UInt32, reparseTag: UInt32) {
+        var attributes = stored & ~0x0004_0000
+        var tag = reparseTag
+        if tag == wofReparseTag {
+            attributes &= ~(0x400 | 0x200)
+            tag = 0
+        }
+        if isDirectory {
+            attributes |= 0x10
+        } else if attributes == 0 {
+            attributes = 0x80
+        }
+        return (attributes, tag)
+    }
 
     let recordCount: Int
     let inUseRecordCount: Int
@@ -190,13 +214,19 @@ nonisolated final class NTFSVolumeIndex: @unchecked Sendable {
 
     private func makeEntry(record: UInt32, name: String) -> NTFSIndexEntry {
         let index = Int(record)
+        let isDirectory = state[index] & State.directory != 0
+        let listed = Self.listedAttributes(
+            stored: attributes[index],
+            reparseTag: reparseTags[index],
+            isDirectory: isDirectory
+        )
         return NTFSIndexEntry(
             name: name,
             recordNumber: record,
             fileReference: NTFSFileReference(record: UInt64(record), sequence: sequence[index]).rawValue,
-            isDirectory: state[index] & State.directory != 0,
-            fileAttributes: attributes[index],
-            reparseTag: reparseTags[index],
+            isDirectory: isDirectory,
+            fileAttributes: listed.attributes,
+            reparseTag: listed.reparseTag,
             lastWriteTime: lastWriteTimes[index],
             logicalSize: logicalSizes[index],
             allocationSize: allocationSizes[index],
@@ -268,6 +298,8 @@ nonisolated final class NTFSVolumeIndexBuilder: @unchecked Sendable {
         fileprivate var extensions: [ExtensionInfo] = []
         /// In-use records whose fixups failed: torn by a concurrent write, worth one re-read.
         var tornRecords: [UInt64] = []
+        /// Records whose reparse data isn't resident: the reader fetches the tag from this cluster.
+        var reparseClusters: [(record: UInt64, cluster: Int64)] = []
         var misplacedRecord: (expected: UInt64, found: UInt64)?
         fileprivate var record = NTFSFileRecord()
 
@@ -414,8 +446,14 @@ nonisolated final class NTFSVolumeIndexBuilder: @unchecked Sendable {
             columns.lastWriteTimes[index] = record.lastWriteTime
             if record.hasReparsePoint {
                 columns.reparseTags[index] = record.reparseTag ?? Self.unknownReparseTag
+                if record.reparseTag == nil, let cluster = record.reparseDataCluster {
+                    fragment.reparseClusters.append((number, cluster))
+                }
             }
         } else if record.unnamedData != nil || record.hasReparsePoint {
+            if record.hasReparsePoint, record.reparseTag == nil, let cluster = record.reparseDataCluster {
+                fragment.reparseClusters.append((record.baseRecord.recordNumber, cluster))
+            }
             fragment.extensions.append(ExtensionInfo(
                 base: record.baseRecord,
                 data: record.unnamedData,
@@ -450,6 +488,18 @@ nonisolated final class NTFSVolumeIndexBuilder: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return fragments.flatMap(\.tornRecords)
+    }
+
+    func reparseClusters() -> [(record: UInt64, cluster: Int64)] {
+        lock.lock()
+        defer { lock.unlock() }
+        return fragments.flatMap(\.reparseClusters)
+    }
+
+    /// The tag read from a non-resident reparse buffer. Single-threaded, after the bulk pass.
+    func setReparseTag(_ tag: UInt32, record: UInt64) {
+        guard record < UInt64(recordCount) else { return }
+        columns.reparseTags[Int(record)] = tag
     }
 
     func clearTornRecords() {

@@ -32,7 +32,7 @@ import Testing
 
         var usersRecord = Record(number: 30, sequence: 3, isDirectory: true)
         usersRecord.attributes = [
-            SyntheticNTFS.standardInformation(attributes: 0x11),
+            SyntheticNTFS.standardInformation(attributes: 0x01),
             SyntheticNTFS.fileName(parent: root, "Users", namespace: NTFSFileNameNamespace.win32AndDOS),
         ]
         records.append(usersRecord)
@@ -137,7 +137,7 @@ import Testing
         #expect(Set(rootChildren.keys) == ["Users", "linked.dll", "Documents and Settings"])
 
         let users = try #require(rootChildren["Users"])
-        #expect(users.isDirectory && users.recordNumber == 30)
+        #expect(users.isDirectory && users.recordNumber == 30 && users.fileAttributes == 0x11)
         #expect(users.fileReference == Self.users)
         #expect(Set(children(index, of: 30).keys) == ["long name.txt", "linked.dll", "spilled.bin"])
 
@@ -223,5 +223,17 @@ import Testing
         #expect(throws: NTFSIndexError.misplacedRecord(expected: 40, found: 39)) {
             try Self.build(image).finish()
         }
+    }
+
+    @Test func listedAttributesFollowWhatDirectoryListingsReport() {
+        // System-compressed files list as plain files.
+        let wof = NTFSVolumeIndex.listedAttributes(stored: 0x0004_0620, reparseTag: 0x8000_0017, isDirectory: false)
+        #expect(wof.attributes == 0x20 && wof.reparseTag == 0)
+        let bare = NTFSVolumeIndex.listedAttributes(stored: 0x0004_0000, reparseTag: 0, isDirectory: false)
+        #expect(bare.attributes == 0x80)
+        let directory = NTFSVolumeIndex.listedAttributes(stored: 0x06, reparseTag: 0, isDirectory: true)
+        #expect(directory.attributes == 0x16)
+        let junction = NTFSVolumeIndex.listedAttributes(stored: 0x416, reparseTag: 0xA000_0003, isDirectory: true)
+        #expect(junction.attributes == 0x416 && junction.reparseTag == 0xA000_0003)
     }
 }

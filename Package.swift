@@ -211,6 +211,66 @@ targets += [
 ]
 #endif
 
+#if os(Windows)
+products.append(.executable(name: "neodisk", targets: ["NeodiskWin"]))
+targets += [
+    // The COM-heavy half of the Windows platform layer behind a C API: Direct2D/DirectWrite drawing for the
+    // window chrome, UI Automation providers for custom-drawn elements, uxtheme, the folder picker, PNG capture.
+    .target(
+        name: "CNeodiskWin",
+        path: "Sources/CNeodiskWin",
+        linkerSettings: [
+            .linkedLibrary("d2d1"),
+            .linkedLibrary("dwrite"),
+            .linkedLibrary("windowscodecs"),
+            .linkedLibrary("uxtheme"),
+            .linkedLibrary("uiautomationcore"),
+            .linkedLibrary("dwmapi"),
+            .linkedLibrary("comctl32"),
+            .linkedLibrary("ole32"),
+            .linkedLibrary("oleaut32"),
+            .linkedLibrary("oleacc"),
+            .linkedLibrary("shell32"),
+            .linkedLibrary("gdi32"),
+            .linkedLibrary("user32"),
+        ]
+    ),
+    // Direct3D 11, a flip-model swap chain, Direct2D, DirectWrite and WIC behind a C API for the treemap and
+    // sunburst canvas. C++ because DirectWrite has no C interface.
+    .target(
+        name: "CNeodiskCanvas",
+        path: "Sources/CNeodiskCanvas",
+        linkerSettings: [
+            .linkedLibrary("d2d1"),
+            .linkedLibrary("d3d11"),
+            .linkedLibrary("dxgi"),
+            .linkedLibrary("dwrite"),
+            .linkedLibrary("windowscodecs"),
+            .linkedLibrary("dxguid"),
+            .linkedLibrary("ole32"),
+        ]
+    ),
+    // The Windows app: Swift over Win32, with real controls where they carry keyboard and Narrator support
+    // (the file list, the search field) and Direct2D surfaces with UI Automation providers for the rest.
+    .executableTarget(
+        name: "NeodiskWin",
+        dependencies: ["NeodiskKit", "NeodiskAppModel", "TreemapKit", "SunburstCore", "CNeodiskWin", "CNeodiskCanvas"],
+        path: "Sources/NeodiskWin",
+        exclude: ["Neodisk.manifest"],
+        linkerSettings: [
+            // A GUI program (no console window), with the manifest that turns on per-monitor DPI awareness,
+            // long paths, and version 6 of the common controls.
+            .unsafeFlags([
+                "-Xlinker", "/SUBSYSTEM:WINDOWS",
+                "-Xlinker", "/ENTRY:mainCRTStartup",
+                "-Xlinker", "/MANIFEST:EMBED",
+                "-Xlinker", "/MANIFESTINPUT:\(Context.packageDirectory)/Sources/NeodiskWin/Neodisk.manifest",
+            ]),
+        ]
+    ),
+]
+#endif
+
 let package = Package(
     name: "Neodisk",
     platforms: [

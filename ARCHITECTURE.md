@@ -23,7 +23,7 @@ core is Swift, and its GTK app is Swift talking to GTK's C API.
                 │ macOS: NeodiskUI     │  │ Linux: NeodiskGTK    │
                 │ SwiftUI + AppKit     │  │ GTK 4 + libadwaita   │
                 └──────────────────────┘  └──────────────────────┘
-                                          (Windows: core done, app below)
+                                          (Windows: NeodiskWin, below)
 ```
 
 `diskscan` (NeodiskCLI) is a third consumer of the core, on every platform.
@@ -58,18 +58,18 @@ type (`Color(rgb:)` in SwiftUI, `GdkRGBA` in GTK).
 
 **Per platform:**
 
-| | macOS (NeodiskUI) | Linux (NeodiskGTK) |
-|---|---|---|
-| Toolkit | SwiftUI + AppKit | GTK 4.14+ and libadwaita 1.5+ |
-| Treemap drawing | CALayer with a CGImage raster | GtkSnapshot with a GdkTexture raster |
-| Sunburst drawing | SwiftUI Canvas | cairo raster texture + GskPath overlays |
-| Outline | NSOutlineView | GtkColumnView over a lazy GtkTreeListModel |
-| Main thread | AppKit run loop | GLib main loop, with the main dispatch queue drained from it |
-| State → UI | `@Observable` / SwiftUI | `@Observable` / `withObservationTracking` |
-| Strings | `Localization/*.lproj` in the bundle | the same catalogs, read from the data directory |
-| Settings | UserDefaults | JSON in `$XDG_CONFIG_HOME/neodisk` |
-| File actions | NSWorkspace, Quick Look | GtkFileLauncher (portal or FileManager1) |
-| Updates | Sparkle | the distribution's package manager |
+| | macOS (NeodiskUI) | Linux (NeodiskGTK) | Windows (NeodiskWin) |
+|---|---|---|---|
+| Toolkit | SwiftUI + AppKit | GTK 4.14+ and libadwaita 1.5+ | Win32 controls + Direct2D/DirectWrite surfaces (`CNeodiskWin`) |
+| Treemap drawing | CALayer with a CGImage raster | GtkSnapshot with a GdkTexture raster | Direct2D over a Direct3D 11 swap chain (`CNeodiskCanvas`) |
+| Sunburst drawing | SwiftUI Canvas | cairo raster texture + GskPath overlays | the same canvas |
+| Outline | NSOutlineView | GtkColumnView over a lazy GtkTreeListModel | a virtual (owner-data) ListView over the expanded rows |
+| Main thread | AppKit run loop | GLib main loop, with the main dispatch queue drained from it | a message loop that also waits on the main dispatch queue's event |
+| State → UI | `@Observable` / SwiftUI | `@Observable` / `withObservationTracking` | `@Observable` / `observeChanges` |
+| Strings | `Localization/*.lproj` in the bundle | the same catalogs, read from the data directory | the same catalogs (`StringsCatalog`), next to the executable |
+| Settings | UserDefaults | JSON in `$XDG_CONFIG_HOME/neodisk` | JSON in `%APPDATA%\Neodisk` |
+| File actions | NSWorkspace, Quick Look | GtkFileLauncher (portal or FileManager1) | ShellExecute, File Explorer |
+| Updates | Sparkle | the distribution's package manager | not yet |
 
 ## The platform layer inside the core
 
@@ -77,7 +77,7 @@ Platform differences below the UI stay inside the core behind
 `#if canImport(...)` / `#if os(...)`, so the apps never see them:
 
 | Concern | Apple platforms | Linux | Windows |
-|---|---|---|---|
+|---|---|---|---|---|
 | Directory enumeration | `getattrlistbulk` batches | `readdir` + `fstatat` relative to the open directory (`BulkDirectoryReader+Linux.swift`) | `GetFileInformationByHandleEx` directory-info batches (`FileIdExtdDirectoryInfo`, 64 KiB) from one handle, no per-entry open (`BulkDirectoryReader+Windows.swift`) |
 | Per-item metadata | URLResourceValues, lstat fallback | lstat through the same conversion as the reader (`LinuxStat`) | one handle opened without following reparse points, through the same conversion as the reader (`WindowsFileInfo`) |
 | Allocated size | `ATTR_FILE_ALLOCSIZE` | `st_blocks × 512` | `AllocationSize`; files the system compressed (WOF) list 0 there and are asked one by one |
@@ -122,9 +122,23 @@ Paths are `URL.path` spellings (`C:/Users/x`); Win32 calls get them with backsla
 past `MAX_PATH` (`WindowsPath`). Trash checks compare paths case-insensitively and treat every drive as a child of
 one root. Moving to the Recycle Bin is not wired up yet: `TrashMover.systemTrash` throws.
 
-The app (`NeodiskWin`, in progress) is Swift over Win32 with Direct2D and DirectWrite for drawing, over the same
-`NeodiskAppModel` the other two apps use. WinUI 3 would need swift-winrt projections generated or vendored and the
-Windows App Runtime on every machine, while the surfaces that matter (treemap, sunburst) are Direct2D either way.
+The app (`NeodiskWin`) is Swift over Win32 with Direct2D and DirectWrite for drawing, over the same
+`NeodiskAppModel` the other two apps use (`ScanWorkspace` holds the location, its scan, selection and drill
+state). WinUI 3 would need swift-winrt projections generated or vendored and the Windows App Runtime on every
+machine, while the surfaces that matter (treemap, sunburst) are Direct2D either way.
+
+- **Real controls where they bring keyboard and Narrator support:** the file list is an owner-data ListView
+  (only visible rows exist), the search field an EDIT. They sit on the content layer, which is opaque.
+- **Custom surfaces with UI Automation providers:** the navigation pane, command bar, header and status bar are
+  child windows drawn by Direct2D, each answering `WM_GETOBJECT` with a provider built from the same element
+  list it hit-tests (`SurfaceView`). The COM-heavy parts (DirectWrite, UI Automation, uxtheme, WIC) live in
+  `CNeodiskWin`, a C++ target behind a C API, because the toolchain's `WinSDK` module doesn't cover them.
+- **Windows 11 look:** Mica (`DWMWA_SYSTEMBACKDROP_TYPE`) behind the pane and the command bar, which are an
+  extended frame drawn with real alpha; immersive dark mode and the accent from the system, re-read on
+  `WM_SETTINGCHANGE`; per-monitor DPI v2, long paths and common controls v6 from the embedded manifest.
+- **Main thread:** the message loop waits on window messages and the main dispatch queue's event together, so
+  `@MainActor` work runs between messages.
+
 `Package.swift` declares it in an `#if os(Windows)` block like the Linux one.
 
 ## Where logic goes

@@ -92,6 +92,12 @@
 "Full Disk Access is not enabled." = "Vollständiger Festplattenzugriff ist nicht aktiviert.";
 "Checking…" = "Wird geprüft …";
 "Open Full Disk Access Settings" = "Einstellungen für Vollständigen Festplattenzugriff öffnen";
+"Neodisk Works Best with Full Disk Access" = "Neodisk funktioniert am besten mit Vollständigem Festplattenzugriff";
+"Without it, macOS stops the scan to ask about each protected folder, like Documents, Downloads and Photos, and some locations are skipped." = "Ohne ihn hält macOS den Scan an, um nach jedem geschützten Ordner wie Dokumente, Downloads und Fotos zu fragen, und einige Orte werden übersprungen.";
+"Scan Anyway" = "Trotzdem scannen";
+"Waiting for permission to read %@" = "Warten auf Zugriffserlaubnis für %@";
+"other apps' data" = "Daten anderer Apps";
+"iCloud Drive" = "iCloud Drive";
 "Recheck" = "Erneut prüfen";
 "Note: running unbundled (swift run), Neodisk inherits its permissions from the terminal that launched it — grant Full Disk Access to that terminal app." = "Hinweis: Beim Ausführen ohne App-Bundle (swift run) erbt Neodisk seine Berechtigungen vom Terminal, das es gestartet hat — erteile diesem Terminal Vollständigen Festplattenzugriff.";
 "Moving to the Trash" = "Verschieben in den Papierkorb";
@@ -137,6 +143,7 @@
 "Reveal in Finder" = "Im Finder zeigen";
 "Open" = "Öffnen";
 "Copy Path" = "Pfad kopieren";
+"Path" = "Pfad";
 "Expand Contents" = "Inhalt einblenden";
 "Show Package Contents" = "Paketinhalt zeigen";
 "No matches" = "Keine Treffer";
@@ -426,6 +433,7 @@
 "Top %lld of %@ matches" = "Die besten %lld von %@ Treffern";
 "Visualization" = "Visualisierung";
 "%@ free of %@" = "%@ frei von %@";
+"%@ of %@ used" = "%@ von %@ belegt";
 "%@ in %@ files" = "%@ in %@ Dateien";
 "%@ in %@ file" = "%@ in %@ Datei";
 
@@ -518,6 +526,7 @@
 "Move Right" = "Nach rechts";
 "Statistics Tabs" = "Statistik-Tabs";
 "Top %@ of %@ files" = "Top %@ von %@ Dateien";
+"No files to show" = "Keine Dateien";
 
 /* Windows app */
 "Commands" = "Befehle";

@@ -99,6 +99,9 @@
 "Allow moving items to the Trash" = "Permitir mover elementos a la Papelera";
 "Sidebar Folders" = "Carpetas de la barra lateral";
 "Clear Added Folders" = "Borrar carpetas añadidas";
+"Restore Default Folders" = "Restaurar carpetas predeterminadas";
+"Remove the folders you added from the sidebar?" = "¿Quitar de la barra lateral las carpetas que añadiste?";
+"Their scan snapshots are removed too." = "También se eliminan sus instantáneas de análisis.";
 "Scan Snapshots" = "Instantáneas de análisis";
 "Size on disk" = "Tamaño en el disco";
 "Calculating…" = "Calculando…";

@@ -98,6 +98,9 @@
 "Allow moving items to the Trash" = "Allow moving items to the Trash";
 "Sidebar Folders" = "Sidebar Folders";
 "Clear Added Folders" = "Clear Added Folders";
+"Restore Default Folders" = "Restore Default Folders";
+"Remove the folders you added from the sidebar?" = "Remove the folders you added from the sidebar?";
+"Their scan snapshots are removed too." = "Their scan snapshots are removed too.";
 "Scan Snapshots" = "Scan Snapshots";
 "Size on disk" = "Size on disk";
 "Calculating…" = "Calculating…";

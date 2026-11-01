@@ -79,6 +79,7 @@ private struct GeneralSettingsTab: View {
                 }
                 Button("Restore Defaults") {
                     preferences.restoreDefaults()
+                    model.restoreCommonSidebarFolders()
                 }
             }
         }
@@ -214,6 +215,7 @@ private struct PrivacySettingsTab: View {
 
     @State private var accessStatus: FullDiskAccessStatus = .unknown
     @State private var snapshotCacheSize: Int64?
+    @State private var confirmsClearingFolders = false
 
     var body: some View {
         Form {
@@ -262,11 +264,27 @@ private struct PrivacySettingsTab: View {
             }
 
             Section("Sidebar Folders") {
-                Button("Clear Added Folders") {
-                    model.removeSidebarFolders(ids: Set(model.sidebarFolders.map(\.id)))
-                    refreshSnapshotCacheSize()
+                HStack {
+                    Button("Clear Added Folders") {
+                        confirmsClearingFolders = true
+                    }
+                    .disabled(model.addedSidebarFolders.isEmpty)
+                    Button("Restore Default Folders") {
+                        model.restoreCommonSidebarFolders()
+                    }
+                    .disabled(!model.isMissingCommonSidebarFolders)
                 }
-                .disabled(model.sidebarFolders.isEmpty)
+                .confirmationDialog(
+                    "Remove the folders you added from the sidebar?",
+                    isPresented: $confirmsClearingFolders
+                ) {
+                    Button("Clear Added Folders", role: .destructive) {
+                        model.removeAddedSidebarFolders()
+                        refreshSnapshotCacheSize()
+                    }
+                } message: {
+                    Text("Their scan snapshots are removed too.")
+                }
             }
 
             Section("Scan Snapshots") {

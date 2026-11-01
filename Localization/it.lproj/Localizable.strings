@@ -98,6 +98,9 @@
 "Allow moving items to the Trash" = "Consenti di spostare elementi nel Cestino";
 "Sidebar Folders" = "Cartelle nella barra laterale";
 "Clear Added Folders" = "Rimuovi cartelle aggiunte";
+"Restore Default Folders" = "Ripristina cartelle predefinite";
+"Remove the folders you added from the sidebar?" = "Rimuovere dalla barra laterale le cartelle che hai aggiunto?";
+"Their scan snapshots are removed too." = "Vengono rimosse anche le loro istantanee delle scansioni.";
 "Scan Snapshots" = "Istantanee delle scansioni";
 "Size on disk" = "Dimensione su disco";
 "Calculating…" = "Calcolo…";

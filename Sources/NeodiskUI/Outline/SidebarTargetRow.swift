@@ -7,6 +7,7 @@ import NeodiskAppModel
 
 struct SidebarTargetRow: View {
     @Environment(\.neoTextScale) private var textScale
+    @Environment(\.controlActiveState) private var activeState
 
     let target: ScanTarget
     /// A volume's free space or a folder's scanned size; nil before a folder's first scan.
@@ -14,6 +15,8 @@ struct SidebarTargetRow: View {
     var lastScanned: Date?
     /// Reference date for the relative scan label, from the enclosing TimelineView.
     var now: Date
+    /// The list's selection fill is the accent in a key window, where an accent glyph would vanish.
+    var isSelected = false
     var tooltip: String
     /// Volumes: the kind-colored capacity bar (an empty track before any scan). Scanned cloud locations and
     /// folders: the on-this-Mac / cloud-only or kinds bar.
@@ -29,13 +32,15 @@ struct SidebarTargetRow: View {
         HStack(spacing: (8 * textScale).rounded()) {
             Image(systemName: iconName)
                 .neoFont(15)
-                .foregroundStyle(.blue)
+                .foregroundStyle(iconStyle)
                 .frame(width: (22 * textScale).rounded())
 
             VStack(alignment: .leading, spacing: (1 * textScale).rounded()) {
                 HStack(alignment: .firstTextBaseline, spacing: (6 * textScale).rounded()) {
+                    // Explicit: the list's default dims names in an inactive window, so they'd all read disabled.
                     Text(target.displayName)
                         .neoFont(13, weight: .medium)
+                        .foregroundStyle(.primary)
                         .lineLimit(1)
                     Spacer(minLength: 0)
                     if let size {
@@ -74,6 +79,12 @@ struct SidebarTargetRow: View {
         }
         .padding(.vertical, 1)
         .help(tooltip)
+    }
+
+    /// Accent glyphs in a key window, white on its selection; gray when the window isn't key, as source lists do.
+    private var iconStyle: AnyShapeStyle {
+        guard activeState != .inactive else { return AnyShapeStyle(.secondary) }
+        return isSelected ? AnyShapeStyle(.primary) : AnyShapeStyle(.tint)
     }
 
     private var iconName: String {

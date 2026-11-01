@@ -211,6 +211,33 @@ targets += [
 ]
 #endif
 
+#if os(Windows)
+products.append(.executable(name: "neodisk", targets: ["NeodiskWin"]))
+targets += [
+    // Direct3D 11, a flip-model swap chain, Direct2D, DirectWrite and WIC behind a C API for the treemap and
+    // sunburst canvas. C++ because DirectWrite has no C interface.
+    .target(
+        name: "CNeodiskCanvas",
+        path: "Sources/CNeodiskCanvas",
+        linkerSettings: [
+            .linkedLibrary("d2d1"),
+            .linkedLibrary("d3d11"),
+            .linkedLibrary("dxgi"),
+            .linkedLibrary("dwrite"),
+            .linkedLibrary("windowscodecs"),
+            .linkedLibrary("dxguid"),
+            .linkedLibrary("ole32"),
+        ]
+    ),
+    // The Windows app: Win32 windows with Direct2D drawing over the shared core.
+    .executableTarget(
+        name: "NeodiskWin",
+        dependencies: ["NeodiskKit", "NeodiskAppModel", "TreemapKit", "SunburstCore", "CNeodiskCanvas"],
+        path: "Sources/NeodiskWin"
+    ),
+]
+#endif
+
 let package = Package(
     name: "Neodisk",
     platforms: [

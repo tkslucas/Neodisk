@@ -1,22 +1,12 @@
-// The statistics tabs: a segmented control with the tabs' titles while they fit whole, else their symbols (each
-// with its title as a tooltip), so every tab stays one click away at any pane width, language or text size.
-// Dragging a segment moves its tab; right-clicking one moves it or shows and hides tabs.
+// The statistics tabs: a segmented control while every shown tab fits its full title, else a pop-up of them, so
+// titles never truncate at any pane width, language or text size. Dragging a segment moves its tab; right-clicking
+// one (or the pop-up) moves it left or right and shows or hides tabs.
 
 import AppKit
 import SwiftUI
 import NeodiskAppModel
 
 extension AnalysisTab {
-    var systemImage: String {
-        switch self {
-        case .largest: "list.number"
-        case .kinds: "square.grid.2x2"
-        case .age: "clock"
-        case .duplicates: "doc.on.doc"
-        case .changes: "plus.forwardslash.minus"
-        }
-    }
-
     var localizedTitle: String { NSLocalizedString(title, comment: "Statistics tab") }
 }
 
@@ -25,8 +15,17 @@ struct AnalysisTabBar: View {
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
-            AnalysisSegmentedControl(model: model, showsTitles: true)
-            AnalysisSegmentedControl(model: model, showsTitles: false)
+            AnalysisSegmentedControl(model: model)
+            Picker("Statistics", selection: Binding(get: { model.analysisTab }, set: { model.analysisTab = $0 })) {
+                ForEach(model.analysisTabs.visible) { tab in
+                    Text(LocalizedStringKey(tab.title)).tag(tab)
+                }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .fixedSize()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contextMenu { AnalysisTabsMenuItems(model: model, moving: model.analysisTab) }
         }
         .neoControlSize(base: .small)
         .padding(.horizontal, StatsListMetrics.inset)
@@ -35,12 +34,21 @@ struct AnalysisTabBar: View {
     }
 }
 
-/// Which tabs show, for the pane's SwiftUI menus (its headers and empty space) and View > Statistics Tabs.
+/// Which tabs show, for the pane's SwiftUI menus (its headers and empty space) and View > Statistics Tabs; the
+/// pop-up's menu also moves its tab.
 struct AnalysisTabsMenuItems: View {
     let model: NeodiskViewModel
+    var moving: AnalysisTab?
 
     var body: some View {
         let layout = model.analysisTabs
+        if let moving, let index = layout.visible.firstIndex(of: moving) {
+            Button("Move Left") { model.moveAnalysisTab(moving, to: index - 1) }
+                .disabled(index == 0)
+            Button("Move Right") { model.moveAnalysisTab(moving, to: index + 1) }
+                .disabled(index == layout.visible.count - 1)
+            Divider()
+        }
         ForEach(layout.order) { tab in
             Toggle(LocalizedStringKey(tab.title), isOn: Binding(
                 get: { !layout.isHidden(tab) },
@@ -93,18 +101,17 @@ extension NSMenu {
     }
 }
 
-/// Titled segments are as wide as their titles, not all as wide as the widest, so they fit the narrowest pane they
-/// can; symbol segments share the width equally. Either way the control stretches to fill the bar.
+/// Segments as wide as their titles, not all as wide as the widest, so the control fits the narrowest pane it can;
+/// it stretches proportionally to fill the rest.
 private struct AnalysisSegmentedControl: NSViewRepresentable {
     let model: NeodiskViewModel
-    let showsTitles: Bool
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeNSView(context: Context) -> TabSegmentedControl {
         let control = TabSegmentedControl()
         control.trackingMode = .selectOne
-        control.segmentDistribution = showsTitles ? .fillProportionally : .fillEqually
+        control.segmentDistribution = .fillProportionally
         control.setAccessibilityLabel(NSLocalizedString("Statistics", comment: "Statistics tabs"))
         control.setContentCompressionResistancePriority(.required, for: .horizontal)
         // Clicks select on mouse-down themselves; the action carries keyboard and accessibility picks.
@@ -134,15 +141,7 @@ private struct AnalysisSegmentedControl: NSViewRepresentable {
             coordinator.tabs = tabs
             control.segmentCount = tabs.count
             for (index, tab) in tabs.enumerated() {
-                if showsTitles {
-                    control.setLabel(tab.localizedTitle, forSegment: index)
-                } else {
-                    control.setImage(
-                        NSImage(systemSymbolName: tab.systemImage, accessibilityDescription: tab.localizedTitle),
-                        forSegment: index
-                    )
-                    control.setToolTip(tab.localizedTitle, forSegment: index)
-                }
+                control.setLabel(tab.localizedTitle, forSegment: index)
             }
         }
         control.selectedSegment = tabs.firstIndex(of: model.analysisTab) ?? -1
@@ -256,12 +255,12 @@ final class TabSegmentedControl: NSSegmentedControl {
         return segmentFrames().firstIndex { x < $0.upperBound } ?? (segmentCount > 0 ? segmentCount - 1 : nil)
     }
 
-    /// Each segment's span as `segmentDistribution` lays them out: equal shares, or shares in proportion to each title.
+    /// Each segment's span as `.fillProportionally` lays them out: shares in proportion to each title.
     private func segmentFrames() -> [ClosedRange<CGFloat>] {
         guard segmentCount > 0, bounds.width > 0 else { return [] }
         let font = font ?? .systemFont(ofSize: NSFont.smallSystemFontSize)
         let weights: [CGFloat] = (0..<segmentCount).map { index in
-            guard segmentDistribution == .fillProportionally, let label = label(forSegment: index) else { return 1 }
+            guard let label = label(forSegment: index) else { return 1 }
             return (label as NSString).size(withAttributes: [.font: font]).width + 16
         }
         let total = weights.reduce(0, +)

@@ -25,5 +25,10 @@ jobs:
       - name: Build
         run: swift build --build-tests
 
+      # The runner's TEMP uses the 8.3 short form of the profile folder (RUNNER~1), which the scanner spells out
+      # in full, so tests that build paths from the temporary directory would disagree with scan ids.
       - name: Test
         run: swift test --skip-build
+        env:
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}

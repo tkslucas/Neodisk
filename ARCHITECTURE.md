@@ -80,7 +80,7 @@ Platform differences below the UI stay inside the core behind
 |---|---|---|---|
 | Directory enumeration | `getattrlistbulk` batches | `readdir` + `fstatat` relative to the open directory (`BulkDirectoryReader+Linux.swift`) | `GetFileInformationByHandleEx` directory-info batches (`FileIdExtdDirectoryInfo`, 64 KiB) from one handle, no per-entry open (`BulkDirectoryReader+Windows.swift`) |
 | Per-item metadata | URLResourceValues, lstat fallback | lstat through the same conversion as the reader (`LinuxStat`) | one handle opened without following reparse points, through the same conversion as the reader (`WindowsFileInfo`) |
-| Allocated size | `ATTR_FILE_ALLOCSIZE` | `st_blocks × 512` | `AllocationSize` |
+| Allocated size | `ATTR_FILE_ALLOCSIZE` | `st_blocks × 512` | `AllocationSize`; files the system compressed (WOF) list 0 there and are asked one by one |
 | Identity, hard links | device + inode, link count | device + inode, link count | volume serial + file ID; the walk counts every link (directory info has no link count) |
 | Links and mount points | never followed (`O_NOFOLLOW`, mount status) | never followed, device changes | name-surrogate reparse points (symlinks, junctions, mounted volumes) are leaves, never followed |
 | Incremental rescans | FSEvents journal replay | none (no persistent journal); every rescan is a full scan | none yet (the USN change journal is the candidate) |

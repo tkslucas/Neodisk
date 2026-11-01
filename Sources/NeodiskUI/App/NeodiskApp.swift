@@ -13,12 +13,15 @@ public struct NeodiskApp: App {
     // Sparkle auto-updates; inert (no updater) for unbundled `swift run`
     // builds and bundles without an appcast feed. See UpdateController.
     @StateObject private var updates = UpdateController()
+    @NSApplicationDelegateAdaptor private var quitDelegate: QuitDelegate
+    private let snapshotCache = ScanSnapshotCache()
 
     public init() {
         FeltTiming.markLaunch("appInit")
         DiagnosticsMonitor.start()
         let model = NeodiskViewModel(
-            coordinator: ScanCoordinator(scanService: IncrementalScanService())
+            coordinator: ScanCoordinator(scanService: IncrementalScanService()),
+            snapshotCache: snapshotCache
         )
         // Bound before the first frame, so the workspace opens at the saved
         // text size. Binding on appear drew one frame at 100% first, and a
@@ -58,7 +61,10 @@ public struct NeodiskApp: App {
     public var body: some Scene {
         WindowGroup {
             ContentView(model: model, preferences: preferences, updates: updates)
-                .onAppear { preferences.applyTheme() }
+                .onAppear {
+                    preferences.applyTheme()
+                    quitDelegate.snapshotCache = snapshotCache
+                }
         }
         .commands {
             NeodiskCommands(model: model, updates: updates)
@@ -75,5 +81,24 @@ public struct NeodiskApp: App {
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
         .defaultPosition(.center)
+    }
+}
+
+/// Quitting waits briefly for snapshot saves still encoding, so the scan that just finished opens next launch.
+@MainActor
+final class QuitDelegate: NSObject, NSApplicationDelegate {
+    var snapshotCache: ScanSnapshotCache?
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let snapshotCache else { return .terminateNow }
+        sender.windows.forEach { $0.orderOut(nil) }
+        Task.detached {
+            await snapshotCache.finishSaves(within: .seconds(10))
+            // The main actor doesn't run while a quit is pending; the modal-panel run loop does.
+            RunLoop.main.perform(inModes: [.default, .modalPanel]) {
+                MainActor.assumeIsolated { NSApp.reply(toApplicationShouldTerminate: true) }
+            }
+        }
+        return .terminateLater
     }
 }

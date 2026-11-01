@@ -270,7 +270,7 @@ final class NeodiskViewModel {
 
     init(
         coordinator: ScanCoordinator = ScanCoordinator(),
-        snapshotCache: ScanSnapshotCache = ScanSnapshotCache(),
+        snapshotCache: ScanSnapshotCache,
         sidebarFolderStore: SidebarFolderStore = SidebarFolderStore()
     ) {
         self.coordinator = coordinator

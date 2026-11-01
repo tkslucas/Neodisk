@@ -219,7 +219,7 @@ import Testing
     @Test func outlineRowViewsCarryTheScaleTheyWereBuiltFor() {
         defer { OutlineRowMetrics.scale = 1 }
 
-        let model = NeodiskViewModel()
+        let model = NeodiskViewModel(snapshotCache: makeIsolatedCache())
         let row = NeodiskViewModel.OutlineRow(
             node: makeTestFileNode(id: "/scan/notes.txt", name: "notes.txt", size: 4096),
             depth: 1,

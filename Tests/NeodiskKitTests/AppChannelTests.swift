@@ -16,6 +16,8 @@ import Testing
     @Test func snapshotCacheLivesUnderTheChannelsFolder() {
         guard ProcessInfo.processInfo.environment["NEODISK_SNAPSHOT_DIR"] == nil else { return }
         let path = ScanSnapshotCache.defaultDirectoryURL.path(percentEncoded: false)
-        #expect(path.hasSuffix("/\(AppChannel.current.appName)/ScanCache/"))
+        #expect(path.hasSuffix("/\(ScanSnapshotCache.cacheFolderName)/ScanCache/"))
+        // A test runner is a dev build: it must never share the installed app's cache.
+        #expect(ScanSnapshotCache.cacheFolderName == "\(AppChannel.current.appName) Dev")
     }
 }

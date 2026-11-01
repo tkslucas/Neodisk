@@ -46,10 +46,27 @@ public struct CachedScanInfo: Sendable {
         self.totalAllocatedSize = totalAllocatedSize
         self.cloudOnlyLogicalSize = cloudOnlyLogicalSize
     }
+
+    /// What the index will read back once `snapshot` is saved. A splice passes the entry it replaces: the last
+    /// full scan's date and duration stay (they drive auto-rescan).
+    public init(snapshot: ScanSnapshot, hasPreviousSnapshot: Bool, keepingScanTimeOf existing: CachedScanInfo? = nil) {
+        let duration = snapshot.finishedAt.map { $0.timeIntervalSince(snapshot.startedAt) }
+        let store = snapshot.treeStore
+        self.init(
+            lastScanDate: existing?.lastScanDate ?? snapshot.finishedAt ?? snapshot.startedAt,
+            lastScanDuration: existing.map(\.lastScanDuration) ?? duration.flatMap { $0 >= 0 ? $0 : nil },
+            nodeCount: store.nodeCount,
+            hasPreviousSnapshot: hasPreviousSnapshot,
+            totalAllocatedSize: snapshot.aggregateStats.totalAllocatedSize,
+            cloudOnlyLogicalSize: store.node(id: store.rootID)?.cloudOnlyLogicalSize ?? 0
+        )
+    }
 }
 
 /// Whether a save rotated the prior latest into the previous slot, and whether a previous slot exists afterwards.
 public struct SnapshotSaveOutcome: Sendable {
+    /// False when the save was dropped: the slots were cleared or a newer save claimed them mid-encode.
+    public let wrote: Bool
     public let rotatedPrevious: Bool
     public let hasPreviousSnapshot: Bool
 }
@@ -85,6 +102,7 @@ public actor ScanSnapshotCache {
     private var savingByTargetID: [String: ScanSnapshot] = [:]
     /// Targets whose rotating save was superseded before it wrote; the next save that writes rotates for it.
     private var pendingRotationTargetIDs: Set<String> = []
+    private var saveTasks: [UUID: Task<SnapshotSaveOutcome, Error>] = [:]
     private struct ComparisonBuild {
         let id: UUID
         let key: ScanChangeCacheKey
@@ -112,7 +130,18 @@ public actor ScanSnapshotCache {
             for: .applicationSupportDirectory,
             in: .userDomainMask
         ).first ?? FileManager.default.temporaryDirectory
-        return applicationSupportURL.appending(path: "\(AppChannel.current.appName)/ScanCache", directoryHint: .isDirectory)
+        return applicationSupportURL.appending(path: "\(cacheFolderName)/ScanCache", directoryHint: .isDirectory)
+    }
+
+    /// Dev builds (`swift run`, tests) get their own cache: their sidebar would prune the app's snapshots, and
+    /// their format changes would fail its decodes.
+    nonisolated static var cacheFolderName: String {
+        #if os(macOS)
+        let isDevBuild = Bundle.main.bundleIdentifier != AppChannel.current.identifier
+        #else
+        let isDevBuild = Bundle.main.executablePath?.contains("/.build/") ?? false
+        #endif
+        return isDevBuild ? "\(AppChannel.current.appName) Dev" : AppChannel.current.appName
     }
 
     public init(
@@ -129,6 +158,26 @@ public actor ScanSnapshotCache {
     /// `rotatesPrevious` is false (after a move to the Trash: the previous scan stays the Changes baseline).
     @discardableResult
     public func save(_ snapshot: ScanSnapshot, rotatesPrevious: Bool = true) async throws -> SnapshotSaveOutcome {
+        let id = UUID()
+        let saving = Task { try await write(snapshot, rotatesPrevious: rotatesPrevious) }
+        saveTasks[id] = saving
+        defer { saveTasks[id] = nil }
+        return try await saving.cancellableValue
+    }
+
+    /// Quitting waits here (at most `limit`), so a scan that just finished isn't lost mid-encode.
+    public func finishSaves(within limit: Duration) async {
+        let pending = Array(saveTasks.values)
+        guard !pending.isEmpty else { return }
+        // Whichever ends first finishes the stream; awaiting a task's result can't be cancelled.
+        let (ended, end) = AsyncStream<Never>.makeStream()
+        Task { for task in pending { _ = await task.result }; end.finish() }
+        let timeout = Task { try? await Task.sleep(for: limit); end.finish() }
+        for await _ in ended {}
+        timeout.cancel()
+    }
+
+    private func write(_ snapshot: ScanSnapshot, rotatesPrevious: Bool) async throws -> SnapshotSaveOutcome {
         guard snapshot.isComplete else {
             throw ScanSnapshotCacheError.incompleteSnapshot
         }
@@ -168,6 +217,7 @@ public actor ScanSnapshotCache {
             // The slots were removed or claimed by a newer save during the encode; writing would
             // resurrect stale bytes.
             return SnapshotSaveOutcome(
+                wrote: false,
                 rotatedPrevious: false,
                 hasPreviousSnapshot: FileManager.default.fileExists(
                     atPath: previousFileURL(forTargetID: targetID).path
@@ -185,9 +235,11 @@ public actor ScanSnapshotCache {
             } else if latestMatches(digest: digest, targetID: snapshot.target.id, at: latestURL) {
                 log("content unchanged for \(snapshot.target.id); keeping previous baseline")
             } else {
-                try? FileManager.default.removeItem(at: previousURL)
-                try? FileManager.default.moveItem(at: latestURL, to: previousURL)
-                rotatedPrevious = true
+                // Linked (copied where links aren't supported), not moved: the old latest stays until the new one lands.
+                let files = FileManager.default
+                try? files.removeItem(at: previousURL)
+                rotatedPrevious = (try? files.linkItem(at: latestURL, to: previousURL)) != nil
+                    || (try? files.copyItem(at: latestURL, to: previousURL)) != nil
             }
         }
 
@@ -198,6 +250,7 @@ public actor ScanSnapshotCache {
             + "\(snapshot.target.id) in \(elapsedDescription(since: start))"
         )
         return SnapshotSaveOutcome(
+            wrote: true,
             rotatedPrevious: rotatedPrevious,
             hasPreviousSnapshot: FileManager.default.fileExists(atPath: previousURL.path)
         )
@@ -263,13 +316,13 @@ public actor ScanSnapshotCache {
         }
     }
 
-    /// Called once at launch: deletes entries for targets no longer in the sidebar and orphaned previous
+    /// Called once at launch: deletes entries for targets no longer in the sidebar, promotes orphaned previous
     /// snapshots, and returns what the cache knows about the rest.
     public func pruneAndIndex(keepingTargetIDs validTargetIDs: Set<String>) -> [String: CachedScanInfo] {
         var latestMetadataByPath: [String: ScanSnapshotCodec.Metadata] = [:]
         var previousTargetPaths: Set<String> = []
         var latestBasenames: Set<String> = []
-        var previousURLsByBasename: [String: URL] = [:]
+        var previousByBasename: [String: (url: URL, metadata: ScanSnapshotCodec.Metadata)] = [:]
 
         for url in cacheFileURLs() {
             let isPrevious = Self.isPreviousSlot(url)
@@ -282,7 +335,7 @@ public actor ScanSnapshotCache {
                 }
                 if isPrevious {
                     previousTargetPaths.insert(metadata.targetPath)
-                    previousURLsByBasename[Self.slotBasename(url)] = url
+                    previousByBasename[Self.slotBasename(url)] = (url, metadata)
                 } else {
                     latestMetadataByPath[metadata.targetPath] = metadata
                     latestBasenames.insert(Self.slotBasename(url))
@@ -293,10 +346,15 @@ public actor ScanSnapshotCache {
             }
         }
 
-        // A previous snapshot without its latest can never be diffed.
-        for (basename, url) in previousURLsByBasename where !latestBasenames.contains(basename) {
-            log("pruning orphaned previous snapshot \(url.lastPathComponent)")
-            try? FileManager.default.removeItem(at: url)
+        // A previous without its latest (lost to a crash or older builds' saves) is still that target's last scan.
+        for (basename, (url, metadata)) in previousByBasename where !latestBasenames.contains(basename) {
+            guard (try? FileManager.default.moveItem(at: url, to: fileURL(forTargetID: metadata.targetPath))) != nil else {
+                continue
+            }
+            log("promoted orphaned previous snapshot \(url.lastPathComponent)")
+            previousTargetPaths.remove(metadata.targetPath)
+            latestMetadataByPath[metadata.targetPath] = metadata
+            latestBasenames.insert(basename)
         }
 
         // Auxiliary payloads (kind stats, cached change lists) live and die
@@ -531,8 +589,9 @@ public actor ScanSnapshotCache {
         invalidateComparison(forTargetID: targetID)
         // Also invalidates any in-flight save of this target (see save()).
         savingByTargetID.removeValue(forKey: targetID)
-        try? FileManager.default.removeItem(at: fileURL(forTargetID: targetID))
+        // Previous first: an orphaned previous would come back as the latest at the next launch.
         try? FileManager.default.removeItem(at: previousFileURL(forTargetID: targetID))
+        try? FileManager.default.removeItem(at: fileURL(forTargetID: targetID))
         try? FileManager.default.removeItem(at: auxiliaryFileURL(forTargetID: targetID))
         try? FileManager.default.removeItem(at: changeListFileURL(forTargetID: targetID))
         try? FileManager.default.removeItem(at: duplicateResultsFileURL(forTargetID: targetID))

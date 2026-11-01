@@ -24,7 +24,15 @@ final class NeodiskApplication {
         g_set_application_name(AppChannel.current.appName)
         connect(app, "startup") { [unowned self] in self.startup() }
         connect(app, "activate") { [unowned self] in self.activate() }
-        connect(app, "shutdown") { [unowned self] in self.preferences.saveNow() }
+        connect(app, "shutdown") { [unowned self] in
+            self.preferences.saveNow()
+            // Off screen first: waiting for a save can take seconds.
+            if let window = self.window {
+                gtk_widget_set_visible(ptr(window.window), 0)
+                gdk_display_get_default().map { gdk_display_flush($0) }
+            }
+            self.model.finishPendingSaves()
+        }
     }
 
     func run() -> Int32 {

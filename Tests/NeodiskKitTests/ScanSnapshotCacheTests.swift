@@ -383,7 +383,7 @@ import Testing
         #expect(cacheFileURLs(in: cacheDirectory).count == 1)
     }
 
-    @Test func testPruneDeletesPreviousSnapshotWhoseLatestIsUnreadable() async throws {
+    @Test func testPrunePromotesPreviousSnapshotWhoseLatestIsUnreadable() async throws {
         let cacheDirectory = makeTemporaryCacheDirectory()
         defer { try? FileManager.default.removeItem(at: cacheDirectory) }
         let cache = ScanSnapshotCache(directoryURL: cacheDirectory, isLoggingEnabled: false)
@@ -399,10 +399,102 @@ import Testing
 
         let index = await cache.pruneAndIndex(keepingTargetIDs: [snapshot.target.id])
 
-        // The unreadable latest is pruned, and the previous snapshot is
-        // unreachable without it, so it goes too.
-        #expect(index.isEmpty)
+        // The scan before is still this location's last good scan: it opens instead of a rescan.
+        #expect(index[snapshot.target.id]?.hasPreviousSnapshot == false)
+        let loaded = try #require(await cache.loadSnapshot(for: snapshot.target))
+        expectEqualTrees(loaded.treeStore, snapshot.treeStore)
+        #expect(cacheFileURLs(in: cacheDirectory).count == 1)
+    }
+
+    /// Older builds rotated by moving the latest away before writing the new one: a quit in between left only
+    /// the previous slot, which the next launch deleted.
+    @Test func testPrunePromotesOrphanedPreviousLeftByAnInterruptedSave() async throws {
+        let cacheDirectory = makeTemporaryCacheDirectory()
+        defer { try? FileManager.default.removeItem(at: cacheDirectory) }
+        let cache = ScanSnapshotCache(directoryURL: cacheDirectory, isLoggingEnabled: false)
+        let target = makeTestTarget("/cache/interrupted")
+        try await cache.save(makeFileSnapshot(target: target, files: [("a.bin", 100)]))
+        try await cache.save(makeFileSnapshot(target: target, files: [("a.bin", 200)]))
+        let latestURL = try #require(
+            cacheFileURLs(in: cacheDirectory).first { !$0.lastPathComponent.contains(".prev.") }
+        )
+        try FileManager.default.removeItem(at: latestURL)
+
+        let index = await ScanSnapshotCache(directoryURL: cacheDirectory, isLoggingEnabled: false)
+            .pruneAndIndex(keepingTargetIDs: [target.id])
+
+        #expect(index[target.id]?.hasPreviousSnapshot == false)
+        #expect(await cache.loadSnapshot(for: target)?.treeStore.node(id: target.id + "/a.bin")?.allocatedSize == 100)
+        #expect(await cache.loadPreviousSnapshot(for: target) == nil)
+    }
+
+    /// The rotation links the old latest instead of moving it, so no moment of a save leaves only the previous.
+    @Test func testRotationKeepsTheOldLatestInPlaceUntilTheNewOneLands() async throws {
+        let cacheDirectory = makeTemporaryCacheDirectory()
+        defer { try? FileManager.default.removeItem(at: cacheDirectory) }
+        let cache = ScanSnapshotCache(directoryURL: cacheDirectory, isLoggingEnabled: false)
+        let target = makeTestTarget("/cache/linked")
+        try await cache.save(makeFileSnapshot(target: target, files: [("a.bin", 100)]))
+        let latestURL = try #require(singleCacheFileURL(in: cacheDirectory))
+        let oldInode = try inode(at: latestURL)
+
+        try await cache.save(makeFileSnapshot(target: target, files: [("a.bin", 200)]))
+
+        let previousURL = try #require(cacheFileURLs(in: cacheDirectory).first { $0.lastPathComponent.contains(".prev.") })
+        let previousInode = try inode(at: previousURL)
+        let newInode = try inode(at: latestURL)
+        #expect(previousInode == oldInode)
+        #expect(newInode != oldInode)
+        #expect(await cache.loadSnapshot(for: target)?.treeStore.node(id: target.id + "/a.bin")?.allocatedSize == 200)
+        #expect(await cache.loadPreviousSnapshot(for: target)?.treeStore.node(id: target.id + "/a.bin")?.allocatedSize == 100)
+    }
+
+    /// Boxed as UInt64 on Linux and Int on macOS.
+    private func inode(at url: URL) throws -> UInt64 {
+        let value = try FileManager.default.attributesOfItem(atPath: url.path)[.systemFileNumber]
+        return try #require((value as? UInt64) ?? (value as? Int).map(UInt64.init))
+    }
+
+    @Test func testFinishSavesWaitsForAnInFlightSaveToLand() async throws {
+        let cacheDirectory = makeTemporaryCacheDirectory()
+        defer { try? FileManager.default.removeItem(at: cacheDirectory) }
+        let cache = ScanSnapshotCache(directoryURL: cacheDirectory, isLoggingEnabled: false)
+        let target = makeTestTarget("/cache/quitting")
+        let gate = EncodeGate()
+        await cache.setEncodeGateForTesting(gate.closure)
+        let save = Task { try await cache.save(makeFileSnapshot(target: target, files: [("a.bin", 100)])) }
+        await gate.waitUntilEntered()
+
+        // Capped: a save that never lands can't hold the quit forever.
+        await cache.finishSaves(within: .milliseconds(50))
         #expect(cacheFileURLs(in: cacheDirectory).isEmpty)
+
+        let quitting = Task { await cache.finishSaves(within: .seconds(60)) }
+        gate.open()
+        await quitting.value
+        #expect(singleCacheFileURL(in: cacheDirectory) != nil)
+        _ = try await save.value
+        await cache.finishSaves(within: .seconds(60))
+    }
+
+    /// Clearing the cache mid-encode drops the save, and the outcome says so: callers skip the index and sidecars.
+    @Test func testSaveDroppedByAClearReportsItDidNotWrite() async throws {
+        let cacheDirectory = makeTemporaryCacheDirectory()
+        defer { try? FileManager.default.removeItem(at: cacheDirectory) }
+        let cache = ScanSnapshotCache(directoryURL: cacheDirectory, isLoggingEnabled: false)
+        let target = makeTestTarget("/cache/cleared")
+        let gate = EncodeGate()
+        await cache.setEncodeGateForTesting(gate.closure)
+        let save = Task { try await cache.save(makeFileSnapshot(target: target, files: [("a.bin", 100)])) }
+        await gate.waitUntilEntered()
+
+        await cache.removeAll()
+        gate.open()
+
+        #expect(try await save.value.wrote == false)
+        #expect(cacheFileURLs(in: cacheDirectory).isEmpty)
+        await cache.setEncodeGateForTesting(nil)
+        #expect(try await cache.save(makeFileSnapshot(target: target, files: [("a.bin", 100)])).wrote)
     }
 
     @Test func testRemoveSnapshotRemovesPreviousToo() async throws {

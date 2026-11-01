@@ -55,6 +55,7 @@ public struct NeodiskApp: App {
                     quitDelegate.snapshotCache = snapshotCache
                 }
         }
+        .defaultSize(PaneLayout.defaultWindowSize(screen: NSScreen.main?.visibleFrame.size))
         .commands {
             NeodiskCommands(model: model, updates: updates)
         }

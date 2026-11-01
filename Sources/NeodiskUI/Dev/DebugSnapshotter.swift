@@ -40,6 +40,13 @@ struct SnapshotWindowHider: NSViewRepresentable {
         case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
         default: break
         }
+        // NEODISK_UI_SNAPSHOT_WINDOW=min|<width>x<height> captures that content size (min: the window's minimum).
+        if let size = ProcessInfo.processInfo.environment["NEODISK_UI_SNAPSHOT_WINDOW"] {
+            let parts = size.split(separator: "x").compactMap { Double($0) }
+            let target = size == "min" ? window.contentMinSize
+                : parts.count == 2 ? CGSize(width: parts[0], height: parts[1]) : nil
+            if let target, window.contentLayoutRect.size != target { window.setContentSize(target) }
+        }
         window.alphaValue = 0
         window.setFrameOrigin(CGPoint(x: -30_000, y: -30_000))
     }

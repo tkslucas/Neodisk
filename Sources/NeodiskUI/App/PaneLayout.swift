@@ -42,10 +42,31 @@ enum PaneLayout {
     /// hides rather than squeeze the chart past it.
     static let sunburstChartMinWidth = 320.0
 
-    /// Grows slower than the panes since the map floor doesn't grow: at 200% text the widest layout needs
-    /// 1_196pt and this gives 1_350, without demanding more than a laptop display shows.
-    static func windowMinWidth(scale: Double = 1) -> Double { 900 * damped(scale) }
+    /// The locations sidebar's column, which the window's minimum includes.
+    static func sidebarMinWidth(scale: Double = 1) -> Double { 210 * scale }
+    static func sidebarIdealWidth(scale: Double = 1) -> Double { 250 * scale }
+    static func sidebarMaxWidth(scale: Double = 1) -> Double { 320 * scale }
+
+    /// The smallest window still docks the statistics panel beside the map and bottom file list (sidebar shown
+    /// at any width), so the panel never floats over them, up to 1_350pt, what a laptop display shows: past
+    /// that (large text) the panel floats over the map's trailing edge instead.
+    static func windowMinWidth(scale: Double = 1) -> Double {
+        // +10: the split view adds its divider and a few points to the sidebar column.
+        let docks = sidebarMaxWidth(scale: scale) + 10 + mapMinWidthBesideAnalysis + splitterThickness
+            + analysisMinWidth(scale: scale)
+        return max(900 * damped(scale), min(docks.rounded(.up), 1_350))
+    }
     static func windowMinHeight(scale: Double = 1) -> Double { 560 * damped(scale) }
+
+    /// A first window takes most of the screen, within bounds where every pane reads well; later launches
+    /// restore the user's own size.
+    static func defaultWindowSize(screen: CGSize?) -> CGSize {
+        let visible = screen ?? CGSize(width: 1440, height: 900)
+        return CGSize(
+            width: (visible.width * 0.85).clamped(to: windowMinWidth()...1_600).rounded(),
+            height: (visible.height * 0.85).clamped(to: windowMinHeight()...1_000).rounded()
+        )
+    }
 
     private static func damped(_ scale: Double) -> Double { 1 + (scale - 1) * 0.5 }
 }

@@ -135,13 +135,39 @@ import Testing
     }
 
     @Test func windowMinimumsAccommodateAllPaneMinimums() {
-        // At the window's minimum size (900x560) every pane at its minimum plus the map minimum still fits.
+        // At the window's minimum size every pane at its minimum plus the map minimum still fits.
         let widthFloor = PaneLayout.outlineMinWidth() + PaneLayout.analysisMinWidth()
             + 2 * PaneLayout.splitterThickness + PaneLayout.mapMinWidth
         let heightFloor = PaneLayout.bottomOutlineMinHeight() + PaneLayout.splitterThickness
             + PaneLayout.mapColumnMinHeight
-        #expect(widthFloor <= 900)
-        #expect(heightFloor <= 560)
+        #expect(widthFloor <= PaneLayout.windowMinWidth())
+        #expect(heightFloor <= PaneLayout.windowMinHeight())
+    }
+
+    @Test func minimumWindowDocksTheStatisticsPanelBesideTheMap() {
+        for step in TextScale.steps where PaneLayout.windowMinWidth(scale: step) < 1_350 {
+            // The detail column beside the widest sidebar, as the split view lays it out.
+            let detail = PaneLayout.windowMinWidth(scale: step) - PaneLayout.sidebarMaxWidth(scale: step) - 10
+            let m = WorkspacePaneMetrics(
+                available: CGSize(width: detail, height: 700),
+                showsLeadingOutline: false,
+                showsAnalysis: true,
+                storedOutlineWidth: PaneLayout.outlineDefaultWidth(scale: step),
+                storedAnalysisWidth: PaneLayout.analysisDefaultWidth(scale: step),
+                storedBottomOutlineHeight: PaneLayout.bottomOutlineDefaultHeight(scale: step),
+                textScale: step
+            )
+            #expect(!m.analysisFloats, "text scale \(step)")
+        }
+    }
+
+    @Test func firstWindowTakesMostOfTheScreenWithinBounds() {
+        let laptop = PaneLayout.defaultWindowSize(screen: CGSize(width: 1470, height: 920))
+        #expect(laptop.width == 1250 && laptop.height == 782)
+        let large = PaneLayout.defaultWindowSize(screen: CGSize(width: 3000, height: 1600))
+        #expect(large == CGSize(width: 1600, height: 1000))
+        let small = PaneLayout.defaultWindowSize(screen: CGSize(width: 1024, height: 640))
+        #expect(small.width == PaneLayout.windowMinWidth() && small.height == PaneLayout.windowMinHeight())
     }
 }
 

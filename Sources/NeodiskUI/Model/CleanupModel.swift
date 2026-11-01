@@ -169,8 +169,8 @@ final class CleanupModel {
         add(ids.compactMap { store.node(id: $0) })
     }
 
-    /// What ⌘⌫ or the Cleanup menu item does to these items: add the ones not in yet (a folder takes what's inside
-    /// it), else take out the collected ones. Items only inside a collected folder can't move on their own.
+    /// What ⌘⌫ or the Cleanup menu item does to these items: add the ones not in yet that may go (a folder takes
+    /// what's inside it), else take out the collected ones. Items only inside a collected folder can't move on their own.
     enum Toggle: Equatable {
         case add([String])
         case remove([String])
@@ -179,21 +179,20 @@ final class CleanupModel {
 
     func toggle(for nodes: [FileNodeRecord]) -> Toggle {
         guard let store else { return .none }
-        let marks = nodes.map { ($0.id, mark(for: $0.id)) }
+        let marks = nodes.map { ($0, mark(for: $0.id)) }
         let uncovered = marks.filter { $0.1 == .none }.map(\.0)
         if !uncovered.isEmpty {
-            return .add(uncovered.count == 1 ? uncovered : store.topLevelNodeIDs(from: uncovered))
+            return .add(split(uncovered, in: store).allowed.map(\.id))
         }
-        let collected = marks.filter { $0.1 == .collected }.map(\.0)
+        let collected = marks.filter { $0.1 == .collected }.map(\.0.id)
         return collected.isEmpty ? .none : .remove(collected)
     }
 
     /// ⌘⌫ and the context menus: collected items leave the pile, others join it.
     func toggle(_ nodes: [FileNodeRecord]) {
         switch toggle(for: nodes) {
-        case .add(let ids):
-            let added = Set(ids)
-            add(nodes.filter { added.contains($0.id) })
+        case .add:
+            add(nodes.filter { mark(for: $0.id) == .none })
         case .remove(let ids):
             remove(ids)
         case .none:
@@ -213,10 +212,9 @@ final class CleanupModel {
             show(Notice(kind: .refused, text: unavailableReason))
             return
         }
-        let refusals = policy.refusals(for: nodes, scanRootID: store.rootID, in: store)
-        let allowed = zip(nodes, refusals).compactMap { $1 == nil ? $0 : nil }
-        let refusedCount = nodes.count - allowed.count
-        let firstRefusal = refusals.lazy.compactMap { $0 }.first
+        let (allowed, refused) = split(nodes, in: store)
+        let refusedCount = refused.count
+        let firstRefusal = refused.first
         var updated = pile
         let added = updated.add(allowed.map(\.id), in: store)
         pile = updated
@@ -240,6 +238,10 @@ final class CleanupModel {
             ? String(format: NSLocalizedString("1 item can't go to the Trash. %@", comment: "Cleanup notice; the first reason follows"), reason)
             : String(format: NSLocalizedString("%lld items can't go to the Trash. %@", comment: "Cleanup notice; the first reason follows"), refusedCount, reason))
         show(Notice(kind: .refused, text: parts.joined(separator: " ")))
+    }
+
+    private func split(_ nodes: [FileNodeRecord], in store: FileTreeStore) -> (allowed: [FileNodeRecord], refused: [TrashRefusal]) {
+        store.trashSplit(nodes, reasons: policy.refusals(for: nodes, scanRootID: store.rootID, in: store))
     }
 
     func remove(_ ids: [String]) {

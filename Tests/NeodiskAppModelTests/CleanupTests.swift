@@ -91,6 +91,28 @@ import NeodiskKit
         #expect(store.survivor(of: "/elsewhere", removing: [y.id]) == nil)
     }
 
+    /// Both apps' multi-item Trash: a refused folder keeps no selected item from going, an allowed one takes its
+    /// selected items along (refused or not), and each item counts once.
+    @Test func aSelectionSplitsIntoOutermostAllowedItemsAndUncoveredRefusals() {
+        func folder(_ path: String, _ children: [FileNodeRecord]) -> FileNodeRecord {
+            FileNodeRecord.directory(
+                id: path, url: URL(filePath: path, directoryHint: .isDirectory),
+                name: (path as NSString).lastPathComponent, children: children, lastModified: nil,
+                fileIdentity: nil, linkCount: 1, isPackage: false, isAccessible: true
+            )
+        }
+        let a = file("keep/a", size: 1), b = file("old/b", size: 1), c = file("c", size: 1)
+        let keep = folder("/data/keep", [a]), old = folder("/data/old", [b])
+        let root = folder("/data", [keep, old, c])
+        let store = FileTreeStore(root: root, childrenByID: [root.id: [keep, old, c], keep.id: [a], old.id: [b]])
+
+        let selected = [root, keep, a, old, b, c]
+        let reasons: [String?] = ["root", "protected", nil, nil, "inside", nil]
+        let split = store.trashSplit(selected, reasons: reasons)
+        #expect(split.allowed.map(\.id) == [a.id, old.id, c.id])
+        #expect(split.refused == ["root", "protected"])
+    }
+
     /// A large selection (⌘A on a big list) adds in one top-level pass, not a walk of the pile per item.
     @Test func fiftyThousandIDsAddWithinABudget() {
         var folders: [FileNodeRecord] = []

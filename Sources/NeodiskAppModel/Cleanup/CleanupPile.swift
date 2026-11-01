@@ -117,6 +117,17 @@ package struct CleanupPile: Equatable, Sendable {
 }
 
 package extension FileTreeStore {
+    /// A selection split for the Trash: the outermost items that may go, and the reasons of the refused ones no
+    /// allowed item holds. A refused folder (the scan root) doesn't take the items selected inside it down with it.
+    func trashSplit<Reason>(_ nodes: [FileNodeRecord], reasons: [Reason?]) -> (allowed: [FileNodeRecord], refused: [Reason]) {
+        let allowedIDs = zip(nodes, reasons).compactMap { $1 == nil ? $0.id : nil }
+        let allowedSet = Set(allowedIDs)
+        let refused = zip(nodes, reasons).compactMap { node, reason in
+            hasAncestor(in: allowedSet, of: node.id) ? nil : reason
+        }
+        return (topLevelNodeIDs(from: allowedIDs).compactMap { node(id: $0) }, refused)
+    }
+
     /// Where a view on `id` lands once `removedIDs` leave the tree: `id` itself, or the folder holding the outermost
     /// removed item above it. Nil for an unknown id.
     func survivor(of id: String, removing removedIDs: Set<String>) -> String? {

@@ -40,7 +40,7 @@ struct AgeStatsPane: View {
                     .foregroundStyle(.secondary)
                 Spacer()
             }
-            .padding(.horizontal, 10)
+            .padding(.horizontal, StatsListMetrics.inset)
             .padding(.vertical, 7)
 
             Divider()

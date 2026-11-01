@@ -81,7 +81,7 @@ struct AnalysisTabBar: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .neoControlSize(base: .small)
-        .padding(.horizontal, 10)
+        .padding(.horizontal, StatsListMetrics.inset)
         .padding(.vertical, 6)
         .frame(minWidth: 0, maxWidth: .infinity)
         .contextMenu { visibilityMenu }
@@ -178,7 +178,8 @@ private extension NSControl.ControlSize {
 /// the back button.
 struct StatsFileListView: View {
     let model: NeodiskViewModel
-    /// Header title (localized key); nil while the list is still loading.
+    /// Header title (localized key); nil while the list is still loading. Only a drill-in (`onClose`) has the
+    /// header: the Largest tab's list is named by the tab.
     let title: String?
     let swatch: Color?
     var backHelp: LocalizedStringKey = ""
@@ -192,38 +193,9 @@ struct StatsFileListView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 6) {
-                if let onClose {
-                    Button {
-                        onClose()
-                    } label: {
-                        Image(systemName: "chevron.left")
-                            .neoFont(10, weight: .semibold)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-                    .help(backHelp)
-                }
-
-                if let title {
-                    if let swatch {
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(swatch)
-                            .frame(width: 12, height: 12)
-                    }
-                    Text(LocalizedStringKey(title))
-                        .neoFont(11, weight: .semibold)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                } else {
-                    Text("Loading…")
-                        .neoFont(11, weight: .semibold)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
+            if let onClose {
+                drillInHeader(onClose)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
 
             HStack(spacing: 4) {
                 Image(systemName: "magnifyingglass")
@@ -233,8 +205,8 @@ struct StatsFileListView: View {
                     .textFieldStyle(.plain)
                     .neoFont(11)
             }
-            .padding(.horizontal, 10)
-            .padding(.bottom, 6)
+            .padding(.horizontal, StatsListMetrics.inset)
+            .padding(.vertical, 6)
 
             Divider()
 
@@ -266,11 +238,41 @@ struct StatsFileListView: View {
                     Text(footerText)
                         .neoFont(10)
                         .foregroundStyle(.secondary)
-                        .padding(.horizontal, 10)
+                        .padding(.horizontal, StatsListMetrics.inset)
                         .padding(.vertical, 4)
                 }
             }
         }
+    }
+
+    private func drillInHeader(_ onClose: @escaping () -> Void) -> some View {
+        HStack(spacing: 6) {
+            Button(action: onClose) {
+                Image(systemName: "chevron.left")
+                    .neoFont(10, weight: .semibold)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help(backHelp)
+
+            if let title {
+                if let swatch {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(swatch)
+                        .frame(width: 12, height: 12)
+                }
+                Text(LocalizedStringKey(title))
+                    .neoFont(11, weight: .semibold)
+                    .lineLimit(1)
+            } else {
+                Text("Loading…")
+                    .neoFont(11, weight: .semibold)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, StatsListMetrics.inset)
+        .padding(.top, 6)
     }
 
     private var footerText: String {

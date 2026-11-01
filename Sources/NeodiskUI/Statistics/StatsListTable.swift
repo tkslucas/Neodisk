@@ -17,6 +17,9 @@ enum StatsListClick {
 
 /// A 12pt name over a 10pt detail line plus the 10pt of air the SwiftUI List gave (37pt at 100%).
 enum StatsListMetrics {
+    /// The rows' content inset, which the panes' headers and footers share so everything starts on one edge.
+    @MainActor static var inset: CGFloat { OutlineRowMetrics.contentInset }
+
     static func rowHeight(scale: CGFloat) -> CGFloat {
         ceil(lineHeight(12 * scale) + 1 + lineHeight(10 * scale)) + 10
     }

@@ -515,3 +515,11 @@
 /* Cleanup: hard links and clones */
 "Shared" = "Partagé";
 "Shares its storage with another file (a hard link or clone), so moving it alone frees no space." = "Partage son stockage avec un autre fichier (lien physique ou clone) : le déplacer seul ne libère aucun espace.";
+/* Multi-selection */
+"Add %lld Items to Cleanup" = "Ajouter %lld éléments au Nettoyage";
+"Remove %lld Items from Cleanup" = "Retirer %lld éléments du Nettoyage";
+"Copy Paths" = "Copier les chemins";
+"Deselect All" = "Tout désélectionner";
+"%lld items selected" = "%lld éléments sélectionnés";
+"All in Cleanup" = "Tous dans le Nettoyage";
+"%lld in Cleanup" = "%lld dans le Nettoyage";

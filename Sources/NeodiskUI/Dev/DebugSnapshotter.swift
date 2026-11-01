@@ -34,6 +34,12 @@ struct SnapshotWindowHider: NSViewRepresentable {
     }
 
     private static func hide(_ window: NSWindow) {
+        // NEODISK_SNAPSHOT_APPEARANCE=light|dark captures either appearance whatever the system's is.
+        switch ProcessInfo.processInfo.environment["NEODISK_SNAPSHOT_APPEARANCE"] {
+        case "light": NSApp.appearance = NSAppearance(named: .aqua)
+        case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
+        default: break
+        }
         window.alphaValue = 0
         window.setFrameOrigin(CGPoint(x: -30_000, y: -30_000))
     }

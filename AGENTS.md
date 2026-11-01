@@ -33,6 +33,7 @@ The most used ones; the rest live in `Sources/NeodiskUI/Dev/`.
 - `NEODISK_HEADLESS=1` + `NEODISK_BENCH_AUTOQUIT=1` (+ `NEODISK_BENCH_RESCANS=<n>`): off-screen felt-time
   benchmark runs. A bench run that could draw on screen is a bug.
 - `NEODISK_SNAPSHOT_DIR=<dir>`: isolate the snapshot cache from the developer's real one.
+- `NEODISK_AUTOSELECT=<path>[:<path>…]`: select those items after the scan (the last one primary), as ⌘-clicks would.
 - `NEODISK_AUTOCOLLECT=<path>[:<path>…]`: collect those items in Cleanup after the scan; with
   `NEODISK_AUTOTRASH=1`, then move them as if confirmed (really trashes: temp dirs only); `=fail` fails every move,
   `=hold` holds them in the moving state (neither moves anything).

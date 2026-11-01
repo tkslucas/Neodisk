@@ -5,40 +5,6 @@ import AppKit
 import SwiftUI
 import NeodiskKit
 
-extension View {
-    /// Double-click reveals in Finder, like a treemap cell. No-ops for nodes without file actions
-    /// (the synthetic "System Data" node).
-    func fileNodeActions(
-        model: NeodiskViewModel, includeExpandContents: Bool = false
-    ) -> some View {
-        contextMenu(forSelectionType: String.self) { ids in
-            if let node = ids.first.flatMap({ model.store?.node(id: $0) }),
-               model.supportsFileActions(node) {
-                Button("Reveal in Finder") { model.reveal(node) }
-                Button("Open") { model.open(node) }
-                Button("Copy Path") { model.copyPath(node) }
-                if includeExpandContents, let expansion = model.contentsExpansion(for: node) {
-                    Divider()
-                    Button(LocalizedStringKey(expansion.menuTitleKey)) { model.expandNodeContents(node) }
-                        .disabled(!model.canRefreshSubtree)
-                }
-                if model.cleanup.isEnabled {
-                    Divider()
-                    Button(LocalizedStringKey(model.cleanupMenuTitle(for: node))) { model.cleanup.toggle(node) }
-                        .disabled(!model.canToggleCleanup(for: node))
-                        .help(model.cleanupMenuHelp(for: node) ?? "")
-                }
-            }
-        } primaryAction: { ids in
-            guard let id = ids.first,
-                  let node = model.store?.node(id: id),
-                  model.supportsFileActions(node) else { return }
-            model.select(id)
-            model.reveal(node)
-        }
-    }
-}
-
 // MARK: - AppKit variant
 
 /// NSMenuItem that runs a closure; NSMenu's target/action plumbing needs an
@@ -63,8 +29,8 @@ final class ClosureMenuItem: NSMenuItem {
 }
 
 extension NSMenu {
-    /// Keep in lockstep with the SwiftUI `fileNodeActions` above. `includeCleanup: false` for a "smaller items"
-    /// cell, which stands for its folder but mustn't offer to collect it.
+    /// `includeCleanup: false` for a "smaller items" cell, which stands for its folder but mustn't offer to collect
+    /// it (and acts on that folder alone).
     @MainActor
     static func fileNodeActions(
         for node: FileNodeRecord, model: NeodiskViewModel, includeCleanup: Bool = true
@@ -76,34 +42,37 @@ extension NSMenu {
         return menu
     }
 
-    /// The flat statistics lists leave out the contents-expansion item, as their SwiftUI predecessors did.
+    /// Right-clicking an item of a multi-selection acts on the whole selection; any other item, on itself alone
+    /// (the macOS rule). The flat statistics lists leave out the contents-expansion item.
     @MainActor
     func addFileNodeActionItems(
         for node: FileNodeRecord, model: NeodiskViewModel, includeExpandContents: Bool = true,
         includeCleanup: Bool = true
     ) {
-        addItem(ClosureMenuItem(title: NSLocalizedString("Reveal in Finder", comment: "File node context menu")) { model.reveal(node) })
-        addItem(ClosureMenuItem(title: NSLocalizedString("Open", comment: "File node context menu")) { model.open(node) })
-        addItem(ClosureMenuItem(title: NSLocalizedString("Copy Path", comment: "File node context menu")) { model.copyPath(node) })
-        if includeExpandContents, let expansion = model.contentsExpansion(for: node) {
+        let nodes = includeCleanup ? model.actionTargets(clicked: node) : [node]
+        addItem(ClosureMenuItem(title: NSLocalizedString("Reveal in Finder", comment: "File node context menu")) { model.reveal(nodes) })
+        addItem(ClosureMenuItem(title: NSLocalizedString("Open", comment: "File node context menu")) { model.open(nodes) })
+        let copyTitle = nodes.count > 1
+            ? NSLocalizedString("Copy Paths", comment: "File node context menu, several items")
+            : NSLocalizedString("Copy Path", comment: "File node context menu")
+        addItem(ClosureMenuItem(title: copyTitle) { model.copyPaths(nodes) })
+        if includeExpandContents, nodes.count == 1, let expansion = model.contentsExpansion(for: node) {
             addItem(.separator())
             let item = ClosureMenuItem(title: NSLocalizedString(expansion.menuTitleKey, comment: "File node context menu")) { model.expandNodeContents(node) }
             item.isEnabled = model.canRefreshSubtree
             addItem(item)
         }
-        if includeCleanup { addCleanupItem(for: node, model: model) }
+        if includeCleanup { addCleanupItem(for: nodes, model: model) }
     }
 
-    /// "Add to Cleanup" / "Remove from Cleanup"; a refused item stays disabled with its reason as the tooltip.
+    /// "Add to Cleanup" / "Remove 3 Items from Cleanup"…; a refused item stays disabled with its reason as the tooltip.
     @MainActor
-    func addCleanupItem(for node: FileNodeRecord, model: NeodiskViewModel) {
+    func addCleanupItem(for nodes: [FileNodeRecord], model: NeodiskViewModel) {
         guard model.cleanup.isEnabled else { return }
         addItem(.separator())
-        let item = ClosureMenuItem(
-            title: NSLocalizedString(model.cleanupMenuTitle(for: node), comment: "File node context menu")
-        ) { model.cleanup.toggle(node) }
-        item.isEnabled = model.canToggleCleanup(for: node)
-        item.toolTip = model.cleanupMenuHelp(for: node)
+        let item = ClosureMenuItem(title: model.cleanupMenuTitle(for: nodes)) { model.cleanup.toggle(nodes) }
+        item.isEnabled = model.canToggleCleanup(for: nodes)
+        item.toolTip = model.cleanupMenuHelp(for: nodes)
         addItem(item)
     }
 }

@@ -104,7 +104,7 @@ private struct ChangeResultsView: View {
                     model: model,
                     rows: entries,
                     click: .selectsNode { select(entryID: $0) },
-                    selectedID: model.selectedNodeID,
+                    selection: model.selection,
                     keepsLeaderInView: true
                 ) { entry in
                     ChangeEntryRow(model: model, entry: entry)

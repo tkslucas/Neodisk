@@ -33,7 +33,7 @@ final class NeodiskViewModel {
             }
             // Live-update an open Quick Look panel as the selection moves
             // (arrow-keying through the outline). No-op when it's closed.
-            QuickLookPresenter.shared.selectionDidChange(to: selectedNode)
+            QuickLookPresenter.shared.selectionDidChange(to: selectedNodes, current: selectedNode)
         }
     }
 

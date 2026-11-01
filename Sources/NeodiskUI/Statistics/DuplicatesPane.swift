@@ -340,7 +340,7 @@ private struct DuplicateGroupDetailView: View {
                 model: model,
                 rows: group.nodeIDs.compactMap { model.store?.node(id: $0) },
                 click: .selectsNode { model.select($0) },
-                selectedID: model.selectedNodeID
+                selection: model.selection
             ) { node in
                 FileResultRow(
                     node: node,

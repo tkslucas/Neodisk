@@ -186,7 +186,7 @@ struct OutlineSearchResultsList: View {
                 model: model,
                 rows: results.ids.compactMap { model.store?.node(id: $0) },
                 click: .selectsNode { model.select($0) },
-                selectedID: model.selectedNodeID,
+                selection: model.selection,
                 keepsLeaderInView: true
             ) { node in
                 FileResultRow(

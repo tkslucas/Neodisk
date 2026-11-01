@@ -14,7 +14,12 @@ enum NodeDragSource {
         return node
     }
 
+    /// Nil too for a selected item inside another selected one: its folder carries it, so it isn't copied twice.
     static func pasteboardItem(forNodeID id: String, model: NeodiskViewModel) -> NSPasteboardItem? {
+        if let store = model.store, model.selection.isMultiple, model.selection.contains(id),
+           model.selection.containsAncestor(of: id, in: store) {
+            return nil
+        }
         guard let node = draggableNode(id: id, model: model),
               let snapshotID = model.coordinator.snapshot?.id else { return nil }
         return NodeDragPayload.pasteboardItem(for: node, snapshotID: snapshotID)

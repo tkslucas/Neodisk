@@ -111,6 +111,17 @@ package struct NodeSelection: Equatable, Sendable {
         return members.contains(id) ? ids : [id]
     }
 
+    /// Whether a folder holding `id` is selected too. O(depth).
+    package func containsAncestor(of id: String, in store: FileTreeStore) -> Bool {
+        guard ids.count > 1 else { return false }
+        var cursor = store.parent(of: id)
+        while let node = cursor {
+            if members.contains(node.id) { return true }
+            cursor = store.parent(of: node.id)
+        }
+        return false
+    }
+
     /// Without the items inside another selected item: what sizes add up and what moves.
     package func topLevelIDs(in store: FileTreeStore) -> [String] {
         ids.count < 2 ? ids.filter { store.node(id: $0) != nil } : store.topLevelNodeIDs(from: ids)

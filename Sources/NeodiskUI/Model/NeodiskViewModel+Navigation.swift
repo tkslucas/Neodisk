@@ -1,5 +1,6 @@
 // Navigation verbs over the model's selection and zoom state; the stored state stays in NeodiskViewModel.swift.
 
+import AppKit
 import Foundation
 import NeodiskKit
 import NeodiskAppModel
@@ -18,6 +19,40 @@ extension NeodiskViewModel {
                 duplicates.handleSelection(of: nodeID)
             }
         }
+    }
+
+    /// The rows a user picked in a list. An extending gesture keeps what the list doesn't show; the primary is
+    /// revealed in the outline like a plain selection.
+    func select(fromList list: ListSelection, listShows: (String) -> Bool) {
+        selection.applyList(
+            selected: list.ids, primary: list.primary, extending: list.extending, listShows: listShows
+        )
+        if let primaryID = selection.primaryID { revealInOutline(primaryID) }
+    }
+
+    /// ⌘-click in a map: the item joins as the primary, or leaves.
+    func toggleSelection(_ nodeID: String) {
+        selection.toggle(nodeID)
+        if selection.primaryID == nodeID { revealInOutline(nodeID) }
+    }
+
+    /// ⇧-arrow in a map: the item joins as the primary.
+    func extendSelection(to nodeID: String) {
+        selection.add(nodeID)
+        revealInOutline(nodeID)
+    }
+
+    /// Select All in a map: everything the map is rooted at shows, one level down.
+    func selectAllInMap() {
+        guard let store, let rootID = effectiveRootID else { return }
+        let children = store.children(of: rootID).filter {
+            !$0.isSynthetic && $0.displayWeight(includingCloudOnly: showsCloudOnlyFiles) > 0
+        }
+        guard !children.isEmpty else {
+            NSSound.beep()
+            return
+        }
+        selection.replace(with: children.map(\.id), primary: children.first?.id)
     }
 
     /// Widens the root out to the lowest common ancestor; never narrows (drilling in stays ⌘↓).

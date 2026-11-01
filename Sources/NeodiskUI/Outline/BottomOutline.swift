@@ -28,7 +28,7 @@ struct BottomOutlinePane: View {
                 BottomOutlineTable(
                     model: model,
                     snapshot: snapshot,
-                    selectedID: model.selectedNodeID,
+                    selection: model.selection,
                     sort: model.outlineSort
                 )
             }
@@ -43,7 +43,7 @@ struct BottomOutlinePane: View {
 struct BottomOutlineTable: NSViewRepresentable {
     let model: NeodiskViewModel
     let snapshot: NeodiskViewModel.OutlineRowsSnapshot
-    let selectedID: String?
+    let selection: NodeSelection
     let sort: OutlineSort
 
     func makeCoordinator() -> Coordinator {
@@ -66,7 +66,7 @@ struct BottomOutlineTable: NSViewRepresentable {
         tableView.rowHeight = OutlineRowMetrics.rowHeight
         tableView.backgroundColor = .controlBackgroundColor
         tableView.focusRingType = .none
-        tableView.allowsMultipleSelection = false
+        tableView.allowsMultipleSelection = true
         tableView.allowsEmptySelection = true
         tableView.usesAlternatingRowBackgroundColors = true
         tableView.allowsColumnReordering = true
@@ -137,7 +137,7 @@ struct BottomOutlineTable: NSViewRepresentable {
         coordinator.applyTextScale(columnMinimums: Self.columnMinimums)
         coordinator.applyColumns(model.outlineColumns)
         coordinator.applySortIndicator(sort)
-        coordinator.syncSelection(to: selectedID)
+        coordinator.syncSelection(to: selection)
     }
 
     /// Per-column 100% minimum widths, keyed by identifier — the coordinator
@@ -191,13 +191,8 @@ struct BottomOutlineTable: NSViewRepresentable {
         private(set) var rows: [NeodiskViewModel.OutlineRow] = []
         private var rowIndexByID: [String: Int] = [:]
         private var appliedStructuralVersion: UInt64?
-        private var isProgrammaticSelection = false
-        // Set while the table reports a selection: syncing back mid-event is reentrant.
-        private var isReportingSelection = false
+        private let selectionSync = ListSelectionSync()
         private(set) var structuralApplyCount = 0
-        /// The selection the table last scrolled to: reveal again only when
-        /// the model's selection actually changes, not on reloads.
-        private var lastRevealedID: String?
         /// Structural rows that arrived while a click was being tracked;
         /// applied when the click finishes.
         private var pendingApply: NeodiskViewModel.OutlineRowsSnapshot?
@@ -253,7 +248,7 @@ struct BottomOutlineTable: NSViewRepresentable {
             rows = snapshot.rows
             rowIndexByID = snapshot.rowIndexByID
             structuralApplyCount += 1
-            tableView?.reloadRows(keepingRowViews: sameRows)
+            selectionSync.whileApplying { tableView?.reloadRows(keepingRowViews: sameRows) }
         }
 
         /// Reflect the persisted sort into the header arrows. Guarded by
@@ -268,38 +263,19 @@ struct BottomOutlineTable: NSViewRepresentable {
             ]
         }
 
-        func syncSelection(to selectedID: String?) {
-            guard let tableView, !isReportingSelection else { return }
-            if let outlineTable = tableView as? OutlineNSTableView,
-               outlineTable.isTrackingClick {
-                return
-            }
-            let targetRow = selectedID.flatMap { rowIndexByID[$0] }
-            if let targetRow {
-                if tableView.selectedRow != targetRow {
-                    isProgrammaticSelection = true
-                    tableView.selectRowIndexes([targetRow], byExtendingSelection: false)
-                    isProgrammaticSelection = false
-                }
-                if lastRevealedID != selectedID {
-                    lastRevealedID = selectedID
-                    scrollToRowVerticalOnly(targetRow)
-                }
-            } else {
-                if selectedID == nil, tableView.selectedRow >= 0 {
-                    isProgrammaticSelection = true
-                    tableView.deselectAll(nil)
-                    isProgrammaticSelection = false
-                }
-                lastRevealedID = selectedID
-            }
+        func syncSelection(to selection: NodeSelection) {
+            guard let tableView else { return }
+            let reveal = selectionSync.apply(
+                selection, rowsVersion: appliedStructuralVersion ?? 0, to: tableView, row: { rowIndexByID[$0] }
+            )
+            if let reveal { scrollToRowVerticalOnly(reveal) }
         }
 
         func resyncSelectionAfterClick() {
             if let pendingApply {
                 apply(snapshot: pendingApply)
             }
-            syncSelection(to: model.selectedNodeID)
+            syncSelection(to: model.selection)
         }
 
         /// Vertical-only reveal: never disturbs an intentional horizontal
@@ -400,14 +376,11 @@ struct BottomOutlineTable: NSViewRepresentable {
         }
 
         func tableViewSelectionDidChange(_ notification: Notification) {
-            guard !isProgrammaticSelection, let tableView else { return }
-            let row = tableView.selectedRow
-            let newID = (row >= 0 && row < rows.count) ? rows[row].id : nil
-            if model.selectedNodeID != newID {
-                lastRevealedID = newID
-                isReportingSelection = true
-                defer { isReportingSelection = false }
-                model.selection.replace(with: newID)
+            guard let tableView, let picked = selectionSync.userSelection(in: tableView, id: { row in
+                row < rows.count ? rows[row].id : nil
+            }) else { return }
+            selectionSync.report(picked) {
+                model.select(fromList: picked) { rowIndexByID[$0] != nil }
             }
         }
 
@@ -536,8 +509,8 @@ struct BottomOutlineTable: NSViewRepresentable {
         }
 
         func toggleQuickLook() -> Bool {
-            guard let node = model.selectedNode else { return false }
-            QuickLookPresenter.shared.togglePreview(for: node)
+            guard !model.selection.isEmpty else { return false }
+            model.quickLookSelection()
             return true
         }
 
@@ -659,8 +632,8 @@ private final class BottomCellView<Content: View>: NSView, SelectionStateReceivi
     }
 }
 
-/// Standard row highlight; only exists to forward selection/focus state to
-/// the hosted cells.
+/// Standard row highlight, forwarding selection/focus state to the hosted cells. A run of selected rows reads
+/// as one block: the corners they share are filled square.
 private final class BottomRowView: NSTableRowView {
     override var isSelected: Bool {
         didSet { forwardSelectionState() }
@@ -668,6 +641,30 @@ private final class BottomRowView: NSTableRowView {
 
     override var isEmphasized: Bool {
         didSet { forwardSelectionState() }
+    }
+
+    override var isPreviousRowSelected: Bool {
+        didSet { if isPreviousRowSelected != oldValue { needsDisplay = true } }
+    }
+
+    override var isNextRowSelected: Bool {
+        didSet { if isNextRowSelected != oldValue { needsDisplay = true } }
+    }
+
+    override func drawSelection(in dirtyRect: NSRect) {
+        super.drawSelection(in: dirtyRect)
+        guard isSelected, selectionHighlightStyle != .none, isPreviousRowSelected || isNextRowSelected else { return }
+        let color: NSColor = isEmphasized
+            ? .selectedContentBackgroundColor
+            : .unemphasizedSelectedContentBackgroundColor
+        color.setFill()
+        // The inset style's highlight keeps this much off each side.
+        let pill = bounds.insetBy(dx: OutlineRowMetrics.selectionInset, dy: 0)
+        for half in OutlineTableRowView.squaredHalves(
+            of: pill, top: isPreviousRowSelected, bottom: isNextRowSelected, isFlipped: isFlipped
+        ) {
+            half.fill()
+        }
     }
 
     private func forwardSelectionState() {

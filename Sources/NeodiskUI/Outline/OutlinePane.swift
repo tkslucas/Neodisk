@@ -25,7 +25,7 @@ struct OutlinePane: View {
         return OutlineTreeTable(
             model: model,
             snapshot: snapshot,
-            selectedID: model.selectedNodeID
+            selection: model.selection
         )
     }
 }

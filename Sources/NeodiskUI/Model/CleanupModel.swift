@@ -167,15 +167,38 @@ final class CleanupModel {
         add(ids.compactMap { store.node(id: $0) })
     }
 
+    /// What ⌘⌫ or the Cleanup menu item does to these items: add the ones not in yet (a folder takes what's inside
+    /// it), else take out the collected ones. Items only inside a collected folder can't move on their own.
+    enum Toggle: Equatable {
+        case add([String])
+        case remove([String])
+        case none
+    }
+
+    func toggle(for nodes: [FileNodeRecord]) -> Toggle {
+        guard let store else { return .none }
+        let marks = nodes.map { ($0.id, mark(for: $0.id)) }
+        let uncovered = marks.filter { $0.1 == .none }.map(\.0)
+        if !uncovered.isEmpty {
+            return .add(uncovered.count == 1 ? uncovered : store.topLevelNodeIDs(from: uncovered))
+        }
+        let collected = marks.filter { $0.1 == .collected }.map(\.0)
+        return collected.isEmpty ? .none : .remove(collected)
+    }
+
     /// ⌘⌫ and the context menus: collected items leave the pile, others join it.
-    func toggle(_ node: FileNodeRecord) {
-        if isCollected(node.id) {
-            remove([node.id])
-        } else if isInsideCollected(node.id), let text = Mark.inside.hoverText {
+    func toggle(_ nodes: [FileNodeRecord]) {
+        switch toggle(for: nodes) {
+        case .add(let ids):
+            let added = Set(ids)
+            add(nodes.filter { added.contains($0.id) })
+        case .remove(let ids):
+            remove(ids)
+        case .none:
             NSSound.beep()
-            show(Notice(kind: .refused, text: text))
-        } else {
-            add([node])
+            if nodes.contains(where: { mark(for: $0.id) == .inside }), let text = Mark.inside.hoverText {
+                show(Notice(kind: .refused, text: text))
+            }
         }
     }
 

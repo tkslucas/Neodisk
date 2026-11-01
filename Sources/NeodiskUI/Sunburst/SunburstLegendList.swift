@@ -206,19 +206,20 @@ struct SunburstLegendList: View {
         if case .node(let nodeID, _) = row.target,
            let node = model.store?.node(id: nodeID),
            model.supportsFileActions(node) {
-            Button("Reveal in Finder") { model.reveal(node) }
-            Button("Open") { model.open(node) }
-            Button("Copy Path") { model.copyPath(node) }
-            if let expansion = model.contentsExpansion(for: node) {
+            let nodes = model.actionTargets(clicked: node)
+            Button("Reveal in Finder") { model.reveal(nodes) }
+            Button("Open") { model.open(nodes) }
+            Button(LocalizedStringKey(nodes.count > 1 ? "Copy Paths" : "Copy Path")) { model.copyPaths(nodes) }
+            if nodes.count == 1, let expansion = model.contentsExpansion(for: node) {
                 Divider()
                 Button(LocalizedStringKey(expansion.menuTitleKey)) { model.expandNodeContents(node) }
                     .disabled(!model.canRefreshSubtree)
             }
             if model.cleanup.isEnabled {
                 Divider()
-                Button(LocalizedStringKey(model.cleanupMenuTitle(for: node))) { model.cleanup.toggle(node) }
-                    .disabled(!model.canToggleCleanup(for: node))
-                    .help(model.cleanupMenuHelp(for: node) ?? "")
+                Button(model.cleanupMenuTitle(for: nodes)) { model.cleanup.toggle(nodes) }
+                    .disabled(!model.canToggleCleanup(for: nodes))
+                    .help(model.cleanupMenuHelp(for: nodes) ?? "")
             }
         }
     }

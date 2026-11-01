@@ -216,10 +216,10 @@ struct NeodiskCommands: Commands {
             Button {
                 model.select(nil)
             } label: {
-                Label("Deselect", systemImage: "clear")
+                Label("Deselect All", systemImage: "clear")
             }
             .keyboardShortcut("a", modifiers: [.command, .option])
-            .disabled(model.selectedNodeID == nil)
+            .disabled(model.selection.isEmpty)
         }
 
         CommandMenu("Inspect") {
@@ -229,7 +229,7 @@ struct NeodiskCommands: Commands {
                 Label("Quick Look", systemImage: "eye")
             }
             .keyboardShortcut("y")
-            .disabled(model.selectedNode == nil)
+            .disabled(model.selection.isEmpty)
 
             Divider()
 
@@ -252,7 +252,7 @@ struct NeodiskCommands: Commands {
             Button {
                 model.copyPathOfSelection()
             } label: {
-                Label("Copy Path", systemImage: "doc.on.doc")
+                Label(LocalizedStringKey(model.selection.isMultiple ? "Copy Paths" : "Copy Path"), systemImage: "doc.on.doc")
             }
             .keyboardShortcut("c", modifiers: [.command, .option])
             .disabled(!model.selectionSupportsFileActions)
@@ -263,14 +263,11 @@ struct NeodiskCommands: Commands {
                 Button {
                     model.toggleCleanupForSelection()
                 } label: {
-                    Label(
-                        LocalizedStringKey(model.selectedNode.map(model.cleanupMenuTitle(for:)) ?? "Add to Cleanup"),
-                        systemImage: "trash"
-                    )
+                    Label(model.cleanupMenuTitle(for: model.selectedNodes), systemImage: "trash")
                 }
                 .keyboardShortcut(.delete, modifiers: .command)
                 // Refused items stay enabled: ⌘⌫ then says why. Something inside a collected folder is already in.
-                .disabled(model.selectedNode.map { model.cleanup.mark(for: $0.id) == .inside } ?? true)
+                .disabled(model.cleanup.toggle(for: model.selectedNodes) == .none)
 
                 Button {
                     model.cleanup.moveAllToTrash()

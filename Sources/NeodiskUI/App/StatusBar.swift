@@ -43,6 +43,20 @@ struct StatusBar: View {
                 Spacer(minLength: 12)
                 Text(NeodiskFormatters.size(aggregate.totalSize))
                     .monospacedDigit()
+            } else if model.hoveredNode == nil, model.selection.isMultiple, let summary = model.selectionSummary {
+                Text(Self.countText(summary.count))
+                    .lineLimit(1)
+                Spacer(minLength: 12)
+                if summary.inCleanup > 0 {
+                    Label(Self.inCleanupText(summary.inCleanup, of: summary.count), systemImage: "trash")
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .fixedSize()
+                }
+                Text(NeodiskFormatters.size(summary.totalSize))
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .fixedSize()
             } else if let node = model.hoveredNode ?? model.selectedNode {
                 RoundedRectangle(cornerRadius: 2)
                     .fill(hoverOrSelectionSwatch(for: node))
@@ -73,6 +87,16 @@ struct StatusBar: View {
         .neoFont(11)
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
+    }
+
+    static func countText(_ count: Int) -> String {
+        String(format: NSLocalizedString("%lld items selected", comment: "Status bar, several items selected"), count)
+    }
+
+    static func inCleanupText(_ inCleanup: Int, of count: Int) -> String {
+        inCleanup == count
+            ? NSLocalizedString("All in Cleanup", comment: "Status bar, every selected item is in Cleanup")
+            : String(format: NSLocalizedString("%lld in Cleanup", comment: "Status bar, selected items in Cleanup"), inCleanup)
     }
 
     private func hoverOrSelectionSwatch(for node: FileNodeRecord) -> Color {

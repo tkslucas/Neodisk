@@ -515,3 +515,11 @@
 /* Cleanup: hard links and clones */
 "Shared" = "共享";
 "Shares its storage with another file (a hard link or clone), so moving it alone frees no space." = "与另一个文件共享存储（硬链接或克隆），因此单独移动它不会释放空间。";
+/* Multi-selection */
+"Add %lld Items to Cleanup" = "将 %lld 个项目添加到清理";
+"Remove %lld Items from Cleanup" = "从清理中移除 %lld 个项目";
+"Copy Paths" = "拷贝路径";
+"Deselect All" = "全部取消选择";
+"%lld items selected" = "已选择 %lld 个项目";
+"All in Cleanup" = "全部在清理中";
+"%lld in Cleanup" = "%lld 个在清理中";

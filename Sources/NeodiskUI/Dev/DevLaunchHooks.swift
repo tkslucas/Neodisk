@@ -77,6 +77,27 @@ enum DevLaunchHooks {
             }
         }
 
+        // NEODISK_AUTOSELECT=<path>[:<path>...] selects those items once the scan finishes, the last one primary,
+        // as ⌘-clicks would: headless snapshots show a multi-selection in every view.
+        if let rawPaths = environment["NEODISK_AUTOSELECT"] {
+            let paths = rawPaths.split(separator: ":").map(String.init)
+            Task { @MainActor in
+                for _ in 0..<120 {
+                    try? await Task.sleep(for: .milliseconds(500))
+                    guard !model.coordinator.isScanning, model.coordinator.snapshot?.isComplete == true else {
+                        continue
+                    }
+                    let ids = paths.compactMap { findNode(at: $0, in: model)?.id }
+                    model.selection.replace(with: ids, primary: ids.last)
+                    for id in ids { model.revealInOutline(id) }
+                    FileHandle.standardError.write(Data(
+                        "NEODISK_AUTOSELECT: selected \(ids.count) of \(paths.count)\n".utf8
+                    ))
+                    break
+                }
+            }
+        }
+
         // NEODISK_AUTOCOLLECT=<path>[:<path>...] adds those items to Cleanup once the scan finishes, so a
         // headless snapshot shows the marks. Nothing moves: only the pile changes.
         if let rawPaths = environment["NEODISK_AUTOCOLLECT"] {

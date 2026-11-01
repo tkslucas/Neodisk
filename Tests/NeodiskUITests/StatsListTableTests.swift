@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import Testing
+import NeodiskAppModel
 @testable import NeodiskUI
 
 /// Must follow the model's selection without echoing it back as a click, and keep drill-in rows unselected.
@@ -20,7 +21,7 @@ struct StatsListTableTests {
     ) -> StatsListCoordinator.Update {
         StatsListCoordinator.Update(
             ids: ids, cell: { _ in AnyView(EmptyView()) }, click: click,
-            selectedID: selectedID, keepsLeaderInView: false
+            selection: NodeSelection(selectedID.map { [$0] } ?? []), keepsLeaderInView: false
         )
     }
 

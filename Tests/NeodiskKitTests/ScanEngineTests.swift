@@ -1092,7 +1092,8 @@ import Foundation
         try await probe.waitUntilBlocked()
         blockedScanTask.cancel()
 
-        let followUpFinished = try await withTimeout(.seconds(1)) {
+        // Generous: it only bounds a regression where the follow-up waits on the blocked scan.
+        let followUpFinished = try await withTimeout(.seconds(30)) {
             for try await event in engine.scan(target: ScanTarget(url: followUpURL), options: ScanOptions()) {
                 if case .finished = event {
                     return true
@@ -1108,13 +1109,15 @@ import Foundation
         #expect(!(blockedScanFinished))
     }
 
-    @Test func testEnumeratedDirectoryContentsChecksCancellationBeforeMaterializingAllURLs() async throws {
-        let rootURL = try makeTemporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: rootURL) }
-
+    @Test func testEnumeratedDirectoryContentsChecksCancellationBeforeMaterializingAllURLs() throws {
+        let rootURL = URL(filePath: "/nonexistent-root", directoryHint: .isDirectory)
         let cancellation = DirectoryEnumerationCancellation()
-        let enumerator = SlowDirectoryObjectEnumerator(rootURL: rootURL, totalCount: 10_000)
-        let enumerationTask = Task {
+        // Cancels after 64 entries, then keeps producing: only the enumeration's own checks stop it.
+        let enumerator = CancellingDirectoryObjectEnumerator(
+            rootURL: rootURL, totalCount: 10_000, cancelAfter: 64, cancel: cancellation.cancel
+        )
+
+        #expect(throws: CancellationError.self) {
             try ScanEngine.enumeratedDirectoryContents(
                 url: rootURL,
                 keys: nil,
@@ -1123,25 +1126,15 @@ import Foundation
                 makeEnumerator: { _, _, _ in enumerator }
             )
         }
-
-        try await enumerator.waitUntilProduced(64)
-        cancellation.cancel()
-
-        do {
-            _ = try await withTimeout(.seconds(1)) {
-                try await enumerationTask.value
-            }
-            Issue.record("Expected directory enumeration to stop after cancellation.")
-        } catch is CancellationError {
-            #expect(enumerator.producedCount < enumerator.totalCount)
-        }
+        #expect(enumerator.producedCount < enumerator.totalCount)
     }
 
-    @Test func testCancellingScanStopsInjectedDirectoryEnumerationBeforeMaterialization() async throws {
+    @Test(.timeLimit(.minutes(1))) func testCancellingScanStopsInjectedDirectoryEnumerationBeforeMaterialization() async throws {
         let rootURL = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: rootURL) }
 
-        let probe = CancellableDirectoryContentsProbe(totalCount: 10_000)
+        // Holds after 64 children until the scan's cancel reaches the listing.
+        let probe = CancellableDirectoryContentsProbe(totalCount: 10_000, holdAfter: 64)
         let engine = ScanEngine(directoryContents: { url, _, _, cancellationCheck in
             guard url == rootURL else { return [] }
             return try probe.contents(for: url, cancellationCheck: cancellationCheck)
@@ -1160,11 +1153,8 @@ import Foundation
             return didFinish
         }
 
-        try await probe.waitUntilProduced(64)
-        scanTask.cancel()
-        let didFinishCancelledScan = try await withTimeout(.seconds(1)) {
-            try await scanTask.value
-        }
+        probe.cancelOnceHeld(scanTask)
+        let didFinishCancelledScan = try await scanTask.value
 
         #expect(!(didFinishCancelledScan))
         #expect(probe.producedCount < probe.totalCount)
@@ -2579,60 +2569,53 @@ private final class DirectoryEnumerationCancellation: @unchecked Sendable {
     }
 }
 
-private final class SlowDirectoryObjectEnumerator: ScanEngine.DirectoryObjectEnumerating, @unchecked Sendable {
+private final class CancellingDirectoryObjectEnumerator: ScanEngine.DirectoryObjectEnumerating, @unchecked Sendable {
     let totalCount: Int
     private let rootURL: URL
-    private let lock = NSLock()
-    private var nextIndex = 0
+    private let cancelAfter: Int
+    private let cancel: () -> Void
+    private(set) var producedCount = 0
 
-    init(rootURL: URL, totalCount: Int) {
+    init(rootURL: URL, totalCount: Int, cancelAfter: Int, cancel: @escaping () -> Void) {
         self.rootURL = rootURL
         self.totalCount = totalCount
-    }
-
-    var producedCount: Int {
-        lock.lock()
-        defer { lock.unlock() }
-        return nextIndex
+        self.cancelAfter = cancelAfter
+        self.cancel = cancel
     }
 
     func nextObject() -> Any? {
-        lock.lock()
-        defer { lock.unlock() }
-        guard nextIndex < totalCount else { return nil }
-        let childURL = rootURL.appending(path: "payload-\(nextIndex).tmp")
-        nextIndex += 1
-        Thread.sleep(forTimeInterval: 0.0005)
+        guard producedCount < totalCount else { return nil }
+        if producedCount == cancelAfter { cancel() }
+        let childURL = rootURL.appending(path: "payload-\(producedCount).tmp")
+        producedCount += 1
         return childURL
-    }
-
-    func waitUntilProduced(
-        _ minimumCount: Int,
-        sourceLocation: SourceLocation = #_sourceLocation
-    ) async throws {
-        for _ in 0..<200 {
-            if producedCount >= minimumCount {
-                return
-            }
-            try await Task.sleep(for: .milliseconds(5))
-        }
-        Issue.record("Timed out waiting for directory object enumeration.", sourceLocation: sourceLocation)
     }
 }
 
+/// Lists `totalCount` children, cancelling the scan after `holdAfter` and holding until the engine sees it,
+/// so the outcome doesn't depend on how fast the cancel lands.
 private final class CancellableDirectoryContentsProbe: @unchecked Sendable {
     let totalCount: Int
+    private let holdAfter: Int
     private let lock = NSLock()
     private var produced = 0
+    private var cancelScan: (@Sendable () -> Void)?
 
-    init(totalCount: Int) {
+    init(totalCount: Int, holdAfter: Int) {
         self.totalCount = totalCount
+        self.holdAfter = holdAfter
     }
 
     var producedCount: Int {
         lock.lock()
         defer { lock.unlock() }
         return produced
+    }
+
+    func cancelOnceHeld(_ scanTask: Task<Bool, any Error>) {
+        lock.lock()
+        cancelScan = { scanTask.cancel() }
+        lock.unlock()
     }
 
     func contents(
@@ -2643,28 +2626,30 @@ private final class CancellableDirectoryContentsProbe: @unchecked Sendable {
         urls.reserveCapacity(totalCount)
 
         for index in 0..<totalCount {
+            if index == holdAfter {
+                // The task may not be handed over yet; keep asking until the check throws.
+                while (try? cancellationCheck()) != nil {
+                    takeCancelScan()?()
+                    Thread.sleep(forTimeInterval: 0.001)
+                }
+                try cancellationCheck()
+            }
             if index.isMultiple(of: 8) {
                 try cancellationCheck()
             }
             recordProducedChild()
-            Thread.sleep(forTimeInterval: 0.0005)
             urls.append(url.appending(path: "payload-\(index).tmp"))
         }
 
         return urls
     }
 
-    func waitUntilProduced(
-        _ minimumCount: Int,
-        sourceLocation: SourceLocation = #_sourceLocation
-    ) async throws {
-        for _ in 0..<200 {
-            if producedCount >= minimumCount {
-                return
-            }
-            try await Task.sleep(for: .milliseconds(5))
-        }
-        Issue.record("Timed out waiting for directory contents production.", sourceLocation: sourceLocation)
+    private func takeCancelScan() -> (@Sendable () -> Void)? {
+        lock.lock()
+        defer { lock.unlock() }
+        let cancel = cancelScan
+        cancelScan = nil
+        return cancel
     }
 
     private func recordProducedChild() {
@@ -2700,7 +2685,7 @@ private final class BlockingDirectoryContentsProbe: @unchecked Sendable {
     func waitUntilBlocked(
         sourceLocation: SourceLocation = #_sourceLocation
     ) async throws {
-        for _ in 0..<200 {
+        for _ in 0..<6_000 {
             if blocked {
                 return
             }

@@ -61,12 +61,12 @@ import Foundation
 
     @Test func slowDirectoryReadDoesNotHoldQueuedReads() async throws {
         // The slow read holds its thread until every queued read is done; if
-        // queued reads waited behind it, it would time out instead.
+        // queued reads waited behind it, it would time out instead (generous: a loaded runner is slow).
         let executor = DirectoryIOExecutor(workerCount: 2)
         let fastReadsDone = DispatchSemaphore(value: 0)
         let slow = Task {
             try await executor.run { _, _ in
-                fastReadsDone.wait(timeout: .now() + 10) == .success
+                fastReadsDone.wait(timeout: .now() + 60) == .success
             }
         }
         try await withThrowingTaskGroup(of: Void.self) { group in

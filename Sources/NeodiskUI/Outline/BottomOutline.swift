@@ -234,6 +234,7 @@ struct BottomOutlineTable: NSViewRepresentable {
                     ? column.width : column.width * ratio
                 column.width = max(target, minimum)
             }
+            tableView.sizeToFit()
         }
 
         func apply(snapshot: NeodiskViewModel.OutlineRowsSnapshot) {
@@ -465,6 +466,7 @@ struct BottomOutlineTable: NSViewRepresentable {
                 if current != index { tableView.moveColumn(current, toColumn: index) }
                 tableView.tableColumns[index].isHidden = layout.isHidden(id)
             }
+            tableView.sizeToFit()
         }
 
         func tableView(_ tableView: NSTableView, shouldReorderColumn columnIndex: Int, toColumn newColumnIndex: Int) -> Bool {
@@ -487,6 +489,7 @@ struct BottomOutlineTable: NSViewRepresentable {
             if let tableView {
                 let index = tableView.column(withIdentifier: .init(id))
                 if index >= 0 { tableView.tableColumns[index].isHidden = layout.isHidden(column) }
+                tableView.sizeToFit()
             }
             commitColumns(layout)
         }

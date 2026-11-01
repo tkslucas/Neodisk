@@ -380,15 +380,13 @@ private struct WorkspaceView: View {
                         )
                         BottomOutlinePane(model: model)
                             .frame(height: metrics.bottomOutlineHeight)
-                            // A floating statistics panel may cover the map, never the list: the list ends where
-                            // the panel begins, and its columns fit that width.
-                            .padding(.trailing, model.showKindStats && metrics.analysisFloats ? metrics.analysisWidth : 0)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .layoutPriority(1)
 
-                if model.showKindStats, !metrics.analysisFloats {
+                // Always docked, beside the map and never over it, so its edge is a divider like the others.
+                if model.showKindStats {
                     PaneSplitter(
                         size: kindStatsPaneSize,
                         range: metrics.analysisRange,
@@ -401,19 +399,6 @@ private struct WorkspaceView: View {
                     )
                     AnalysisPane(model: model)
                         .frame(width: metrics.analysisWidth)
-                        .transition(.move(edge: .trailing))
-                }
-            }
-            // A window too narrow to dock the analysis pane beside the map
-            // floats it over the map's trailing edge instead.
-            .overlay(alignment: .trailing) {
-                if model.showKindStats, metrics.analysisFloats {
-                    AnalysisPane(model: model)
-                        .frame(width: metrics.analysisWidth)
-                        .frame(maxHeight: .infinity)
-                        .background(.background)
-                        .overlay(alignment: .leading) { Divider() }
-                        .shadow(color: .black.opacity(0.18), radius: 10, x: -2)
                         .transition(.move(edge: .trailing))
                 }
             }

@@ -115,10 +115,7 @@ import Testing
                 storedBottomOutlineHeight: PaneLayout.bottomOutlineMaxHeight(scale: step),
                 textScale: step
             )
-            // A pane that can't dock floats over the map instead.
-            let docked = metrics.analysisFloats
-                ? 0 : metrics.analysisWidth + PaneLayout.splitterThickness
-            let map = width - metrics.outlineWidth - PaneLayout.splitterThickness - docked
+            let map = width - metrics.outlineWidth - metrics.analysisWidth - 2 * PaneLayout.splitterThickness
             #expect(map >= PaneLayout.mapMinWidth)
         }
     }

@@ -29,6 +29,8 @@ The most used ones; the rest live in `Sources/NeodiskUI/Dev/`.
   (`NEODISK_RENDER_COLOR_MODE`, `NEODISK_RENDER_PALETTE`, `NEODISK_RENDER_STYLE`, `NEODISK_RENDER_CLOUD_ONLY=0`).
 - `NEODISK_ANALYSIS_TAB`, `NEODISK_VIZ_MODE`, `NEODISK_TREEMAP_STYLE`, `NEODISK_OUTLINE_POSITION`,
   `NEODISK_UPDATE_STATE`: force that UI state on launch without persisting it.
+- `NEODISK_FULL_DISK_ACCESS=off` (debug): act as without Full Disk Access (the first-scan offer, the wait status);
+  `NEODISK_SIMULATE_PERMISSION_WAIT=<folder>` + `NEODISK_SCAN_BULK=0` holds that listing a minute, as a prompt would.
 - `NEODISK_INCREMENTAL=0`: every rescan runs the full traversal (fallback, and the honest benchmark baseline).
 - `NEODISK_SCAN_TIMING=1`: per-phase timings on stderr as `NEODISK_SCAN_TIMING phase=<name> ms=<value>`
   lines, a parsing contract for tooling; `diskscan --bench-rescan` exercises it.

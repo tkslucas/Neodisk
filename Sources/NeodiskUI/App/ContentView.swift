@@ -34,9 +34,7 @@ public struct ContentView: View {
                 )
         } detail: {
             detailContent
-                .dropDestination(for: URL.self) { urls, _ in
-                    model.addDroppedFolders(urls)
-                }
+                .addLocationDropTarget(model: model)
         }
         // The workspace text scale enters here and in the welcome sheet; other scenes (Settings, About) and the
         // window's chrome keep the system size.
@@ -74,6 +72,9 @@ public struct ContentView: View {
         ) { _ in
             Task { await model.warnings.refreshFullDiskAccessStatus() }
         }
+        .onChange(of: model.warnings.fullDiskAccessStatus) { _, status in
+            if status == .granted { model.passFullDiskAccessGate(remembering: false) }
+        }
         .toolbar { toolbarContent }
         .navigationTitle(windowTitle)
         .navigationSubtitle(windowSubtitle)
@@ -92,6 +93,15 @@ public struct ContentView: View {
 
     @ViewBuilder
     private var detailContent: some View {
+        if model.fullDiskAccessGate != nil {
+            FullDiskAccessGateView(model: model)
+        } else {
+            phaseContent
+        }
+    }
+
+    @ViewBuilder
+    private var phaseContent: some View {
         switch model.coordinator.phase {
         case .idle:
             WelcomeView(model: model)
@@ -115,11 +125,12 @@ public struct ContentView: View {
 
     /// The location in the title, its size in the subtitle beneath it.
     private var windowTitle: String {
-        model.coordinator.selectedTarget?.displayName ?? AppChannel.current.appName
+        (model.fullDiskAccessGate ?? model.coordinator.selectedTarget)?.displayName ?? AppChannel.current.appName
     }
 
     private var windowSubtitle: String {
-        Self.windowSubtitle(
+        guard model.fullDiskAccessGate == nil else { return "" }
+        return Self.windowSubtitle(
             targetKind: model.coordinator.selectedTarget?.kind,
             finderUsedBytes: model.freeSpace.finderUsedBytes,
             freeBytes: model.freeSpace.freeSpaceBytes,
@@ -275,6 +286,14 @@ private struct WorkspaceView: View {
                 workspacePanes(metrics: metrics)
             }
 
+            if let notice = model.session.snapshotNotice {
+                VStack(spacing: 0) {
+                    Divider()
+                    SnapshotNoticeStrip(model: model, notice: notice)
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+
             if let superseded = model.session.supersededScanNotice {
                 Divider()
                 SupersededScanStrip(displayName: superseded.displayName) {
@@ -302,6 +321,8 @@ private struct WorkspaceView: View {
                     .contextMenu { WorkspaceLayoutMenuItems(model: model) }
             }
         }
+        // The snapshot strip slides in and out instead of jumping the map under the pointer.
+        .animation(.easeInOut(duration: 0.2), value: model.session.snapshotNotice == nil)
     }
 
     private func paneMetrics(available: CGSize) -> WorkspacePaneMetrics {
@@ -339,7 +360,7 @@ private struct WorkspaceView: View {
     }
 
     private func workspacePanes(metrics: WorkspacePaneMetrics) -> some View {
-        ZStack(alignment: .bottomTrailing) {
+        Group {
             HStack(spacing: 0) {
                 if model.layout.showsLeadingList {
                     OutlinePane(model: model)
@@ -378,6 +399,9 @@ private struct WorkspaceView: View {
                                 transientBottomOutlinePaneHeight = nil
                             }
                         )
+                        // An AppKit view draws above SwiftUI overlays: under a floating statistics pane its line
+                        // would cross the pane's lists (and its hit area would take their clicks).
+                        .padding(.trailing, model.showKindStats && metrics.analysisFloats ? metrics.analysisWidth : 0)
                         BottomOutlinePane(model: model)
                             .frame(height: metrics.bottomOutlineHeight)
                             // A floating statistics panel may cover the map, never the list: the list ends where
@@ -401,7 +425,6 @@ private struct WorkspaceView: View {
                     )
                     AnalysisPane(model: model)
                         .frame(width: metrics.analysisWidth)
-                        .transition(.move(edge: .trailing))
                 }
             }
             // A window too narrow to dock the analysis pane beside the map
@@ -414,14 +437,12 @@ private struct WorkspaceView: View {
                         .background(.background)
                         .overlay(alignment: .leading) { Divider() }
                         .shadow(color: .black.opacity(0.18), radius: 10, x: -2)
-                        .transition(.move(edge: .trailing))
                 }
             }
-            .animation(.easeInOut(duration: 0.22), value: model.showKindStats)
+            // The statistics panel shows and hides at once, unanimated: a sliding panel resized the map and the
+            // file list on every frame, redrawing the sunburst and the tables each time (200-300 ms stalls, and a
+            // 1.7 s freeze on a big scan).
             .clipped()
-
-            SnapshotNoticePanel(model: model)
-                .animation(.easeInOut(duration: 0.2), value: model.session.snapshotNotice)
         }
     }
 }
@@ -619,6 +640,10 @@ private struct LiveScanStrip: View {
             return cachedScanDate != nil
                 ? NSLocalizedString("Stopped — showing last scan", comment: "Live strip, stopped with a cached scan")
                 : NSLocalizedString("Stopped — showing partial results", comment: "Live strip, stopped mid-scan")
+        }
+        // The one wait only the user can end comes first.
+        if let permissionWaitText = progress.permissionWaitText {
+            return permissionWaitText
         }
         // Activity phases outrank the cached-scan caption: the refresh path
         // is exactly where these silent phases used to look like a hang.

@@ -45,7 +45,10 @@ struct KindStatsPane: View {
 
             Divider()
 
-            if model.kinds.catalog.stats.isEmpty || model.kinds.catalog.mode != model.kinds.displayMode {
+            if model.kinds.catalog.mode == model.kinds.displayMode, model.kinds.catalog.stats.isEmpty,
+               model.kinds.isCatalogBuilt, model.coordinator.snapshot?.isComplete == true {
+                StatsEmptyState.noFiles
+            } else if model.kinds.catalog.stats.isEmpty || model.kinds.catalog.mode != model.kinds.displayMode {
                 // Nothing built yet, or the new mode's catalog is still building: don't show the stale list.
                 Spacer()
                 ProgressView().neoControlSize(base: .small)

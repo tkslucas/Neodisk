@@ -56,6 +56,11 @@ struct SidebarFolderStore {
         return targets(for: paths)
     }
 
+    /// The whole list in order, as an undone removal restores it.
+    func save(_ targets: [ScanTarget]) {
+        defaults.set(targets.map(\.id), forKey: Self.defaultsKey)
+    }
+
     private func targets(for paths: [String]) -> [ScanTarget] {
         paths.map { path in
             ScanTarget(url: URL(filePath: path, directoryHint: .isDirectory))

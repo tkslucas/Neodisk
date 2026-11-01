@@ -428,7 +428,9 @@
 "Locations" = "Locations";
 "Main Menu" = "Main Menu";
 "Merging changes…" = "Merging changes…";
-"Move Selection" = "Move Selection";
+"Select Largest Item Inside" = "Select Largest Item Inside";
+"Select Enclosing Folder" = "Select Enclosing Folder";
+"Select Previous or Next Item" = "Select Previous or Next Item";
 "Opening…" = "Opening…";
 "Preferences" = "Preferences";
 "Quit" = "Quit";

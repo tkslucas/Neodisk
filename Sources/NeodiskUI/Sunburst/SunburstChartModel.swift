@@ -47,6 +47,8 @@ actor SunburstLayoutService: SunburstLayouting {
 @MainActor
 final class SunburstChartModel: ObservableObject {
     @Published private var renderState = SunburstChartRenderState()
+    /// The root the segments on screen were laid out for.
+    private(set) var drawnRootID: String?
     @Published private(set) var isLayoutPending = false
 
     private let layoutService: any SunburstLayouting
@@ -232,6 +234,7 @@ final class SunburstChartModel: ObservableObject {
             // Styled with the latest style — it may have moved on (via
             // applyStyle) while the layout ran.
             apply(SunburstLayout.styled(segments, style: currentStyle, in: request.treeStore))
+            drawnRootID = request.rootID
             setIsLayoutPending(false)
             return true
         } catch is CancellationError {

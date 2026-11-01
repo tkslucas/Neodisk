@@ -428,7 +428,9 @@
 "Locations" = "位置";
 "Main Menu" = "主菜单";
 "Merging changes…" = "正在合并更改…";
-"Move Selection" = "移动选择";
+"Select Largest Item Inside" = "选择其中最大的项目";
+"Select Enclosing Folder" = "选择上层文件夹";
+"Select Previous or Next Item" = "选择上一个或下一个项目";
 "Opening…" = "正在打开…";
 "Preferences" = "偏好设置";
 "Quit" = "退出";

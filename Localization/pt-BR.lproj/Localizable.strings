@@ -429,7 +429,9 @@
 "Locations" = "Locais";
 "Main Menu" = "Menu Principal";
 "Merging changes…" = "Mesclando alterações…";
-"Move Selection" = "Mover Seleção";
+"Select Largest Item Inside" = "Selecionar o Maior Item Interno";
+"Select Enclosing Folder" = "Selecionar Pasta Superior";
+"Select Previous or Next Item" = "Selecionar Item Anterior ou Seguinte";
 "Opening…" = "Abrindo…";
 "Preferences" = "Preferências";
 "Quit" = "Sair";

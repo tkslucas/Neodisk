@@ -49,6 +49,8 @@ final class TreemapView: CanvasDelegate {
     private var viewport = TreemapViewport.identity
     private var renderTask: Task<Void, Never>?
     private var inFlight: RenderInputs?
+    /// What the frame drew, for the arrow keys; built on the first press after each frame.
+    private var renderedIDs: Set<String>?
     /// Every selected item's rect, memoized per frame and selection.
     private var selectionRects: (selection: NodeSelection, rects: [CGRect])?
     /// The cell under the pointer, in scene coordinates.
@@ -191,6 +193,7 @@ final class TreemapView: CanvasDelegate {
                     labels: self.makeLabels(for: rendered.0, isDark: inputs.isDark)
                 )
                 self.selectionRects = nil
+                self.renderedIDs = nil
                 self.canvas.queueDraw()
             } else if rendered.0.cells.isEmpty {
                 self.frame = nil
@@ -629,53 +632,47 @@ final class TreemapView: CanvasDelegate {
     }
 
     private func handleKey(_ keyval: UInt32, state: UInt32) -> Bool {
-        guard let frame else { return false }
+        guard let frame, let store = model.store else { return false }
         if Self.isSelectAll(keyval, state: state) {
             if !model.selectAllInMap() { gtk_widget_error_bell(ptr(canvas.widget)) }
             return true
         }
-        let direction: TreemapKeyboardNav.Direction?
         switch Int32(keyval) {
-        case GDK_KEY_Left: direction = .left
-        case GDK_KEY_Right: direction = .right
-        case GDK_KEY_Up: direction = .up
-        case GDK_KEY_Down: direction = .down
         case GDK_KEY_Return, GDK_KEY_KP_Enter:
-            if !model.drillIntoSelection() {
-                gtk_widget_error_bell(ptr(canvas.widget))
-            }
-            return true
+            if !model.drillIntoSelection() { gtk_widget_error_bell(ptr(canvas.widget)) }
         case GDK_KEY_BackSpace:
             model.focusOut()
-            return true
         case GDK_KEY_Escape:
-            if viewport != .identity {
-                stopZoomAnimation()
-                setViewport(.identity)
-            } else {
-                model.select(nil)
-            }
-            return true
+            // A zoomed map resets first; otherwise the window's Escape deselects.
+            guard viewport != .identity else { return false }
+            stopZoomAnimation()
+            setViewport(.identity)
         default:
-            direction = nil
-        }
-        guard let direction else { return false }
-        let candidates = TreemapKeyboardNav.candidates(in: frame.scene.cells)
-        let origin = model.selectedNodeID
-            .flatMap { id in candidates.first { $0.nodeID == id } }?.center
-        let next: String?
-        if let origin {
-            next = TreemapKeyboardNav.target(from: origin, direction: direction, excluding: model.selectedNodeID, in: candidates)
-        } else {
-            next = TreemapKeyboardNav.largest(in: candidates)
-        }
-        if let next {
-            // Shift adds the target; a plain arrow leaves only it selected.
-            if state & GDK_SHIFT_MASK.rawValue != 0 { model.extendSelection(to: next) } else { model.select(next) }
-        } else {
-            gtk_widget_error_bell(ptr(canvas.widget))
+            guard let move = Self.treeMove(for: keyval) else { return false }
+            // Right after a drill the frame still shows the old root: then every item counts.
+            var isRendered: ((String) -> Bool)?
+            if frame.scene.rootID == model.focusedRootID {
+                let rendered = renderedIDs ?? TreeKeyboardNav.renderedIDs(in: frame.scene.cells, store: store)
+                renderedIDs = rendered
+                isRendered = rendered.contains
+            }
+            let extending = state & GDK_SHIFT_MASK.rawValue != 0
+            if !model.moveSelectionInMap(move, extending: extending, isRendered: isRendered) {
+                gtk_widget_error_bell(ptr(canvas.widget))
+            }
         }
         return true
+    }
+
+    /// The maps' arrow keys: right goes deeper, left shallower, up and down to the previous or next sibling.
+    static func treeMove(for keyval: UInt32) -> TreeKeyboardNav.Move? {
+        switch Int32(keyval) {
+        case GDK_KEY_Right: .child
+        case GDK_KEY_Left: .parent
+        case GDK_KEY_Up: .previous
+        case GDK_KEY_Down: .next
+        default: nil
+        }
     }
 
     private func tooltipText(for cell: TreemapCell) -> String {

@@ -428,7 +428,9 @@
 "Locations" = "場所";
 "Main Menu" = "メインメニュー";
 "Merging changes…" = "変更を統合中…";
-"Move Selection" = "選択を移動";
+"Select Largest Item Inside" = "内部の最大の項目を選択";
+"Select Enclosing Folder" = "親フォルダを選択";
+"Select Previous or Next Item" = "前または次の項目を選択";
 "Opening…" = "開いています…";
 "Preferences" = "設定";
 "Quit" = "終了";

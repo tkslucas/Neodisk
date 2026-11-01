@@ -28,7 +28,9 @@ enum ShortcutsWindow {
             Shortcut(title: L("Zoom Out"), accelerator: "<Control>Up BackSpace"),
             Shortcut(title: L("Back"), accelerator: "<Alt>Left"),
             Shortcut(title: L("Forward"), accelerator: "<Alt>Right"),
-            Shortcut(title: L("Move Selection"), accelerator: "Left Right Up Down"),
+            Shortcut(title: L("Select Largest Item Inside"), accelerator: "Right"),
+            Shortcut(title: L("Select Enclosing Folder"), accelerator: "Left"),
+            Shortcut(title: L("Select Previous or Next Item"), accelerator: "Up Down"),
         ]),
         (L("Selection"), [
             Shortcut(title: L("Select All"), accelerator: "<Control>a"),

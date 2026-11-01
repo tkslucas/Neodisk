@@ -61,7 +61,7 @@ final class TreemapController {
     /// Memoized per scene and store (both immutable). `selectionRect` is read on every display refresh,
     /// so re-running the layout down the selection path each time was pure repeat work.
     private struct SceneQueries {
-        var navigationCandidates: [TreemapKeyboardNav.Candidate]?
+        var renderedIDs: Set<String>?
         var selectionRect: (nodeID: String, rect: CGRect?)?
         var selectionRects: (selection: NodeSelection, rects: [CGRect])?
         var cleanupMarks: CleanupMarks?
@@ -589,71 +589,46 @@ final class TreemapController {
 
     // MARK: - Keyboard navigation
 
-    typealias MoveDirection = TreemapKeyboardNav.Direction
-
     func handleKey(_ event: NSEvent) -> Bool {
         guard let key = event.specialKey else { return false }
         let command = event.modifierFlags.contains(.command)
+        let extending = event.modifierFlags.contains(.shift)
         switch key {
         case .upArrow:
             if command {
                 beepUnless(model?.drillOut() == true)
             } else {
-                moveSelection(.up, extending: event.modifierFlags.contains(.shift))
+                moveSelection(.previous, extending: extending)
             }
         case .downArrow:
             if command {
                 beepUnless(model?.drillIntoSelection() == true)
             } else {
-                moveSelection(.down, extending: event.modifierFlags.contains(.shift))
+                moveSelection(.next, extending: extending)
             }
         case .leftArrow:
-            moveSelection(.left, extending: event.modifierFlags.contains(.shift))
+            moveSelection(.parent, extending: extending)
         case .rightArrow:
-            moveSelection(.right, extending: event.modifierFlags.contains(.shift))
+            moveSelection(.child, extending: extending)
         case .carriageReturn, .enter, .newline:
-            revealSelectionInFinder()
+            beepUnless(model?.drillIntoSelection() == true)
         default:
             return false
         }
         return true
     }
 
-    /// With no selection, selects the largest tile so the keyboard has an anchor. Moves from the primary item and
-    /// leaves only the target selected; ⇧ adds the target instead.
-    private func moveSelection(_ direction: MoveDirection, extending: Bool = false) {
-        guard let model, let scene else { return }
-        let candidates: [TreemapKeyboardNav.Candidate]
-        if let cached = sceneQueries.navigationCandidates {
-            candidates = cached
-        } else {
-            candidates = TreemapKeyboardNav.candidates(in: scene.cells)
-            sceneQueries.navigationCandidates = candidates
+    private func moveSelection(_ move: TreeKeyboardNav.Move, extending: Bool) {
+        guard let model, let scene, let store else { return }
+        // Right after a drill the scene still shows the old root: then every item counts.
+        guard scene.rootID == model.effectiveRootID else {
+            return model.moveSelectionInMap(move, extending: extending, isRendered: nil)
         }
-        guard !candidates.isEmpty else { return }
-
-        guard let from = selectionRect.map({ CGPoint(x: $0.midX, y: $0.midY) }) else {
-            if let largest = TreemapKeyboardNav.largest(in: candidates) {
-                model.select(largest)
-            }
-            return
-        }
-
-        if let target = TreemapKeyboardNav.target(
-            from: from, direction: direction, excluding: selectedNodeID, in: candidates
-        ) {
-            if extending { model.extendSelection(to: target) } else { model.select(target) }
-        } else {
-            NSSound.beep()
-        }
-    }
-
-    private func revealSelectionInFinder() {
-        guard let model else {
-            NSSound.beep()
-            return
-        }
-        model.revealSelection()
+        let rendered = sceneQueries.renderedIDs ?? TreeKeyboardNav.renderedIDs(in: scene.cells, store: store)
+        sceneQueries.renderedIDs = rendered
+        model.moveSelectionInMap(
+            move, extending: extending, includingCloudOnly: scene.includingCloudOnly, isRendered: rendered.contains
+        )
     }
 
     /// Maps back into rendered-scene coordinates so hit-testing holds while the display transform is active.

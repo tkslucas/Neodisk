@@ -515,43 +515,25 @@ final class SunburstView: CanvasDelegate {
     }
 
     private func handleKey(_ keyval: UInt32, state: UInt32) -> Bool {
-        guard let frame, let store = model.store else { return false }
+        guard let frame else { return false }
         if TreemapView.isSelectAll(keyval, state: state) {
             if !model.selectAllInMap() { gtk_widget_error_bell(ptr(canvas.widget)) }
             return true
         }
-        let direction: SunburstKeyboardNav.Direction
         switch Int32(keyval) {
-        case GDK_KEY_Left: direction = .previousSibling
-        case GDK_KEY_Right: direction = .nextSibling
-        case GDK_KEY_Up: direction = .parent
-        case GDK_KEY_Down: direction = .largestChild
         case GDK_KEY_Return, GDK_KEY_KP_Enter:
-            if !model.drillIntoSelection() {
-                gtk_widget_error_bell(ptr(canvas.widget))
-            }
-            return true
+            if !model.drillIntoSelection() { gtk_widget_error_bell(ptr(canvas.widget)) }
         case GDK_KEY_BackSpace:
             model.focusOut()
-            return true
-        case GDK_KEY_Escape:
-            model.select(nil)
-            return true
         default:
-            return false
-        }
-        let rendered = frame.renderedIDs
-        if let next = SunburstKeyboardNav.target(
-            from: model.selectedNodeID,
-            direction: direction,
-            rootID: frame.inputs.rootID,
-            store: store,
-            isRendered: { rendered.contains($0) }
-        ) {
-            // Shift adds the target; a plain arrow leaves only it selected.
-            if state & GDK_SHIFT_MASK.rawValue != 0 { model.extendSelection(to: next) } else { model.select(next) }
-        } else {
-            gtk_widget_error_bell(ptr(canvas.widget))
+            guard let move = TreemapView.treeMove(for: keyval) else { return false }
+            // Until the layout for the current root lands, every item counts.
+            let ids = frame.renderedIDs
+            let rendered: ((String) -> Bool)? = frame.inputs.rootID == model.focusedRootID ? { ids.contains($0) } : nil
+            let extending = state & GDK_SHIFT_MASK.rawValue != 0
+            if !model.moveSelectionInMap(move, extending: extending, isRendered: rendered) {
+                gtk_widget_error_bell(ptr(canvas.widget))
+            }
         }
         return true
     }

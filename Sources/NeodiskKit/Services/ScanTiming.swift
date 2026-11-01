@@ -2,6 +2,8 @@
 import Darwin
 #elseif canImport(Glibc)
 import Glibc
+#elseif os(Windows)
+import WinSDK
 #endif
 import Foundation
 
@@ -92,6 +94,14 @@ public nonisolated enum ScanTiming {
     /// Sampled only at phase boundaries; concurrent phases would cross-attribute, but scan phases are
     /// sequential.
     private static func processCPUMilliseconds() -> (user: Double, system: Double) {
+        #if os(Windows)
+        var creation = FILETIME(), exit = FILETIME(), kernel = FILETIME(), user = FILETIME()
+        guard GetProcessTimes(GetCurrentProcess(), &creation, &exit, &kernel, &user) else { return (0, 0) }
+        func milliseconds(_ time: FILETIME) -> Double {
+            Double(UInt64(time.dwHighDateTime) << 32 | UInt64(time.dwLowDateTime)) / 10_000
+        }
+        return (milliseconds(user), milliseconds(kernel))
+        #else
         var usage = rusage()
         #if os(Linux)
         let who = __rusage_who_t(RUSAGE_SELF.rawValue)
@@ -103,6 +113,7 @@ public nonisolated enum ScanTiming {
             Double(time.tv_sec) * 1000 + Double(time.tv_usec) / 1000
         }
         return (milliseconds(usage.ru_utime), milliseconds(usage.ru_stime))
+        #endif
     }
 
     private static func appendingCPUDelta(

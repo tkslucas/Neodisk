@@ -24,11 +24,13 @@ nonisolated enum ProtectedContainers {
         #endif
     }
 
+    #if canImport(Darwin)
     /// Byte search; `String.contains` is Foundation's and ran hot here.
     private static func contains(_ bytes: UnsafeBufferPointer<UInt8>, _ needle: StaticString) -> Bool {
         guard let base = bytes.baseAddress else { return false }
         return memmem(base, bytes.count, needle.utf8Start, needle.utf8CodeUnitCount) != nil
     }
+    #endif
 
     /// Whether the children of the directory at `path` lie inside a container.
     static func containsChildren(ofDirectory path: String) -> Bool {

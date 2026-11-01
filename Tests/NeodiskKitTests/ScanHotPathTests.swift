@@ -17,6 +17,29 @@ import Foundation
         }
     }
 
+    @Test func pathFolderChecksMatchTheirURLForms() {
+        let paths = [
+            "/", "/a", "/node_modules", "/a/node_modules", "/a/node_modules/", "/a/.pnpm", "/a/node_modules/@scope",
+            "/a/.pnpm/@x", "/a/b/@scope", "/a/node_modules/react", "/@x", "/a/node_modules_x",
+            "/Users/me/Library/Developer/CoreSimulator", "/Users/me/Library/Developer/CoreSimulator/",
+            "/Users/me/Library/Developer/CoreSimulator/Devices", "/x/Library/Developer/CoreSimulator/.",
+            "/x/Library/Developer/CoreSimulator/..", "/CoreSimulator", "/Developer/CoreSimulator",
+        ]
+        for path in paths {
+            let url = URL(filePath: path, directoryHint: .isDirectory)
+            #expect(
+                AtomicDirectorySummarizer.isNodeDependencyLayoutDirectory(atPath: path)
+                    == AtomicDirectorySummarizer.isNodeDependencyLayoutDirectory(at: url),
+                "\(path)"
+            )
+            #expect(
+                AtomicDirectorySummarizer.isKnownGeneratedDirectory(atPath: path)
+                    == AtomicDirectorySummarizer.isKnownGeneratedDirectory(at: url),
+                "\(path)"
+            )
+        }
+    }
+
     @Test func scanPathMatchesStandardizedPath() {
         let matcher = ScanExclusionMatcher(patterns: [], rootPath: "/Users/me", includeCloudStorage: false)
         for path in ["/Users/me/a", "/Users/me/a/../b", "/Users/me/./c", "/Users/me/d/"] {

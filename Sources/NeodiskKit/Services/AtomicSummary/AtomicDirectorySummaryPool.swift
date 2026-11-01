@@ -364,11 +364,12 @@ nonisolated final class AtomicDirectorySummaryPool: @unchecked Sendable {
 
     private func makeInitialPartial(for request: AtomicSummaryPoolRequest) -> AtomicDirectorySummaryPartial {
         var partial = AtomicDirectorySummaryPartial()
-        do {
-            let values = try request.url.resourceValues(forKeys: [.isReadableKey])
-            partial.updateAccessibility(values.isReadable ?? true)
-        } catch {
-            partial.recordWarning(for: request.url, error: error)
+        if ScanMetadataLoader.isReadablePath(request.url) {
+            partial.updateAccessibility(true)
+        } else if errno == EACCES || errno == EPERM {
+            partial.updateAccessibility(false)
+        } else {
+            partial.recordWarning(for: request.url, error: POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO))
         }
         return partial
     }

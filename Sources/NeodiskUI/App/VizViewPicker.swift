@@ -1,5 +1,5 @@
-// The toolbar's view picker. AppKit, not a SwiftUI Picker: inside a toolbar item only a view's own `menu` wins the
-// right-click over the toolbar's, and that menu is the checklist of views shown.
+// The toolbar's view picker. AppKit, not a SwiftUI Picker: a SwiftUI context menu never sees the right-click in a
+// toolbar, so the control pops the checklist of views shown itself.
 
 import AppKit
 import SwiftUI
@@ -14,7 +14,7 @@ struct VizViewPicker: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeNSView(context: Context) -> NSSegmentedControl {
-        let control = NSSegmentedControl()
+        let control = ChecklistSegmentedControl()
         control.trackingMode = .selectOne
         control.target = context.coordinator
         control.action = #selector(Coordinator.picked(_:))
@@ -72,6 +72,24 @@ struct VizViewPicker: NSViewRepresentable {
                 item.isEnabled = views.isHidden(view) || views.canHide(view)
                 menu.addItem(item)
             }
+        }
+    }
+}
+
+/// Pops its own menu. The toolbar takes a right-click before any view in it does, so this watches for it.
+private final class ChecklistSegmentedControl: NSSegmentedControl {
+    private var monitor: Any?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
+        guard window != nil else { return }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .rightMouseDown) { [weak self] event in
+            guard let self, let menu, isEnabled, event.window === window,
+                  bounds.contains(convert(event.locationInWindow, from: nil)) else { return event }
+            NSMenu.popUpContextMenu(menu, with: event, for: self)
+            return nil
         }
     }
 }

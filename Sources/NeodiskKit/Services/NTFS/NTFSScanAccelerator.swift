@@ -80,8 +80,10 @@ nonisolated enum NTFSScanAccelerator {
                 "scan.mft",
                 ContinuousClock.now - start,
                 detail: "records=\(index.recordCount) inUse=\(index.inUseRecordCount) names=\(index.linkCount) "
-                    + String(format: "readMs=%.1f parseMs=%.1f linkMs=%.1f ", statistics.readSeconds * 1000,
-                             statistics.parseSeconds * 1000, statistics.linkSeconds * 1000)
+                    + String(format: "setupMs=%.1f readMs=%.1f parseMs=%.1f rereadMs=%.1f linkMs=%.1f ",
+                             statistics.setupSeconds * 1000, statistics.readSeconds * 1000,
+                             statistics.parseSeconds * 1000, statistics.rereadSeconds * 1000,
+                             statistics.linkSeconds * 1000)
                     + "bytes=\(statistics.bytesRead) torn=\(statistics.tornRecordsReread) root=\(rootPath)"
             )
             return VolumeIndexLease(registrationID: registrationID)

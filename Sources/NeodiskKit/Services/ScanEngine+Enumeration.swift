@@ -384,7 +384,9 @@ extension ScanEngine {
 
         if usesBulkEnumeration {
             do {
-                if let directoryIOExecutor {
+                // Listings served from a file-table index are memory reads: a hop to an I/O thread costs more
+                // than the read.
+                if let directoryIOExecutor, NTFSIndexRegistry.isEmpty {
                     return try await directoryIOExecutor.run { context, ioCancellationCheck in
                         try bulkDirectoryEntries(
                             of: url,

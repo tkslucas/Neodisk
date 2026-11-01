@@ -207,8 +207,12 @@ nonisolated final class NTFSVolumeReader: @unchecked Sendable {
         var bytesRead: Int64 = 0
         var chunks = 0
         var tornRecordsReread = 0
+        var setupSeconds = 0.0
         var readSeconds = 0.0
         var parseSeconds = 0.0
+        /// Torn records and non-resident reparse tags, read one at a time.
+        var rereadSeconds = 0.0
+        var reparseTagsRead = 0
         var linkSeconds = 0.0
     }
 
@@ -220,6 +224,7 @@ nonisolated final class NTFSVolumeReader: @unchecked Sendable {
         progress: (Int64, Int64) -> Void = { _, _ in },
         cancellationCheck: () throws -> Void = {}
     ) throws -> (index: NTFSVolumeIndex, statistics: Statistics) {
+        let setupStart = ContinuousClock.now
         let runs = try fileTableRuns()
         let recordSize = geometry.recordSize
         let recordCount = geometry.recordCount
@@ -235,6 +240,7 @@ nonisolated final class NTFSVolumeReader: @unchecked Sendable {
         let workers = max(1, workerCount)
         let fragments = (0..<workers).map { _ in builder.makeFragment() }
         var statistics = Statistics()
+        statistics.setupSeconds = (ContinuousClock.now - setupStart).seconds
 
         // Two reads in flight keep the disk busy while one finishes; chunks may complete in any order since
         // each record lands at its own number.
@@ -307,6 +313,7 @@ nonisolated final class NTFSVolumeReader: @unchecked Sendable {
         statistics.parseSeconds = parseSeconds
 
         // Records torn by a write racing the bulk read get one more read each.
+        let rereadStart = ContinuousClock.now
         let torn = builder.tornRecords()
         if !torn.isEmpty {
             builder.clearTornRecords()
@@ -337,7 +344,9 @@ nonisolated final class NTFSVolumeReader: @unchecked Sendable {
                 try read(into: buffer, count: window, at: cluster * Int64(geometry.bytesPerCluster))
                 builder.setReparseTag(buffer.loadUnaligned(as: UInt32.self), record: record)
             }
+            statistics.reparseTagsRead = reparseClusters.count
         }
+        statistics.rereadSeconds = (ContinuousClock.now - rereadStart).seconds
 
         let linkStart = ContinuousClock.now
         let index = try builder.finish()

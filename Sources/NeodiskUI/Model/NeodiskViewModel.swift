@@ -104,7 +104,7 @@ final class NeodiskViewModel {
     var sidebarVisibility = NavigationSplitViewVisibility.all
     /// Mirror of the sidebar's persisted hidden and collapsed sections; change it through setSidebarSection.
     private(set) var sidebarSections = SidebarSectionState()
-    /// Set by the toolbar's Cleanup button; the panel flashes once so the eye finds it, then clears it.
+    /// Set by the toolbar's Cleanup button; the panel pulses so the eye finds it, then clears it.
     var isCleanupRevealPending = false
     /// Mirror of the persisted WorkspaceLayout: the view, the picker's views and each view's file list. The diff
     /// stays armed across a switch to Sunburst, so switching back keeps it.

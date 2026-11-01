@@ -11,7 +11,8 @@ struct CleanupPanel: View {
 
     @State private var isTargeted = false
     @State private var isHeaderHovered = false
-    @State private var isFlashing = false
+    /// The toolbar button's answer: an accent pulse over the section.
+    @State private var flash = 0.0
     @Environment(\.neoTextScale) private var textScale
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -49,7 +50,7 @@ struct CleanupPanel: View {
             .padding(.top, 8)
             .padding(.bottom, isExpanded ? 10 : 6)
         }
-        .background(Color.accentColor.opacity(isTargeted ? 0.14 : isInviting || isFlashing ? 0.07 : 0))
+        .background(Color.accentColor.opacity(max(isTargeted ? 0.14 : isInviting ? 0.07 : 0, flash)))
         .overlay(CleanupDropTarget(model: model, isTargeted: $isTargeted))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text("Cleanup"))
@@ -57,14 +58,17 @@ struct CleanupPanel: View {
         .animation(.easeOut(duration: 0.15), value: cleanup.itemIDs)
         .animation(.easeOut(duration: 0.12), value: isTargeted)
         .animation(.easeOut(duration: 0.12), value: isInviting)
-        .animation(.easeInOut(duration: 0.3), value: isFlashing)
         .task(id: model.isCleanupRevealPending) {
             guard model.isCleanupRevealPending else { return }
+            // Two beats that fade, so the click shows even when Cleanup was already in view; one with Reduce Motion.
+            for _ in 0..<(reduceMotion ? 1 : 2) {
+                withAnimation(.easeOut(duration: 0.12)) { flash = 0.3 }
+                try? await Task.sleep(for: .milliseconds(150))
+                withAnimation(.easeIn(duration: 0.4)) { flash = 0 }
+                try? await Task.sleep(for: .milliseconds(450))
+            }
+            // Cleared after the pulse: clearing it first changed this task's id, which cancelled the pulse at once.
             model.isCleanupRevealPending = false
-            guard !reduceMotion else { return }
-            isFlashing = true
-            try? await Task.sleep(for: .milliseconds(600))
-            isFlashing = false
         }
     }
 

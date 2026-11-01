@@ -260,7 +260,7 @@
 "Dismiss" = "Ignora";
 
 /* MARK: - Menu bar commands */
-"Find" = "Trova";
+"Find…" = "Trova…";
 "Show Locations Sidebar" = "Mostra barra laterale delle posizioni";
 "Hide Locations Sidebar" = "Nascondi barra laterale delle posizioni";
 "Show Statistics" = "Mostra statistiche";

@@ -260,7 +260,7 @@
 "Dismiss" = "Verwerfen";
 
 /* MARK: - Menu bar commands */
-"Find" = "Suchen";
+"Find…" = "Suchen …";
 "Show Locations Sidebar" = "Seitenleiste mit Orten anzeigen";
 "Hide Locations Sidebar" = "Seitenleiste mit Orten ausblenden";
 "Show Statistics" = "Statistiken anzeigen";

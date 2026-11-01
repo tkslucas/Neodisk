@@ -260,7 +260,7 @@
 "Dismiss" = "关闭";
 
 /* MARK: - 菜单栏命令 */
-"Find" = "查找";
+"Find…" = "查找…";
 "Show Locations Sidebar" = "显示位置边栏";
 "Hide Locations Sidebar" = "隐藏位置边栏";
 "Show Statistics" = "显示统计";

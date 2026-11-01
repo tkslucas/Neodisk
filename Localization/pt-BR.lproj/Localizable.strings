@@ -261,7 +261,7 @@
 "Dismiss" = "Dispensar";
 
 /* MARK: - Menu bar commands */
-"Find" = "Buscar";
+"Find…" = "Buscar…";
 "Show Locations Sidebar" = "Mostrar Barra Lateral de Locais";
 "Hide Locations Sidebar" = "Ocultar Barra Lateral de Locais";
 "Show Statistics" = "Mostrar Estatísticas";

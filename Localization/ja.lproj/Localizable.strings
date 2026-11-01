@@ -260,7 +260,7 @@
 "Dismiss" = "閉じる";
 
 /* MARK: - Menu bar commands */
-"Find" = "検索";
+"Find…" = "検索…";
 "Show Locations Sidebar" = "ロケーションサイドバーを表示";
 "Hide Locations Sidebar" = "ロケーションサイドバーを隠す";
 "Show Statistics" = "統計を表示";

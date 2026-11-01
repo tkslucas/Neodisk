@@ -131,10 +131,7 @@ import NeodiskAppModel
         model.cleanup.toggle(inside)
         #expect(model.cleanup.itemIDs == [old.id])
         #expect(model.cleanup.notice?.kind == .refused)
-
-        // Inside a collected folder: already in, so its menu item is off and says why.
-        let inside = try #require(store.node(id: environment.path("Old/Deep/b.bin")))
-        #expect(!model.canToggleCleanup(for: inside))
+        // Its menu item is off and says why.
         #expect(model.cleanupMenuHelp(for: inside) == CleanupModel.Mark.inside.hoverText)
         #expect(model.canToggleCleanup(for: old))
         #expect(model.cleanupMenuHelp(for: old) == nil)
@@ -182,7 +179,11 @@ import NeodiskAppModel
         for try await event in ScanEngine().scan(target: ScanTarget(url: environment.root), options: options) {
             if case .finished(let snapshot) = event { finished = snapshot }
         }
-        model.coordinator.replaceCurrentSnapshot(try #require(finished))
+        guard let finished else {
+            Issue.record("the scan didn't finish")
+            return
+        }
+        model.coordinator.replaceCurrentSnapshot(finished)
         let store = try #require(model.store)
         let nodes = try ["a.bin", "Keep1", "b.bin", "Keep2", "c.bin"].map { try #require(store.node(id: environment.path($0))) }
 

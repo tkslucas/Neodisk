@@ -334,7 +334,8 @@ nonisolated enum ScanTreeAssembler {
 
         // Step 4: parallel id index (detects duplicates, which hand off to legacy), then shared-block dedup.
         let indexStart = ContinuousClock.now
-        guard let built = NodeIDIndex.building(from: nodes) else {
+        // Bound as a var, not through a tuple, so no second reference to `nodes` outlives the dedup below.
+        guard case (var indexByID, let nodeHashes)? = NodeIDIndex.building(from: nodes) else {
             return try legacyAssemble(
                 completedByKey: completedByKey,
                 childrenKeysByKey: childrenKeysByKey,
@@ -347,7 +348,6 @@ nonisolated enum ScanTreeAssembler {
                 callbacks: callbacks
             )
         }
-        let indexByID = built.index
         ScanTiming.record("scan.assemble.index", ContinuousClock.now - indexStart)
 
         let dedupStart = ContinuousClock.now
@@ -356,7 +356,7 @@ nonisolated enum ScanTreeAssembler {
             parentIndices: parentIndices,
             childStarts: childStarts,
             childSlots: &childSlots,
-            indexByID: indexByID,
+            indexByID: &indexByID,
             hardLinkClaims: hardLinkClaims,
             minimumAllocatedSizeByNodeID: minimumAllocatedSizeByNodeID
         )
@@ -397,7 +397,7 @@ nonisolated enum ScanTreeAssembler {
                 childStarts: childStarts,
                 childSlots: childSlots,
                 indexByID: indexByID,
-                nodeHashes: built.hashes
+                nodeHashes: nodeHashes
             ),
             rootID: rootNode.id,
             aggregateStats: aggregateStats.makeStats(root: rootNode)
@@ -554,7 +554,7 @@ nonisolated enum ScanTreeAssembler {
             parentIndices: parentIndices,
             childStarts: childStarts,
             childSlots: &childSlots,
-            indexByID: indexByID,
+            indexByID: &indexByID,
             hardLinkClaims: hardLinkClaims,
             minimumAllocatedSizeByNodeID: minimumAllocatedSizeByNodeID
         )

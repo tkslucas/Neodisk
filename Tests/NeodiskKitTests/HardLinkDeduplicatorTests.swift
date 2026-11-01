@@ -15,12 +15,13 @@ import Foundation
         let storage = TreeStorage.build(rootID: rootID, nodesByID: nodesByID, childIDsByID: childIDsByID)
         var nodes = storage.nodes
         var childSlots = storage.childSlots
+        var indexByID = storage.indexByID
         HardLinkDeduplicator.applyDeduplication(
             nodes: &nodes,
             parentIndices: storage.parentIndices,
             childStarts: storage.childStarts,
             childSlots: &childSlots,
-            indexByID: storage.indexByID,
+            indexByID: &indexByID,
             hardLinkClaims: hardLinkClaims,
             minimumAllocatedSizeByNodeID: minimumAllocatedSizeByNodeID
         )

@@ -96,6 +96,8 @@ enum DevLaunchHooks {
                 }
             }
         }
+
+        SidebarSnapshotter.scheduleIfRequested(model: model)
     }
 
     /// Walks the scanned tree down to the node whose path matches, for the

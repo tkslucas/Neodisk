@@ -45,7 +45,10 @@ package final class TrashPolicyCache {
     /// A fresh policy built off the main thread (before moves), kept for the menus after.
     package func rebuild() async -> TrashSafetyPolicy {
         let make = make
+        let generation = generation
         let built = await Task.detached(priority: .userInitiated) { make() }.value
+        // A mount change meanwhile: the menus build a newer one; this move still uses what it built.
+        guard generation == self.generation else { return built }
         invalidate()
         policy = built
         return built

@@ -105,3 +105,13 @@ package struct CleanupPile: Equatable, Sendable {
         nodes(in: store).reduce(0) { $0 &+ $1.allocatedSize }
     }
 }
+
+package extension FileTreeStore {
+    /// Where a view on `id` lands once `removedIDs` leave the tree: `id` itself, or the folder holding the outermost
+    /// removed item above it. Nil for an unknown id.
+    func survivor(of id: String, removing removedIDs: Set<String>) -> String? {
+        guard node(id: id) != nil else { return nil }
+        let chain = path(to: id)
+        return chain[..<(chain.firstIndex { removedIDs.contains($0.id) } ?? chain.endIndex)].last?.id
+    }
+}

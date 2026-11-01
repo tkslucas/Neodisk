@@ -70,4 +70,24 @@ import NeodiskKit
         #expect(changed == 2)
         #expect(pile.itemIDs == ["/data/c"])
     }
+
+    @Test func viewsOnARemovedItemLandOnTheFolderAboveTheOutermostCut() {
+        func folder(_ path: String, _ children: [FileNodeRecord]) -> FileNodeRecord {
+            FileNodeRecord.directory(
+                id: path, url: URL(filePath: path, directoryHint: .isDirectory),
+                name: (path as NSString).lastPathComponent, children: children, lastModified: nil,
+                fileIdentity: nil, linkCount: 1, isPackage: false, isAccessible: true
+            )
+        }
+        let leaf = file("x/y/leaf", size: 1)
+        let y = folder("/data/x/y", [leaf])
+        let x = folder("/data/x", [y])
+        let root = folder("/data", [x])
+        let store = FileTreeStore(root: root, childrenByID: [root.id: [x], x.id: [y], y.id: [leaf]])
+
+        #expect(store.survivor(of: leaf.id, removing: [y.id]) == x.id)
+        #expect(store.survivor(of: leaf.id, removing: [y.id, x.id]) == root.id)
+        #expect(store.survivor(of: y.id, removing: [leaf.id]) == y.id)
+        #expect(store.survivor(of: "/elsewhere", removing: [y.id]) == nil)
+    }
 }

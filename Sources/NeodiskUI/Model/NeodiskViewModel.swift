@@ -478,19 +478,11 @@ final class NeodiskViewModel {
     /// the views land somewhere that still exists.
     func prepareForRemoval(of removedIDs: [String], in store: FileTreeStore) {
         let removed = Set(removedIDs)
-        func survivor(of id: String) -> String? {
-            var cursor: FileNodeRecord? = store.node(id: id)
-            while let node = cursor, store.isNodeOrDescendant(node.id, of: removed) {
-                cursor = store.parent(of: node.id)
-            }
-            return cursor?.id
+        if let zoomRootID, let kept = store.survivor(of: zoomRootID, removing: removed), kept != zoomRootID {
+            self.zoomRootID = kept == store.rootID ? nil : kept
         }
-        if let zoomRootID, store.isNodeOrDescendant(zoomRootID, of: removed) {
-            let fallback = survivor(of: zoomRootID)
-            self.zoomRootID = fallback == store.root.id ? nil : fallback
-        }
-        if let selectedNodeID, store.isNodeOrDescendant(selectedNodeID, of: removed) {
-            self.selectedNodeID = survivor(of: selectedNodeID)
+        if let selectedNodeID, let kept = store.survivor(of: selectedNodeID, removing: removed), kept != selectedNodeID {
+            self.selectedNodeID = kept
         }
     }
 

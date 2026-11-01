@@ -78,7 +78,7 @@ Platform differences below the UI stay inside the core behind
 
 | Concern | Apple platforms | Linux | Windows |
 |---|---|---|---|
-| Directory enumeration | `getattrlistbulk` batches | `readdir` + `fstatat` relative to the open directory (`BulkDirectoryReader+Linux.swift`) | `GetFileInformationByHandleEx` directory-info batches (`FileIdExtdDirectoryInfo`, 64 KiB) from one handle, no per-entry open (`BulkDirectoryReader+Windows.swift`) |
+| Directory enumeration | `getattrlistbulk` batches | `readdir` + `fstatat` relative to the open directory (`BulkDirectoryReader+Linux.swift`) | `GetFileInformationByHandleEx` directory-info batches (`FileIdExtdDirectoryInfo`, 64 KiB) from one handle, no per-entry open (`BulkDirectoryReader+Windows.swift`); an elevated scan of a whole local NTFS volume reads the master file table instead (`Services/NTFS/`) |
 | Per-item metadata | URLResourceValues, lstat fallback | lstat through the same conversion as the reader (`LinuxStat`) | one handle opened without following reparse points, through the same conversion as the reader (`WindowsFileInfo`) |
 | Allocated size | `ATTR_FILE_ALLOCSIZE` | `st_blocks × 512` | `AllocationSize`; files the system compressed (WOF) list 0 there and are asked one by one |
 | Identity, hard links | device + inode, link count | device + inode, link count | volume serial + file ID; the walk counts every link (directory info has no link count) |
@@ -121,6 +121,15 @@ behind the same internal interfaces, using the toolchain's `WinSDK` and `ucrt` m
 Paths are `URL.path` spellings (`C:/Users/x`); Win32 calls get them with backslashes, and with the `\\?\` prefix
 past `MAX_PATH` (`WindowsPath`). Trash checks compare paths case-insensitively and treat every drive as a child of
 one root. Moving to the Recycle Bin is not wired up yet: `TrashMover.systemTrash` throws.
+
+An elevated scan of a whole local NTFS volume reads the master file table in one sequential pass
+(`Services/NTFS/`): FILE records are parsed (update sequence fixups, `$STANDARD_INFORMATION`, every `$FILE_NAME`,
+unnamed `$DATA` sizes, extension records, reparse tags) and linked into a per-volume index. While that scan runs,
+every directory read on the volume is answered from the index with the records the walk would produce, so the
+traversal, summaries, partial trees and progress are the walk's own and the tree comes out the same; the bar gives
+the table read its own span first. Not elevated, not NTFS, a folder rather than a volume, or a table that doesn't
+parse cleanly: the walk reads the disk as before. On the test VM, C:\ (507k entries) scans in 4.7 s cold and 3.7 s
+warm, against 11.0 s and 8.0 s for the walk. The parser is platform-neutral, so its tests run everywhere.
 
 The app (`NeodiskWin`, in progress) is Swift over Win32 with Direct2D and DirectWrite for drawing, over the same
 `NeodiskAppModel` the other two apps use. WinUI 3 would need swift-winrt projections generated or vendored and the

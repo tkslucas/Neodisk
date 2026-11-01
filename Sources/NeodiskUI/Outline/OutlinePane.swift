@@ -63,7 +63,8 @@ struct OutlineSearchField: View {
                 .help("Clear search")
             }
         }
-        .padding(.horizontal, 10)
+        // The magnifier starts on the list's leading edge, over the rows' chevrons.
+        .padding(.horizontal, OutlineRowMetrics.contentInset)
         .padding(.vertical, 6)
         .onChange(of: model.search.focusToken) { _, _ in
             isSearchFocused = true

@@ -13,6 +13,8 @@ struct OutlineNameSection: View {
     /// The bottom table's name column truncates in place (middle ellipsis)
     /// instead of panning; the left pane keeps the full-width pan behavior.
     var truncatesName = false
+    /// Where the chevron's slot starts: the left pane's edge inset, or the bottom table's name column edge.
+    var leadingInset = OutlineRowMetrics.nameLeadingInset
     /// Never read, but makes a text-size change a change to the view's value; otherwise a reused cell keeps
     /// the old font and widths (issue #10).
     var scale = OutlineRowMetrics.scale
@@ -22,9 +24,6 @@ struct OutlineNameSection: View {
         // Slot widths and glyph sizes come from OutlineRowMetrics, which the
         // AppKit table also measures against — see the mirror note there.
         HStack(spacing: OutlineRowMetrics.rowSpacing) {
-            Color.clear
-                .frame(width: CGFloat(row.depth) * OutlineRowMetrics.indentPerDepth, height: 1)
-
             Group {
                 if row.isExpandable {
                     Button {
@@ -67,7 +66,7 @@ struct OutlineNameSection: View {
         }
         .font(.system(size: OutlineRowMetrics.fontSize))
         .cleanupDimmed(cleanupMark.isMarked, onAccent: state.showsAccentSelection)
-        .padding(.leading, OutlineRowMetrics.contentInset)
+        .padding(.leading, leadingInset + CGFloat(row.depth) * OutlineRowMetrics.indentPerDepth)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
 

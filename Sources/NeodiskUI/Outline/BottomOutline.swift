@@ -89,7 +89,7 @@ struct BottomOutlineTable: NSViewRepresentable {
                 ? [.autoresizingMask, .userResizingMask]
                 : .userResizingMask
             column.sortDescriptorPrototype = NSSortDescriptor(
-                key: spec.sortField.rawValue,
+                key: spec.sortKey,
                 ascending: spec.sortField == .name
             )
             if spec.alignsTrailing {
@@ -153,6 +153,10 @@ struct BottomOutlineTable: NSViewRepresentable {
         let minWidth: CGFloat
         let sortField: OutlineSortField
         let alignsTrailing: Bool
+
+        /// The table marks every column whose key is the sort's, so the percentage column, which sorts by size
+        /// too, has a key of its own; picking it sorts by size and the arrow moves to Size.
+        var sortKey: String { identifier == "percent" ? identifier : sortField.rawValue }
     }
 
     /// The percentage column sorts by size: the bar is the size relative to
@@ -304,7 +308,7 @@ struct BottomOutlineTable: NSViewRepresentable {
             case "name":
                 return hostedCell(tableView, reuse: "name") { state in
                     OutlineNameSection(
-                        model: model, row: outlineRow, state: state, truncatesName: true
+                        model: model, row: outlineRow, state: state, truncatesName: true, leadingInset: 0
                     )
                 }
             case "percent":
@@ -387,9 +391,13 @@ struct BottomOutlineTable: NSViewRepresentable {
         func tableView(
             _ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]
         ) {
-            guard let descriptor = tableView.sortDescriptors.first,
-                  let key = descriptor.key,
-                  let field = OutlineSortField(rawValue: key) else { return }
+            guard let descriptor = tableView.sortDescriptors.first, let key = descriptor.key else { return }
+            if key == "percent" {
+                // Largest first, as the bar reads; re-marks the header on Size.
+                tableView.sortDescriptors = [NSSortDescriptor(key: OutlineSortField.size.rawValue, ascending: false)]
+                return
+            }
+            guard let field = OutlineSortField(rawValue: key) else { return }
             let sort = OutlineSort(field: field, ascending: descriptor.ascending)
             if let preferences = model.preferences, preferences.outlineSort != sort {
                 preferences.outlineSort = sort
@@ -562,14 +570,14 @@ private struct SubtreePercentCell: View {
             .frame(height: (5 * textScale).rounded())
 
             Text(percentText)
-                .neoFont(11)
+                .neoFont(12)
                 .monospacedDigit()
                 .foregroundStyle(state.showsAccentSelection
                     ? AnyShapeStyle(.white.opacity(0.85))
                     : AnyShapeStyle(.secondary))
                 // "100%" at the row font; grows with it so the number
                 // never truncates against the bar.
-                .frame(width: (34 * textScale).rounded(), alignment: .trailing)
+                .frame(width: (36 * textScale).rounded(), alignment: .trailing)
         }
         .padding(.horizontal, BottomOutlineMetrics.cellPadding)
         .frame(maxHeight: .infinity)

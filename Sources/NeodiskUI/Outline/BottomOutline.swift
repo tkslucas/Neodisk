@@ -132,6 +132,7 @@ struct BottomOutlineTable: NSViewRepresentable {
         headerMenu.autoenablesItems = false
         headerMenu.delegate = coordinator
         tableView.headerView?.menu = headerMenu
+        coordinator.scaleHeader(of: tableView, to: textScale)
         coordinator.headerMenu = headerMenu
 
         let scrollView = NSScrollView()
@@ -277,6 +278,27 @@ struct BottomOutlineTable: NSViewRepresentable {
             tableView.sizeToFit()
         }
 
+        /// Header titles grow with the rows, the header's height with them (AppKit's header is a fixed small size).
+        func scaleHeader(of tableView: NSTableView, to scale: CGFloat) {
+            let font = NSFont.systemFont(ofSize: (NSFont.smallSystemFontSize * scale).rounded(), weight: .medium)
+            for column in tableView.tableColumns {
+                // The header draws its attributed title; a plain font change doesn't reach it.
+                let paragraph = NSMutableParagraphStyle()
+                paragraph.alignment = column.headerCell.alignment
+                paragraph.lineBreakMode = .byTruncatingTail
+                column.headerCell.attributedStringValue = NSAttributedString(
+                    string: column.title,
+                    attributes: [.font: font, .foregroundColor: NSColor.headerTextColor, .paragraphStyle: paragraph]
+                )
+            }
+            guard let header = tableView.headerView else { return }
+            let height = max(28, (font.boundingRectForFont.height + 12).rounded())
+            if header.frame.height != height {
+                header.frame.size.height = height
+                tableView.enclosingScrollView?.tile()
+            }
+        }
+
         /// Scales current widths rather than the spec, so a column the user widened stays proportionally wide.
         func applyTextScale(columnMinimums: [String: CGFloat]) {
             guard let tableView else { return }
@@ -287,6 +309,7 @@ struct BottomOutlineTable: NSViewRepresentable {
             guard scale != appliedTextScale else { return }
             let ratio = scale / appliedTextScale
             appliedTextScale = scale
+            scaleHeader(of: tableView, to: scale)
             for column in tableView.tableColumns {
                 let minimum = (columnMinimums[column.identifier.rawValue] ?? 60) * scale
                 column.minWidth = minimum

@@ -26,6 +26,28 @@ enum DevLaunchHooks {
             // just-started scan to measure felt rescan cost with the baseline
             // in memory (no relaunch/decode).
             BenchRescanDriver.shared.startIfRequested(model: model)
+            BenchActionDriver.startIfRequested(model: model)
+        }
+
+        // NEODISK_OPEN_CACHED=<path> shows that location's cached snapshot (NEODISK_SNAPSHOT_DIR) and never scans:
+        // profiling on a big real tree without touching the disk.
+        if let path = environment["NEODISK_OPEN_CACHED"], model.coordinator.phase == .idle {
+            MainThreadMonitor.startIfProfiling()
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(2))
+                let target = ScanTarget(url: URL(filePath: path, directoryHint: .isDirectory))
+                model.coordinator.beginSnapshotRestore(target)
+                let started = ScanProfile.now()
+                // Its own cache instance (same NEODISK_SNAPSHOT_DIR): a miss logs and stops, never scans.
+                guard let cached = await ScanSnapshotCache().loadSnapshot(for: target) else {
+                    ScanTiming.note("openCached: no snapshot for \(target.id)")
+                    return
+                }
+                let nodes = cached.treeStore.nodeCount
+                ScanTiming.note("openCached decoded ms=\((ScanProfile.now() &- started) / 1_000_000) nodes=\(nodes)")
+                model.coordinator.completeSnapshotRestore(cached)
+            }
+            BenchActionDriver.startIfRequested(model: model)
         }
 
         // NEODISK_ANALYSIS_TAB=<kinds|largest|age|duplicates|changes> opens
@@ -179,7 +201,7 @@ enum DevLaunchHooks {
     /// Walks the scanned tree down to the node whose path matches, for the
     /// NEODISK_AUTOREVEAL dev hook.
     @MainActor
-    private static func findNode(at path: String, in model: NeodiskViewModel) -> FileNodeRecord? {
+    static func findNode(at path: String, in model: NeodiskViewModel) -> FileNodeRecord? {
         guard let store = model.store else { return nil }
         var node = store.root
         while node.path != path {

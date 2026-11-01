@@ -60,7 +60,7 @@ struct OutlineSearchField: View {
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
-                .help("Clear search")
+                .neoHelp("Clear search")
             }
         }
         // The magnifier starts on the list's leading edge, over the rows' chevrons.

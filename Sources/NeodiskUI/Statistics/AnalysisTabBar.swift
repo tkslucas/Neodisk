@@ -71,7 +71,7 @@ struct AnalysisTabBar: View {
                 .menuIndicator(.hidden)
                 .fixedSize()
                 .focusable(false)
-                .help(Text("More tabs"))
+                .neoHelp("More tabs")
             }
         }
         .padding(.horizontal, strip.padding)

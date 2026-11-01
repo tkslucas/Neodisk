@@ -178,6 +178,6 @@ private struct Crumb: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .help(NeodiskFormatters.size(node.allocatedSize))
+        .neoHelp(NeodiskFormatters.size(node.allocatedSize))
     }
 }

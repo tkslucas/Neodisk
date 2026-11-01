@@ -60,7 +60,7 @@ struct OutlineNameSection: View {
                 Text(row.node.name)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                    .help(row.node.name)
+                    .neoHelp(row.node.name)
             }
             .layoutPriority(1)
             .foregroundStyle(state.showsAccentSelection

@@ -208,7 +208,7 @@ public struct ContentView: View {
             Label("Cloud-Only Files", systemImage: "cloud")
         }
         .toggleStyle(.button)
-        .help(
+        .neoHelp(
             preferences.showCloudOnlyFiles
                 ? "Hide cloud-only files (files not downloaded from your cloud drives)"
                 : "Show cloud-only files (files not downloaded from your cloud drives)"
@@ -225,7 +225,7 @@ public struct ContentView: View {
             } label: {
                 Label("Stop", systemImage: "stop.circle")
             }
-            .help("Stop the current scan")
+            .neoHelp("Stop the current scan")
         } else {
             Button {
                 model.rescan()
@@ -233,7 +233,7 @@ public struct ContentView: View {
                 Label("Rescan", systemImage: "arrow.clockwise")
             }
             .disabled(!model.canRescan)
-            .help("Scan \(model.coordinator.selectedTarget?.displayName ?? "this location") again")
+            .neoHelp("Scan \(model.coordinator.selectedTarget?.displayName ?? "this location") again")
         }
 
         // Removed, not disabled, while moving to the Trash is off.
@@ -247,12 +247,12 @@ public struct ContentView: View {
             Label("Statistics", systemImage: "sidebar.right")
         }
         .disabled(model.coordinator.snapshot == nil)
-        .help(model.showKindStats ? "Hide the statistics panel" : "Show the statistics panel")
+        .neoHelp(model.showKindStats ? "Hide the statistics panel" : "Show the statistics panel")
 
         SettingsLink {
             Label("Settings", systemImage: "gearshape")
         }
-        .help("Open Neodisk settings")
+        .neoHelp("Open Neodisk settings")
     }
 }
 
@@ -516,7 +516,7 @@ private struct ScanIssuesPopover: View {
                         }
                         .padding(.horizontal, 12)
                         .padding(.vertical, 5)
-                        .help(group.details.joined(separator: "\n"))
+                        .neoHelp(group.details.joined(separator: "\n"))
                     }
                 }
                 .padding(.vertical, 6)
@@ -552,7 +552,7 @@ private struct SupersededScanStrip: View {
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
-            .help("Dismiss")
+            .neoHelp("Dismiss")
         }
         .neoFont(11)
         .padding(.horizontal, 10)

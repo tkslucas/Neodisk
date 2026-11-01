@@ -227,7 +227,7 @@ struct SidebarPane: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("Scan any folder or volume and keep it in the sidebar")
+        .neoHelp("Scan any folder or volume and keep it in the sidebar")
     }
 
     private func row(_ target: ScanTarget, now: Date, bar: VolumeBarData?) -> some View {

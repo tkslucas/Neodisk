@@ -40,7 +40,12 @@ nonisolated enum BulkDirectoryReader {
     /// Never use from two reads at once; workers and `ContextPool` enforce ownership explicitly instead of
     /// relying on tasks staying on one OS thread.
     final class Context: @unchecked Sendable {
+        #if os(Windows)
+        /// Directory-info records carry the full UTF-16 name and fixed fields, about 100 bytes plus the name each.
+        static let bufferSize = 64 * 1024
+        #else
         static let bufferSize = 16 * 1024
+        #endif
         let buffer = UnsafeMutableRawPointer.allocate(
             byteCount: bufferSize,
             alignment: 16
@@ -574,6 +579,27 @@ nonisolated enum BulkDirectoryReader {
 
     static func isHiddenName(_ name: String) -> Bool {
         name.utf8.first == UInt8(ascii: ".")
+    }
+
+    /// The bulk reader's package rule for one directory, instead of `.isPackageKey`, which also probes write
+    /// access: inside another app's bundle that raises macOS's "prevented from modifying apps" notice.
+    static func isPackageDirectory(atPath path: String) -> Bool {
+        if PackageExtensionCatalog.shared.isPackageName((path as NSString).lastPathComponent) { return true }
+        #if canImport(Darwin)
+        var request = attrlist()
+        request.bitmapcount = u_short(ATTR_BIT_MAP_COUNT)
+        request.commonattr = RequestedAttributes.finderInfo
+        // Length word, then the 32-byte Finder info with finderFlags (big-endian) at offset 8.
+        var buffer = [UInt8](repeating: 0, count: 36)
+        let status = buffer.withUnsafeMutableBytes { raw in
+            getattrlist(path, &request, raw.baseAddress, raw.count, UInt32(FSOPT_NOFOLLOW))
+        }
+        guard status == 0 else { return false }
+        let finderFlags = UInt16(buffer[12]) << 8 | UInt16(buffer[13])
+        return finderFlags & FinderFlags.hasBundle != 0
+        #else
+        return false
+        #endif
     }
 
     private enum FinderFlags {

@@ -17,6 +17,9 @@ enum StatsListClick {
 
 /// A 12pt name over a 10pt detail line plus the 10pt of air the SwiftUI List gave (37pt at 100%).
 enum StatsListMetrics {
+    /// The rows' content inset, which the panes' headers and footers share so everything starts on one edge.
+    @MainActor static var inset: CGFloat { OutlineRowMetrics.contentInset }
+
     static func rowHeight(scale: CGFloat) -> CGFloat {
         ceil(lineHeight(12 * scale) + 1 + lineHeight(10 * scale)) + 10
     }
@@ -37,6 +40,8 @@ struct StatsListTable<Row: Identifiable, RowContent: View>: NSViewRepresentable 
     var selection = NodeSelection()
     /// A refreshed ranking keeps its rows while the new one arrives, so the list would stay anchored otherwise.
     var keepsLeaderInView = false
+    /// Esc with the list focused, as the drill-ins' back button.
+    var onCancel: (() -> Void)?
     @ViewBuilder let content: (Row) -> RowContent
 
     func makeCoordinator() -> StatsListCoordinator {
@@ -47,8 +52,15 @@ struct StatsListTable<Row: Identifiable, RowContent: View>: NSViewRepresentable 
         let coordinator = context.coordinator
 
         let tableView = OutlineNSTableView()
+        tableView.copyRequested = { [model] in model.copySelection() }
+        tableView.canCopy = { [model] in model.selectionSupportsFileActions }
         tableView.quickLookRequested = { [weak coordinator] in
             coordinator?.toggleQuickLook() ?? false
+        }
+        tableView.cancelRequested = { [weak coordinator] in
+            guard let onCancel = coordinator?.onCancel else { return false }
+            onCancel()
+            return true
         }
         tableView.clickTrackingEnded = { [weak coordinator] in
             coordinator?.clickTrackingEnded()
@@ -99,6 +111,7 @@ struct StatsListTable<Row: Identifiable, RowContent: View>: NSViewRepresentable 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         let rows = rows
         let content = content
+        context.coordinator.onCancel = onCancel
         context.coordinator.apply(
             StatsListCoordinator.Update(
                 ids: rows.map(\.id),
@@ -138,6 +151,7 @@ final class StatsListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDe
 
     weak var tableView: OutlineNSTableView?
     weak var scrollView: NSScrollView?
+    var onCancel: (() -> Void)?
 
     init(model: NeodiskViewModel) {
         self.model = model
@@ -166,7 +180,7 @@ final class StatsListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDe
         if tableView.rowHeight != rowHeight {
             tableView.rowHeight = rowHeight
         }
-        tableView.menu = selectsNodes ? fileActionsMenu() : nil
+        tableView.menu = rowsMenu()
         tableView.allowsMultipleSelection = selectsNodes
         // Same rows: refresh the visible cells in place (sizes, palette,
         // the cloud-only toggle); new rows: reload.
@@ -178,7 +192,8 @@ final class StatsListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDe
         syncSelection()
     }
 
-    private func fileActionsMenu() -> NSMenu {
+    /// A file row's actions; below the rows, which statistics tabs show.
+    private func rowsMenu() -> NSMenu {
         let menu = tableView?.menu ?? NSMenu()
         menu.autoenablesItems = false
         menu.delegate = self
@@ -262,7 +277,7 @@ final class StatsListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDe
         _ tableView: NSTableView, draggingSession session: NSDraggingSession,
         willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet
     ) {
-        NodeDragSource.sessionDidBegin(model: model)
+        NodeDragSource.tableSessionDidBegin(session, in: tableView, at: screenPoint, model: model)
     }
 
     func tableView(
@@ -294,6 +309,10 @@ final class StatsListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDe
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
+        guard let row = tableView?.clickedRow, row >= 0 else {
+            menu.addAnalysisTabItems(model: model)
+            return
+        }
         guard selectsNodes, let id = clickedID,
               let node = model.store?.node(id: id), model.supportsFileActions(node) else { return }
         menu.addFileNodeActionItems(for: node, model: model, includeExpandContents: false)

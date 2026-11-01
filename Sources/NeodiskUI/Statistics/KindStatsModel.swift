@@ -9,6 +9,8 @@ import NeodiskAppModel
 @Observable
 final class KindStatsModel {
     private(set) var catalog: FileKindCatalog = .empty
+    /// Whether `catalog` is a finished build rather than the empty placeholder, so an empty one can say so.
+    private(set) var isCatalogBuilt = false
     /// Colors are baked into the catalog at build time, so changing this drops the cache and rebuilds.
     var palette: VizPalette = .standard {
         didSet {
@@ -29,6 +31,7 @@ final class KindStatsModel {
             // A mode already built for this snapshot is instant.
             if let cached = catalogCache[displayMode] {
                 catalog = cached
+                isCatalogBuilt = true
             } else {
                 rebuildCatalog(from: store)
             }
@@ -73,6 +76,7 @@ final class KindStatsModel {
     /// Seeds go too; callers restoring a snapshot hand fresh ones over after the reset.
     func reset() {
         catalog = .empty
+        isCatalogBuilt = false
         pendingSeed = nil
         activeSeed = nil
     }
@@ -93,6 +97,7 @@ final class KindStatsModel {
         guard let snapshot else {
             catalogBuildTask?.cancel()
             catalog = .empty
+            isCatalogBuilt = false
             rebuildThrottle.reset()
             return
         }
@@ -131,6 +136,7 @@ final class KindStatsModel {
             guard !Task.isCancelled, let self else { return }
             self.rebuildThrottle.noteBuildDuration(buildDuration)
             self.catalog = catalog
+            self.isCatalogBuilt = true
             self.catalogCache[mode] = catalog
         }
     }

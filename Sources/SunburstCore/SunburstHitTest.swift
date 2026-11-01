@@ -7,6 +7,8 @@ import Darwin
 import Glibc
 #elseif canImport(WASILibc)
 import WASILibc
+#elseif canImport(ucrt)
+import ucrt
 #endif
 
 public enum SunburstHitTester {

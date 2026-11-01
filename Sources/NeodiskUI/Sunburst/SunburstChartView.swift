@@ -43,6 +43,8 @@ struct SunburstChartView: View {
     /// handled so unhandled keys continue up the responder chain.
     let onKeyDown: (NSEvent) -> Bool
     let contextMenu: (SunburstSegment) -> NSMenu?
+    /// Right-click off every arc (background, center hole).
+    var emptySpaceMenu: () -> NSMenu? = { nil }
     /// Collected and moving items, drawn over the finished layout; a change never re-lays out.
     var cleanup = SunburstCleanupInput()
     /// The hover line for a node in Cleanup, or nil.
@@ -300,10 +302,8 @@ struct SunburstChartView: View {
             return onKeyDown(event)
         }
         let menuProvider: (CGPoint) -> NSMenu? = { location in
-            guard !chartModel.isLayoutPending, zoomTransition == nil,
-                  let segment = hitTest(at: location, in: baseChartFrame) else {
-                return nil
-            }
+            guard !chartModel.isLayoutPending, zoomTransition == nil else { return nil }
+            guard let segment = hitTest(at: location, in: baseChartFrame) else { return emptySpaceMenu() }
             return contextMenu(segment)
         }
         let helpProvider: (CGPoint) -> String? = { location in

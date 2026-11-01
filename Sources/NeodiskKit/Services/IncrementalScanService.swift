@@ -680,6 +680,8 @@ public final class IncrementalScanService: Sendable {
                         continuation.yield(.progress(combined))
                     case .warning(let warning):
                         continuation.yield(.warning(warning))
+                    case .waitingForPermission:
+                        continuation.yield(event)
                     case .partial:
                         break
                     case .finished(let snapshot):

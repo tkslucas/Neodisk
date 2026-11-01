@@ -1,11 +1,5 @@
-//
-//  SettingsView.swift
-//  Neodisk
-//
-//  Settings window (⌘,): General (appearance, updates, workspace), View
-//  (visualization), Advanced (scanning, results, exclusions) and Privacy
-//  (Full Disk Access status).
-//
+// Settings window (⌘,): General (appearance, updates, workspace), View (visualization), Advanced (scanning,
+// results, exclusions) and Privacy (Full Disk Access status).
 
 import SwiftUI
 import TreemapKit
@@ -85,6 +79,7 @@ private struct GeneralSettingsTab: View {
                 }
                 Button("Restore Defaults") {
                     preferences.restoreDefaults()
+                    model.restoreCommonSidebarFolders()
                 }
             }
         }
@@ -220,6 +215,7 @@ private struct PrivacySettingsTab: View {
 
     @State private var accessStatus: FullDiskAccessStatus = .unknown
     @State private var snapshotCacheSize: Int64?
+    @State private var confirmsClearingFolders = false
 
     var body: some View {
         Form {
@@ -251,9 +247,8 @@ private struct PrivacySettingsTab: View {
                     }
                 }
 
-                // Only relevant to dev builds launched via `swift run`, which
-                // have no app bundle (hence no CFBundleIdentifier). Packaged
-                // .apps get their own TCC entry, so this note would just confuse.
+                // Only `swift run` builds (no bundle id) inherit the terminal's permissions; packaged apps get
+                // their own TCC entry.
                 if Bundle.main.bundleIdentifier == nil {
                     Text("Note: running unbundled (swift run), Neodisk inherits its permissions from the terminal that launched it — grant Full Disk Access to that terminal app.")
                         .font(.callout)
@@ -269,11 +264,27 @@ private struct PrivacySettingsTab: View {
             }
 
             Section("Sidebar Folders") {
-                Button("Clear Added Folders") {
-                    model.removeSidebarFolders(ids: Set(model.sidebarFolders.map(\.id)))
-                    refreshSnapshotCacheSize()
+                HStack {
+                    Button("Clear Added Folders") {
+                        confirmsClearingFolders = true
+                    }
+                    .disabled(model.addedSidebarFolders.isEmpty)
+                    Button("Restore Default Folders") {
+                        model.restoreCommonSidebarFolders()
+                    }
+                    .disabled(!model.isMissingCommonSidebarFolders)
                 }
-                .disabled(model.sidebarFolders.isEmpty)
+                .confirmationDialog(
+                    "Remove the folders you added from the sidebar?",
+                    isPresented: $confirmsClearingFolders
+                ) {
+                    Button("Clear Added Folders", role: .destructive) {
+                        model.removeAddedSidebarFolders()
+                        refreshSnapshotCacheSize()
+                    }
+                } message: {
+                    Text("Their scan snapshots are removed too.")
+                }
             }
 
             Section("Scan Snapshots") {

@@ -78,6 +78,7 @@ var targets: [Target] = [
         dependencies: [
             .product(name: "Crypto", package: "swift-crypto", condition: .when(platforms: nonApplePlatforms)),
             .target(name: "CZstd", condition: .when(platforms: [.linux])),
+            .target(name: "CLinuxDirent", condition: .when(platforms: [.linux])),
         ],
         path: "Sources/NeodiskKit"
     ),
@@ -114,6 +115,8 @@ var targets: [Target] = [
     ),
     // Linux's snapshot payload codec (Apple platforms use LZFSE from the
     // Compression framework instead).
+    // getdents64 for the Linux directory reader; header only.
+    .systemLibrary(name: "CLinuxDirent", path: "Sources/CLinuxDirent"),
     .systemLibrary(
         name: "CZstd",
         path: "Sources/CZstd",

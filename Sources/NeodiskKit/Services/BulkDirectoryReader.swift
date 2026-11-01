@@ -41,7 +41,7 @@ nonisolated enum BulkDirectoryReader {
     /// relying on tasks staying on one OS thread.
     final class Context: @unchecked Sendable {
         static let bufferSize = 16 * 1024
-        fileprivate let buffer = UnsafeMutableRawPointer.allocate(
+        let buffer = UnsafeMutableRawPointer.allocate(
             byteCount: bufferSize,
             alignment: 16
         )

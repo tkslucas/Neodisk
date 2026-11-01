@@ -93,6 +93,14 @@ public struct TrashSafetyPolicy: Sendable {
     /// The path-only part of `refusal(for:scanRootID:)`, also run right before each move.
     public func refusal(forPath rawPath: String, identity: FileIdentity?) -> TrashRefusal? {
         let path = Self.standardized(rawPath)
+        if let refusal = lexicalRefusal(path, identity: identity) { return refusal }
+        // A scan reached through a symlink (/tmp, a linked folder) spells paths unlike the mount table: check the
+        // item again under its parent's real path, or a folder holding a mounted volume would pass.
+        guard let resolved = Self.resolvingParent(of: path), resolved != path else { return nil }
+        return lexicalRefusal(resolved, identity: nil)
+    }
+
+    private func lexicalRefusal(_ path: String, identity: FileIdentity?) -> TrashRefusal? {
         if Self.isInsideTrash(path) { return .alreadyInTrash }
         let key = Self.key(path)
         if protectedPaths.contains(key) { return .protectedLocation }
@@ -205,6 +213,14 @@ public struct TrashSafetyPolicy: Sendable {
             }
         }
         return "/" + components.joined(separator: "/")
+    }
+
+    /// The item under its parent's real path; the item itself stays unresolved, since a symlink goes as itself.
+    static func resolvingParent(of path: String) -> String? {
+        guard path != "/" else { return nil }
+        let name = (path as NSString).lastPathComponent
+        guard let parent = realPath((path as NSString).deletingLastPathComponent) else { return nil }
+        return standardized((parent as NSString).appendingPathComponent(name))
     }
 
     private static func realPath(_ path: String) -> String? {

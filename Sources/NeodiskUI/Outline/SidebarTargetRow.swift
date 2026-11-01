@@ -1,5 +1,5 @@
-// One sidebar row: icon, the name with its size trailing, when it was scanned, and an optional bar. The full path
-// is the tooltip. Shared by every sidebar section.
+// One sidebar row: icon, the name with its size trailing, a volume's usage, when it was scanned, and an optional
+// bar. The full path is the tooltip. Shared by every sidebar section.
 
 import SwiftUI
 import NeodiskKit
@@ -17,7 +17,8 @@ struct SidebarTargetRow: View {
     var now: Date
     /// The list's selection fill is the accent in a key window, where an accent glyph would vanish.
     var isSelected = false
-    var tooltip: String
+    /// A volume's "used of capacity" line.
+    var usage: String?
     /// Volumes: the kind-colored capacity bar (an empty track before any scan). Scanned cloud locations and
     /// folders: the on-this-Mac / cloud-only or kinds bar.
     var bar: VolumeBarData?
@@ -36,23 +37,26 @@ struct SidebarTargetRow: View {
                 .foregroundStyle(iconStyle)
                 .frame(width: (22 * textScale).rounded())
 
-            VStack(alignment: .leading, spacing: (1 * textScale).rounded()) {
-                HStack(alignment: .firstTextBaseline, spacing: (6 * textScale).rounded()) {
-                    // Explicit: the list's default dims names in an inactive window, so they'd all read disabled.
-                    Text(target.displayName)
-                        .neoFont(13, weight: .medium)
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    Spacer(minLength: 0)
-                    if let size {
-                        Text(size)
-                            .neoFont(10.5)
-                            .monospacedDigit()
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .fixedSize()
-                            .padding(.trailing, (2 * textScale).rounded())
+            VStack(alignment: .leading, spacing: lineSpacing) {
+                if let usage {
+                    // The name never gives way to the numbers: free moves under it when both don't fit.
+                    ViewThatFits(in: .horizontal) {
+                        VStack(alignment: .leading, spacing: lineSpacing) {
+                            nameLine(trailing: size)
+                            detail(usage)
+                        }
+                        VStack(alignment: .leading, spacing: lineSpacing) {
+                            nameLine(trailing: nil)
+                            detail([usage, size].compactMap { $0 }.joined(separator: " · "))
+                        }
+                        VStack(alignment: .leading, spacing: lineSpacing) {
+                            nameLine(trailing: nil)
+                            detail(usage)
+                            if let size { detail(size) }
+                        }
                     }
+                } else {
+                    nameLine(trailing: size)
                 }
                 if let scanned = SidebarRowText.scanned(lastScanned, now: now) {
                     Text(scanned)
@@ -79,7 +83,37 @@ struct SidebarTargetRow: View {
             }
         }
         .padding(.vertical, 1)
-        .help(tooltip)
+        .help(target.id)
+    }
+
+    private var lineSpacing: CGFloat { (1 * textScale).rounded() }
+
+    private func nameLine(trailing: String?) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: (6 * textScale).rounded()) {
+            // Explicit: the list's default dims names in an inactive window, so they'd all read disabled.
+            Text(target.displayName)
+                .neoFont(13, weight: .medium)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            if let trailing {
+                Text(trailing)
+                    .neoFont(10.5)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .fixedSize()
+                    .padding(.trailing, (2 * textScale).rounded())
+            }
+        }
+    }
+
+    private func detail(_ text: String) -> some View {
+        Text(text)
+            .neoFont(10.5)
+            .monospacedDigit()
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
     }
 
     /// Accent glyphs in a key window, white on its selection; gray when the window isn't key, as source lists do.

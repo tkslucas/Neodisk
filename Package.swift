@@ -79,7 +79,11 @@ var targets: [Target] = [
             .product(name: "Crypto", package: "swift-crypto", condition: .when(platforms: nonApplePlatforms)),
             .target(name: "CZstd", condition: .when(platforms: [.linux])),
         ],
-        path: "Sources/NeodiskKit"
+        path: "Sources/NeodiskKit",
+        linkerSettings: [
+            // The Compression API behind Windows snapshot payloads (compressapi.h).
+            .linkedLibrary("Cabinet", .when(platforms: [.windows])),
+        ]
     ),
     // Reference CLI consumer of the scanning core (`diskscan`).
     .executableTarget(

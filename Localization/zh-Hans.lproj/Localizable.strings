@@ -92,6 +92,12 @@
 "Full Disk Access is not enabled." = "尚未启用完全磁盘访问权限。";
 "Checking…" = "正在检查…";
 "Open Full Disk Access Settings" = "打开完全磁盘访问权限设置";
+"Neodisk Works Best with Full Disk Access" = "Neodisk 在拥有完全磁盘访问权限时效果最佳";
+"Without it, macOS stops the scan to ask about each protected folder, like Documents, Downloads and Photos, and some locations are skipped." = "如果没有该权限，macOS 会为每个受保护的文件夹（如“文稿”、“下载”和“照片”）暂停扫描并询问，并且某些位置会被跳过。";
+"Scan Anyway" = "仍然扫描";
+"Waiting for permission to read %@" = "正在等待读取 %@ 的权限";
+"other apps' data" = "其他 App 的数据";
+"iCloud Drive" = "iCloud 云盘";
 "Recheck" = "重新检查";
 "Note: running unbundled (swift run), Neodisk inherits its permissions from the terminal that launched it — grant Full Disk Access to that terminal app." = "注意：以非打包方式运行（swift run）时，Neodisk 会继承启动它的终端应用的权限，请为该终端应用授予完全磁盘访问权限。";
 "Moving to the Trash" = "移到废纸篓";
@@ -137,6 +143,7 @@
 "Reveal in Finder" = "在访达中显示";
 "Open" = "打开";
 "Copy Path" = "拷贝路径";
+"Path" = "路径";
 "Expand Contents" = "展开内容";
 "Show Package Contents" = "显示包内容";
 "No matches" = "无匹配项";
@@ -316,7 +323,6 @@
 "View" = "视图";
 "Treemap" = "矩形树图";
 "Sunburst" = "旭日图";
-"Switch views. Right-click to choose which ones show." = "切换视图。右键点按可选择显示哪些视图。";
 "Cushion Treemap" = "衬垫矩形树图";
 "Flat Treemap" = "扁平矩形树图";
 "Smaller Items" = "较小的项目";
@@ -428,6 +434,7 @@
 "Top %lld of %@ matches" = "%2$@ 个匹配项中的前 %1$lld 个";
 "Visualization" = "可视化";
 "%@ free of %@" = "%2$@ 中可用 %1$@";
+"%@ of %@ used" = "%2$@ 中已用 %1$@";
 "%@ in %@ files" = "%2$@ 个文件，共 %1$@";
 "%@ in %@ file" = "%2$@ 个文件，共 %1$@";
 
@@ -520,3 +527,4 @@
 "Move Right" = "右移";
 "Statistics Tabs" = "统计标签页";
 "Top %@ of %@ files" = "已显示 %2$@ 个文件中的前 %1$@ 个";
+"No files to show" = "没有可显示的文件";

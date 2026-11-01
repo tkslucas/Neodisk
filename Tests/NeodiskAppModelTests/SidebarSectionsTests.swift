@@ -15,13 +15,14 @@ struct SidebarSectionsTests {
         #expect(SidebarSectionState(hidden: "bogus,,folders").hidden == [.folders])
     }
 
-    /// Cleanup's visibility is the Trash preference, never a stored flag.
-    @Test func cleanupIsShownExactlyWhenEnabled() {
-        var state = SidebarSectionState(hidden: "cleanup")
-        state.setShown(.cleanup, false)
-        #expect(state.hidden.isEmpty)
+    /// Cleanup shows when it's enabled and not hidden; hiding it is stored like any section.
+    @Test func cleanupNeedsEnabledAndShown() {
+        var state = SidebarSectionState()
         #expect(state.isShown(.cleanup, cleanupEnabled: true))
         #expect(!state.isShown(.cleanup, cleanupEnabled: false))
+        state.setShown(.cleanup, false)
+        #expect(state.storedHidden == "cleanup")
+        #expect(!state.isShown(.cleanup, cleanupEnabled: true))
         #expect(state.isShown(.volumes, cleanupEnabled: false))
     }
 
@@ -33,7 +34,7 @@ struct SidebarSectionsTests {
         #expect(state.isExpanded(.folders) && state.isExpanded(.cleanup))
     }
 
-    @Test func rowSizeIsFreeSpaceForVolumesAndScannedSizeForFolders() throws {
+    @Test func rowShowsVolumeFreeAndUsedAndFolderScannedSize() throws {
         let space = try #require(VolumeSpaceInfo.make(
             totalCapacity: 2_000_000_000_000,
             availableCapacity: 512_000_000_000,
@@ -43,8 +44,9 @@ struct SidebarSectionsTests {
         #expect(SidebarRowText.size(space: space, scannedBytes: nil) == "640 GB free")
         #expect(SidebarRowText.size(space: nil, scannedBytes: 1_500_000) == "1.5 MB")
         #expect(SidebarRowText.size(space: nil, scannedBytes: nil) == nil)
-        #expect(SidebarRowText.tooltip(path: "/", space: space) == "/\n640 GB free of 2 TB")
-        #expect(SidebarRowText.tooltip(path: "/Users/me", space: nil) == "/Users/me")
+        // Used is capacity minus available, as the trailing free figure counts it.
+        #expect(SidebarRowText.usage(space: space) == "1.36 TB of 2 TB used")
+        #expect(SidebarRowText.usage(space: nil) == nil)
         #expect(SidebarRowText.scanned(nil) == nil)
     }
 

@@ -92,6 +92,12 @@
 "Full Disk Access is not enabled." = "Accesso completo al disco non abilitato.";
 "Checking…" = "Verifica…";
 "Open Full Disk Access Settings" = "Apri Impostazioni di Accesso completo al disco";
+"Neodisk Works Best with Full Disk Access" = "Neodisk funziona al meglio con Accesso completo al disco";
+"Without it, macOS stops the scan to ask about each protected folder, like Documents, Downloads and Photos, and some locations are skipped." = "Senza, macOS interrompe la scansione per chiedere il permesso per ogni cartella protetta, come Documenti, Download e Foto, e alcune posizioni vengono saltate.";
+"Scan Anyway" = "Scansiona comunque";
+"Waiting for permission to read %@" = "In attesa del permesso per leggere %@";
+"other apps' data" = "i dati di altre app";
+"iCloud Drive" = "iCloud Drive";
 "Recheck" = "Verifica di nuovo";
 "Note: running unbundled (swift run), Neodisk inherits its permissions from the terminal that launched it — grant Full Disk Access to that terminal app." = "Nota: se eseguito non pacchettizzato (swift run), Neodisk eredita i permessi dal terminale che lo ha avviato — concedi Accesso completo al disco a quell'app terminale.";
 "Moving to the Trash" = "Spostamento nel Cestino";
@@ -137,6 +143,7 @@
 "Reveal in Finder" = "Mostra nel Finder";
 "Open" = "Apri";
 "Copy Path" = "Copia percorso";
+"Path" = "Percorso";
 "Expand Contents" = "Espandi contenuto";
 "Show Package Contents" = "Mostra contenuto pacchetto";
 "No matches" = "Nessun risultato";
@@ -316,7 +323,6 @@
 "View" = "Vista";
 "Treemap" = "Treemap";
 "Sunburst" = "Sunburst";
-"Switch views. Right-click to choose which ones show." = "Cambia vista. Fai clic destro per scegliere quali mostrare.";
 "Cushion Treemap" = "Treemap a cuscino";
 "Flat Treemap" = "Treemap piatta";
 "Smaller Items" = "Elementi più piccoli";
@@ -428,6 +434,7 @@
 "Top %lld of %@ matches" = "I primi %lld di %@ risultati";
 "Visualization" = "Visualizzazione";
 "%@ free of %@" = "%@ liberi su %@";
+"%@ of %@ used" = "%@ usati su %@";
 "%@ in %@ files" = "%@ in %@ file";
 "%@ in %@ file" = "%@ in %@ file";
 
@@ -520,3 +527,4 @@
 "Move Right" = "Sposta a destra";
 "Statistics Tabs" = "Schede delle statistiche";
 "Top %@ of %@ files" = "Primi %@ di %@ file";
+"No files to show" = "Nessun file da mostrare";

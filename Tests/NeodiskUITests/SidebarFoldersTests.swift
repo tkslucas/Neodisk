@@ -16,6 +16,17 @@ struct SidebarFoldersTests {
         try body(NeodiskViewModel(snapshotCache: makeIsolatedCache(), sidebarFolderStore: store), store)
     }
 
+    /// A drag of the app's own items that slips onto the window must not become a new location.
+    @Test func droppedFoldersFromTheAppItselfAreIgnored() throws {
+        try withModel { model, _ in
+            let folder = FileManager.default.temporaryDirectory
+            model.cleanup.isDragInProgress = true
+            #expect(!model.addDroppedFolders([folder]))
+            #expect(!model.sidebarFolders.contains { $0.id == ScanTarget(url: folder).id })
+            #expect(model.coordinator.selectedTarget == nil)
+        }
+    }
+
     @Test func clearAddedFoldersKeepsTheCommonOnes() throws {
         try withModel { model, store in
             #expect(model.addedSidebarFolders.isEmpty)

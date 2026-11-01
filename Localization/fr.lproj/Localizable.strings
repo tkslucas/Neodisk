@@ -92,6 +92,12 @@
 "Full Disk Access is not enabled." = "L'accès complet au disque n'est pas activé.";
 "Checking…" = "Vérification…";
 "Open Full Disk Access Settings" = "Ouvrir les réglages de l'accès complet au disque";
+"Neodisk Works Best with Full Disk Access" = "Neodisk fonctionne mieux avec l'accès complet au disque";
+"Without it, macOS stops the scan to ask about each protected folder, like Documents, Downloads and Photos, and some locations are skipped." = "Sans lui, macOS interrompt l'analyse pour demander l'autorisation pour chaque dossier protégé, comme Documents, Téléchargements et Photos, et certains emplacements sont ignorés.";
+"Scan Anyway" = "Analyser quand même";
+"Waiting for permission to read %@" = "En attente de l'autorisation de lire %@";
+"other apps' data" = "les données d'autres apps";
+"iCloud Drive" = "iCloud Drive";
 "Recheck" = "Vérifier à nouveau";
 "Note: running unbundled (swift run), Neodisk inherits its permissions from the terminal that launched it — grant Full Disk Access to that terminal app." = "Remarque : en exécution non empaquetée (swift run), Neodisk hérite des autorisations du terminal qui l'a lancée — accordez l'accès complet au disque à cette application de terminal.";
 "Moving to the Trash" = "Placement dans la Corbeille";
@@ -137,6 +143,7 @@
 "Reveal in Finder" = "Afficher dans le Finder";
 "Open" = "Ouvrir";
 "Copy Path" = "Copier le chemin";
+"Path" = "Chemin";
 "Expand Contents" = "Développer le contenu";
 "Show Package Contents" = "Afficher le contenu du paquet";
 "No matches" = "Aucun résultat";
@@ -316,7 +323,6 @@
 "View" = "Présentation";
 "Treemap" = "Carte proportionnelle";
 "Sunburst" = "Sunburst";
-"Switch views. Right-click to choose which ones show." = "Changer de vue. Faites un clic droit pour choisir celles qui s’affichent.";
 "Cushion Treemap" = "Carte proportionnelle coussin";
 "Flat Treemap" = "Carte proportionnelle plate";
 "Smaller Items" = "Éléments plus petits";
@@ -428,6 +434,7 @@
 "Top %lld of %@ matches" = "%lld meilleurs résultats sur %@";
 "Visualization" = "Visualisation";
 "%@ free of %@" = "%@ libres sur %@";
+"%@ of %@ used" = "%@ utilisés sur %@";
 "%@ in %@ files" = "%@ dans %@ fichiers";
 "%@ in %@ file" = "%@ dans %@ fichier";
 
@@ -520,3 +527,4 @@
 "Move Right" = "Déplacer vers la droite";
 "Statistics Tabs" = "Onglets des statistiques";
 "Top %@ of %@ files" = "%@ premiers fichiers sur %@";
+"No files to show" = "Aucun fichier à afficher";

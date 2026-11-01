@@ -222,7 +222,18 @@ import NeodiskKit
     }
 }
 
-private actor CountingSunburstLayoutService: SunburstLayouting {
+/// The fakes hand back segments; the model takes them as a chart without deep rings.
+private protocol SegmentsLayouting: SunburstLayouting {
+    func segments(for request: SunburstLayoutRequest) async throws -> [SunburstSegment]
+}
+
+extension SegmentsLayouting {
+    func layout(for request: SunburstLayoutRequest) async throws -> SunburstChartLayout {
+        SunburstChartLayout(segments: try await segments(for: request))
+    }
+}
+
+private actor CountingSunburstLayoutService: SegmentsLayouting {
     private let renderedSegments: [SunburstSegment]
     private(set) var requestCount = 0
 
@@ -236,7 +247,7 @@ private actor CountingSunburstLayoutService: SunburstLayouting {
     }
 }
 
-private actor ImmediateSunburstLayoutService: SunburstLayouting {
+private actor ImmediateSunburstLayoutService: SegmentsLayouting {
     private let renderedSegments: [SunburstSegment]
 
     init(segments: [SunburstSegment]) {
@@ -248,7 +259,7 @@ private actor ImmediateSunburstLayoutService: SunburstLayouting {
     }
 }
 
-private actor ControllableSunburstLayoutService: SunburstLayouting {
+private actor ControllableSunburstLayoutService: SegmentsLayouting {
     private struct RequestWaiter {
         let requestCount: Int
         let continuation: CheckedContinuation<Void, Never>
@@ -421,7 +432,7 @@ private func makeSegment(id: String, depth: Int = 0) -> SunburstSegment {
     )
 }
 
-private actor FailingReplacementLayoutService: SunburstLayouting {
+private actor FailingReplacementLayoutService: SegmentsLayouting {
     let segment: SunburstSegment
     init(segment: SunburstSegment) { self.segment = segment }
     func segments(for request: SunburstLayoutRequest) async throws -> [SunburstSegment] {

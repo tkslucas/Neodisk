@@ -82,8 +82,8 @@ macOS app is SwiftUI and AppKit, the Linux app is GTK 4 and libadwaita. See
 - Show Package Contents: apps and bundles stay solid like in Finder until you expand them (macOS)
 - Free and hidden space for volume scans
 - Sidebar volumes show a kind-colored usage bar
-- Sidebar sections collapse from their header; right-click one to choose the sections shown (macOS)
-- Hide what you don't use where it is: right-click the view picker, the file list's header or the status bar; the View menu brings it back (macOS)
+- Sidebar sections collapse from their header; right-click one to choose the sections shown
+- Hide what you don't use where it is: right-click the view picker, the status bar or, on macOS, the file list's header; the View menu (the main menu on Linux) brings it back
 - Auto-updates via Sparkle (macOS)
 - Multilingual: UI follows the system language: English, Spanish, French, German, Italian, Brazilian Portuguese, Japanese, and Simplified Chinese
 
@@ -122,10 +122,23 @@ Packaging/linux/install.sh          # install to ~/.local (menu entry, icon)
 `install.sh` links the Swift runtime statically, so the installed app needs
 only GTK 4 and libadwaita, not a Swift toolchain.
 
+### Windows
+
+The shared core and the `diskscan` command-line scanner build and pass their
+tests on Windows; the app is in progress. Requires Windows 10 or 11, Swift
+6.4.2 ([swift.org/install](https://www.swift.org/install/windows/)) and
+Visual Studio 2022's C++ build tools with a Windows SDK:
+
+```powershell
+swift build                                   # core and diskscan
+swift test                                    # core, shared model and treemap suites
+swift run -c release diskscan C:\Users        # scan from the command line
+```
+
 ## Planned
 
-- Windows: a native WinUI app over the same core (see
-  [ARCHITECTURE.md](ARCHITECTURE.md#adding-windows))
+- Windows: a native Win32 and Direct2D app over the same core (see
+  [ARCHITECTURE.md](ARCHITECTURE.md#windows))
 - Linux: Flatpak packaging, the duplicates and changes tabs
 
 ## Credits

@@ -33,6 +33,9 @@ enum OutlineRowMetrics {
 
     /// List's leading/trailing content inset inside the pane.
     static let contentInset: CGFloat = 16
+    /// The chevron's slot starts here so its glyph, centered in the slot, lines up with the 16pt inset that the
+    /// search results' icons and the trailing sizes keep.
+    static let nameLeadingInset: CGFloat = 12
     /// List's selection is a rounded rect inset from the pane edges.
     static let selectionInset: CGFloat = 10
     static let selectionRadius: CGFloat = 5
@@ -42,22 +45,23 @@ enum OutlineRowMetrics {
     /// hard against it, mirroring the List's 8pt minimum name↔size gap.
     static let clusterLeadingMargin: CGFloat = 8
 
-    private static var nameFont: NSFont { .systemFont(ofSize: fontSize) }
     private static var sizeFont: NSFont {
         .monospacedDigitSystemFont(ofSize: fontSize, weight: .regular)
     }
     private static let widthCache = NSCache<NSString, NSNumber>()
+
+    /// Names truncate down to this before the tree scrolls sideways (only very deep trees in a narrow pane).
+    static var minimumNameWidth: CGFloat { (80 * scale).rounded() }
 
     /// The column grows to this, then the horizontal scroller engages. Mirrors OutlineNameSection's HStack.
     static func contentWidth(
         for rows: [NeodiskViewModel.OutlineRow], baseline: ScanSizeBaseline?,
         includeCloudOnly: Bool
     ) -> CGFloat {
-        let leading = chevronSlotWidth + iconSlotWidth + 4 * rowSpacing
+        let leading = nameLeadingInset + chevronSlotWidth + iconSlotWidth + 3 * rowSpacing + minimumNameWidth
         var maxWidth: CGFloat = 0
         for row in rows {
-            var width = contentInset + CGFloat(row.depth) * indentPerDepth + leading
-            width += cachedWidth(of: row.node.name, font: nameFont, cachePrefix: "n:")
+            var width = CGFloat(row.depth) * indentPerDepth + leading
             width += 8 + clusterWidth(for: row, baseline: baseline, includeCloudOnly: includeCloudOnly)
                 + contentInset
             maxWidth = max(maxWidth, width)

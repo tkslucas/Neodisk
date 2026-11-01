@@ -1,4 +1,7 @@
 import Foundation
+#if os(Windows)
+import WinSDK
+#endif
 
 /// Why one item didn't reach the Trash. Every case leaves the item where it was.
 public enum TrashFailure: Error, Sendable, Equatable {
@@ -20,6 +23,9 @@ public enum CurrentFileState: Sendable, Equatable {
     case unreadable(String)
 
     public static func read(atPath path: String) -> CurrentFileState {
+        #if os(Windows)
+        return readWindows(atPath: path)
+        #else
         var status = stat()
         guard lstat(path, &status) == 0 else {
             let code = errno
@@ -46,7 +52,42 @@ public enum CurrentFileState: Sendable, Equatable {
             size: Int64(status.st_size),
             modifiedSince1970: modified
         ))
+        #endif
     }
+
+    #if os(Windows)
+    /// The item itself, never a link's target, with the identity the scanner recorded (volume serial, file ID).
+    private static func readWindows(atPath path: String) -> CurrentFileState {
+        guard let handle = WindowsFileInfo.open(path: path, access: DWORD(FILE_READ_ATTRIBUTES)) else {
+            let error = GetLastError()
+            if WindowsFileInfo.posixCode(error) == ENOENT { return .missing }
+            return .unreadable(WindowsFileInfo.message(error))
+        }
+        defer { CloseHandle(handle) }
+        guard let info = WindowsFileInfo.HandleInfo(handle) else {
+            return .unreadable(WindowsFileInfo.message(GetLastError()))
+        }
+        let metadata = WindowsFileInfo.nodeMetadata(
+            attributes: info.attributes,
+            reparseTag: info.reparseTag,
+            allocationSize: info.allocationSize,
+            endOfFile: info.endOfFile,
+            lastWriteTime: info.lastWriteTime,
+            fileID: info.fileID,
+            volumeSerial: info.volumeSerial,
+            linkCount: info.linkCount
+        )
+        let kind: CurrentFile.Kind = metadata.isSymbolicLink
+            ? .symbolicLink
+            : (metadata.isDirectory ? .directory : .file)
+        return .found(CurrentFile(
+            identity: .fileSystem(device: info.volumeSerial, inode: info.fileID),
+            kind: kind,
+            size: info.endOfFile,
+            modifiedSince1970: Double(info.lastWriteTime - WindowsFileInfo.unixEpochFileTime) / 10_000_000
+        ))
+    }
+    #endif
 }
 
 public struct CurrentFile: Sendable, Equatable {

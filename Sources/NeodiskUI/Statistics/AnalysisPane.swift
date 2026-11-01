@@ -56,129 +56,17 @@ struct AnalysisPane: View {
                 )
             }
         }
+        // Right-clicking anywhere without its own menu brings hidden tabs back.
+        .contextMenu { AnalysisTabsMenuItems(model: model) }
     }
 }
-
-/// A segmented control while every shown tab fits its full title, else a pop-up of them: titles never truncate,
-/// whatever the pane's width, language or text size. Right-click chooses which tabs show; hiding some lets the
-/// segmented control fit a narrower pane.
-struct AnalysisTabBar: View {
-    let model: NeodiskViewModel
-
-    var body: some View {
-        ViewThatFits(in: .horizontal) {
-            AnalysisSegmentedControl(tabs: model.analysisTabs.visible, selection: model.analysisTab) {
-                model.analysisTab = $0
-            }
-            Picker("Statistics", selection: Binding(get: { model.analysisTab }, set: { model.analysisTab = $0 })) {
-                ForEach(model.analysisTabs.visible) { tab in
-                    Text(LocalizedStringKey(tab.title)).tag(tab)
-                }
-            }
-            .pickerStyle(.menu)
-            .labelsHidden()
-            .fixedSize()
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .neoControlSize(base: .small)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .frame(minWidth: 0, maxWidth: .infinity)
-        .contextMenu { visibilityMenu }
-    }
-
-    @ViewBuilder
-    private var visibilityMenu: some View {
-        let layout = model.analysisTabs
-        ForEach(layout.order) { tab in
-            Toggle(LocalizedStringKey(tab.title), isOn: Binding(
-                get: { !layout.isHidden(tab) },
-                set: { isShown in
-                    var updated = layout
-                    updated.setHidden(tab, !isShown)
-                    model.setAnalysisTabs(updated)
-                }
-            ))
-            .disabled(!layout.isHidden(tab) && !layout.canHide(tab))
-        }
-        Divider()
-        Button("Reset Tabs") { model.setAnalysisTabs(ItemLayout()) }
-            .disabled(layout.isStandard)
-    }
-}
-
-/// Segments as wide as their titles, not all as wide as the widest, so the control fits the narrowest pane it can;
-/// it stretches proportionally to fill the rest.
-private struct AnalysisSegmentedControl: NSViewRepresentable {
-    let tabs: [AnalysisTab]
-    let selection: AnalysisTab
-    let select: (AnalysisTab) -> Void
-
-    func makeCoordinator() -> Coordinator { Coordinator() }
-
-    func makeNSView(context: Context) -> NSSegmentedControl {
-        let control = NSSegmentedControl()
-        control.trackingMode = .selectOne
-        control.segmentDistribution = .fillProportionally
-        control.target = context.coordinator
-        control.action = #selector(Coordinator.picked(_:))
-        control.setAccessibilityLabel(NSLocalizedString("Statistics", comment: "Statistics tabs"))
-        control.setContentCompressionResistancePriority(.required, for: .horizontal)
-        return control
-    }
-
-    func updateNSView(_ control: NSSegmentedControl, context: Context) {
-        context.coordinator.control = self
-        let size = NSControl.ControlSize(context.environment.controlSize)
-        if control.controlSize != size {
-            control.controlSize = size
-            control.font = .systemFont(ofSize: NSFont.systemFontSize(for: size))
-        }
-        if control.segmentCount != tabs.count || context.coordinator.tabs != tabs {
-            context.coordinator.tabs = tabs
-            control.segmentCount = tabs.count
-            for (index, tab) in tabs.enumerated() {
-                control.setLabel(NSLocalizedString(tab.title, comment: "Statistics tab"), forSegment: index)
-            }
-        }
-        control.selectedSegment = tabs.firstIndex(of: selection) ?? -1
-    }
-
-    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSSegmentedControl, context: Context) -> CGSize? {
-        let fitting = nsView.intrinsicContentSize
-        return CGSize(width: max(proposal.width ?? fitting.width, fitting.width), height: fitting.height)
-    }
-
-    @MainActor
-    final class Coordinator: NSObject {
-        var control: AnalysisSegmentedControl?
-        var tabs: [AnalysisTab] = []
-
-        @objc func picked(_ sender: NSSegmentedControl) {
-            guard tabs.indices.contains(sender.selectedSegment) else { return }
-            control?.select(tabs[sender.selectedSegment])
-        }
-    }
-}
-
-private extension NSControl.ControlSize {
-    init(_ size: ControlSize) {
-        switch size {
-        case .mini: self = .mini
-        case .small: self = .small
-        case .large: self = .large
-        case .extraLarge: self = .large
-        default: self = .regular
-        }
-    }
-}
-
 
 /// Size-descending file list shared by the drill-ins and the Largest tab. Drill-ins pass onClose for
 /// the back button.
 struct StatsFileListView: View {
     let model: NeodiskViewModel
-    /// Header title (localized key); nil while the list is still loading.
+    /// Header title (localized key); nil while the list is still loading. Only a drill-in (`onClose`) has the
+    /// header: the Largest tab's list is named by the tab.
     let title: String?
     let swatch: Color?
     var backHelp: LocalizedStringKey = ""
@@ -192,38 +80,9 @@ struct StatsFileListView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 6) {
-                if let onClose {
-                    Button {
-                        onClose()
-                    } label: {
-                        Image(systemName: "chevron.left")
-                            .neoFont(10, weight: .semibold)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-                    .help(backHelp)
-                }
-
-                if let title {
-                    if let swatch {
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(swatch)
-                            .frame(width: 12, height: 12)
-                    }
-                    Text(LocalizedStringKey(title))
-                        .neoFont(11, weight: .semibold)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                } else {
-                    Text("Loading…")
-                        .neoFont(11, weight: .semibold)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
+            if let onClose {
+                drillInHeader(onClose)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
 
             HStack(spacing: 4) {
                 Image(systemName: "magnifyingglass")
@@ -232,9 +91,17 @@ struct StatsFileListView: View {
                 TextField("Filter by name", text: $filterText)
                     .textFieldStyle(.plain)
                     .neoFont(11)
+                    // Esc clears the filter, then leaves a drill-in.
+                    .onExitCommand {
+                        if !filterText.isEmpty {
+                            filterText = ""
+                        } else {
+                            onClose?()
+                        }
+                    }
             }
-            .padding(.horizontal, 10)
-            .padding(.bottom, 6)
+            .padding(.horizontal, StatsListMetrics.inset)
+            .padding(.vertical, 6)
 
             Divider()
 
@@ -243,6 +110,10 @@ struct StatsFileListView: View {
                 ProgressView().neoControlSize(base: .small)
                     .frame(maxWidth: .infinity)
                 Spacer()
+            } else if totalMatches == 0, !filterText.trimmingCharacters(in: .whitespaces).isEmpty {
+                StatsEmptyState(symbol: "magnifyingglass", message: Text("No matches"))
+            } else if totalMatches == 0, model.coordinator.snapshot?.isComplete == true {
+                StatsEmptyState.noFiles
             } else {
                 // Only ids the store still resolves: a row with no node
                 // would be an empty row.
@@ -251,7 +122,8 @@ struct StatsFileListView: View {
                     rows: rows ?? visibleIDs.compactMap { model.store?.node(id: $0) },
                     click: .selectsNode { model.select($0) },
                     selection: model.selection,
-                    keepsLeaderInView: true
+                    keepsLeaderInView: true,
+                    onCancel: onClose
                 ) { node in
                     FileResultRow(
                         node: node,
@@ -266,19 +138,74 @@ struct StatsFileListView: View {
                     Text(footerText)
                         .neoFont(10)
                         .foregroundStyle(.secondary)
-                        .padding(.horizontal, 10)
+                        .padding(.horizontal, StatsListMetrics.inset)
                         .padding(.vertical, 4)
                 }
             }
         }
     }
 
+    private func drillInHeader(_ onClose: @escaping () -> Void) -> some View {
+        DrillInBackButton(help: backHelp, action: onClose) {
+            if let title {
+                if let swatch {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(swatch)
+                        .frame(width: 12, height: 12)
+                }
+                Text(LocalizedStringKey(title))
+                    .neoFont(11, weight: .semibold)
+                    .lineLimit(1)
+            } else {
+                Text("Loading…")
+                    .neoFont(11, weight: .semibold)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, StatsListMetrics.inset)
+        .padding(.top, 3)
+    }
+
+    /// Plain counts, like the Changes tab's footer: the filter field is the way to narrow.
     private var footerText: String {
-        let shown = visibleIDs.count.formatted()
         let total = totalMatches.formatted()
-        let format = filterText.trimmingCharacters(in: .whitespaces).isEmpty
-            ? NSLocalizedString("Largest %@ of %@ — search to narrow", comment: "File list footer, no filter")
-            : NSLocalizedString("Top %@ of %@ matches — refine to narrow", comment: "File list footer, filtered")
-        return String(format: format, shown, total)
+        return filterText.trimmingCharacters(in: .whitespaces).isEmpty
+            ? String(
+                format: NSLocalizedString("Top %@ of %@ files", comment: "File list footer, no filter"),
+                visibleIDs.count.formatted(), total
+            )
+            : String(
+                format: NSLocalizedString("Top %lld of %@ matches", comment: "File list footer, filtered"),
+                Int64(visibleIDs.count), total
+            )
+    }
+
+}
+
+/// A drill-in's way back: the chevron and the title beside it are one target the header's whole height, as a
+/// back button in a navigation bar is, and the chevron brightens under the pointer. Esc does the same (the list
+/// and the filter field handle it).
+struct DrillInBackButton<Title: View>: View {
+    let help: LocalizedStringKey
+    let action: () -> Void
+    @ViewBuilder let title: Title
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: "chevron.left")
+                    .neoFont(10, weight: .semibold)
+                    .foregroundStyle(isHovered ? .primary : .secondary)
+                title
+                Spacer(minLength: 0)
+            }
+            .padding(.vertical, 3)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .help(help)
+        .accessibilityLabel(Text(help))
     }
 }

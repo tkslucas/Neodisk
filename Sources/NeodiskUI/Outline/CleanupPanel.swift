@@ -177,7 +177,8 @@ private struct CleanupNoticeView: View {
     }
 }
 
-/// One collected item: click finds it in the map; hovering swaps its size for a remove button.
+/// One collected item: click finds it in the map, double-click shows it in Finder; hovering swaps its size for a
+/// remove button.
 private struct CleanupItemRow: View {
     let node: FileNodeRecord
     let failure: String?
@@ -231,6 +232,12 @@ private struct CleanupItemRow: View {
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
         .onTapGesture { model.select(node.id) }
+        // As in the file list: double-click shows the item in Finder.
+        .simultaneousGesture(TapGesture(count: 2).onEnded {
+            guard model.supportsFileActions(node) else { return }
+            model.select(node.id)
+            model.reveal(node)
+        })
         .contextMenu {
             Button("Reveal in Finder") {
                 SystemIntegration.reveal(URL(filePath: node.path))

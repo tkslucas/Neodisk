@@ -60,20 +60,31 @@ struct AnalysisPane: View {
 }
 
 /// Text tabs, not a segmented picker: bezel padding truncates localized titles. Tabs that don't fit go in a »
-/// menu instead of truncating; right-click shows or hides them, and dragging one reorders them.
+/// menu instead of truncating; right-click shows or hides them. Dragging a tab moves the tab itself (no drag
+/// image): its neighbors slide aside as it crosses their middles, and it settles into its slot on release.
 private struct AnalysisTabBar: View {
     let model: NeodiskViewModel
 
     @Namespace private var underlineNamespace
     @Environment(\.neoTextScale) private var textScale
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var width: CGFloat = 0
-    @State private var dragged: AnalysisTab?
+    @State private var drag: TabDrag?
 
     private static let spacing: CGFloat = 12
     private static let padding: CGFloat = 10
 
+    private struct TabDrag: Equatable {
+        let tab: AnalysisTab
+        /// Where in the tab the pointer took hold of it.
+        let grab: CGFloat
+        /// The tab's leading edge, following the pointer.
+        var left: CGFloat
+    }
+
     var body: some View {
         let (shown, overflow) = fitting()
+        let slots = slots(for: shown)
         HStack(spacing: Self.spacing) {
             ForEach(shown) { tab in
                 AnalysisTabButton(
@@ -83,11 +94,10 @@ private struct AnalysisTabBar: View {
                 ) {
                     select(tab)
                 }
-                .onDrag {
-                    dragged = tab
-                    return NSItemProvider(object: tab.rawValue as NSString)
-                }
-                .onDrop(of: [.plainText], delegate: TabReorderDelegate(target: tab, dragged: $dragged, model: model))
+                .offset(x: offset(of: tab, slots: slots))
+                .zIndex(drag?.tab == tab ? 1 : 0)
+                .transaction { if drag?.tab == tab { $0.animation = nil } }
+                .simultaneousGesture(reorderGesture(for: tab, shown: shown, slots: slots))
             }
             Spacer(minLength: 0)
             if !overflow.isEmpty {
@@ -110,10 +120,16 @@ private struct AnalysisTabBar: View {
         // minWidth 0: the bar measures the pane, not its own tabs.
         .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
         .clipped()
+        .coordinateSpace(name: Self.space)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .contentShape(Rectangle())
         .contextMenu { visibilityMenu }
-        .animation(.easeInOut(duration: 0.15), value: model.analysisTabs)
+    }
+
+    private static let space = "analysisTabBar"
+
+    private var settle: Animation? {
+        reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.86)
     }
 
     @ViewBuilder
@@ -125,14 +141,14 @@ private struct AnalysisTabBar: View {
                 set: { isShown in
                     var updated = layout
                     updated.setHidden(tab, !isShown)
-                    model.setAnalysisTabs(updated)
+                    withAnimation(settle) { model.setAnalysisTabs(updated) }
                 }
             ))
             .disabled(!layout.isHidden(tab) && !layout.canHide(tab))
         }
         Divider()
         Button("Reset Tabs") {
-            model.setAnalysisTabs(ItemLayout())
+            withAnimation(settle) { model.setAnalysisTabs(ItemLayout()) }
         }
         .disabled(layout.isStandard)
     }
@@ -143,16 +159,81 @@ private struct AnalysisTabBar: View {
         }
     }
 
+    // MARK: Dragging
+
+    private func offset(of tab: AnalysisTab, slots: [AnalysisTab: (x: CGFloat, width: CGFloat)]) -> CGFloat {
+        guard let drag, drag.tab == tab, let slot = slots[tab] else { return 0 }
+        return drag.left - slot.x
+    }
+
+    private func reorderGesture(
+        for tab: AnalysisTab,
+        shown: [AnalysisTab],
+        slots: [AnalysisTab: (x: CGFloat, width: CGFloat)]
+    ) -> some Gesture {
+        DragGesture(minimumDistance: 3, coordinateSpace: .named(Self.space))
+            .onChanged { value in
+                guard let slot = slots[tab] else { return }
+                var current = drag ?? TabDrag(tab: tab, grab: value.startLocation.x - slot.x, left: slot.x)
+                if drag == nil, model.analysisTab != tab { select(tab) }
+                let first = slots[shown.first ?? tab]?.x ?? Self.padding
+                let last = shown.last.flatMap { slots[$0] }.map { $0.x + $0.width } ?? width
+                current.left = min(max(value.location.x - current.grab, first), last - slot.width)
+                drag = current
+                reorderIfCrossed(current, shown: shown, slots: slots)
+            }
+            .onEnded { _ in
+                withAnimation(settle) { drag = nil }
+            }
+    }
+
+    /// Swaps the dragged tab with a neighbor once its middle passes the neighbor's.
+    private func reorderIfCrossed(
+        _ drag: TabDrag,
+        shown: [AnalysisTab],
+        slots: [AnalysisTab: (x: CGFloat, width: CGFloat)]
+    ) {
+        guard let index = shown.firstIndex(of: drag.tab), let slot = slots[drag.tab] else { return }
+        let middle = drag.left + slot.width / 2
+        var target: AnalysisTab?
+        if index + 1 < shown.count, let next = slots[shown[index + 1]], middle > next.x + next.width / 2 {
+            target = shown[index + 1]
+        } else if index > 0, let previous = slots[shown[index - 1]], middle < previous.x + previous.width / 2 {
+            target = shown[index - 1]
+        }
+        guard let target else { return }
+        var layout = model.analysisTabs
+        layout.move(drag.tab, onto: target)
+        withAnimation(settle) { model.setAnalysisTabs(layout) }
+    }
+
+    // MARK: Fitting
+
+    private func labelWidths(_ tabs: [AnalysisTab]) -> [CGFloat] {
+        let font = NSFont.systemFont(ofSize: (11 * textScale).rounded(), weight: .medium)
+        return tabs.map { tab in
+            (NSLocalizedString(tab.title, comment: "Statistics tab") as NSString)
+                .size(withAttributes: [.font: font]).width.rounded(.up)
+        }
+    }
+
+    /// Each shown tab's leading edge and width in the bar, as the HStack lays them out.
+    private func slots(for shown: [AnalysisTab]) -> [AnalysisTab: (x: CGFloat, width: CGFloat)] {
+        var x = Self.padding
+        var result: [AnalysisTab: (x: CGFloat, width: CGFloat)] = [:]
+        for (tab, tabWidth) in zip(shown, labelWidths(shown)) {
+            result[tab] = (x, tabWidth)
+            x += tabWidth + Self.spacing
+        }
+        return result
+    }
+
     /// The shown tabs that fit the bar's width, always including the active one, and the rest.
     private func fitting() -> (shown: [AnalysisTab], overflow: [AnalysisTab]) {
         let visible = model.analysisTabs.visible
         let available = width - 2 * Self.padding
         guard width > 0 else { return (visible, []) }
-        let font = NSFont.systemFont(ofSize: (11 * textScale).rounded(), weight: .medium)
-        let widths = visible.map { tab in
-            (NSLocalizedString(tab.title, comment: "Statistics tab") as NSString)
-                .size(withAttributes: [.font: font]).width.rounded(.up)
-        }
+        let widths = labelWidths(visible)
         func total(_ count: Int) -> CGFloat {
             widths.prefix(count).reduce(0, +) + Self.spacing * CGFloat(max(count - 1, 0))
         }
@@ -165,29 +246,6 @@ private struct AnalysisTabBar: View {
             shown[shown.count - 1] = visible[active]
         }
         return (shown, visible.filter { !shown.contains($0) })
-    }
-}
-
-/// Moves the dragged tab into each tab's place as it passes over, so the bar reorders under the pointer.
-private struct TabReorderDelegate: DropDelegate {
-    let target: AnalysisTab
-    @Binding var dragged: AnalysisTab?
-    let model: NeodiskViewModel
-
-    func dropEntered(info: DropInfo) {
-        guard let dragged, dragged != target else { return }
-        var layout = model.analysisTabs
-        layout.move(dragged, onto: target)
-        model.setAnalysisTabs(layout)
-    }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: dragged == nil ? .forbidden : .move)
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        defer { dragged = nil }
-        return dragged != nil
     }
 }
 

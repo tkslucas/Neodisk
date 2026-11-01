@@ -41,8 +41,14 @@ struct SidebarPane: View {
         // them once a minute. The timeline date must flow into the rows —
         // with unchanged inputs SwiftUI skips their bodies and the schedule
         // alone refreshes nothing.
-        TimelineView(.everyMinute) { context in
-            sidebarList(now: context.date)
+        // Cleanup sits below the list, not in a safe-area inset: an inset lets the rows scroll behind it.
+        VStack(spacing: 0) {
+            TimelineView(.everyMinute) { context in
+                sidebarList(now: context.date)
+            }
+            if model.cleanup.isEnabled, model.coordinator.snapshot != nil {
+                CleanupPanel(model: model)
+            }
         }
     }
 
@@ -96,11 +102,6 @@ struct SidebarPane: View {
         }
         .dropDestination(for: URL.self) { urls, _ in
             model.addDroppedFolders(urls)
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            if model.cleanup.isEnabled, model.coordinator.snapshot != nil {
-                CleanupPanel(model: model)
-            }
         }
         .onDeleteCommand {
             removeSelectedFolders()

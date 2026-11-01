@@ -165,11 +165,11 @@ nonisolated enum ScanTreeAssembler {
                     : allocated[Int(rhs.key)]
                 if lhsAllocated == rhsAllocated {
                     let lhsName = lhs.leafIndex >= 0
-                        ? directLeaves[Int(lhs.leafIndex)].name
-                        : sortName[Int(lhs.key)]
+                        ? directLeaves[Int(lhs.leafIndex)].nameSlice
+                        : sortName[Int(lhs.key)][...]
                     let rhsName = rhs.leafIndex >= 0
-                        ? directLeaves[Int(rhs.leafIndex)].name
-                        : sortName[Int(rhs.key)]
+                        ? directLeaves[Int(rhs.leafIndex)].nameSlice
+                        : sortName[Int(rhs.key)][...]
                     return DisplayNameOrder.precedes(lhsName, rhsName)
                 }
                 return lhsAllocated > rhsAllocated

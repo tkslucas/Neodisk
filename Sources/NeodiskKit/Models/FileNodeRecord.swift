@@ -5,7 +5,8 @@ public struct FileNodeRecord: Identifiable, Sendable {
     // optional side object.
 
     public let id: String
-    public let name: String
+    /// Empty when `Flags.nameInID`: a long name that is the id's last component is read back from it.
+    private let storedName: String
     public let allocatedSize: Int64
     /// Inline, not in the side object: hard links make it differ from
     /// `allocatedSize` for most nodes on some disks (package-manager stores).
@@ -32,6 +33,7 @@ public struct FileNodeRecord: Identifiable, Sendable {
         static let autoSummarized = Flags(rawValue: 1 << 6)
         static let dataless = Flags(rawValue: 1 << 7)
         static let hasDeviceInode = Flags(rawValue: 1 << 8)
+        static let nameInID = Flags(rawValue: 1 << 9)
     }
 
     /// The fields most records never set, boxed so they cost one pointer.
@@ -55,6 +57,18 @@ public struct FileNodeRecord: Identifiable, Sendable {
             self.cloudOnlyLogicalSize = cloudOnlyLogicalSize
             self.summarizedClones = summarizedClones
         }
+    }
+
+    public var name: String {
+        flags.contains(.nameInID) ? String(nameSlice) : storedName
+    }
+
+    /// `name` without allocating, for comparisons in sorts.
+    package var nameSlice: Substring {
+        guard flags.contains(.nameInID) else { return storedName[...] }
+        var id = id
+        let offset = id.withUTF8 { ($0.lastIndex(of: 0x2F) ?? -1) + 1 }
+        return id[id.utf8.index(id.utf8.startIndex, offsetBy: offset)...]
     }
 
     /// Stored as a string: URL construction dominates decoding million-node snapshots. Usually just the ID.
@@ -174,8 +188,10 @@ public struct FileNodeRecord: Identifiable, Sendable {
         let cloneInfo = isDirectory ? nil : cloneInfo
         let summarizedClones = isDirectory ? summarizedClones : nil
 
+        // Short names are stored inline by String itself; only longer ones cost an allocation worth sharing.
+        let nameInID = name.utf8.count > 15 && Self.isLastComponent(name, of: id)
         self.id = id
-        self.name = name
+        storedName = nameInID ? "" : name
         self.allocatedSize = allocatedSize
         self.unduplicatedAllocatedSize = unduplicatedAllocatedSize ?? allocatedSize
         self.logicalSize = logicalSize
@@ -192,6 +208,7 @@ public struct FileNodeRecord: Identifiable, Sendable {
         if isSynthetic { flags.insert(.synthetic) }
         if isAutoSummarized { flags.insert(.autoSummarized) }
         if isDataless { flags.insert(.dataless) }
+        if nameInID { flags.insert(.nameInID) }
         var resourceIdentifier: Data?
         switch fileIdentity {
         case .fileSystem(let device, let inode):
@@ -220,6 +237,19 @@ public struct FileNodeRecord: Identifiable, Sendable {
             )
         } else {
             extras = nil
+        }
+    }
+
+    /// Whether `id` ends in "/" followed by exactly `name`, so `nameSlice` can read it back byte for byte.
+    private nonisolated static func isLastComponent(_ name: String, of id: String) -> Bool {
+        var name = name
+        var id = id
+        return name.withUTF8 { nameBytes in
+            id.withUTF8 { idBytes in
+                let start = idBytes.count - nameBytes.count
+                guard start > 0, idBytes[start - 1] == 0x2F, !nameBytes.contains(0x2F) else { return false }
+                return UnsafeBufferPointer(rebasing: idBytes[start...]).elementsEqual(nameBytes)
+            }
         }
     }
 

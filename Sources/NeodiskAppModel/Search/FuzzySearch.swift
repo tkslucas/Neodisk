@@ -81,7 +81,7 @@ package struct FileSearchEntry: Sendable {
     /// for names that ASCII folding lowercases fully (nearly all of them).
     package func withLowercasedName<R>(_ body: (LowercasedNameBytes) -> R) -> R {
         if let lowercased = table.lowercasedOverride(at: nodeIndex) {
-            return body(LowercasedNameBytes(utf8: lowercased.utf8, foldsASCII: false))
+            return body(LowercasedNameBytes(utf8: lowercased[...].utf8, foldsASCII: false))
         }
         return body(LowercasedNameBytes(utf8: table.name(at: nodeIndex).utf8, foldsASCII: true))
     }
@@ -90,7 +90,7 @@ package struct FileSearchEntry: Sendable {
 /// A name's UTF-8 as lowercased bytes: either already lowercase, or folded
 /// from ASCII uppercase as it's read.
 package struct LowercasedNameBytes: Sequence {
-    let utf8: String.UTF8View
+    let utf8: Substring.UTF8View
     let foldsASCII: Bool
 
     package var count: Int { utf8.count }
@@ -100,7 +100,7 @@ package struct LowercasedNameBytes: Sequence {
     }
 
     package struct Iterator: IteratorProtocol {
-        var base: String.UTF8View.Iterator
+        var base: Substring.UTF8View.Iterator
         let foldsASCII: Bool
 
         package mutating func next() -> UInt8? {
@@ -136,8 +136,8 @@ package final class SearchEntryTable: Sendable {
         standalone?.id ?? nodes[Int(index)].id
     }
 
-    func name(at index: Int32) -> String {
-        standalone?.name ?? nodes[Int(index)].name
+    func name(at index: Int32) -> Substring {
+        standalone?.name[...] ?? nodes[Int(index)].nameSlice
     }
 
     func lastModified(at index: Int32) -> Date? {

@@ -109,7 +109,7 @@ nonisolated final class TreeStorage: Sendable {
             let lhsAllocated = nodes[Int(lhs)].allocatedSize
             let rhsAllocated = nodes[Int(rhs)].allocatedSize
             if lhsAllocated == rhsAllocated {
-                return DisplayNameOrder.precedes(nodes[Int(lhs)].name, nodes[Int(rhs)].name)
+                return DisplayNameOrder.precedes(nodes[Int(lhs)].nameSlice, nodes[Int(rhs)].nameSlice)
             }
             return lhsAllocated > rhsAllocated
         }

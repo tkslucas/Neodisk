@@ -90,4 +90,23 @@ import Testing
         #expect(directory.cloneInfo == nil)
         #expect(directory.descendantFileCount == 42)
     }
+
+    /// Long names that end the id are read back from it; anything else keeps its own string.
+    @Test func namesReadBackExactly() {
+        let cases: [(id: String, name: String)] = [
+            ("/data/thumbnails-file-12.json", "thumbnails-file-12.json"),
+            ("/data/cafe\u{0301}-long-decomposed-name", "cafe\u{0301}-long-decomposed-name"),
+            ("/data/short", "short"),
+            ("/", "Macintosh HD volume name"),
+            ("/data/x/a-name-that-differs-from-id", "Display Name Not In The Id"),
+            ("/data/x/with/slash-in-the-name", "with/slash-in-the-name"),
+            ("relative-id-without-any-slash", "relative-id-without-any-slash"),
+        ]
+        for (id, name) in cases {
+            let node = makeTestFileNode(id: id, name: name)
+            #expect(node.name == name)
+            #expect(String(node.nameSlice) == name)
+            #expect(node.id == id)
+        }
+    }
 }

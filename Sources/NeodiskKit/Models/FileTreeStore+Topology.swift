@@ -19,7 +19,7 @@ extension FileTreeStore {
     /// The child display order: largest first, ties by localized name.
     nonisolated static func childDisplayOrder(_ lhs: FileNodeRecord, _ rhs: FileNodeRecord) -> Bool {
         if lhs.allocatedSize == rhs.allocatedSize {
-            return DisplayNameOrder.precedes(lhs.name, rhs.name)
+            return DisplayNameOrder.precedes(lhs.nameSlice, rhs.nameSlice)
         }
         return lhs.allocatedSize > rhs.allocatedSize
     }

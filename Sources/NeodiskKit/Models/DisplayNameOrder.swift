@@ -14,6 +14,18 @@ public enum DisplayNameOrder {
         #endif
     }
 
+    /// Same order for names read in place (`FileNodeRecord.nameSlice`).
+    @inline(__always)
+    package nonisolated static func precedes(_ lhs: Substring, _ rhs: Substring) -> Bool {
+        #if canImport(Darwin)
+        return lhs.localizedStandardCompare(rhs) == .orderedAscending
+        #else
+        var lhs = lhs
+        var rhs = rhs
+        return lhs.withUTF8 { a in rhs.withUTF8 { b in naturalOrder(a, b) } } < 0
+        #endif
+    }
+
     #if canImport(Darwin)
     /// The `String` form bridges both names to NSString on every comparison, n log n times in a tie-heavy sort.
     @inline(__always)

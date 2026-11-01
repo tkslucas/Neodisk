@@ -639,11 +639,13 @@ nonisolated final class ScanTraversal {
     /// records themselves copied each one (and retained its strings) through the merge buffer.
     static func sortBySizeThenName(_ nodes: inout [FileNodeRecord]) {
         guard nodes.count > 1 else { return }
+        // Names sliced once each, not on every tie comparison.
+        let names = nodes.map(\.nameSlice)
         var order = nodes.withUnsafeBufferPointer { records in
             Array(0..<records.count).sorted { lhs, rhs in
                 let left = records[lhs], right = records[rhs]
                 return left.allocatedSize == right.allocatedSize
-                    ? DisplayNameOrder.precedes(left.name, right.name)
+                    ? DisplayNameOrder.precedes(names[lhs], names[rhs])
                     : left.allocatedSize > right.allocatedSize
             }
         }

@@ -27,8 +27,8 @@ struct OutlineTreeTable: NSViewRepresentable {
         tableView.quickLookRequested = { [weak coordinator] in
             coordinator?.toggleQuickLook() ?? false
         }
-        tableView.hierarchyNavigationRequested = { [weak coordinator] direction in
-            coordinator?.navigateHierarchy(direction)
+        tableView.hierarchyNavigationRequested = { [weak coordinator] direction, recursively in
+            coordinator?.navigateHierarchy(direction, recursively: recursively)
         }
         tableView.clickTrackingEnded = { [weak coordinator] in
             coordinator?.resyncSelectionAfterClick()
@@ -319,10 +319,10 @@ struct OutlineTreeTable: NSViewRepresentable {
             return true
         }
 
-        func navigateHierarchy(_ direction: OutlineHierarchyDirection) {
+        func navigateHierarchy(_ direction: OutlineHierarchyDirection, recursively: Bool = false) {
             guard let tableView else { return }
             let performed = OutlineKeyboardNavigation.perform(
-                direction, in: tableView, rows: rows, model: model
+                direction, recursively: recursively, in: tableView, rows: rows, model: model
             )
             if case .selectRow(let row) = performed {
                 scrollToRowVerticalOnly(row)
@@ -525,7 +525,8 @@ final class OutlineNSTableView: NSTableView {
         item.action == #selector(copy(_:)) ? canCopy() : super.validateUserInterfaceItem(item)
     }
 
-    var hierarchyNavigationRequested: (OutlineHierarchyDirection) -> Void = { _ in }
+    /// Left/right arrows; with ⌥ alone, recursively.
+    var hierarchyNavigationRequested: (OutlineHierarchyDirection, Bool) -> Void = { _, _ in }
     /// The table applies a click's selection at mouseDown but fires the delegate when tracking ends, so
     /// programmatic sync must not "correct" the selection mid-click.
     private(set) var isTrackingClick = false
@@ -551,13 +552,14 @@ final class OutlineNSTableView: NSTableView {
             NSSound.beep()
             return
         }
-        if hierarchyModifiers.isEmpty {
+        if hierarchyModifiers.isEmpty || hierarchyModifiers == .option {
+            let recursively = hierarchyModifiers == .option
             switch event.specialKey {
             case .leftArrow:
-                hierarchyNavigationRequested(.left)
+                hierarchyNavigationRequested(.left, recursively)
                 return
             case .rightArrow:
-                hierarchyNavigationRequested(.right)
+                hierarchyNavigationRequested(.right, recursively)
                 return
             default:
                 break

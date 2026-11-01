@@ -73,8 +73,8 @@ struct BottomOutlineTable: NSViewRepresentable {
         tableView.quickLookRequested = { [weak coordinator] in
             coordinator?.toggleQuickLook() ?? false
         }
-        tableView.hierarchyNavigationRequested = { [weak coordinator] direction in
-            coordinator?.navigateHierarchy(direction)
+        tableView.hierarchyNavigationRequested = { [weak coordinator] direction, recursively in
+            coordinator?.navigateHierarchy(direction, recursively: recursively)
         }
         tableView.clickTrackingEnded = { [weak coordinator] in
             coordinator?.resyncSelectionAfterClick()
@@ -656,10 +656,10 @@ struct BottomOutlineTable: NSViewRepresentable {
             return true
         }
 
-        func navigateHierarchy(_ direction: OutlineHierarchyDirection) {
+        func navigateHierarchy(_ direction: OutlineHierarchyDirection, recursively: Bool = false) {
             guard let tableView else { return }
             let performed = OutlineKeyboardNavigation.perform(
-                direction, in: tableView, rows: rows, model: model
+                direction, recursively: recursively, in: tableView, rows: rows, model: model
             )
             if case .selectRow(let row) = performed {
                 scrollToRowVerticalOnly(row)

@@ -20,6 +20,10 @@ public struct ContentView: View {
 
     private var textScale: CGFloat { CGFloat(model.textScale) }
 
+    private var minimumSize: CGSize {
+        PaneLayout.windowMinSize(scale: model.textScale, screen: NSScreen.main?.visibleFrame.size)
+    }
+
     public var body: some View {
         NavigationSplitView(columnVisibility: $model.sidebarVisibility) {
             SidebarPane(model: model)
@@ -39,8 +43,8 @@ public struct ContentView: View {
         // For views that never name a font. macOS's default is 13pt, so 100% renders as before.
         .font(.system(size: 13 * textScale))
         .frame(
-            minWidth: PaneLayout.windowMinWidth(scale: model.textScale),
-            minHeight: PaneLayout.windowMinHeight(scale: model.textScale)
+            minWidth: minimumSize.width,
+            minHeight: minimumSize.height
         )
         .background(SnapshotWindowHider())
         .sheet(isPresented: $model.showWelcomeSheet) {

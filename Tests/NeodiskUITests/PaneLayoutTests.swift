@@ -161,6 +161,15 @@ import Testing
         }
     }
 
+    @Test func windowMinimumNeverOutgrowsTheScreen() {
+        let laptop = CGSize(width: 1440, height: 875)
+        let largest = PaneLayout.windowMinSize(scale: 2, screen: laptop)
+        #expect(largest.width <= laptop.width - 40 && largest.height <= laptop.height - 100)
+        // A big display keeps the full minimum.
+        #expect(PaneLayout.windowMinSize(scale: 2, screen: CGSize(width: 2560, height: 1400))
+            == CGSize(width: PaneLayout.windowMinWidth(scale: 2), height: PaneLayout.windowMinHeight(scale: 2)))
+    }
+
     @Test func firstWindowTakesMostOfTheScreenWithinBounds() {
         let laptop = PaneLayout.defaultWindowSize(screen: CGSize(width: 1470, height: 920))
         #expect(laptop.width == 1250 && laptop.height == 782)

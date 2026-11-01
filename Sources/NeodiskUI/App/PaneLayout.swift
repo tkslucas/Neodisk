@@ -58,6 +58,17 @@ enum PaneLayout {
     }
     static func windowMinHeight(scale: Double = 1) -> Double { 560 * damped(scale) }
 
+    /// The content minimum, never larger than the screen shows (its visible frame less the title bar and
+    /// toolbar): at large text on a small display the panes squeeze rather than the window running off-screen.
+    static func windowMinSize(scale: Double = 1, screen: CGSize?) -> CGSize {
+        let minimum = CGSize(width: windowMinWidth(scale: scale), height: windowMinHeight(scale: scale))
+        guard let screen else { return minimum }
+        return CGSize(
+            width: min(minimum.width, screen.width - 40),
+            height: min(minimum.height, screen.height - 100)
+        )
+    }
+
     /// A first window takes most of the screen, within bounds where every pane reads well; later launches
     /// restore the user's own size.
     static func defaultWindowSize(screen: CGSize?) -> CGSize {

@@ -109,6 +109,9 @@ nonisolated struct NTFSFileRecord: Sendable {
     var lastWriteTime: Int64 = 0
     var fileNames: [NTFSFileNameSlice] = []
     var unnamedData: NTFSDataSizes?
+    /// The clusters held by the `WofCompressedData` stream, where system-compressed (WOF) files keep their bytes
+    /// while the unnamed stream stays an empty sparse shell.
+    var wofCompressedAllocation: Int64?
     /// Extents of the unnamed `$DATA` in this record (any VCN range), decoded only when asked.
     var unnamedDataRuns: [NTFSDataRun] = []
     var hasReparsePoint = false
@@ -136,6 +139,7 @@ nonisolated struct NTFSFileRecord: Sendable {
         lastWriteTime = 0
         fileNames.removeAll(keepingCapacity: true)
         unnamedData = nil
+        wofCompressedAllocation = nil
         unnamedDataRuns.removeAll(keepingCapacity: true)
         hasReparsePoint = false
         reparseTag = nil
@@ -313,6 +317,19 @@ nonisolated enum NTFSRecordParser {
                 )
             }
 
+        case NTFSAttributeType.data where isWofStreamName(attribute, nameOffset: nameOffset, nameLength: nameLength):
+            if !isNonResident {
+                let value = try residentValue(attribute, isNonResident: false)
+                record.wofCompressedAllocation = Int64(value.count + 7) & ~7
+            } else {
+                guard attribute.count >= 0x40 else { throw NTFSRecordError.badAttribute }
+                if u64(attribute, 0x10) == 0 {
+                    let isCompressedOrSparse = flags & (0x0001 | 0x8000) != 0
+                    let hasTotal = isCompressedOrSparse && attribute.count >= 0x48 && Int(u16(attribute, 0x20)) >= 0x48
+                    record.wofCompressedAllocation = Int64(bitPattern: u64(attribute, hasTotal ? 0x40 : 0x28))
+                }
+            }
+
         case NTFSAttributeType.reparsePoint:
             record.hasReparsePoint = true
             if !isNonResident {
@@ -335,6 +352,16 @@ nonisolated enum NTFSRecordParser {
         default:
             break
         }
+    }
+
+    private static let wofStreamName = Array("WofCompressedData".utf16)
+
+    private static func isWofStreamName(_ attribute: UnsafeRawBufferPointer, nameOffset: Int, nameLength: Int) -> Bool {
+        guard nameLength == wofStreamName.count else { return false }
+        for index in 0..<nameLength where u16(attribute, nameOffset + index * 2) != wofStreamName[index] {
+            return false
+        }
+        return true
     }
 
     private static func residentValue(

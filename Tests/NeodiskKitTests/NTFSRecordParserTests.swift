@@ -120,6 +120,25 @@ enum SyntheticNTFS {
         return bytes
     }
 
+    static func namedNonResidentData(name: String, allocated: Int64, real: Int64) -> [UInt8] {
+        let units = Array(name.utf16)
+        let runsOffset = align8(0x40 + units.count * 2)
+        let runs: [UInt8] = [0x11, 0x02, 0x20, 0x00]
+        var bytes = [UInt8](repeating: 0, count: align8(runsOffset + runs.count))
+        put(&bytes, 0, UInt32(0x80))
+        put(&bytes, 4, UInt32(bytes.count))
+        bytes[8] = 1
+        bytes[9] = UInt8(units.count)
+        put(&bytes, 10, UInt16(0x40))
+        for (index, unit) in units.enumerated() { put(&bytes, 0x40 + index * 2, unit) }
+        put(&bytes, 0x20, UInt16(runsOffset))
+        put(&bytes, 0x28, allocated)
+        put(&bytes, 0x30, real)
+        put(&bytes, 0x38, real)
+        bytes.replaceSubrange(runsOffset..<(runsOffset + runs.count), with: runs)
+        return bytes
+    }
+
     static func reparsePoint(tag: UInt32) -> [UInt8] {
         var value = [UInt8](repeating: 0, count: 8)
         put(&value, 0, tag)

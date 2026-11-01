@@ -36,6 +36,20 @@ nonisolated final class NTFSVolumeIndex: @unchecked Sendable {
     static let firstUserRecord: UInt32 = 16
     static let wofReparseTag: UInt32 = 0x8000_0017
 
+    /// What the walk ends up with for a file whose listing shows no clusters: past 4 KB it asks the file itself
+    /// (`WindowsFileInfo.listsNoAllocation`), and for a system-compressed file the answer is its
+    /// `WofCompressedData` stream's clusters. A sparse file with nothing allocated stays at zero either way.
+    static func reportedAllocation(
+        listed: Int64,
+        logicalSize: Int64,
+        listedAttributes: UInt32,
+        wofAllocation: Int64
+    ) -> Int64 {
+        let skipped: UInt32 = 0x10 | 0x400 | 0x1000 | 0x0004_0000 | 0x0040_0000
+        guard listed == 0, logicalSize > 4096, listedAttributes & skipped == 0 else { return listed }
+        return wofAllocation
+    }
+
     /// Symbolic links, junctions and mount points: never followed. A tag that couldn't be read counts as one.
     static func isNameSurrogate(_ tag: UInt32) -> Bool {
         tag & 0x2000_0000 != 0
@@ -75,6 +89,7 @@ nonisolated final class NTFSVolumeIndex: @unchecked Sendable {
     private let lastWriteTimes: [Int64]
     private let logicalSizes: [Int64]
     private let allocationSizes: [Int64]
+    private let wofAllocations: [Int64]
     private let linkCounts: [UInt16]
 
     /// Children of record `r` are links `childStarts[r]..<childStarts[r + 1]`.
@@ -100,6 +115,7 @@ nonisolated final class NTFSVolumeIndex: @unchecked Sendable {
         lastWriteTimes: [Int64],
         logicalSizes: [Int64],
         allocationSizes: [Int64],
+        wofAllocations: [Int64],
         linkCounts: [UInt16],
         childStarts: [UInt32],
         linkChildren: [UInt32],
@@ -117,6 +133,7 @@ nonisolated final class NTFSVolumeIndex: @unchecked Sendable {
         self.lastWriteTimes = lastWriteTimes
         self.logicalSizes = logicalSizes
         self.allocationSizes = allocationSizes
+        self.wofAllocations = wofAllocations
         self.linkCounts = linkCounts
         self.childStarts = childStarts
         self.linkChildren = linkChildren
@@ -234,7 +251,12 @@ nonisolated final class NTFSVolumeIndex: @unchecked Sendable {
             reparseTag: listed.reparseTag,
             lastWriteTime: lastWriteTimes[index],
             logicalSize: logicalSizes[index],
-            allocationSize: allocationSizes[index],
+            allocationSize: Self.reportedAllocation(
+                listed: allocationSizes[index],
+                logicalSize: logicalSizes[index],
+                listedAttributes: listed.attributes,
+                wofAllocation: wofAllocations[index]
+            ),
             linkCount: UInt32(max(linkCounts[index], 1))
         )
     }
@@ -327,6 +349,7 @@ nonisolated final class NTFSVolumeIndexBuilder: @unchecked Sendable {
         let data: NTFSDataSizes?
         let reparseTag: UInt32?
         let hasReparsePoint: Bool
+        let wofAllocation: Int64?
     }
 
     let recordCount: Int
@@ -383,6 +406,7 @@ nonisolated final class NTFSVolumeIndexBuilder: @unchecked Sendable {
         let lastWriteTimes: UnsafeMutableBufferPointer<Int64>
         let logicalSizes: UnsafeMutableBufferPointer<Int64>
         let allocationSizes: UnsafeMutableBufferPointer<Int64>
+        let wofAllocations: UnsafeMutableBufferPointer<Int64>
 
         init(count: Int) {
             func column<T>(_ type: T.Type, _ zero: T) -> UnsafeMutableBufferPointer<T> {
@@ -397,6 +421,7 @@ nonisolated final class NTFSVolumeIndexBuilder: @unchecked Sendable {
             lastWriteTimes = column(Int64.self, 0)
             logicalSizes = column(Int64.self, 0)
             allocationSizes = column(Int64.self, 0)
+            wofAllocations = column(Int64.self, 0)
         }
 
         func deallocate() {
@@ -407,6 +432,7 @@ nonisolated final class NTFSVolumeIndexBuilder: @unchecked Sendable {
             lastWriteTimes.deallocate()
             logicalSizes.deallocate()
             allocationSizes.deallocate()
+            wofAllocations.deallocate()
         }
     }
 
@@ -445,6 +471,9 @@ nonisolated final class NTFSVolumeIndexBuilder: @unchecked Sendable {
                 columns.logicalSizes[index] = data.logicalSize
                 columns.allocationSizes[index] = data.listedAllocationSize
             }
+            if let wof = record.wofCompressedAllocation {
+                columns.wofAllocations[index] = wof
+            }
             columns.state[index] = recordState
             columns.sequence[index] = record.sequenceNumber
             columns.attributes[index] = record.fileAttributes
@@ -455,7 +484,7 @@ nonisolated final class NTFSVolumeIndexBuilder: @unchecked Sendable {
                     fragment.reparseClusters.append((number, cluster))
                 }
             }
-        } else if record.unnamedData != nil || record.hasReparsePoint {
+        } else if record.unnamedData != nil || record.hasReparsePoint || record.wofCompressedAllocation != nil {
             if record.hasReparsePoint, record.reparseTag == nil, let cluster = record.reparseDataCluster {
                 fragment.reparseClusters.append((record.baseRecord.recordNumber, cluster))
             }
@@ -463,7 +492,8 @@ nonisolated final class NTFSVolumeIndexBuilder: @unchecked Sendable {
                 base: record.baseRecord,
                 data: record.unnamedData,
                 reparseTag: record.reparseTag,
-                hasReparsePoint: record.hasReparsePoint
+                hasReparsePoint: record.hasReparsePoint,
+                wofAllocation: record.wofCompressedAllocation
             ))
         }
 
@@ -542,6 +572,9 @@ nonisolated final class NTFSVolumeIndexBuilder: @unchecked Sendable {
                     logicalSizes[index] = data.logicalSize
                     allocationSizes[index] = data.listedAllocationSize
                 }
+                if let wof = info.wofAllocation {
+                    columns.wofAllocations[index] = wof
+                }
                 if info.hasReparsePoint, reparseTags[index] == 0 {
                     reparseTags[index] = info.reparseTag ?? Self.unknownReparseTag
                 }
@@ -610,6 +643,7 @@ nonisolated final class NTFSVolumeIndexBuilder: @unchecked Sendable {
             lastWriteTimes: Array(columns.lastWriteTimes.prefix(recordCount)),
             logicalSizes: Array(logicalSizes.prefix(recordCount)),
             allocationSizes: Array(allocationSizes.prefix(recordCount)),
+            wofAllocations: Array(columns.wofAllocations.prefix(recordCount)),
             linkCounts: linkCounts,
             childStarts: childStarts,
             linkChildren: linkChildren,

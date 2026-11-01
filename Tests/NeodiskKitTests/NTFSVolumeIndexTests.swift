@@ -260,4 +260,30 @@ import Testing
         #expect(NTFSScanAccelerator.isVolumeRoot("C:/Mounts/Data", mountPoint: "C:\\Mounts\\Data\\"))
         #expect(!NTFSScanAccelerator.isVolumeRoot("C:/Windows", mountPoint: "C:\\"))
     }
+
+    @Test func systemCompressedFilesWeighTheirCompressedStream() throws {
+        var records = Self.volume()
+        func wofFile(_ number: UInt32, _ name: String, logical: Int64) -> Record {
+            var file = Record(number: number)
+            file.attributes = [
+                SyntheticNTFS.standardInformation(attributes: 0x620),
+                SyntheticNTFS.fileName(parent: Self.users, name),
+                SyntheticNTFS.nonResidentData(allocated: 0, real: logical, totalAllocated: 0, flags: 0x8000),
+                SyntheticNTFS.namedNonResidentData(name: "WofCompressedData", allocated: 8192, real: 7000),
+                SyntheticNTFS.reparsePoint(tag: 0x8000_0017),
+            ]
+            return file
+        }
+        records.append(wofFile(40, "kernel.dll", logical: 20000))
+        // Up to 4 KB the walk doesn't ask the file, so it keeps the listed zero.
+        records.append(wofFile(41, "tiny.dll", logical: 4096))
+        let index = try Self.build(Self.image(records)).finish()
+        let listing = children(index, of: 30)
+        let compressed = try #require(listing["kernel.dll"])
+        #expect(compressed.allocationSize == 8192 && compressed.logicalSize == 20000)
+        #expect(compressed.reparseTag == 0 && compressed.fileAttributes == 0x20)
+        #expect(listing["tiny.dll"]?.allocationSize == 0)
+        // An ordinary named stream is never charged.
+        #expect(listing["long name.txt"]?.allocationSize == 8192)
+    }
 }

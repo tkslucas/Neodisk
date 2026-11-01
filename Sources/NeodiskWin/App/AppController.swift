@@ -50,6 +50,7 @@ final class AppController {
         window.sidebar.onOpen = { [unowned self] id in self.openPaneRow(id) }
         window.onSearchChange = { [unowned self] text in self.outline.search(text) }
         window.onSearchSubmit = { [unowned self] in self.outline.pickFirstResult() }
+        window.onOutlineContextMenu = { [unowned self] point in self.showItemMenu(atScreen: point) }
         bind()
         Task { [weak self] in
             guard let self else { return }

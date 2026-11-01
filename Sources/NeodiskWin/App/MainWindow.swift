@@ -28,6 +28,8 @@ final class MainWindow: Win32Window {
     var onCommand: ((Command) -> Void)?
     var onSearchChange: ((String) -> Void)?
     var onSearchSubmit: (() -> Void)?
+    /// Right-click, Shift+F10 or the menu key on the file list, at screen pixels.
+    var onOutlineContextMenu: ((POINT) -> Void)?
     var onDPIChange: (() -> Void)?
     var onThemeChange: (() -> Void)?
     var onClose: (() -> Void)?
@@ -489,6 +491,22 @@ final class MainWindow: Win32Window {
                 return result
             }
             return nil
+        case WM_CONTEXTMENU:
+            guard HWND(bitPattern: Int(bitPattern: UInt(wParam))) == outline.hwnd else { return nil }
+            var point = POINT(x: Int32(Int16(truncatingIfNeeded: lParam)), y: Int32(Int16(truncatingIfNeeded: lParam >> 16)))
+            if lParam == -1 {
+                // From the keyboard: under the focused row.
+                var rect = RECT()
+                rect.left = LONG(LVIR_BOUNDS)
+                if let row = outline.focusedRow, withUnsafeMutablePointer(to: &rect, {
+                    SendMessageW(outline.hwnd, LV.getItemRect, WPARAM(row), LPARAM(Int(bitPattern: $0)))
+                }) != 0 {
+                    point = POINT(x: rect.left + 24, y: rect.bottom)
+                }
+                ClientToScreen(outline.hwnd, &point)
+            }
+            onOutlineContextMenu?(point)
+            return 0
         case WM_SETCURSOR:
             if HWND(bitPattern: Int(bitPattern: UInt(wParam))) == hwnd, showsWorkspace {
                 var point = POINT()

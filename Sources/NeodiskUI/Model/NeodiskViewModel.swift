@@ -714,7 +714,11 @@ final class NeodiskViewModel {
     /// Built-in locations (volumes and cloud) are already in the sidebar
     /// and never join the Folders section.
     func chooseFolderAndScan() {
-        guard let target = SystemIntegration.presentScanPanel() else { return }
+        Task { await addFolderFromPanel() }
+    }
+
+    private func addFolderFromPanel() async {
+        guard let target = await SystemIntegration.presentScanPanel() else { return }
         let isBuiltInLocation = builtInLocations.contains { $0.id == target.id }
         if !isBuiltInLocation, !sidebarFolders.contains(where: { $0.id == target.id }) {
             sidebarFolders.append(target)

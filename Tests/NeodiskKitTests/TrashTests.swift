@@ -111,21 +111,51 @@ import Testing
         #expect(policy.refusal(forPath: alias + "/holder/volume/file", identity: nil) == nil)
         // The link itself is an item of its own: it goes as the link, and holds nothing.
         #expect(policy.refusal(forPath: alias, identity: nil) == nil)
+
+        // A large selection, checked folder by folder, says exactly what one-by-one checks say.
+        let paths = [
+            alias + "/holder", alias + "/holder/volume", alias + "/holder/volume/file", alias, real.path + "/holder",
+            real.path + "/x.txt", "/Users/me/.Trash/old.zip", "/home/me/.local/share/Trash", "/", "/Users/me/a.bin",
+        ]
+        let nodes = paths.map { makeTestFileNode(id: $0, name: ($0 as NSString).lastPathComponent) }
+        #expect(policy.refusals(for: nodes, scanRootID: "/scan") == nodes.map { policy.refusal(for: $0, scanRootID: "/scan") })
     }
 
-    @Test func partsOfAnAppAreRefusedButTheAppIsNot() {
+    @Test func whatsInsideAPackageIsRefusedButThePackageIsNot() {
         let policy = TrashSafetyPolicy(protectedPaths: [])
         #expect(policy.refusal(forPath: "/Users/me/Apps/Tool.app", identity: nil) == nil)
+        #expect(policy.refusal(forPath: "/Users/me/Pictures/Old.photoslibrary", identity: nil) == nil)
         #expect(policy.refusal(forPath: "/Users/me/notes.app.txt", identity: nil) == nil)
         #expect(policy.refusal(forPath: "/Users/me/.app/cache", identity: nil) == nil)
         #if os(macOS)
-        #expect(policy.refusal(forPath: "/Users/me/Apps/Tool.app/Contents", identity: nil) == .insideAppBundle)
+        #expect(policy.refusal(forPath: "/Users/me/Apps/Tool.app/Contents", identity: nil) == .insidePackage)
         #expect(policy.refusal(
             forPath: "/Library/Audio/Plug-Ins/Synth.COMPONENT/Contents/Resources/x.bin", identity: nil
-        ) == .insideAppBundle)
+        ) == .insidePackage)
+        // Document packages, by the system's own verdict on the extension.
+        #expect(policy.refusal(forPath: "/Users/me/Pictures/Old.photoslibrary/originals", identity: nil) == .insidePackage)
+        #expect(policy.refusal(forPath: "/Users/me/Notes.rtfd/TXT.rtf", identity: nil) == .insidePackage)
         #else
         #expect(policy.refusal(forPath: "/home/me/site.app/node_modules", identity: nil) == nil)
         #endif
+    }
+
+    /// A folder the scan marked as a package (Finder's bundle bit) counts, whatever its name.
+    @Test func whatsInsideAScannedPackageIsRefused() {
+        func folder(_ path: String, package: Bool, _ children: [FileNodeRecord]) -> FileNodeRecord {
+            FileNodeRecord.directory(
+                id: path, url: URL(filePath: path, directoryHint: .isDirectory),
+                name: (path as NSString).lastPathComponent, children: children, lastModified: nil,
+                fileIdentity: nil, linkCount: 1, isPackage: package, isAccessible: true
+            )
+        }
+        let inner = makeTestFileNode(id: "/scan/Odd Bundle/data.bin", name: "data.bin")
+        let bundle = folder("/scan/Odd Bundle", package: true, [inner])
+        let root = folder("/scan", package: false, [bundle])
+        let store = FileTreeStore(root: root, childrenByID: [root.id: [bundle], bundle.id: [inner]])
+        let policy = TrashSafetyPolicy(protectedPaths: [])
+        #expect(policy.refusal(for: inner, scanRootID: root.id, in: store) == .insidePackage)
+        #expect(policy.refusal(for: bundle, scanRootID: root.id, in: store) == nil)
     }
 
     @Test func localizedUserFoldersComeFromUserDirs() {

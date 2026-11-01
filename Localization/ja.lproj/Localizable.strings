@@ -502,7 +502,13 @@
 "Reset Tabs" = "タブをリセット";
 "Percentage" = "割合";
 "More tabs" = "その他のタブ";
-"This is part of an app or plug-in, which needs it to work. Move the whole app or plug-in instead." = "これはアプリまたはプラグインの一部で、動作に必要です。代わりにアプリまたはプラグイン全体を移動してください。";
 "It's locked. Unlock it in Get Info to move it." = "ロックされています。「情報を見る」でロックを解除してから移動してください。";
 "Moved 1 item to the Trash." = "1 項目をゴミ箱に入れました。";
 "Moved %lld items to the Trash." = "%lld 項目をゴミ箱に入れました。";
+
+/* Cleanup: partly refused additions, packages */
+"Added 1 item." = "1 項目を追加しました。";
+"Added %lld items." = "%lld 項目を追加しました。";
+"1 item can't go to the Trash. %@" = "1 項目はゴミ箱に入れられません。%@";
+"%lld items can't go to the Trash. %@" = "%lld 項目はゴミ箱に入れられません。%@";
+"This is inside a package, which Finder shows as one file (an app, a plug-in, a library). Move the whole package instead." = "これはパッケージ（アプリ、プラグイン、ライブラリなど、Finder で 1 つのファイルとして表示される項目）の中にあります。代わりにパッケージ全体を移動してください。";

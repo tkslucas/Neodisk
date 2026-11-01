@@ -502,7 +502,13 @@
 "Reset Tabs" = "Reset Tabs";
 "Percentage" = "Percentage";
 "More tabs" = "More tabs";
-"This is part of an app or plug-in, which needs it to work. Move the whole app or plug-in instead." = "This is part of an app or plug-in, which needs it to work. Move the whole app or plug-in instead.";
 "It's locked. Unlock it in Get Info to move it." = "It's locked. Unlock it in Get Info to move it.";
 "Moved 1 item to the Trash." = "Moved 1 item to the Trash.";
 "Moved %lld items to the Trash." = "Moved %lld items to the Trash.";
+
+/* Cleanup: partly refused additions, packages */
+"Added 1 item." = "Added 1 item.";
+"Added %lld items." = "Added %lld items.";
+"1 item can't go to the Trash. %@" = "1 item can't go to the Trash. %@";
+"%lld items can't go to the Trash. %@" = "%lld items can't go to the Trash. %@";
+"This is inside a package, which Finder shows as one file (an app, a plug-in, a library). Move the whole package instead." = "This is inside a package, which Finder shows as one file (an app, a plug-in, a library). Move the whole package instead.";

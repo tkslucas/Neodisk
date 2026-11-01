@@ -774,6 +774,36 @@ package struct TreemapScene: Sendable {
     /// Any node's on-screen rect, re-running the layout along its path. A node not drawn on its own gets the
     /// nearest drawn rect, or nil when `exact`.
     package nonisolated func rect(forNodeID nodeID: String, in store: FileTreeStore, exact: Bool = false) -> CGRect? {
+        var levels: [String: LevelLayout] = [:]
+        return rect(forNodeID: nodeID, in: store, exact: exact, levels: &levels)
+    }
+
+    /// Several nodes' rects at once: each folder on their paths is laid out once, so a thousand selected
+    /// siblings cost one layout instead of a thousand. Nodes without a rect are left out.
+    package nonisolated func rects<S: Sequence>(
+        forNodeIDs nodeIDs: S, in store: FileTreeStore, exact: Bool = false
+    ) -> [String: CGRect] where S.Element == String {
+        var levels: [String: LevelLayout] = [:]
+        var result: [String: CGRect] = [:]
+        for nodeID in nodeIDs where result[nodeID] == nil {
+            if let rect = rect(forNodeID: nodeID, in: store, exact: exact, levels: &levels) {
+                result[nodeID] = rect
+            }
+        }
+        return result
+    }
+
+    /// One folder's children as `build` laid them out, or why they weren't.
+    private struct LevelLayout {
+        let indexByID: [String: Int]
+        let layout: ChildLayout?
+        /// Flat only: the container was too small to nest, or past the depth cap.
+        let stopsAt: CGRect?
+    }
+
+    private nonisolated func rect(
+        forNodeID nodeID: String, in store: FileTreeStore, exact: Bool, levels: inout [String: LevelLayout]
+    ) -> CGRect? {
         guard size.width >= 1, size.height >= 1 else { return nil }
         let fullChain = store.path(to: nodeID)
         guard let startIndex = fullChain.firstIndex(where: { $0.id == rootID }) else { return nil }
@@ -788,33 +818,17 @@ package struct TreemapScene: Sendable {
         // `depth` counts levels below the scene root, exactly as `build`'s
         // traversal does for the parent being subdivided.
         for (depth, (parent, child)) in zip(chain, chain.dropFirst()).enumerated() {
-            let filtered = store.children(of: parent.id)
-                .filter { $0.displayWeight(includingCloudOnly: includingCloudOnly) > 0 }
-            // Mirror the render path: synthetic nodes and cloud-only ordering both shift sibling rects.
-            let syntheticNodes = parent.id == rootID
-                ? [freeSpaceNode, hiddenSpaceNode].compactMap { $0 } : []
-            let children = Self.layoutSiblings(
-                filtered, synthetic: syntheticNodes, includingCloudOnly: includingCloudOnly
-            )
-            guard let childIndex = children.firstIndex(where: { $0.id == child.id }) else {
-                return nil
+            let level: LevelLayout
+            if let known = levels[parent.id] {
+                level = known
+            } else {
+                level = layOut(parent, in: rect, depth: depth, store: store)
+                levels[parent.id] = level
             }
-            var layoutRect = rect
-            if style == .flat, parent.id != rootID {
-                // Mirror the flat build: a container too small to nest, or past the depth cap, is the best rect on offer.
-                guard depth < Self.flatMaxContainerDepth,
-                      let content = Self.flatContentBounds(of: rect, scale: labelScale) else {
-                    return exact ? nil : rect
-                }
-                layoutRect = content
+            guard let childIndex = level.indexByID[child.id] else { return nil }
+            guard let layout = level.layout else {
+                return exact ? nil : level.stopsAt
             }
-            let layout = Self.layoutChildren(
-                children,
-                in: layoutRect,
-                includingCloudOnly: includingCloudOnly,
-                disableAggregation: expandedAggregateIDs.contains(parent.id),
-                minChildArea: Self.minChildArea(for: style)
-            )
             if childIndex < layout.keptCount {
                 rect = layout.rects[childIndex]
             } else if let aggregateRect = layout.aggregateRect {
@@ -826,6 +840,39 @@ package struct TreemapScene: Sendable {
             }
         }
         return rect
+    }
+
+    private nonisolated func layOut(
+        _ parent: FileNodeRecord, in rect: CGRect, depth: Int, store: FileTreeStore
+    ) -> LevelLayout {
+        let filtered = store.children(of: parent.id)
+            .filter { $0.displayWeight(includingCloudOnly: includingCloudOnly) > 0 }
+        // Mirror the render path: synthetic nodes and cloud-only ordering both shift sibling rects.
+        let syntheticNodes = parent.id == rootID
+            ? [freeSpaceNode, hiddenSpaceNode].compactMap { $0 } : []
+        let children = Self.layoutSiblings(
+            filtered, synthetic: syntheticNodes, includingCloudOnly: includingCloudOnly
+        )
+        let indexByID = Dictionary(
+            children.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first }
+        )
+        var layoutRect = rect
+        if style == .flat, parent.id != rootID {
+            // Mirror the flat build: a container too small to nest, or past the depth cap, is the best rect on offer.
+            guard depth < Self.flatMaxContainerDepth,
+                  let content = Self.flatContentBounds(of: rect, scale: labelScale) else {
+                return LevelLayout(indexByID: indexByID, layout: nil, stopsAt: rect)
+            }
+            layoutRect = content
+        }
+        let layout = Self.layoutChildren(
+            children,
+            in: layoutRect,
+            includingCloudOnly: includingCloudOnly,
+            disableAggregation: expandedAggregateIDs.contains(parent.id),
+            minChildArea: Self.minChildArea(for: style)
+        )
+        return LevelLayout(indexByID: indexByID, layout: layout, stopsAt: nil)
     }
 }
 

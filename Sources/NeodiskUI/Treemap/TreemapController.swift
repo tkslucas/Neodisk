@@ -341,6 +341,8 @@ final class TreemapController {
         )
         marks.canvas = canvas
         let movingFirst = cleanupMovingIDs.sorted()
+        // One layout per folder on the items' paths, however many items share it.
+        let rects = scene.rects(forNodeIDs: movingFirst + cleanupCollectedIDs, in: store, exact: true)
         for (ids, isMoving) in [(movingFirst, true), (cleanupCollectedIDs, false)] {
             // A moving item is also still in the pile until its move lands; it draws once, as moving.
             for id in ids where isMoving || !cleanupMovingIDs.contains(id) {
@@ -351,7 +353,7 @@ final class TreemapController {
                     }
                     continue
                 }
-                guard let rect = scene.rect(forNodeID: id, in: store, exact: true),
+                guard let rect = rects[id],
                       rect.width >= 2, rect.height >= 2,
                       rect.intersects(scene.renderBounds) else { continue }
                 if isMoving { marks.moving.append(rect) } else { marks.collected.append(rect) }

@@ -428,7 +428,9 @@
 "Locations" = "Orte";
 "Main Menu" = "Hauptmenü";
 "Merging changes…" = "Änderungen werden übernommen …";
-"Move Selection" = "Auswahl bewegen";
+"Select Largest Item Inside" = "Größtes Objekt darin auswählen";
+"Select Enclosing Folder" = "Übergeordneten Ordner auswählen";
+"Select Previous or Next Item" = "Vorheriges oder nächstes Objekt auswählen";
 "Opening…" = "Wird geöffnet …";
 "Preferences" = "Einstellungen";
 "Quit" = "Beenden";

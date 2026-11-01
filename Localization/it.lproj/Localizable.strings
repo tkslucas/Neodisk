@@ -428,7 +428,9 @@
 "Locations" = "Posizioni";
 "Main Menu" = "Menu principale";
 "Merging changes…" = "Unione delle modifiche…";
-"Move Selection" = "Sposta selezione";
+"Select Largest Item Inside" = "Seleziona l’elemento più grande all’interno";
+"Select Enclosing Folder" = "Seleziona la cartella superiore";
+"Select Previous or Next Item" = "Seleziona l’elemento precedente o successivo";
 "Opening…" = "Apertura…";
 "Preferences" = "Preferenze";
 "Quit" = "Esci";

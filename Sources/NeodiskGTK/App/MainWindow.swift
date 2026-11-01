@@ -202,6 +202,18 @@ final class MainWindow {
         installActions()
         bindModel()
 
+        // Escape deselects wherever the focus is, once the focused widget (search, a zoomed map) passes on it.
+        let keys = raw(gtk_event_controller_key_new())!
+        connectKey(keys) { [unowned self] keyval, state in
+            let modifiers = GDK_SHIFT_MASK.rawValue | GDK_CONTROL_MASK.rawValue | GDK_ALT_MASK.rawValue
+            guard Int32(keyval) == GDK_KEY_Escape, state & modifiers == 0, !self.model.selection.isEmpty else {
+                return false
+            }
+            self.model.select(nil)
+            return true
+        }
+        gtk_widget_add_controller(ptr(window), ptr(keys))
+
         connect(cushionToggle, "toggled") { [unowned self] in
             if gtk_toggle_button_get_active(ptr(self.cushionToggle)) != 0 { self.showView(.cushion) }
         }

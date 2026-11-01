@@ -516,6 +516,24 @@ final class AppModel {
         widenFocus(toShow: nodeID)
     }
 
+    /// An arrow key in a map, from the primary item: only the target stays selected, or Shift adds it. False
+    /// (caller beeps) when there is nowhere to go.
+    func moveSelectionInMap(_ move: TreeKeyboardNav.Move, extending: Bool, isRendered: (String) -> Bool) -> Bool {
+        guard let store, let rootID = focusedRootID else { return false }
+        switch TreeKeyboardNav.target(
+            from: selectedNodeID, move: move, rootID: rootID, store: store, isRendered: isRendered
+        ) {
+        case .select(let id)?:
+            if extending { extendSelection(to: id) } else { select(id) }
+        case .drillOut(let folderID)? where !extending:
+            focusOut()
+            select(folderID)
+        default:
+            return false
+        }
+        return true
+    }
+
     /// Ctrl+A in a map: everything the map is rooted at, one level down.
     @discardableResult
     func selectAllInMap() -> Bool {
@@ -551,8 +569,7 @@ final class AppModel {
         guard !children.isEmpty else { return false }
         focusID = folder.id == store.rootID ? nil : folder.id
         // Lands on the largest child so the keyboard keeps working inside; a multi-selection stays as it is.
-        if node.isDirectory, !selection.isMultiple,
-           let largest = children.max(by: { $0.allocatedSize < $1.allocatedSize }) {
+        if node.isDirectory, !selection.isMultiple, let largest = children.first {
             selection.replace(with: largest.id)
         }
         return true

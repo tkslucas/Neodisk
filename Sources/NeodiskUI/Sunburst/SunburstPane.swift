@@ -423,17 +423,17 @@ struct SunburstPane: View {
         let extending = event.modifierFlags.contains(.shift)
         switch key {
         case .upArrow:
-            if command { beepUnless(model.drillOut()) } else { moveSelection(.parent, extending: extending) }
+            if command { beepUnless(model.drillOut()) } else { moveSelection(.previous, extending: extending) }
         case .downArrow:
             if command {
                 beepUnless(model.drillIntoSelection())
             } else {
-                moveSelection(.largestChild, extending: extending)
+                moveSelection(.next, extending: extending)
             }
         case .leftArrow:
-            moveSelection(.previousSibling, extending: extending)
+            moveSelection(.parent, extending: extending)
         case .rightArrow:
-            moveSelection(.nextSibling, extending: extending)
+            moveSelection(.child, extending: extending)
         case .carriageReturn, .enter, .newline:
             model.revealSelection()
         default:
@@ -442,20 +442,8 @@ struct SunburstPane: View {
         return true
     }
 
-    /// Moves from the primary item and leaves only the target selected; ⇧ adds the target instead.
-    private func moveSelection(_ direction: SunburstKeyboardNav.Direction, extending: Bool = false) {
-        guard let store = model.store, let rootID = model.effectiveRootID,
-              let target = SunburstKeyboardNav.target(
-                  from: model.selectedNodeID,
-                  direction: direction,
-                  rootID: rootID,
-                  store: store,
-                  isRendered: { chartModel.segment(forNodeID: $0) != nil }
-              ) else {
-            NSSound.beep()
-            return
-        }
-        if extending { model.extendSelection(to: target) } else { model.select(target) }
+    private func moveSelection(_ move: TreeKeyboardNav.Move, extending: Bool) {
+        model.moveSelectionInMap(move, extending: extending) { chartModel.segment(forNodeID: $0) != nil }
     }
 
     // MARK: - Legend list interaction

@@ -3,9 +3,9 @@ import Testing
 import NeodiskKit
 @testable import NeodiskUI
 
-/// Spatial arrow movement needs a rendered scene and lives in the controller; drill logic is checked here.
+/// Drilling in and out from the keyboard; arrow moves are TreeKeyboardNavTests.
 @MainActor
-@Suite(.serialized) struct TreemapKeyboardNavTests {
+@Suite(.serialized) struct TreemapDrillTests {
     private struct Fixture {
         let model: NeodiskViewModel
         let root: FileNodeRecord
@@ -367,6 +367,31 @@ import NeodiskKit
         #expect(model.drillHistory.canGoBack)
         model.resetPerScanState()
         #expect(!model.drillHistory.canGoBack && !model.drillHistory.canGoForward)
+    }
+
+    @Test func testLeftOnTopLevelItemDrillsOutAndSelectsTheFolder() throws {
+        let fixture = try makeFixture()
+        defer { fixture.tearDown() }
+        let model = fixture.model
+
+        model.zoomRootID = fixture.sub.id
+        model.select(fixture.big.id)
+        model.moveSelectionInMap(.parent, extending: false) { _ in true }
+        #expect(model.zoomRootID == nil)
+        #expect(model.selection.ids == [fixture.sub.id])
+    }
+
+    @Test func testArrowCollapsesMultiSelectionToTheTarget() throws {
+        let fixture = try makeFixture()
+        defer { fixture.tearDown() }
+        let model = fixture.model
+
+        model.selection.replace(with: [fixture.loose.id, fixture.sub.id], primary: fixture.sub.id)
+        model.moveSelectionInMap(.child, extending: false) { _ in true }
+        #expect(model.selection.ids == [fixture.big.id])
+        // Shift adds instead.
+        model.moveSelectionInMap(.next, extending: true) { _ in true }
+        #expect(Set(model.selection.ids) == [fixture.big.id, fixture.small.id])
     }
 }
 

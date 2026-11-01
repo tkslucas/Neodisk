@@ -245,9 +245,15 @@ final class ScanSessionModel {
         return options
     }
 
-    func startScan(_ target: ScanTarget, forcesRescan: Bool = false) {
+    /// `previewOnly` (a selection moved by keyboard) shows what's already there, a running or saved scan, and never
+    /// starts one: passing a location must not scan it.
+    func startScan(_ target: ScanTarget, forcesRescan: Bool = false, previewOnly: Bool = false) {
         // A background scan of this target IS what to show: promote it rather than start a second one.
         let attachable = forcesRescan ? nil : activeSessions[target.id]
+        if previewOnly, attachable == nil, cachedScanInfo[target.id] == nil,
+           coordinator.recentSnapshot(forTargetID: target.id) == nil {
+            return
+        }
 
         // Leaving a running scan for another target: the concurrent-scan ruling decides whether it keeps
         // running, is stopped, or this target defers to it and shows its cache.
@@ -263,6 +269,8 @@ final class ScanSessionModel {
 
         if let attachable {
             attachBackgroundSession(attachable, to: target)
+        } else if previewOnly {
+            _ = displayTargetFromCacheDeferringRefresh(target)
         } else {
             // A forced rescan cancels this target's background scan first (one running session per target).
             supersedeBackgroundSession(forTargetID: target.id)

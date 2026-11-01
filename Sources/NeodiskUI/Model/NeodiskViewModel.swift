@@ -336,8 +336,8 @@ final class NeodiskViewModel {
 
     /// Selecting a location: the scan session picks the restore / refresh /
     /// live-scan branch; see ScanSessionModel.startScan.
-    func startScan(_ target: ScanTarget, forcesRescan: Bool = false) {
-        session.startScan(target, forcesRescan: forcesRescan)
+    func startScan(_ target: ScanTarget, forcesRescan: Bool = false, previewOnly: Bool = false) {
+        session.startScan(target, forcesRescan: forcesRescan, previewOnly: previewOnly)
     }
 
     var store: FileTreeStore? {

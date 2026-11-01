@@ -294,7 +294,8 @@ import Testing
         #expect(previous.treeStore.node(id: target.id + "/a.bin")?.allocatedSize == 100)
     }
 
-    @Test func testUnchangedFirstRescanCreatesNoPreviousSnapshot() async throws {
+    /// With no baseline yet, an unchanged rescan becomes one: Changes reads "no changes", not "no previous scan".
+    @Test func testUnchangedFirstRescanBecomesTheBaseline() async throws {
         let cacheDirectory = makeTemporaryCacheDirectory()
         defer { try? FileManager.default.removeItem(at: cacheDirectory) }
         let cache = ScanSnapshotCache(directoryURL: cacheDirectory, isLoggingEnabled: false)
@@ -305,9 +306,10 @@ import Testing
         #expect(!first.hasPreviousSnapshot)
 
         let rescan = try await cache.save(makeFileSnapshot(target: target, files: [("a.bin", 100)]))
-        #expect(!rescan.rotatedPrevious)
-        #expect(!rescan.hasPreviousSnapshot)
-        #expect(await cache.loadPreviousSnapshot(for: target) == nil)
+        #expect(rescan.rotatedPrevious)
+        #expect(rescan.hasPreviousSnapshot)
+        let previous = try #require(await cache.loadPreviousSnapshot(for: target))
+        #expect(previous.treeStore.node(id: target.id + "/a.bin")?.allocatedSize == 100)
     }
 
     @Test func testTimestampOnlyChangesDoNotRotate() async throws {
@@ -326,12 +328,14 @@ import Testing
             let store = FileTreeStore(root: root, childrenByID: [root.id: [file]])
             return makeTestSnapshot(target: target, root: root, store: store)
         }
+        try await cache.save(makeFileSnapshot(target: target, files: [("a.bin", 50)]))
         try await cache.save(snapshot(modified: Date(timeIntervalSinceReferenceDate: 1_000)))
         let outcome = try await cache.save(
             snapshot(modified: Date(timeIntervalSinceReferenceDate: 2_000))
         )
         #expect(!outcome.rotatedPrevious)
-        #expect(await cache.loadPreviousSnapshot(for: target) == nil)
+        let previous = try #require(await cache.loadPreviousSnapshot(for: target))
+        #expect(previous.treeStore.node(id: target.id + "/a.bin")?.allocatedSize == 50)
     }
 
     @Test func testDigestlessLatestFileStillRotates() async throws {

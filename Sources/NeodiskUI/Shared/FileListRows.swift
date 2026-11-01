@@ -62,8 +62,11 @@ struct FileResultRow: View {
                     .lineLimit(1)
                     .truncationMode(.head)
             }
+            // Ahead of the spacer, or the HStack splits the leftover width between them and names truncate early;
+            // the stack's spacing on both sides of it is gap enough.
+            .layoutPriority(1)
 
-            Spacer(minLength: 8)
+            Spacer(minLength: 0)
 
             FileSizeLabel(node: node, includeCloudOnly: includeCloudOnly)
                 .foregroundStyle(.secondary)

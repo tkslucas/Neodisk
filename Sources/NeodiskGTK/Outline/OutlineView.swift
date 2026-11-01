@@ -160,17 +160,11 @@ final class OutlineView {
         let group = raw(g_simple_action_group_new())!
         let menu = raw(g_menu_new())!
         for id in OutlineColumn.allCases where id != .name {
-            guard let action = raw(g_simple_action_new_stateful("show-\(id.rawValue)", nil, g_variant_new_boolean(gbool(true)))) else {
-                continue
-            }
-            connectPointer(action, "change-state") { [unowned self] variant in
-                guard let variant else { return }
+            guard let action = addToggleAction(to: group, "show-\(id.rawValue)", { [unowned self] shown in
                 var updated = self.layout
-                updated.setHidden(id, g_variant_get_boolean(ptr(variant)) == 0)
+                updated.setHidden(id, !shown)
                 self.commitLayout(updated)
-            }
-            g_action_map_add_action(ptr(group), ptr(action))
-            g_object_unref(action)
+            }) else { continue }
             columnActions[id] = action
             g_menu_append(ptr(menu), id.title, "outline.show-\(id.rawValue)")
         }
@@ -208,7 +202,7 @@ final class OutlineView {
             gtk_column_view_column_set_visible(ptr(column), gbool(shown))
         }
         for (id, action) in columnActions {
-            g_simple_action_set_state(ptr(action), g_variant_new_boolean(gbool(!updated.isHidden(id))))
+            setActionState(action, !updated.isHidden(id))
             // The last shown column can't hide.
             setActionEnabled(action, updated.isHidden(id) || updated.canHide(id))
         }

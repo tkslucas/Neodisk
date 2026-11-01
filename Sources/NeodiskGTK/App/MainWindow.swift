@@ -22,9 +22,13 @@ final class MainWindow {
     private let vizPaned: GPtr
     private let scanButton: GPtr
     private let stopButton: GPtr
-    private let cushionToggle: GPtr
-    private let flatToggle: GPtr
-    private let sunburstToggle: GPtr
+    private let viewToggles: [VizView: GPtr]
+    private let vizSwitcher: GPtr
+    /// "views.<view>" checkboxes: which toggles the header shows.
+    private let viewActions = GObjectRef(adopting: raw(g_simple_action_group_new())!)
+    private let viewsMenu: GObjectRef
+    private var viewsPopover: GPtr?
+    private let menuButton: GPtr
 
     private let sidebar: SidebarView
     private let treemap: TreemapView
@@ -69,13 +73,19 @@ final class MainWindow {
         let sidebarHeader = raw(adw_header_bar_new())!
         let sidebarTitle = raw(adw_window_title_new(AppChannel.current.appName, nil))!
         adw_header_bar_set_title_widget(ptr(sidebarHeader), ptr(sidebarTitle))
-        let menuButton = raw(gtk_menu_button_new())!
+        menuButton = raw(gtk_menu_button_new())!
         gtk_menu_button_set_icon_name(ptr(menuButton), "open-menu-symbolic")
         gtk_widget_set_tooltip_text(ptr(menuButton), L("Main Menu"))
-        let primaryMenu = Widgets.menu([
-            [(L("Choose Folder…"), "win.open-folder")],
-            [(L("Preferences"), "app.preferences"), (L("Keyboard Shortcuts"), "win.show-help-overlay"), (L("About %@", AppChannel.current.appName), "app.about")],
-            [(L("Quit"), "app.quit")],
+        // The views stay here as the way back: picking a hidden one shows its toggle again.
+        let layoutSection = Widgets.section([])
+        g_menu_append_submenu(ptr(layoutSection.pointer), L("Sidebar Sections"), ptr(sidebar.sectionsMenu.pointer))
+        g_menu_append(ptr(layoutSection.pointer), L("Show Status Bar"), "win.show-status-bar")
+        let primaryMenu = Widgets.menu(sections: [
+            Widgets.section([(L("Choose Folder…"), "win.open-folder")]),
+            Widgets.section(VizView.allCases.map { ($0.menuTitle, "win.view::\($0.rawValue)") }),
+            layoutSection,
+            Widgets.section([(L("Preferences"), "app.preferences"), (L("Keyboard Shortcuts"), "win.show-help-overlay"), (L("About %@", AppChannel.current.appName), "app.about")]),
+            Widgets.section([(L("Quit"), "app.quit")]),
         ])
         gtk_menu_button_set_menu_model(ptr(menuButton), ptr(primaryMenu.pointer))
         gtk_menu_button_set_primary(ptr(menuButton), gbool(true))
@@ -100,12 +110,17 @@ final class MainWindow {
         Widgets.setMargins(titleBox, start: 6)
         adw_header_bar_pack_start(ptr(header), ptr(titleBox))
 
-        cushionToggle = Self.viewToggle("neodisk-treemap-symbolic", tooltip: L("Cushion Treemap"))
-        flatToggle = Self.viewToggle("neodisk-treemap-flat-symbolic", tooltip: L("Flat Treemap"))
-        sunburstToggle = Self.viewToggle("neodisk-sunburst-symbolic", tooltip: L("Sunburst"))
-        gtk_toggle_button_set_group(ptr(flatToggle), ptr(cushionToggle))
-        gtk_toggle_button_set_group(ptr(sunburstToggle), ptr(cushionToggle))
-        let vizSwitcher = Widgets.box(GTK_ORIENTATION_HORIZONTAL, classes: ["linked"], [cushionToggle, flatToggle, sunburstToggle])
+        var viewToggles: [VizView: GPtr] = [:]
+        for view in VizView.allCases {
+            let toggle = raw(gtk_toggle_button_new())!
+            gtk_button_set_icon_name(ptr(toggle), view.iconName)
+            gtk_widget_set_tooltip_text(ptr(toggle), view.menuTitle)
+            gtk_toggle_button_set_group(ptr(toggle), ptr(viewToggles.values.first))
+            viewToggles[view] = toggle
+        }
+        self.viewToggles = viewToggles
+        viewsMenu = Widgets.menu([VizView.allCases.map { ($0.menuTitle, "views.\($0.rawValue)") }])
+        vizSwitcher = Widgets.box(GTK_ORIENTATION_HORIZONTAL, classes: ["linked"], VizView.allCases.compactMap { viewToggles[$0] })
         adw_header_bar_set_title_widget(ptr(header), ptr(vizSwitcher))
 
         scanButton = Widgets.iconButton("view-refresh-symbolic", tooltip: L("Rescan"), action: "win.rescan")
@@ -192,13 +207,14 @@ final class MainWindow {
         adw_toast_overlay_set_child(ptr(toastOverlay), ptr(splitView))
         adw_application_window_set_content(ptr(window), ptr(toastOverlay))
 
-        // Narrow windows: statistics float over the map and secondary outline columns give way to names; narrower
-        // still, the sidebar becomes an overlay too. Only the last matching breakpoint applies, so the narrower one
-        // comes last and repeats the wider one's changes.
+        // Narrow: statistics float and secondary columns give way; narrower, the sidebar floats too. Only the last
+        // matching breakpoint applies, so the narrower one repeats the wider one's changes.
         addBreakpoint("max-width: 900sp", collapsing: [statisticsSplit])
         addBreakpoint("max-width: 760sp", collapsing: [statisticsSplit, splitView])
 
         attach(self, to: window, key: Self.attachmentKey)
+        gtk_widget_insert_action_group(ptr(window), "sidebar", ptr(sidebar.actions.pointer))
+        gtk_widget_insert_action_group(ptr(window), "views", ptr(viewActions.pointer))
         installActions()
         bindModel()
 
@@ -214,15 +230,20 @@ final class MainWindow {
         }
         gtk_widget_add_controller(ptr(window), ptr(keys))
 
-        connect(cushionToggle, "toggled") { [unowned self] in
-            if gtk_toggle_button_get_active(ptr(self.cushionToggle)) != 0 { self.showView(.cushion) }
+        for (view, toggle) in viewToggles {
+            connect(toggle, "toggled") { [unowned self] in
+                if gtk_toggle_button_get_active(ptr(toggle)) != 0 { self.model.preferences.workspaceLayout.pick(view) }
+            }
         }
-        connect(flatToggle, "toggled") { [unowned self] in
-            if gtk_toggle_button_get_active(ptr(self.flatToggle)) != 0 { self.showView(.flat) }
+        // Right-click: the checklist of views shown; the last one shown stays.
+        let click = raw(gtk_gesture_click_new())!
+        gtk_gesture_single_set_button(ptr(click), 3)
+        connectPress(click, "pressed") { [unowned self] _, x, y in
+            // Claimed, or the header's window handle opens the window manager's menu too.
+            gtk_gesture_set_state(ptr(click), GTK_EVENT_SEQUENCE_CLAIMED)
+            self.showViewMenu(at: CGPoint(x: x, y: y))
         }
-        connect(sunburstToggle, "toggled") { [unowned self] in
-            if gtk_toggle_button_get_active(ptr(self.sunburstToggle)) != 0 { self.showView(.sunburst) }
-        }
+        gtk_widget_add_controller(ptr(vizSwitcher), ptr(click))
         g_object_bind_property(
             statisticsSplit, "show-sidebar", statisticsToggle, "active",
             GBindingFlags(rawValue: 1 | 2)  // G_BINDING_BIDIRECTIONAL | G_BINDING_SYNC_CREATE
@@ -252,29 +273,19 @@ final class MainWindow {
         adw_application_window_add_breakpoint(ptr(window), breakpoint)
     }
 
-    private static func viewToggle(_ iconName: String, tooltip: String) -> GPtr {
-        let toggle = raw(gtk_toggle_button_new())!
-        gtk_button_set_icon_name(ptr(toggle), iconName)
-        gtk_widget_set_tooltip_text(ptr(toggle), tooltip)
-        return toggle
+    private func showViewMenu(at point: CGPoint) {
+        Widgets.popupMenu(&viewsPopover, model: viewsMenu, on: vizSwitcher, at: point)
     }
 
-    /// Sunburst leaves the treemap style alone, so switching back restores it.
-    private enum ViewChoice {
-        case cushion, flat, sunburst
-    }
-
-    private func showView(_ choice: ViewChoice) {
-        let preferences = model.preferences
-        switch choice {
-        case .cushion:
-            preferences.vizMode = .treemap
-            preferences.treemapStyle = .cushion
-        case .flat:
-            preferences.vizMode = .treemap
-            preferences.treemapStyle = .flat
-        case .sunburst:
-            preferences.vizMode = .sunburst
+    /// NEODISK_POPUP: opens a menu for a screen grab (popovers aren't in the window's capture).
+    func popUpForCapture(_ menu: String) {
+        switch menu {
+        case "primary": gtk_menu_button_popup(ptr(menuButton))
+        case "sections": sidebar.showSectionsMenu(from: .volumes, at: CGPoint(x: 40, y: 8))
+        case "status": statusBar.showMenu(at: CGPoint(x: 40, y: 8))
+        case "views": showViewMenu(at: CGPoint(x: 20, y: 20))
+        case "preferences": PreferencesDialog.present(model: model, from: window, onScanPage: true)
+        default: break
         }
     }
 
@@ -337,11 +348,18 @@ final class MainWindow {
             self.setTrashActionInstalled(self.model.preferences.allowsMovingToTrash)
         })
         tokens.append(track { [unowned self] in
-            let mode = self.model.preferences.vizMode
-            let style = self.model.preferences.treemapStyle
-            gtk_stack_set_visible_child_name(ptr(self.vizStack), mode == .sunburst ? "sunburst" : "treemap")
-            let toggle = mode == .sunburst ? self.sunburstToggle : style == .flat ? self.flatToggle : self.cushionToggle
-            gtk_toggle_button_set_active(ptr(toggle), gbool(true))
+            let layout = self.model.preferences.workspaceLayout
+            gtk_stack_set_visible_child_name(ptr(self.vizStack), layout.mode == .sunburst ? "sunburst" : "treemap")
+            for (view, toggle) in self.viewToggles {
+                Widgets.setVisible(toggle, !layout.views.isHidden(view))
+                setActionState(self.actions["views.\(view.rawValue)"], !layout.views.isHidden(view))
+                setActionEnabled(self.actions["views.\(view.rawValue)"], layout.views.isHidden(view) || layout.views.canHide(view))
+            }
+            gtk_toggle_button_set_active(ptr(self.viewToggles[layout.view]), gbool(true))
+            setActionState(self.actions["view"], layout.view.rawValue)
+        })
+        tokens.append(track { [unowned self] in
+            setActionState(self.actions["show-status-bar"], self.model.preferences.showsStatusBar)
         })
         tokens.append(track { [unowned self] in
             let shows = gbool(self.model.preferences.showsStatistics)
@@ -420,14 +438,21 @@ final class MainWindow {
             let shown = adw_overlay_split_view_get_show_sidebar(ptr(self.splitView)) != 0
             adw_overlay_split_view_set_show_sidebar(ptr(self.splitView), gbool(!shown))
         }
-        actions["show-cushion"] = addAction(to: window, "show-cushion") { [unowned self] _ in
-            self.showView(.cushion)
+        actions["show-status-bar"] = addToggleAction(to: window, "show-status-bar") { [unowned self] shown in
+            self.model.preferences.showsStatusBar = shown
         }
-        actions["show-flat"] = addAction(to: window, "show-flat") { [unowned self] _ in
-            self.showView(.flat)
+        addAction(to: window, "hide-status-bar") { [unowned self] _ in
+            self.model.preferences.showsStatusBar = false
         }
-        actions["show-sunburst"] = addAction(to: window, "show-sunburst") { [unowned self] _ in
-            self.showView(.sunburst)
+        let current = model.preferences.workspaceLayout.view.rawValue
+        actions["view"] = addAction(to: window, "view", stringParameter: true, state: current) { [unowned self] value in
+            guard let view = value.flatMap(VizView.init(rawValue:)) else { return }
+            self.model.preferences.workspaceLayout.pick(view)
+        }
+        for view in VizView.allCases {
+            actions["views.\(view.rawValue)"] = addToggleAction(to: viewActions.pointer, view.rawValue) { [unowned self] shown in
+                self.model.preferences.workspaceLayout.setHidden(view, !shown)
+            }
         }
         actions["open-item"] = addAction(to: window, "open-item") { [unowned self] _ in
             for node in self.model.selectedNodes { FileActions.open(node.path, from: self.window) }
@@ -506,9 +531,7 @@ final class MainWindow {
         let confirmation = TrashConfirmation(nodes: allowed, scannedAt: model.snapshot?.finishedAt)
         var message = confirmation.message
         if let firstRefusal = refusals.first {
-            message += "\n\n" + (refusals.count == 1
-                ? L("1 item can't go to the Trash. %@", firstRefusal)
-                : L("%lld items can't go to the Trash. %@", Int64(refusals.count), firstRefusal))
+            message += "\n\n" + TrashReport.refused(refusals.count, firstReason: firstRefusal)
         }
         confirm(title: confirmation.title, message: message) { [unowned self] in
             Task { await self.move(allowed) }
@@ -552,7 +575,7 @@ final class MainWindow {
         case .moved(let bytes):
             reportMoved(count: 1, bytes: bytes)
         case .alreadyGone:
-            showToast(L("1 item was already gone."))
+            showToast(TrashReport.alreadyGone(1))
         case .failed(let reason):
             showAlert(heading: L("Couldn't Move “%@” to the Trash", node.name), body: reason)
         }
@@ -568,10 +591,7 @@ final class MainWindow {
         }
         let summary = TrashBatchSummary(outcomes)
         if summary.moved > 0 { reportMoved(count: summary.moved, bytes: summary.bytes) }
-        if summary.gone > 0 {
-            showToast(summary.gone == 1
-                ? L("1 item was already gone.") : L("%lld items were already gone.", Int64(summary.gone)))
-        }
+        if summary.gone > 0 { showToast(TrashReport.alreadyGone(summary.gone)) }
         if let reason = summary.firstFailure {
             showAlert(heading: summary.failed == 1
                 ? L("Couldn't Move 1 Item to the Trash")
@@ -587,13 +607,7 @@ final class MainWindow {
         if let previous = movedToast?.toast.pointer {
             adw_toast_dismiss(ptr(previous))
         }
-        let text = switch (count, total) {
-        case (1, 0): L("Moved 1 item to the Trash.")
-        case (1, _): L("Moved 1 item (%@) to the Trash.", NeodiskFormatters.size(total))
-        case (_, 0): L("Moved %lld items to the Trash.", Int64(count))
-        default: L("Moved %lld items (%@) to the Trash.", Int64(count), NeodiskFormatters.size(total))
-        }
-        guard let toast = showToast(text, button: (L("Open Trash"), "win.open-trash")) else { return }
+        guard let toast = showToast(TrashReport.moved(count, bytes: total), button: (L("Open Trash"), "win.open-trash")) else { return }
         movedToast = (toast, count, total)
         connect(toast.pointer, "dismissed") { [weak self, unowned toast] in
             if self?.movedToast?.toast === toast { self?.movedToast = nil }
@@ -622,9 +636,8 @@ final class MainWindow {
         adw_alert_dialog_set_default_response(ptr(dialog), "close")
         adw_alert_dialog_set_close_response(ptr(dialog), "close")
         adw_dialog_present(ptr(dialog), ptr(window))
-        // libadwaita 1.5 focuses the default response only when another response would take focus first, so a
-        // lone OK starts on the scrollable message instead and Return does nothing. The buttons exist once the
-        // dialog is presented, and it focuses this one as it opens.
+        // libadwaita 1.5 starts a lone OK's dialog on the message, where Return does nothing; once presented,
+        // the button exists and takes the focus as the dialog opens.
         if let button = Widgets.firstDescendant(of: dialog, ofType: gtk_button_get_type()) {
             adw_dialog_set_focus(ptr(dialog), ptr(button))
         }
@@ -645,5 +658,15 @@ final class MainWindow {
             }
         }, context)
         g_object_unref(raw(dialog))
+    }
+}
+
+private extension VizView {
+    var iconName: String {
+        switch self {
+        case .cushion: "neodisk-treemap-symbolic"
+        case .flat: "neodisk-treemap-flat-symbolic"
+        case .sunburst: "neodisk-sunburst-symbolic"
+        }
     }
 }

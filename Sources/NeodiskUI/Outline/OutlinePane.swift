@@ -96,8 +96,12 @@ extension NSMenu {
             item.isEnabled = model.layout.canPlaceList(position)
             addItem(item)
         }
-        addItem(ClosureMenuItem(title: NSLocalizedString("Hide File List", comment: "File list menu")) {
-            model.updateLayout { $0.setListShown(false) }
+        let showsList = model.layout.showsList
+        addItem(ClosureMenuItem(title: showsList
+            ? NSLocalizedString("Hide File List", comment: "File list menu")
+            : NSLocalizedString("Show File List", comment: "File list menu")
+        ) {
+            model.updateLayout { $0.setListShown(!showsList) }
         })
     }
 }

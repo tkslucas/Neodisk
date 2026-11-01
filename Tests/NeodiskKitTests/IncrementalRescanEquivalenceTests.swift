@@ -349,6 +349,8 @@ struct IncrementalRescanEquivalenceTests {
         try? FileManager.default.setAttributes([.posixPermissions: mode], ofItemAtPath: url.path)
     }
 
+    // POSIX permissions can't make a folder unreadable on Windows; WindowsPlatformTests denies it through its ACL.
+    #if !os(Windows)
     @Test func directlyNamedUnreadableDirectoryConvergesViaDeepRewalk() async throws {
         let root = try makeControlledTree() // has d0/sub with a file
         let secret = root.appending(path: "d0/sub", directoryHint: .isDirectory)
@@ -378,9 +380,12 @@ struct IncrementalRescanEquivalenceTests {
         #expect(!node.isAccessible)
         #expect(rescanned.treeStore.children(of: node.id).isEmpty)
     }
+    #endif
 
     /// The directory's own record must lose its stale inaccessible flags; chmod moves ctime, not mtime, so
     /// refreshing only `lastModified` missed it.
+    // POSIX permissions can't make a folder unreadable on Windows; WindowsPlatformTests denies it through its ACL.
+    #if !os(Windows)
     @Test func inaccessibleDirectoryBecomingReadableRefreshesOwnRecord() async throws {
         let root = try makeControlledTree() // has d0/sub with s.bin
         let secret = root.appending(path: "d0/sub", directoryHint: .isDirectory)
@@ -415,6 +420,7 @@ struct IncrementalRescanEquivalenceTests {
         #expect(node.isSelfAccessible)
         #expect(rescanned.treeStore.node(id: target.id + "/d0/sub/s.bin") != nil)
     }
+    #endif
 
     /// POSIX chmod can't make a single child unreadable, so this asserts the invariant that case relies on:
     /// `directChildren` yields an inline inaccessible node plus warning, never nil.

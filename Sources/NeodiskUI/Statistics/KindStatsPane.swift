@@ -33,27 +33,22 @@ struct KindStatsPane: View {
     private var kindStatsList: some View {
         @Bindable var kinds = model.kinds
         return VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("Group by")
-                    .neoFont(11, weight: .semibold)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Picker("", selection: $kinds.displayMode) {
-                    ForEach(FileKindDisplayMode.allCases) { mode in
-                        Text(LocalizedStringKey(mode.title)).tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .neoControlSize(base: .small)
-                .labelsHidden()
-                .fixedSize()
-            }
-            .padding(.horizontal, 10)
+            // The two choices say what they group by; a "Group by" caption beside them wrapped in a narrow pane.
+            NeoSegmentedPicker(
+                options: FileKindDisplayMode.allCases.map { (NSLocalizedString($0.title, comment: "Kinds grouping"), $0) },
+                selection: $kinds.displayMode,
+                accessibilityLabel: NSLocalizedString("Group by", comment: "Kinds grouping")
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, StatsListMetrics.inset)
             .padding(.vertical, 4)
 
             Divider()
 
-            if model.kinds.catalog.stats.isEmpty || model.kinds.catalog.mode != model.kinds.displayMode {
+            if model.kinds.catalog.mode == model.kinds.displayMode, model.kinds.catalog.stats.isEmpty,
+               model.kinds.isCatalogBuilt, model.coordinator.snapshot?.isComplete == true {
+                StatsEmptyState.noFiles
+            } else if model.kinds.catalog.stats.isEmpty || model.kinds.catalog.mode != model.kinds.displayMode {
                 // Nothing built yet, or the new mode's catalog is still building: don't show the stale list.
                 Spacer()
                 ProgressView().neoControlSize(base: .small)

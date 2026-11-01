@@ -22,7 +22,7 @@
 
 /* MARK: - Bienvenida / estado vacío */
 "Choose a Folder or Disk" = "Elige una carpeta o un disco";
-"Start from the sidebar, drop a folder into the window,\nor choose a location manually." = "Empieza desde la barra lateral, arrastra una carpeta a la ventana\no elige una ubicación manualmente.";
+"Pick a location in the sidebar or drop a folder here." = "Elige una ubicación en la barra lateral o arrastra una carpeta aquí.";
 "Choose Folder…" = "Elegir carpeta…";
 "Scan %@" = "Analizar %@";
 
@@ -40,7 +40,7 @@
 "Opening last scan of %@…" = "Abriendo el último análisis de %@…";
 
 /* MARK: - Análisis fallido */
-"Scan failed" = "Error en el análisis";
+"Scan Failed" = "Error en el análisis";
 "Try Again" = "Intentar de nuevo";
 
 /* MARK: - Aviso de permisos */
@@ -70,12 +70,9 @@
 "Theme" = "Tema";
 "Scanning" = "Análisis";
 "Show hidden files while scanning" = "Mostrar archivos ocultos durante el análisis";
-"Mounted volume scans always include hidden files automatically." = "Los análisis de volúmenes montados siempre incluyen archivos ocultos automáticamente.";
 "Automatically summarize folders with many small files" = "Resumir automáticamente las carpetas con muchos archivos pequeños";
 "Scan local cloud files" = "Analizar archivos locales en la nube";
-"Summarizing folders with thousands of tiny files (like node_modules or caches) dramatically improves scan speed." = "Resumir carpetas con miles de archivos diminutos (como node_modules o cachés) mejora enormemente la velocidad del análisis.";
 "When off, scans skip locally synced cloud folders: ~/Library/CloudStorage (Google Drive, Dropbox, OneDrive) and iCloud Drive." = "Si está desactivado, los análisis omiten las carpetas de nube sincronizadas localmente: ~/Library/CloudStorage (Google Drive, Dropbox, OneDrive) e iCloud Drive.";
-"Changes apply to the next scan." = "Los cambios se aplican en el próximo análisis.";
 "When opening a scanned location" = "Al abrir una ubicación analizada";
 "Rescan automatically always refreshes behind the saved results; Smart skips the refresh when the last scan took a while; Show snapshot only always waits for Rescan Now." = "«Volver a analizar automáticamente» siempre actualiza detrás de los resultados guardados; «Inteligente» omite la actualización cuando el último análisis tardó bastante; «Mostrar solo la instantánea» siempre espera a «Analizar ahora».";
 "When Results Appear" = "Cuando aparecen los resultados";
@@ -86,28 +83,32 @@
 "One pattern per line. Trailing “/” matches folders; “*” is a wildcard." = "Un patrón por línea. Una “/” al final coincide con carpetas; “*” es un comodín.";
 "Add Presets" = "Añadir preajustes";
 "Show free space in treemap" = "Mostrar espacio libre en el mapa de árbol";
-"The sunburst always shows free and hidden space for volume scans; this adds them to the treemap too. Hidden space is capacity the scan could not see, such as purgeable space and local snapshots. Applies immediately." = "El gráfico sunburst siempre muestra el espacio libre y oculto en los escaneos de volúmenes; esta opción también los añade al mapa de árbol. El espacio oculto es capacidad que el escaneo no pudo ver, como espacio purgable e instantáneas locales. Se aplica de inmediato.";
 "Workspace" = "Espacio de trabajo";
 "Show Welcome Screen" = "Mostrar pantalla de bienvenida";
 "Restore Defaults" = "Restaurar valores predeterminados";
 
 /* MARK: - Ajustes: Privacidad */
 "Full Disk Access" = "Acceso total al disco";
-"Neodisk can scan ordinary folders immediately. For protected macOS locations such as Mail, Safari, Messages, and Library content, grant Full Disk Access in System Settings." = "Neodisk puede analizar carpetas normales de inmediato. Para ubicaciones protegidas de macOS como Mail, Safari, Messages y contenido de Library, concede Acceso total al disco en Ajustes del Sistema.";
 "Full Disk Access is enabled." = "El Acceso total al disco está activado.";
 "Full Disk Access is not enabled." = "El Acceso total al disco no está activado.";
 "Checking…" = "Comprobando…";
 "Open Full Disk Access Settings" = "Abrir los ajustes de Acceso total al disco";
+"Neodisk Works Best with Full Disk Access" = "Neodisk funciona mejor con Acceso total al disco";
+"Without it, macOS stops the scan to ask about each protected folder, like Documents, Downloads and Photos, and some locations are skipped." = "Sin él, macOS detiene el análisis para preguntar por cada carpeta protegida, como Documentos, Descargas y Fotos, y algunas ubicaciones se omiten.";
+"Scan Anyway" = "Analizar de todos modos";
+"Waiting for permission to read %@" = "Esperando permiso para leer %@";
+"other apps' data" = "los datos de otras apps";
+"iCloud Drive" = "iCloud Drive";
 "Recheck" = "Volver a comprobar";
 "Note: running unbundled (swift run), Neodisk inherits its permissions from the terminal that launched it — grant Full Disk Access to that terminal app." = "Nota: al ejecutarse sin empaquetar (swift run), Neodisk hereda sus permisos de la terminal que lo inició; concede Acceso total al disco a esa aplicación de terminal.";
 "Moving to the Trash" = "Mover a la Papelera";
 "Allow moving items to the Trash" = "Permitir mover elementos a la Papelera";
-"Collect items in Cleanup at the bottom of the sidebar, then move them to the Trash after one confirmation. Neodisk never deletes anything itself, and won't touch system folders or your home folder. Turn this off to only look." = "Reúne elementos en Limpieza, en la parte inferior de la barra lateral, y muévelos a la Papelera tras una sola confirmación. Neodisk nunca elimina nada por su cuenta y no toca las carpetas del sistema ni tu carpeta de inicio. Desactívalo para solo mirar.";
 "Sidebar Folders" = "Carpetas de la barra lateral";
-"Folders you add are stored locally so they can appear in the sidebar." = "Las carpetas que añades se guardan localmente para que puedan aparecer en la barra lateral.";
 "Clear Added Folders" = "Borrar carpetas añadidas";
+"Restore Default Folders" = "Restaurar carpetas predeterminadas";
+"Remove the folders you added from the sidebar?" = "¿Quitar de la barra lateral las carpetas que añadiste?";
+"Their scan snapshots are removed too." = "También se eliminan sus instantáneas de análisis.";
 "Scan Snapshots" = "Instantáneas de análisis";
-"After each completed scan, Neodisk keeps the latest results for that location on this Mac so reopening it shows the last scan instantly while a fresh scan runs. Snapshots contain file names, paths, and sizes; they are stored only in Neodisk's local cache and never leave this Mac." = "Tras cada análisis completado, Neodisk guarda los últimos resultados de esa ubicación en este Mac, de modo que al volver a abrirla se muestre el último análisis al instante mientras se ejecuta uno nuevo. Las instantáneas contienen nombres de archivo, rutas y tamaños; se almacenan solo en la caché local de Neodisk y nunca salen de este Mac.";
 "Size on disk" = "Tamaño en el disco";
 "Calculating…" = "Calculando…";
 "Clear Scan Snapshots" = "Borrar instantáneas de análisis";
@@ -143,6 +144,7 @@
 "Reveal in Finder" = "Mostrar en el Finder";
 "Open" = "Abrir";
 "Copy Path" = "Copiar ruta";
+"Path" = "Ruta";
 "Expand Contents" = "Expandir contenido";
 "Show Package Contents" = "Mostrar contenido del paquete";
 "No matches" = "Sin coincidencias";
@@ -155,12 +157,10 @@
 "Filter by name" = "Filtrar por nombre";
 "%@ files" = "%@ archivos";
 "%@ file" = "%@ archivo";
-"Largest %@ of %@ — search to narrow" = "Los %@ más grandes de %@ — busca para acotar";
 
 /* MARK: - Statistics panel tabs & age buckets */
 "Kinds" = "Tipos";
 "Largest" = "Mayores";
-"Largest Files" = "Archivos más grandes";
 "Age" = "Antigüedad";
 "Group by" = "Agrupar por";
 "Last Modified" = "Última modificación";
@@ -269,7 +269,7 @@
 "Dismiss" = "Descartar";
 
 /* MARK: - Comandos de la barra de menús */
-"Find" = "Buscar";
+"Find…" = "Buscar…";
 "Show Locations Sidebar" = "Mostrar barra lateral de ubicaciones";
 "Hide Locations Sidebar" = "Ocultar barra lateral de ubicaciones";
 "Show Statistics" = "Mostrar estadísticas";
@@ -300,7 +300,6 @@
 "Last viewed" = "Última vista";
 "Cushion" = "Acolchado";
 "Flat" = "Plano";
-"The view the app starts in. Last viewed restores whatever was on screen when you quit. The toolbar picker switches views any time." = "La vista con la que se inicia la app. «Última vista» restaura lo que estaba en pantalla al salir. El selector de la barra de herramientas cambia de vista en cualquier momento.";
 "Color palette" = "Paleta de colores";
 "Classic" = "Clásica";
 "Vivid" = "Vívida";
@@ -308,7 +307,6 @@
 "Retro" = "Retro";
 "Neon" = "Neón";
 "Colorblind-safe" = "Apto para daltonismo";
-"The color set the visualizations draw with. Colorblind-safe stays distinct with common color vision differences. Applies immediately." = "El conjunto de colores con el que dibujan las visualizaciones. Apto para daltonismo se mantiene distinguible con las diferencias de visión del color más comunes. Se aplica de inmediato.";
 
 /* MARK: - File list position */
 "Name" = "Nombre";
@@ -325,7 +323,6 @@
 "View" = "Vista";
 "Treemap" = "Mapa de árbol";
 "Sunburst" = "Sunburst";
-"Switch views. Right-click to choose which ones show." = "Cambia de vista. Haz clic derecho para elegir cuáles se muestran.";
 "Cushion Treemap" = "Mapa de árbol acolchado";
 "Flat Treemap" = "Mapa de árbol plano";
 "Smaller Items" = "Elementos más pequeños";
@@ -351,7 +348,6 @@
 "Update Error" = "Error de actualización";
 "Updates" = "Actualizaciones";
 "Check for updates automatically" = "Buscar actualizaciones automáticamente";
-"Neodisk checks GitHub for new versions in the background and always asks before installing anything." = "Neodisk busca nuevas versiones en GitHub en segundo plano y siempre pregunta antes de instalar nada.";
 "Automatic updates work only in the packaged app." = "Las actualizaciones automáticas solo funcionan en la app empaquetada.";
 
 /* MARK: - Help & About */
@@ -379,8 +375,6 @@
 
 /* Settings tabs (2026-07-13) */
 "Advanced" = "Avanzado";
-"Loads the previous scan in the background so the Changes view opens instantly." = "Carga el análisis anterior en segundo plano para que la vista Cambios se abra al instante.";
-"Runs the duplicate scan automatically when results appear. Reading file contents can take time and energy on large locations." = "Inicia la búsqueda de duplicados automáticamente cuando aparecen los resultados. Leer el contenido de los archivos puede llevar tiempo y energía en ubicaciones grandes.";
 /* Hover tooltips (2026-07-13) */
 "Free space · %@" = "Espacio libre · %@";
 "Hidden space · %@" = "Espacio oculto · %@";
@@ -396,7 +390,6 @@
 "Zoom In" = "Aumentar";
 "Zoom Out" = "Reducir";
 "Actual Size" = "Tamaño real";
-"Scales the text in the locations sidebar, the file lists, the treemap and sunburst labels, and the statistics panel. Applies immediately. View ▸ Zoom In and Zoom Out (⌘+ and ⌘−) change it without opening Settings." = "Escala el texto de la barra lateral de ubicaciones, las listas de archivos, las etiquetas del treemap y del sunburst, y el panel de estadísticas. Se aplica de inmediato. Visualización ▸ Aumentar y Reducir (⌘+ y ⌘−) lo cambian sin abrir los ajustes.";
 
 /* Linux (GTK) app */
 "%@ free" = "%@ libres";
@@ -408,20 +401,16 @@
 "%@ of scan" = "%@ del análisis";
 "%lld smaller items · %@" = "%lld elementos más pequeños · %@";
 "Cached Scans" = "Análisis en caché";
-"Changes apply from the next scan." = "Los cambios se aplican a partir del próximo análisis.";
+"Saved scans hold file names, paths and sizes, and never leave this computer." = "Los análisis guardados contienen nombres de archivo, rutas y tamaños, y nunca salen de este ordenador.";
 "Choose a Location to Scan" = "Elige una ubicación para analizar";
 "Clear" = "Borrar";
 "Color Palette" = "Paleta de colores";
 "Computer" = "Equipo";
 "Count folders with very many small files as one item, for faster scans" = "Contar las carpetas con muchísimos archivos pequeños como un solo elemento, para analizar más rápido";
-"Dot files and folders, like ~/.cache and ~/.local" = "Archivos y carpetas que empiezan por punto, como ~/.cache y ~/.local";
-"Draw a volume's free space as a block of its own" = "Dibujar el espacio libre de un volumen como un bloque propio";
-"Finished scans are kept so locations reopen instantly and changes can be compared." = "Los análisis terminados se guardan para que las ubicaciones se abran al instante y se puedan comparar los cambios.";
 "Follow System" = "Seguir al sistema";
 "Home" = "Carpeta personal";
 "Include Hidden Files" = "Incluir archivos ocultos";
 "Keyboard Shortcuts" = "Atajos de teclado";
-"Locations" = "Ubicaciones";
 "Main Menu" = "Menú principal";
 "Merging changes…" = "Combinando cambios…";
 "Select Largest Item Inside" = "Seleccionar el elemento más grande de dentro";
@@ -431,7 +420,6 @@
 "Preferences" = "Preferencias";
 "Quit" = "Salir";
 "Disk space visualizer. Treemap and sunburst views on the NeodiskKit scan engine." = "Visualizador de espacio en disco. Vistas de mapa de árbol y sunburst sobre el motor de análisis NeodiskKit.";
-"Recent" = "Recientes";
 "Refreshing…" = "Actualizando…";
 "Saved Scans" = "Análisis guardados";
 "Scans" = "Análisis";
@@ -446,6 +434,7 @@
 "Top %lld of %@ matches" = "Las %lld mejores de %@ coincidencias";
 "Visualization" = "Visualización";
 "%@ free of %@" = "%@ libres de %@";
+"%@ of %@ used" = "%@ de %@ usados";
 "%@ in %@ files" = "%@ en %@ archivos";
 "%@ in %@ file" = "%@ en %@ archivo";
 
@@ -460,6 +449,7 @@
 "Collapse Cleanup" = "Contraer Limpieza";
 "Expand Cleanup" = "Expandir Limpieza";
 "Sidebar Sections" = "Secciones de la barra lateral";
+"File List Columns" = "Columnas de la lista de archivos";
 "Show Cleanup in the sidebar. Drop items here to collect them." = "Mostrar Limpieza en la barra lateral. Suelta elementos aquí para reunirlos.";
 "It changed since the scan. Rescan to move it." = "Ha cambiado desde el análisis. Vuelve a analizar para moverlo.";
 "Move “%@” to the Trash?" = "¿Mover “%@” a la Papelera?";
@@ -472,7 +462,6 @@
 "Moving items to the Trash is turned off in Preferences." = "Mover elementos a la Papelera está desactivado en Preferencias.";
 "Moving items to the Trash is turned off in Settings." = "Mover elementos a la Papelera está desactivado en Ajustes.";
 "Moving to the Trash…" = "Moviendo a la Papelera…";
-"Neodisk asks before each move and never deletes anything itself. System folders and your home folder are off limits. Turn this off to only look." = "Neodisk pregunta antes de cada traslado y nunca elimina nada por su cuenta. Las carpetas del sistema y tu carpeta personal quedan fuera de alcance. Desactívalo para solo mirar.";
 "Open Trash" = "Abrir la Papelera";
 "Remove from Cleanup" = "Quitar de Limpieza";
 "Some of this is in a cloud drive: moving it to the Trash also removes it from the cloud and your other devices." = "Parte de esto está en una unidad en la nube: al moverlo a la Papelera también se elimina de la nube y de tus otros dispositivos.";
@@ -528,3 +517,14 @@
 "Couldn't Move %lld Items to the Trash" = "No se han podido mover %lld elementos a la Papelera";
 "Select All" = "Seleccionar todo";
 "Add to Selection" = "Añadir a la selección";
+"Adds hidden space too: capacity the scan could not see, such as purgeable space and local snapshots." = "Añade también el espacio oculto: capacidad que el escaneo no pudo ver, como espacio purgable e instantáneas locales.";
+"Reading file contents can take time and energy on large locations." = "Leer el contenido de los archivos puede llevar tiempo y energía en ubicaciones grandes.";
+"For protected macOS locations such as Mail, Safari, Messages, and Library content, grant Full Disk Access in System Settings." = "Para ubicaciones protegidas de macOS como Mail, Safari, Messages y contenido de Library, concede Acceso total al disco en Ajustes del Sistema.";
+"Neodisk never deletes anything itself, and won't touch system folders or your home folder." = "Neodisk nunca elimina nada por su cuenta y no toca las carpetas del sistema ni tu carpeta de inicio.";
+"Snapshots contain file names, paths, and sizes; they are stored only in Neodisk's local cache and never leave this Mac." = "Las instantáneas contienen nombres de archivo, rutas y tamaños; se almacenan solo en la caché local de Neodisk y nunca salen de este Mac.";
+"%@ of %@ used · %@ free" = "%@ de %@ usados · %@ libres";
+"Move Left" = "Mover a la izquierda";
+"Move Right" = "Mover a la derecha";
+"Statistics Tabs" = "Pestañas de estadísticas";
+"Top %@ of %@ files" = "Los %@ primeros de %@ archivos";
+"No files to show" = "No hay archivos que mostrar";

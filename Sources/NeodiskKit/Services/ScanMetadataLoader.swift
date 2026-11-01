@@ -2,6 +2,8 @@
 import Darwin
 #elseif canImport(Glibc)
 import Glibc
+#elseif os(Windows)
+import WinSDK
 #endif
 import Foundation
 
@@ -164,11 +166,10 @@ nonisolated struct ScanMetadataLoader: Sendable {
         ScanDiagnosticsContext?
     ) -> (identity: FileIdentity?, linkCount: UInt64)
 
-    // Omits two measured hot-path taxes: `.isReadableKey` (an access(2) per item) and
-    // `.fileResourceIdentifierKey` (a Data per file); lstat covers identity for linkCount > 1.
+    // Omits `.fileResourceIdentifierKey` (a Data per file; lstat covers identity for linkCount > 1) and, in every
+    // set, `.isPackageKey` and `.isReadableKey`: both also ask for write access (see `nodeMetadata`).
     static let scanResourceKeys: Set<URLResourceKey> = [
         .isDirectoryKey,
-        .isPackageKey,
         .isSymbolicLinkKey,
         .fileAllocatedSizeKey,
         .totalFileAllocatedSizeKey,
@@ -176,24 +177,19 @@ nonisolated struct ScanMetadataLoader: Sendable {
         .contentModificationDateKey,
         .linkCountKey
     ]
-    // The root is read once per scan, so it keeps `.isReadableKey` for a
-    // truthful isSelfAccessible on the root node.
     static let rootResourceKeys: Set<URLResourceKey> = [
         .isDirectoryKey,
-        .isPackageKey,
         .isSymbolicLinkKey,
         .fileAllocatedSizeKey,
         .totalFileAllocatedSizeKey,
         .fileSizeKey,
         .contentModificationDateKey,
-        .isReadableKey,
         .linkCountKey,
         .volumeAvailableCapacityKey,
         .volumeTotalCapacityKey
     ]
     static let atomicSummaryResourceKeys: [URLResourceKey] = [
         .isDirectoryKey,
-        .isPackageKey,
         .isSymbolicLinkKey,
         .fileAllocatedSizeKey,
         .totalFileAllocatedSizeKey,
@@ -203,7 +199,6 @@ nonisolated struct ScanMetadataLoader: Sendable {
     static let atomicSummaryResourceKeySet = Set(atomicSummaryResourceKeys)
     static let atomicProbeResourceKeys: [URLResourceKey] = [
         .isDirectoryKey,
-        .isPackageKey,
         .isSymbolicLinkKey,
         .fileSizeKey
     ]
@@ -232,6 +227,10 @@ nonisolated struct ScanMetadataLoader: Sendable {
         // corelibs-foundation's resource values disagree with lstat (link counts, allocated sizes).
         ScanSyscallTally.recordMetadataLoad()
         return try LinuxStat.metadata(for: url, includeVolumeDetails: includeVolumeDetails)
+        #elseif os(Windows)
+        // Resource values follow reparse points; the handle read matches the bulk reader.
+        ScanSyscallTally.recordMetadataLoad()
+        return try WindowsFileInfo.metadata(for: url, includeVolumeDetails: includeVolumeDetails)
         #else
         let keys = includeVolumeDetails ? Self.rootResourceKeys : Self.scanResourceKeys
         ScanSyscallTally.recordMetadataLoad()
@@ -268,6 +267,9 @@ nonisolated struct ScanMetadataLoader: Sendable {
         #if os(Linux)
         ScanSyscallTally.recordMetadataLoad()
         return try LinuxStat.metadata(for: url)
+        #elseif os(Windows)
+        ScanSyscallTally.recordMetadataLoad()
+        return try WindowsFileInfo.metadata(for: url)
         #else
         ScanSyscallTally.recordMetadataLoad()
         #if DEBUG
@@ -306,6 +308,10 @@ nonisolated struct ScanMetadataLoader: Sendable {
         if let metadata = try? LinuxStat.metadata(for: url, includeVolumeDetails: includeVolumeDetails) {
             return metadata
         }
+        #elseif os(Windows)
+        if let metadata = try? WindowsFileInfo.metadata(for: url, includeVolumeDetails: includeVolumeDetails) {
+            return metadata
+        }
         #endif
         return Self.nodeMetadata(
             for: url,
@@ -328,14 +334,14 @@ nonisolated struct ScanMetadataLoader: Sendable {
         fileSystemInfoProvider: FileSystemInfoProvider
     ) -> NodeMetadata {
         let isDirectory = values.isDirectory ?? false
-        let isPackage = values.isPackage ?? false
+        let isPackage = isDirectory && BulkDirectoryReader.isPackageDirectory(atPath: url.path)
         let isSymbolicLink = values.isSymbolicLink ?? false
         // Clamp at the source: a buggy filesystem reporting negative sizes
         // must not poison directory totals (or trap conversions) upstream.
         let logicalSize = Int64(max(values.fileSize ?? 0, 0))
         let allocatedSize = Int64(max(values.totalFileAllocatedSize ?? values.fileAllocatedSize ?? values.fileSize ?? 0, 0))
-        // Per-child keys don't fetch `.isReadableKey`; unreadable items show up as enumeration failures.
-        let isReadable = values.isReadable ?? true
+        // Children: unreadable items show up as enumeration failures; the root, read once, gets access(R_OK).
+        let isReadable = includeVolumeDetails ? isReadablePath(url) : true
         var fileIdentity = Self.fileIdentity(from: values.fileResourceIdentifier)
         var linkCount = values.linkCount.map { UInt64(max($0, 1)) } ?? 1
         if isSymbolicLink {
@@ -401,10 +407,30 @@ nonisolated struct ScanMetadataLoader: Sendable {
         return linkCount > 1 && fileIdentity == nil
     }
 
+    /// Read access only: `.isReadableKey` also probes write access, which macOS reports as modifying apps.
+    nonisolated static func isReadablePath(_ url: URL) -> Bool {
+        #if os(Windows)
+        return FileManager.default.isReadableFile(atPath: url.path)
+        #else
+        return url.withUnsafeFileSystemRepresentation { path in
+            guard let path else { return false }
+            return access(path, R_OK) == 0
+        }
+        #endif
+    }
+
     private nonisolated static func defaultFileSystemInfo(
         for url: URL,
         diagnostics: ScanDiagnosticsContext? = nil
     ) -> (identity: FileIdentity?, linkCount: UInt64) {
+        #if os(Windows)
+        guard let handle = WindowsFileInfo.open(path: url.path, access: DWORD(FILE_READ_ATTRIBUTES)) else {
+            return (nil, 1)
+        }
+        defer { CloseHandle(handle) }
+        guard let info = WindowsFileInfo.HandleInfo(handle) else { return (nil, 1) }
+        return (FileIdentity(device: info.volumeSerial, inode: info.fileID), info.linkCount)
+        #else
         var fileStat = stat()
         #if DEBUG
         let start = diagnostics?.start()
@@ -429,6 +455,7 @@ nonisolated struct ScanMetadataLoader: Sendable {
             ),
             max(UInt64(fileStat.st_nlink), 1)
         )
+        #endif
     }
 
     private nonisolated static func fileIdentity(

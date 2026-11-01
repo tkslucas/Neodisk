@@ -13,12 +13,12 @@ struct SidebarPane: View {
     @State private var selection: Set<String> = []
     @State private var spaceByPath: [String: VolumeSpaceInfo] = [:]
     @State private var kindBars: [String: VolumeBarData] = [:]
-    /// Frames and hover state for the scan-bar hover bubbles, which the List
+    /// Frames and hover state for the bars' hover bubbles, which the List
     /// overlay renders so table cells cannot clip them. Deliberately `@State`
     /// and not `@StateObject`: the pane owns the store's lifetime but must
     /// not subscribe to its per-scroll-tick churn — only the overlay's
-    /// `SidebarScanTooltipLayer` observes it.
-    @State private var scanTooltips = SidebarScanTooltipStore()
+    /// `SidebarTooltipLayer` observes it.
+    @State private var tooltips = SidebarTooltipStore()
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.neoTextScale) private var textScale
@@ -103,8 +103,8 @@ struct SidebarPane: View {
             }
         }
         .overlay {
-            SidebarScanTooltipLayer(
-                store: scanTooltips,
+            SidebarTooltipLayer(
+                store: tooltips,
                 progressFor: backgroundScanProgress(forTargetID:)
             )
         }
@@ -181,11 +181,11 @@ struct SidebarPane: View {
     }
 
     private func updateScanBarFrame(targetID: String, frame: CGRect?) {
-        scanTooltips.setFrame(frame, forTargetID: targetID)
+        tooltips.setFrame(frame, forTargetID: targetID)
     }
 
     private func updateScanBarHover(targetID: String, isHovering: Bool) {
-        scanTooltips.setHovering(isHovering, targetID: targetID, reduceMotion: reduceMotion)
+        tooltips.setHovering(isHovering, targetID: targetID, reduceMotion: reduceMotion)
     }
 
     /// True while any scan (foreground or background) runs for this location.
@@ -227,7 +227,8 @@ struct SidebarPane: View {
             bar: bar,
             scanProgress: backgroundScanProgress(for: target),
             onScanBarFrameChange: updateScanBarFrame,
-            onScanBarHover: updateScanBarHover
+            onScanBarHover: updateScanBarHover,
+            onCapacityBubble: tooltips.setCapacityBubble
         )
         .tag(target.id)
     }

@@ -151,7 +151,7 @@ final class CleanupModel {
     func refusalReason(for node: FileNodeRecord) -> String? {
         if let unavailableReason { return unavailableReason }
         guard let snapshot = coordinator.snapshot else { return nil }
-        return policy.refusal(for: node, scanRootID: snapshot.root.id)?.localizedReason
+        return policy.refusal(for: node, scanRootID: snapshot.root.id, in: snapshot.treeStore)?.localizedReason
     }
 
     /// False for what's already in, alone or with its folder.
@@ -179,27 +179,42 @@ final class CleanupModel {
         }
     }
 
-    /// Adds what may be collected; a refusal shows its reason under the panel instead.
+    /// Adds what may be collected. What can't go is counted under the panel with the first reason, so a large
+    /// selection never drops items silently.
     func add(_ nodes: [FileNodeRecord]) {
         guard let store, !isMoving else { return }
-        var refused: String?
-        let allowed = nodes.filter { node in
-            if let reason = refusalReason(for: node) {
-                refused = reason
-                return false
-            }
-            return true
+        if let unavailableReason {
+            NSSound.beep()
+            show(Notice(kind: .refused, text: unavailableReason))
+            return
         }
+        let refusals = policy.refusals(for: nodes, scanRootID: store.rootID, in: store)
+        let allowed = zip(nodes, refusals).compactMap { $1 == nil ? $0 : nil }
+        let refusedCount = nodes.count - allowed.count
+        let firstRefusal = refusals.lazy.compactMap { $0 }.first
         var updated = pile
         let added = updated.add(allowed.map(\.id), in: store)
         pile = updated
         for id in added { failures[id] = nil }
-        if let refused, added.isEmpty {
-            NSSound.beep()
-            show(Notice(kind: .refused, text: refused))
-        } else if !added.isEmpty {
-            notice = nil
+        guard let reason = firstRefusal?.localizedReason else {
+            if !added.isEmpty { notice = nil }
+            return
         }
+        NSSound.beep()
+        guard !added.isEmpty || refusedCount > 1 else {
+            show(Notice(kind: .refused, text: reason))
+            return
+        }
+        var parts: [String] = []
+        if !added.isEmpty {
+            parts.append(added.count == 1
+                ? NSLocalizedString("Added 1 item.", comment: "Cleanup notice, some items refused")
+                : String(format: NSLocalizedString("Added %lld items.", comment: "Cleanup notice, some items refused"), added.count))
+        }
+        parts.append(refusedCount == 1
+            ? String(format: NSLocalizedString("1 item can't go to the Trash. %@", comment: "Cleanup notice; the first reason follows"), reason)
+            : String(format: NSLocalizedString("%lld items can't go to the Trash. %@", comment: "Cleanup notice; the first reason follows"), refusedCount, reason))
+        show(Notice(kind: .refused, text: parts.joined(separator: " ")))
     }
 
     func remove(_ ids: [String]) {

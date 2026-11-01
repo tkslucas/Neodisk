@@ -161,6 +161,38 @@ import NeodiskAppModel
         #expect(model.cleanup.itemIDs == [environment.path("System Stuff/x.bin")])
     }
 
+    @Test func aPartlyRefusedSelectionSaysWhatDidntJoin() async throws {
+        let environment = try Environment()
+        defer { environment.tearDown() }
+        for name in ["a.bin", "b.bin", "c.bin", "Keep1/x.bin", "Keep2/y.bin", "Notes.rtfd/TXT.rtf"] {
+            try environment.write(name, bytes: 10)
+        }
+        let model = environment.makeModel(protecting: [environment.path("Keep1"), environment.path("Keep2")])
+        // Packages opened as folders (the Settings option), so what's inside one is in the tree.
+        var options = ScanOptions()
+        options.treatPackagesAsDirectories = true
+        var finished: ScanSnapshot?
+        for try await event in ScanEngine().scan(target: ScanTarget(url: environment.root), options: options) {
+            if case .finished(let snapshot) = event { finished = snapshot }
+        }
+        model.coordinator.replaceCurrentSnapshot(try #require(finished))
+        let store = try #require(model.store)
+        let nodes = try ["a.bin", "Keep1", "b.bin", "Keep2", "c.bin"].map { try #require(store.node(id: environment.path($0))) }
+
+        model.cleanup.add(nodes)
+        #expect(model.cleanup.itemIDs.count == 3)
+        let reason = TrashRefusal.protectedLocation.localizedReason
+        #expect(model.cleanup.notice?.kind == .refused)
+        #expect(model.cleanup.notice?.text == "Added 3 items. 2 items can't go to the Trash. " + reason)
+
+        // Inside a package is refused, with that reason alone; the package itself can go.
+        let inside = try #require(store.node(id: environment.path("Notes.rtfd/TXT.rtf")))
+        model.cleanup.add([inside])
+        #expect(model.cleanup.notice?.text == TrashRefusal.insidePackage.localizedReason)
+        model.cleanup.add([try #require(store.node(id: environment.path("Notes.rtfd")))])
+        #expect(model.cleanup.itemIDs.count == 4)
+    }
+
     @Test func cancellingTheConfirmationMovesNothing() async throws {
         let environment = try Environment()
         defer { environment.tearDown() }

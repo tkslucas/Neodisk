@@ -159,7 +159,9 @@ nonisolated enum ScanSnapshotCodec {
         version: UInt32,
         to writer: inout ByteWriter
     ) {
-        let derivedID = parentID.map { joinedChildID(parentID: $0, name: node.name) }
+        // Read in place: `name` allocates for names kept inside the id.
+        let name = node.nameSlice
+        let derivedID = parentID.map { joinedChildID(parentID: $0, name: name) }
         let path = node.path
         let defaultDescendantFileCount = node.isDirectory ? 0 : 1
 
@@ -188,7 +190,7 @@ nonisolated enum ScanSnapshotCodec {
         }
 
         writer.append(flags.rawValue)
-        writer.appendString(node.name)
+        writer.appendString(name)
         if flags.contains(.hasExplicitID) { writer.appendString(node.id) }
         if flags.contains(.hasExplicitPath) { writer.appendString(path) }
         writer.append(node.allocatedSize)
@@ -784,7 +786,7 @@ nonisolated enum ScanSnapshotCodec {
 
     /// One-allocation join of parent path and child name — the plain `+`
     /// concatenation showed up in decode profiles at millions of nodes.
-    private static func joinedChildID(parentID: String, name: String) -> String {
+    private static func joinedChildID(parentID: String, name: Substring) -> String {
         var parentID = parentID
         var name = name
         return parentID.withUTF8 { parentBytes in

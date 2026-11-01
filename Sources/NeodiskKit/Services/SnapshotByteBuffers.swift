@@ -132,6 +132,12 @@ nonisolated struct ByteWriter {
         append(UInt32(bytes.count))
         data.append(bytes)
     }
+
+    mutating func appendString(_ value: Substring) {
+        let bytes = Data(value.utf8)
+        append(UInt32(bytes.count))
+        data.append(bytes)
+    }
 }
 
 nonisolated struct ByteReader: LittleEndianByteReading {

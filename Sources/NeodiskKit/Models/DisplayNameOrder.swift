@@ -20,9 +20,7 @@ public enum DisplayNameOrder {
         #if canImport(Darwin)
         return lhs.localizedStandardCompare(rhs) == .orderedAscending
         #else
-        var lhs = lhs
-        var rhs = rhs
-        return lhs.withUTF8 { a in rhs.withUTF8 { b in naturalOrder(a, b) } } < 0
+        return naturalOrder(lhs, rhs) < 0
         #endif
     }
 
@@ -38,6 +36,19 @@ public enum DisplayNameOrder {
     /// `rhs` in natural order.
     public nonisolated static func naturalOrder(_ lhs: String, _ rhs: String) -> Int {
         // Borrows both strings' bytes; copying them into `var`s first cost a third of a tie-heavy sort.
+        let borrowed = lhs.utf8.withContiguousStorageIfAvailable { a in
+            rhs.utf8.withContiguousStorageIfAvailable { b in naturalOrder(a, b) }
+        }
+        if let borrowed, let order = borrowed { return order }
+        var lhs = lhs
+        var rhs = rhs
+        return lhs.withUTF8 { a in
+            rhs.withUTF8 { b in naturalOrder(a, b) }
+        }
+    }
+
+    /// `naturalOrder` for names read in place, borrowing their bytes the same way.
+    package nonisolated static func naturalOrder(_ lhs: Substring, _ rhs: Substring) -> Int {
         let borrowed = lhs.utf8.withContiguousStorageIfAvailable { a in
             rhs.utf8.withContiguousStorageIfAvailable { b in naturalOrder(a, b) }
         }

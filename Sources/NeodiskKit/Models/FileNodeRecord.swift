@@ -70,9 +70,11 @@ public struct FileNodeRecord: Identifiable, Sendable {
     /// `name` without allocating, for comparisons in sorts.
     package var nameSlice: Substring {
         guard flags.contains(.nameInID) else { return storedName[...] }
-        var id = id
-        let offset = id.withUTF8 { ($0.lastIndex(of: 0x2F) ?? -1) + 1 }
-        return id[id.utf8.index(id.utf8.startIndex, offsetBy: offset)...]
+        // Borrows the id's bytes: a `var` copy for `withUTF8` retains and releases it on every tie comparison.
+        let utf8 = id.utf8
+        let offset = utf8.withContiguousStorageIfAvailable { ($0.lastIndex(of: 0x2F) ?? -1) + 1 }
+            ?? utf8.lastIndex(of: 0x2F).map { utf8.distance(from: utf8.startIndex, to: $0) + 1 } ?? 0
+        return id[utf8.index(utf8.startIndex, offsetBy: offset)...]
     }
 
     /// Stored as a string: URL construction dominates decoding million-node snapshots. Usually just the ID.

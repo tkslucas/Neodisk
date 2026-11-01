@@ -38,14 +38,9 @@ import Testing
 
     @Test func branchModeResolvesEveryNodeTokenAndLeavesSyntheticArcsUnfilled() throws {
         let store = makeStore()
-        let layout = SunburstLayout.styled(
-            try SunburstLayout.layout(in: store, rootID: store.rootID, depthLimit: 3, freeSpaceBytes: 100, cancellationCheck: {}),
-            style: SunburstColorStyle(), in: store
-        )
-        // docs/inner's ring covers under a tenth of the circle, so it's fitted away, but still styled for the drill.
-        #expect(layout.deepSegments.contains { $0.nodeID == "/root/docs/inner" })
-        let segments = layout.segments
-        for segment in segments + layout.deepSegments {
+        let segments = SunburstLayout.segments(in: store, rootID: store.rootID, depthLimit: 3, freeSpaceBytes: 100)
+        #expect(segments.contains { $0.nodeID == "/root/docs/inner" })
+        for segment in segments {
             if segment.nodeID == nil {
                 #expect(segment.fillRGB == nil)
             } else {

@@ -166,8 +166,7 @@ private func layout(
         #expect(approx(x.startAngle, 0) && approx(x.endAngle, .pi))
         #expect(approx(y.startAngle, .pi) && approx(y.endAngle, .pi * 1.5))
 
-        // Both rings cover enough of the circle to stay, so the chart is banded for two of the four allowed.
-        let metrics = SunburstRingMetrics(depthLimit: 2)
+        let metrics = SunburstRingMetrics(depthLimit: 4)
         #expect(dir.depth == 0 && x.depth == 1)
         #expect(approx(dir.innerRadius, metrics.innerRadius(depth: 0)))
         #expect(approx(dir.outerRadius, metrics.drawnOuterRadius(depth: 0)))

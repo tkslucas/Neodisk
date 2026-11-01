@@ -82,6 +82,33 @@ package struct SunburstZoomTransitionState: Sendable {
         )
     }
 
+    /// A chart laid out to every ring (`SunburstLayout.segments`), whose rings never change across a drill.
+    package static func zoomIn(
+        segments: [SunburstSegment],
+        focus: SunburstSegment,
+        startDate: Date = Date()
+    ) -> SunburstZoomTransitionState {
+        SunburstZoomTransitionState(
+            direction: .zoomIn,
+            startDate: startDate,
+            animatedSegments: segments,
+            zoomedInRings: SunburstChartLayout(segments: segments).metrics,
+            focus: focus,
+            previousSegments: [],
+            previousRootID: nil,
+            layoutReadyDate: nil
+        )
+    }
+
+    /// A chart laid out to every ring (`SunburstLayout.segments`).
+    package static func zoomOut(
+        previousSegments: [SunburstSegment],
+        previousRootID: String,
+        startDate: Date = Date()
+    ) -> SunburstZoomTransitionState {
+        zoomOut(previous: SunburstChartLayout(segments: previousSegments), previousRootID: previousRootID, startDate: startDate)
+    }
+
     /// Zoom-in: the drilled chart landed. A ring count other than the predicted one retargets the remap.
     package mutating func incomingLayoutLanded(_ layout: SunburstChartLayout, at date: Date = Date()) {
         guard let focus else { return }

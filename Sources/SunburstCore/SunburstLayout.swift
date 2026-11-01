@@ -23,7 +23,8 @@ public enum SunburstLayout {
     }
 
     /// Layout only — geometry and color tokens, no resolved fills. NeodiskUI's
-    /// `styled` pass fills these in; a demo can resolve branch fills directly.
+    /// `styled` pass fills these in; a demo can resolve branch fills directly. Every ring down to `depthLimit`;
+    /// `layout` fits them to the depth the chart shows.
     public nonisolated static func segments<Tree: SunburstTreeReading>(
         in treeStore: Tree,
         rootID: String,
@@ -37,12 +38,12 @@ public enum SunburstLayout {
         hiddenSpaceLabel: String = "Hidden Space",
         cancellationCheck: CancellationCheck
     ) throws -> [SunburstSegment] {
-        try layout(
+        try layOut(
             in: treeStore, rootID: rootID, depthLimit: depthLimit, minimumAngle: minimumAngle,
             freeSpaceBytes: freeSpaceBytes, hiddenSpaceBytes: hiddenSpaceBytes,
             expandedAggregateIDs: expandedAggregateIDs, includeCloudOnly: includeCloudOnly,
             freeSpaceLabel: freeSpaceLabel, hiddenSpaceLabel: hiddenSpaceLabel, cancellationCheck: cancellationCheck
-        ).segments
+        )
     }
 
     /// The chart with its rings sized for the depth it shows, so a shallow tree, or one with a single deep

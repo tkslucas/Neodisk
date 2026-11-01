@@ -64,6 +64,9 @@ struct StatusBar: View {
                 Text(node.url.path)
                     .lineLimit(1)
                     .truncationMode(.middle)
+                    // The whole path, even when the bar shows it shortened.
+                    .accessibilityLabel(Text("Path"))
+                    .accessibilityValue(Text(verbatim: node.url.path))
                 Spacer(minLength: 12)
                 if let cleanupText = model.cleanup.mark(for: node.id).hoverText {
                     Label(cleanupText, systemImage: "trash")
@@ -78,15 +81,28 @@ struct StatusBar: View {
                     .monospacedDigit()
                     .lineLimit(1)
                     .fixedSize()
+            } else if let root = model.store?.root {
+                // At rest, the whole scan: what's in it and what it weighs.
+                Text(AppStrings.plural(
+                    root.descendantFileCount, one: "%@ item", other: "%@ items", root.descendantFileCount.formatted()
+                ))
+                .foregroundStyle(.secondary)
+                Spacer(minLength: 12)
+                Text(Self.sizeText(for: root))
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .fixedSize()
             } else {
-                Text("Hover the treemap or select a row to inspect an item.")
-                    .foregroundStyle(.secondary)
                 Spacer()
             }
         }
+        // One line at any width or text size: the bar never takes height from the panes.
+        .lineLimit(1)
         .neoFont(11)
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
+        // The whole bar takes the right-click, not only its texts.
+        .contentShape(Rectangle())
     }
 
     static func countText(_ count: Int) -> String {

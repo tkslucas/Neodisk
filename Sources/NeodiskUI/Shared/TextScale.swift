@@ -84,6 +84,14 @@ private struct NeoFontModifier: ViewModifier {
 }
 
 extension View {
+    /// Where the workspace scale enters the view tree: the window's root, and the sheets it presents, which don't
+    /// inherit an environment set beneath their modifier. Also the font for views that never name one (macOS's
+    /// default is 13 pt, so 100% renders as before).
+    func neoWorkspaceText(scale: CGFloat) -> some View {
+        environment(\.neoTextScale, scale)
+            .font(.system(size: NeoFont.body.size * scale))
+    }
+
     func neoFont(_ font: NeoFont) -> some View {
         modifier(NeoFontModifier(font: font))
     }
@@ -93,7 +101,9 @@ extension View {
     }
 
     /// AppKit sizes chrome from the control size, not the label font, so a scaled title alone would overflow.
-    /// Pass the `.small` a view chose as `base`; at 100% it is returned unchanged.
+    /// Pass the `.small` a view chose as `base`; at 100% it is returned unchanged. SwiftUI controls ignore the
+    /// workspace font: give a button's label `Text` a `.neoFont`, and use `NeoSegmentedPicker`/`NeoPopUpPicker`
+    /// for pickers, whose titles SwiftUI never scales.
     func neoControlSize(base: ControlSize = .regular) -> some View {
         modifier(NeoControlSizeModifier(base: base))
     }
@@ -104,15 +114,28 @@ extension TextScale {
     /// ladder from the caller's base, clamped at the top.
     static let controlSizes: [ControlSize] = [.mini, .small, .regular, .large, .extraLarge]
 
-    /// Unchanged at 100%, so a deliberately `.small` control is never promoted.
+    /// Unchanged at 100%, so a deliberately `.small` control is never promoted. From 175% a `.small` control
+    /// reaches `.extraLarge`: a `.large` one is too short for 19-22 pt labels.
     static func controlSize(base: ControlSize, scale: CGFloat) -> ControlSize {
         let steps = switch scale {
         case ..<1.15: 0
         case ..<1.5: 1
-        default: 2
+        case ..<1.75: 2
+        default: 3
         }
         let start = controlSizes.firstIndex(of: base) ?? 2
         return controlSizes[min(start + steps, controlSizes.count - 1)]
+    }
+
+    /// AppKit's label size for a control of `base` size (`NSFont.systemFontSize(for:)`), scaled: for AppKit
+    /// controls and button labels, which don't take the workspace font.
+    static func controlFontSize(base: ControlSize, scale: CGFloat) -> CGFloat {
+        let standard: CGFloat = switch base {
+        case .mini: 9
+        case .small: 11
+        default: 13
+        }
+        return standard * scale
     }
 }
 

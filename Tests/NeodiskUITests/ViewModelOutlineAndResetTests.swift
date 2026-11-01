@@ -97,6 +97,26 @@ import NeodiskKit
         #expect(!model.expandedNodeIDs.contains(dirA))
     }
 
+    @Test func testOptionExpansionOpensAndClosesEverythingBelow() throws {
+        let environment = try TestEnvironment()
+        defer { environment.tearDown() }
+        let target = makeTestTarget("/outline/recursive")
+        let model = environment.makeModel()
+        model.coordinator.replaceCurrentSnapshot(makeMultiLevelSnapshot(target: target))
+        let dirA = target.id + "/dirA", dirB = target.id + "/dirB"
+
+        // Collapse the root, then ⌥-expand it: the root and both folders below open.
+        model.toggleExpansion(target.id)
+        model.toggleExpansion(target.id, recursively: true)
+        #expect(model.expandedNodeIDs.isSuperset(of: [target.id, dirA, dirB]))
+
+        // ⌥-collapse closes them all; a plain expand afterwards shows one level again.
+        model.toggleExpansion(target.id, recursively: true)
+        #expect(model.expandedNodeIDs.isDisjoint(with: [target.id, dirA, dirB]))
+        model.toggleExpansion(target.id)
+        #expect(model.expandedNodeIDs == [target.id])
+    }
+
     @Test func testOutlineSiblingOrderingFollowsDiffMagnitudeWhenBaselinePresent() async throws {
         let environment = try TestEnvironment()
         defer { environment.tearDown() }

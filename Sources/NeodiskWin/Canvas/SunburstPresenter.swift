@@ -247,18 +247,23 @@ final class SunburstPresenter {
 
     private func drawCenter(_ canvas: D2DCanvas, geometry: SunburstGeometry, isDark: Bool) {
         guard let store = model.store, let rootID = frame?.inputs.rootID, let root = store.node(id: rootID) else { return }
+        // Nine tenths of the center circle's width, as on the Mac: a long name shrinks a little, then truncates,
+        // rather than shrinking past legibility.
+        let width = geometry.maxRadius * SunburstLayout.centerRadius * 2 * 0.9
         let key = "\(root.id)|\(root.allocatedSize)|\(geometry.maxRadius)"
         if centerTexts?.key != key {
-            let width = geometry.maxRadius * SunburstLayout.centerRadius * 1.6
             let title = root.name.isEmpty ? root.path : root.name
-            guard let titleText = CanvasText(title, size: 14, bold: true, maxWidth: width, alignment: .center),
-                  let detailText = CanvasText(NeodiskFormatters.size(root.allocatedSize), size: 12, maxWidth: width,
-                                              alignment: .center) else { return }
+            let detail = NeodiskFormatters.size(root.allocatedSize)
+            let titleSize = Self.fittedSize(title, base: 14, bold: true, width: width, minimumScale: 0.8)
+            let detailSize = Self.fittedSize(detail, base: 12, bold: false, width: width, minimumScale: 0.6)
+            guard let titleText = CanvasText(title, size: titleSize, bold: true, maxWidth: width, alignment: .center),
+                  let detailText = CanvasText(detail, size: detailSize, maxWidth: width, alignment: .center) else {
+                return
+            }
             centerTexts = (titleText, detailText, key)
         }
         guard let centerTexts else { return }
         let total = centerTexts.title.height + centerTexts.detail.height
-        let width = geometry.maxRadius * SunburstLayout.centerRadius * 1.6
         let color = isDark ? NDColor.white : NDColor.black.withAlpha(0.85)
         canvas.draw(centerTexts.title, at: CGPoint(x: geometry.center.x - width / 2, y: geometry.center.y - total / 2), color)
         canvas.draw(
@@ -266,6 +271,13 @@ final class SunburstPresenter {
             at: CGPoint(x: geometry.center.x - width / 2, y: geometry.center.y - total / 2 + centerTexts.title.height),
             color.withAlpha(0.7)
         )
+    }
+
+    /// The font size that fits `text` in `width`, no smaller than `minimumScale` of `base`.
+    private static func fittedSize(_ text: String, base: Double, bold: Bool, width: Double, minimumScale: Double) -> Double {
+        let natural = CanvasText.measure(text, size: base, bold: bold)
+        guard natural > width, natural > 0 else { return base }
+        return max(base * minimumScale, base * width / natural)
     }
 
     // MARK: - Drill animation

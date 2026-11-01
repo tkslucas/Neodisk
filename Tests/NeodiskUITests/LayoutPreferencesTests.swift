@@ -69,9 +69,7 @@ import NeodiskAppModel
         defer { removeTestDefaultsSuite(defaults, named: suite) }
         model.updateLayout { $0.pick(.flat) }
         model.updateLayout {
-            var views = $0.views
-            views.setHidden(.flat, true)
-            $0.setViews(views)
+            $0.setHidden(.flat, true)
             $0.setListShown(false)
         }
         #expect(model.vizView == .cushion)
@@ -86,11 +84,7 @@ import NeodiskAppModel
         let (model, preferences, defaults, suite) = try makePreferencesModel()
         defer { removeTestDefaultsSuite(defaults, named: suite) }
         preferences.defaultVizView = .sunburst
-        model.updateLayout {
-            var views = $0.views
-            views.setHidden(.sunburst, true)
-            $0.setViews(views)
-        }
+        model.updateLayout { $0.setHidden(.sunburst, true) }
         #expect(preferences.defaultVizView == .lastViewed)
         let relaunched = AppPreferences(defaults: defaults)
         #expect(relaunched.workspaceLayout.views.isHidden(.sunburst))
@@ -121,10 +115,8 @@ import NeodiskAppModel
         let (model, _, defaults, suite) = try makePreferencesModel()
         defer { removeTestDefaultsSuite(defaults, named: suite) }
         model.updateLayout {
-            var views = $0.views
-            views.setHidden(.cushion, true)
-            views.setHidden(.flat, true)
-            $0.setViews(views)
+            $0.setHidden(.cushion, true)
+            $0.setHidden(.flat, true)
         }
         let picker = VizViewPicker(views: model.layout.views, current: model.vizView, isEnabled: true, update: model.updateLayout)
         let coordinator = VizViewPicker.Coordinator()

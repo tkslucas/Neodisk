@@ -452,9 +452,7 @@ final class MainWindow {
         }
         for view in VizView.allCases {
             actions["views.\(view.rawValue)"] = addToggleAction(to: viewActions.pointer, view.rawValue) { [unowned self] shown in
-                var views = self.model.preferences.workspaceLayout.views
-                views.setHidden(view, !shown)
-                self.model.preferences.workspaceLayout.setViews(views)
+                self.model.preferences.workspaceLayout.setHidden(view, !shown)
             }
         }
         actions["open-item"] = addAction(to: window, "open-item") { [unowned self] _ in

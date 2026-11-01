@@ -61,11 +61,7 @@ struct VizViewPicker: NSViewRepresentable {
             let views = picker.views
             for view in VizView.allCases {
                 let item = ClosureMenuItem(title: view.menuTitle) {
-                    picker.update {
-                        var updated = $0.views
-                        updated.setHidden(view, !updated.isHidden(view))
-                        $0.setViews(updated)
-                    }
+                    picker.update { $0.setHidden(view, !$0.views.isHidden(view)) }
                 }
                 item.state = views.isHidden(view) ? .off : .on
                 // The last view shown stays.

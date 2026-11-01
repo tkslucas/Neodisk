@@ -461,8 +461,8 @@
 "Cleanup" = "清理";
 "Drag files and folders here, or press ⌘⌫, to collect them. Nothing moves until you confirm." = "将文件和文件夹拖到这里，或按 ⌘⌫ 来收集它们。在你确认之前，不会移动任何内容。";
 "Drag items here" = "将项目拖到这里";
-"Collapse" = "折叠";
-"Expand" = "展开";
+"Collapse Cleanup" = "折叠清理";
+"Expand Cleanup" = "展开清理";
 "Sidebar Sections" = "边栏部分";
 "Show Cleanup in the sidebar. Drop items here to collect them." = "在边栏中显示清理。将项目拖放到这里以收集它们。";
 "It changed since the scan. Rescan to move it." = "自扫描以来它已更改。请重新扫描后再移动。";

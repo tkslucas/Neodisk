@@ -461,8 +461,8 @@
 "Cleanup" = "Cleanup";
 "Drag files and folders here, or press ⌘⌫, to collect them. Nothing moves until you confirm." = "Drag files and folders here, or press ⌘⌫, to collect them. Nothing moves until you confirm.";
 "Drag items here" = "Drag items here";
-"Collapse" = "Collapse";
-"Expand" = "Expand";
+"Collapse Cleanup" = "Collapse Cleanup";
+"Expand Cleanup" = "Expand Cleanup";
 "Sidebar Sections" = "Sidebar Sections";
 "Show Cleanup in the sidebar. Drop items here to collect them." = "Show Cleanup in the sidebar. Drop items here to collect them.";
 "It changed since the scan. Rescan to move it." = "It changed since the scan. Rescan to move it.";

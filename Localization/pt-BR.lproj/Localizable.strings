@@ -462,8 +462,8 @@
 "Cleanup" = "Limpeza";
 "Drag files and folders here, or press ⌘⌫, to collect them. Nothing moves until you confirm." = "Arraste arquivos e pastas para cá, ou pressione ⌘⌫, para reuni-los. Nada é movido até você confirmar.";
 "Drag items here" = "Arraste itens para cá";
-"Collapse" = "Recolher";
-"Expand" = "Expandir";
+"Collapse Cleanup" = "Recolher Limpeza";
+"Expand Cleanup" = "Expandir Limpeza";
 "Sidebar Sections" = "Seções da Barra Lateral";
 "Show Cleanup in the sidebar. Drop items here to collect them." = "Mostrar Limpeza na barra lateral. Solte itens aqui para reuni-los.";
 "It changed since the scan. Rescan to move it." = "Ele mudou desde a análise. Analise novamente para movê-lo.";

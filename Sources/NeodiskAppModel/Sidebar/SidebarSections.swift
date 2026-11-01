@@ -68,13 +68,17 @@ package enum SidebarRowText {
     /// Trailing the name: a volume's free space, a folder's scanned size; nil for a folder never scanned.
     package static func size(space: VolumeSpaceInfo?, scannedBytes: Int64?) -> String? {
         if let space, space.totalCapacity > 0 {
-            return String(format: AppStrings.localized("%@ free", comment: "Sidebar volume row"), NeodiskFormatters.size(space.availableCapacity))
+            let free = NeodiskFormatters.size(space.availableCapacity)
+            return String(format: AppStrings.localized("%@ free", comment: "Sidebar volume row"), free)
         }
         return scannedBytes.map(NeodiskFormatters.size)
     }
 
     package static func scanned(_ date: Date?, now: Date = Date()) -> String? {
-        date.map { String(format: AppStrings.localized("Scanned %@", comment: "Sidebar row"), DisplayFormatters.relativeDate($0, relativeTo: now)) }
+        date.map {
+            let relative = DisplayFormatters.relativeDate($0, relativeTo: now)
+            return String(format: AppStrings.localized("Scanned %@", comment: "Sidebar row"), relative)
+        }
     }
 
     /// The full path, and under it a volume's capacity.
@@ -91,6 +95,8 @@ package enum CleanupText {
     /// The Cleanup header's "1.2 GB · 3 items"; nil when nothing is collected.
     package static func summary(count: Int, totalSize: Int64) -> String? {
         guard count > 0 else { return nil }
-        return AppStrings.plural(count, one: "%@ · %@ item", other: "%@ · %@ items", NeodiskFormatters.size(totalSize), count.formatted())
+        return AppStrings.plural(
+            count, one: "%@ · %@ item", other: "%@ · %@ items", NeodiskFormatters.size(totalSize), count.formatted()
+        )
     }
 }

@@ -54,6 +54,6 @@ import NeodiskAppModel
         model.revealCleanup()
         #expect(model.sidebarVisibility == .all)
         #expect(model.sidebarSections.isExpanded(.cleanup))
-        #expect(model.cleanupRevealCount == 1)
+        #expect(model.isCleanupRevealPending)
     }
 }

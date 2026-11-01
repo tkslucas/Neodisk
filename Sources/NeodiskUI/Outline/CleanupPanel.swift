@@ -58,8 +58,10 @@ struct CleanupPanel: View {
         .animation(.easeOut(duration: 0.12), value: isTargeted)
         .animation(.easeOut(duration: 0.12), value: isInviting)
         .animation(.easeInOut(duration: 0.3), value: isFlashing)
-        .task(id: model.cleanupRevealCount) {
-            guard model.cleanupRevealCount > 0, !reduceMotion else { return }
+        .task(id: model.isCleanupRevealPending) {
+            guard model.isCleanupRevealPending else { return }
+            model.isCleanupRevealPending = false
+            guard !reduceMotion else { return }
             isFlashing = true
             try? await Task.sleep(for: .milliseconds(600))
             isFlashing = false
@@ -95,7 +97,8 @@ struct CleanupPanel: View {
             }
             .buttonStyle(.plain)
             .opacity(isHeaderHovered ? 1 : 0)
-            .accessibilityLabel(Text(isExpanded ? "Collapse" : "Expand"))
+            .focusable(isHeaderHovered)
+            .accessibilityLabel(Text(isExpanded ? "Collapse Cleanup" : "Expand Cleanup"))
         }
         .padding(.horizontal, 4)
         .contentShape(Rectangle())
@@ -123,7 +126,7 @@ struct CleanupPanel: View {
         }
         .foregroundStyle(tint)
         .frame(maxWidth: .infinity)
-        .padding(.horizontal, 8)
+        .padding(.horizontal, (8 * textScale).rounded())
         .padding(.vertical, (12 * textScale).rounded())
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -236,7 +239,9 @@ struct CleanupToolbarButton: View {
         .overlay(CleanupDropTarget(model: model, isTargeted: $isTargeted))
         .disabled(model.coordinator.snapshot == nil)
         .help("Show Cleanup in the sidebar. Drop items here to collect them.")
-        .accessibilityValue(Text(count.formatted()))
+        .accessibilityValue(count > 0
+            ? Text(AppStrings.plural(count, one: "%@ item", other: "%@ items", count.formatted()))
+            : Text(verbatim: ""))
     }
 }
 
@@ -416,8 +421,8 @@ private struct CleanupItemRow: View {
 
 // MARK: - Drop target
 
-/// AppKit drop view over the panel and the toolbar button: a private pasteboard type needs no declared UTType, and only payloads from
-/// the tree on screen are accepted.
+/// AppKit drop view over the panel and the toolbar button. A private pasteboard type needs no declared UTType;
+/// only payloads from the tree on screen are accepted.
 struct CleanupDropTarget: NSViewRepresentable {
     let model: NeodiskViewModel
     @Binding var isTargeted: Bool

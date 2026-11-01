@@ -104,8 +104,8 @@ final class NeodiskViewModel {
     var sidebarVisibility = NavigationSplitViewVisibility.all
     /// Mirror of the sidebar's persisted hidden and collapsed sections; change it through setSidebarSection.
     private(set) var sidebarSections = SidebarSectionState()
-    /// Bumped by the toolbar's Cleanup button: the panel flashes so the eye finds it.
-    private(set) var cleanupRevealCount = 0
+    /// Set by the toolbar's Cleanup button; the panel flashes once so the eye finds it, then clears it.
+    var isCleanupRevealPending = false
     /// Which visualization the center pane shows (treemap or sunburst).
     /// Preference mirroring happens where the toolbar switcher binds.
     /// The diff stays armed across the switch: sunburst has no Δ column to
@@ -520,7 +520,7 @@ final class NeodiskViewModel {
         withAnimation(.easeInOut(duration: 0.2)) {
             updateSidebarSections { $0.reveal(.cleanup) }
         }
-        cleanupRevealCount += 1
+        isCleanupRevealPending = true
     }
 
     private func updateSidebarSections(_ change: (inout SidebarSectionState) -> Void) {

@@ -39,7 +39,7 @@ struct SidebarSectionsTests {
             availableCapacity: 512_000_000_000,
             availableCapacityForImportantUsage: 640_000_000_000
         ))
-        // Finder-style available: purgeable counts.
+        // Available counts purgeable space.
         #expect(SidebarRowText.size(space: space, scannedBytes: nil) == "640 GB free")
         #expect(SidebarRowText.size(space: nil, scannedBytes: 1_500_000) == "1.5 MB")
         #expect(SidebarRowText.size(space: nil, scannedBytes: nil) == nil)

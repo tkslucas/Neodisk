@@ -33,7 +33,7 @@ struct SidebarTargetRow: View {
                 .frame(width: (22 * textScale).rounded())
 
             VStack(alignment: .leading, spacing: (1 * textScale).rounded()) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: (6 * textScale).rounded()) {
                     Text(target.displayName)
                         .neoFont(13, weight: .medium)
                         .lineLimit(1)
@@ -45,7 +45,7 @@ struct SidebarTargetRow: View {
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                             .fixedSize()
-                            .padding(.trailing, 2)
+                            .padding(.trailing, (2 * textScale).rounded())
                     }
                 }
                 if let scanned = SidebarRowText.scanned(lastScanned, now: now) {

@@ -30,10 +30,8 @@ struct SidebarPane: View {
     }
 
     var body: some View {
-        // The rows show relative "Scanned … ago" strings, which silently go stale in a long-lived window; re-evaluate
-        // them once a minute. The timeline date must flow into the rows, or SwiftUI skips their bodies.
-        // Cleanup sits below the list, not in a safe-area inset: an inset lets the rows scroll behind it. It's laid
-        // out first, so its lines wrap in full and the list gives up the room.
+        // The timeline date flows into the rows so "Scanned … ago" refreshes each minute. Cleanup sits below the list
+        // (an inset would let rows scroll behind it) and is laid out first, so the list gives up the room.
         VStack(spacing: 0) {
             TimelineView(.everyMinute) { context in
                 sidebarList(now: context.date)
@@ -312,9 +310,9 @@ struct SidebarPane: View {
             + "|\(model.vizPalette.id)"
     }
 
-    /// Free space for the volume rows, refreshed with the bars (mounts and scans change it).
+    /// Free space for every volume row, Folders' added volumes included, refreshed with the bars.
     private func loadVolumeSpace() async {
-        let urls = model.volumeLocations.map { ($0.id, $0.url) }
+        let urls = (model.volumeLocations + visibleFolders).filter { $0.kind == .volume }.map { ($0.id, $0.url) }
         spaceByPath = await Task.detached(priority: .utility) {
             var spaces: [String: VolumeSpaceInfo] = [:]
             for (id, url) in urls {
@@ -357,7 +355,9 @@ struct SidebarSectionsMenuItems: View {
     let model: NeodiskViewModel
 
     var body: some View {
-        ForEach(SidebarSection.allCases, id: \.self) { section in
+        // Local Cloud Files only where there are some.
+        let sections = SidebarSection.allCases.filter { $0 != .cloudFiles || !model.cloudLocations.isEmpty }
+        ForEach(sections, id: \.self) { section in
             Toggle(LocalizedStringKey(section.titleKey), isOn: Binding(
                 get: { model.isSidebarSectionShown(section) },
                 set: { model.setSidebarSection(section, shown: $0) }

@@ -220,26 +220,31 @@ nonisolated enum CloneDeduplicator {
         cancellationCheck: () throws -> Void
     ) rethrows -> FamilyMembers {
         var members = FamilyMembers()
-        for (offset, node) in nodes.enumerated() {
-            if offset.isMultiple(of: 4_096) {
-                try cancellationCheck()
-            }
-            if node.isDirectory {
-                guard let summarized = node.summarizedClones else { continue }
-                var isMember = false
-                for (family, tally) in summarized.families.enumerated() {
-                    if let families, !families.contains(tally.familyKey) { continue }
-                    members.byFamily[tally.familyKey, default: []]
-                        .append(Member(index: Int32(offset), family: Int32(family)))
-                    isMember = true
+        // Fields are read in place: copying each record out (and retaining its strings) was most of a pass
+        // over a tree with no clones.
+        try nodes.withUnsafeBufferPointer { records in
+            for offset in records.indices {
+                if offset.isMultiple(of: 4_096) {
+                    try cancellationCheck()
                 }
-                if isMember {
-                    members.summaryPaths[Int32(offset)] = node.path + "/"
+                if records[offset].isDirectory {
+                    guard let summarized = records[offset].summarizedClones else { continue }
+                    var isMember = false
+                    for (family, tally) in summarized.families.enumerated() {
+                        if let families, !families.contains(tally.familyKey) { continue }
+                        members.byFamily[tally.familyKey, default: []]
+                            .append(Member(index: Int32(offset), family: Int32(family)))
+                        isMember = true
+                    }
+                    if isMember {
+                        members.summaryPaths[Int32(offset)] = records[offset].path + "/"
+                    }
+                } else if let cloneInfo = records[offset].cloneInfo,
+                          !records[offset].isSymbolicLink, !records[offset].isSynthetic {
+                    let familyKey = cloneInfo.familyKey
+                    if let families, !families.contains(familyKey) { continue }
+                    members.byFamily[familyKey, default: []].append(Member(index: Int32(offset), family: -1))
                 }
-            } else if let cloneInfo = node.cloneInfo, !node.isSymbolicLink, !node.isSynthetic {
-                let familyKey = cloneInfo.familyKey
-                if let families, !families.contains(familyKey) { continue }
-                members.byFamily[familyKey, default: []].append(Member(index: Int32(offset), family: -1))
             }
         }
         return members

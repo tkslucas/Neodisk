@@ -198,6 +198,34 @@ extension ScanTimingSuites {
         #expect(!model.sidebarFolders.contains { $0.id == target.id })
     }
 
+    /// Moving the sidebar selection by keyboard shows a saved scan and never starts one.
+    @Test func testPreviewShowsSavedScansAndNeverScans() async throws {
+        let environment = try TestEnvironment()
+        defer { environment.tearDown() }
+        let saved = makeTestTarget("/stage2/preview-saved")
+        let unscanned = makeTestTarget("/stage2/preview-unscanned")
+        let model = environment.makeModel(policy: .automatic)
+        model.session.sourceIdentityProvider = environment.parallelSameDevice
+        model.startScan(saved)
+        await awaitSnapshotPersist(on: model, of: saved) {
+            environment.scanService.yield(.finished(environment.snapshot(for: saved)), scanIndex: 0)
+            environment.scanService.finish(scanIndex: 0)
+        }
+        model.startScan(unscanned)
+        model.stopScan()
+        let scansBefore = environment.scanService.scanCount
+
+        model.startScan(saved, previewOnly: true)
+        #expect(model.coordinator.selectedTarget?.id == saved.id)
+        #expect(model.session.activeSession(forTargetID: saved.id) == nil)
+
+        let other = makeTestTarget("/stage2/preview-never")
+        model.startScan(other, previewOnly: true)
+        #expect(model.coordinator.selectedTarget?.id == saved.id)
+        #expect(model.session.activeSession(forTargetID: other.id) == nil)
+        #expect(environment.scanService.scanCount == scansBefore)
+    }
+
     /// Removing from the sidebar is undoable and keeps the saved scan; Undo puts each folder back in place.
     @Test func testSidebarRemovalUndoesAndKeepsTheScan() async throws {
         let environment = try TestEnvironment()

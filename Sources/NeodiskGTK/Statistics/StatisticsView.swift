@@ -22,6 +22,8 @@ final class StatisticsView {
     private var largestTask: Task<Void, Never>?
     private var largestGeneration = -1
     private var isSyncing = false
+    private var isSyncingLargest = false
+    private var largestActions: ItemListActions?
     private var tokens: [ObservationToken] = []
     private var kindMenu: GPtr?
     /// The kind row the open menu is about.
@@ -69,7 +71,10 @@ final class StatisticsView {
                   let tab = AnalysisTab(rawValue: name) else { return }
             self.model.analysisTab = tab
         }
-        connectPointer(largestList, "row-activated") { [unowned self] row in
+        // Selected, not activated: arrowing through the list moves the selection with it, so Delete and the menu
+        // act on the row that's highlighted.
+        connectPointer(largestList, "row-selected") { [unowned self] row in
+            guard !self.isSyncingLargest, let row else { return }
             let index = Int(gtk_list_box_row_get_index(ptr(row)))
             guard self.largestIDs.indices.contains(index) else { return }
             self.model.select(self.largestIDs[index])
@@ -104,6 +109,10 @@ final class StatisticsView {
             gtk_toggle_button_set_active(ptr(mode == .categories ? self.categoriesToggle : self.typesToggle), gbool(true))
             self.isSyncing = false
         })
+        tokens.append(track { [unowned self] in self.syncLargestSelection(self.model.selectedNodeID) })
+        largestActions = ItemListActions(list: largestList, model: model) { [unowned self] index in
+            self.largestIDs.indices.contains(index) ? self.largestIDs[index] : nil
+        }
         tokens.append(track { [unowned self] in self.reloadKinds() })
         tokens.append(track { [unowned self] in self.reloadAges() })
         tokens.append(track { [unowned self] in
@@ -387,8 +396,24 @@ final class StatisticsView {
         return top
     }
 
+    /// Highlights the selected item when it's listed, and nothing otherwise.
+    private func syncLargestSelection(_ nodeID: String?) {
+        let current = gtk_list_box_get_selected_row(ptr(largestList)).map { Int(gtk_list_box_row_get_index($0)) }
+        let wanted = nodeID.flatMap { largestIDs.firstIndex(of: $0) }
+        guard current != wanted else { return }
+        isSyncingLargest = true
+        if let wanted {
+            gtk_list_box_select_row(ptr(largestList), gtk_list_box_get_row_at_index(ptr(largestList), Int32(wanted)))
+        } else {
+            gtk_list_box_unselect_all(ptr(largestList))
+        }
+        isSyncingLargest = false
+    }
+
     private func showLargest(_ nodes: [FileNodeRecord], rootSize: Int64) {
+        isSyncingLargest = true
         gtk_list_box_remove_all(ptr(largestList))
+        isSyncingLargest = false
         largestIDs = nodes.map(\.id)
         let rootPath = model.store?.root.path ?? ""
         for node in nodes {
@@ -410,5 +435,6 @@ final class StatisticsView {
             gtk_widget_set_tooltip_text(ptr(row), node.path)
             gtk_list_box_append(ptr(largestList), ptr(row))
         }
+        syncLargestSelection(model.selectedNodeID)
     }
 }

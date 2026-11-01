@@ -20,6 +20,7 @@ final class OutlineSearch {
     private let debouncer = SearchDebouncer()
     private var resultIDs: [String] = []
     private var isSyncingSelection = false
+    private var listActions: ItemListActions?
     private var tokens: [ObservationToken] = []
 
     static let resultLimit = 200
@@ -85,6 +86,9 @@ final class OutlineSearch {
         tokens.append(track { [unowned self] in
             self.syncSelection(self.model.selectedNodeID)
         })
+        listActions = ItemListActions(list: results, model: model) { [unowned self] index in
+            self.resultIDs.indices.contains(index) ? self.resultIDs[index] : nil
+        }
     }
 
     /// Ctrl+F (the action is disabled until there's a scan to search).

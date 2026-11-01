@@ -427,6 +427,7 @@
 "Top %lld of %@ matches" = "Las %lld mejores de %@ coincidencias";
 "Visualization" = "Visualización";
 "%@ free of %@" = "%@ libres de %@";
+"%@ of %@ used" = "%@ de %@ usados";
 "%@ in %@ files" = "%@ en %@ archivos";
 "%@ in %@ file" = "%@ en %@ archivo";
 

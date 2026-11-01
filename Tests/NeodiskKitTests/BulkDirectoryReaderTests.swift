@@ -271,7 +271,7 @@ import Foundation
         var expectedNames: Set<String> = []
         for index in 0..<2_500 {
             let name = "file-\(index)-日本語-émoji🎈"
-            try Data("x".utf8).write(to: rootURL.appending(path: name))
+            try writeFixtureFile(rootURL.appending(path: name), bytes: Array("x".utf8))
             expectedNames.insert(name)
         }
 

@@ -77,3 +77,14 @@ func makeTestSnapshot(
         isComplete: true
     )
 }
+
+/// Writes a small fixture file with plain POSIX calls, several times faster than `Data.write` on Linux,
+/// for tests that need thousands of real files.
+func writeFixtureFile(_ url: URL, bytes: [UInt8] = [0]) throws {
+    let fd = open(url.path, O_CREAT | O_WRONLY | O_TRUNC, 0o644)
+    guard fd >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+    defer { close(fd) }
+    guard write(fd, bytes, bytes.count) == bytes.count else {
+        throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+    }
+}

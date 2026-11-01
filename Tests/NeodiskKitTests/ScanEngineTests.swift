@@ -975,7 +975,7 @@ import Foundation
             let folderURL = packageContentsURL.appending(path: "f\(folder)", directoryHint: .isDirectory)
             try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: false)
             for index in 0..<8 {
-                try Data([UInt8(index)]).write(to: folderURL.appending(path: "payload-\(index).tmp"))
+                try writeFixtureFile(folderURL.appending(path: "payload-\(index).tmp"), bytes: [UInt8(index)])
             }
         }
         // A sibling folder whose listing holds until the scan is cancelled,
@@ -1020,9 +1020,9 @@ import Foundation
             try? FileManager.default.removeItem(at: followUpURL)
         }
 
-        for index in 0..<10_000 {
-            let fileURL = rootURL.appending(path: "payload-\(index).tmp")
-            try Data([UInt8(index % 256)]).write(to: fileURL)
+        // Many more entries than the 64 the hold lets through.
+        for index in 0..<2_000 {
+            try writeFixtureFile(rootURL.appending(path: "payload-\(index).tmp"), bytes: [UInt8(index % 256)])
         }
 
         var options = ScanOptions()
@@ -1052,7 +1052,7 @@ import Foundation
         #expect(!(didFinishCancelledScan))
         // The enumeration stopped at the cancel instead of listing the rest.
         let listedEntries = try #require(await hold.listedEntriesOnceEnded())
-        #expect(listedEntries < 10_000)
+        #expect(listedEntries < 2_000)
         let followUpFinished = try await scanFinishes(engine: engine, at: followUpURL)
         #expect(followUpFinished)
     }

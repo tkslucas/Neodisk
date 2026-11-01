@@ -4,7 +4,7 @@ import Testing
 
 /// Random churn plus the FSEvents it would produce must relist into a tree equal to a fresh full scan.
 /// The journal is a stub with minimal-but-faithful events: sparser ones would show up here as divergence.
-@Suite("IncrementalRescanEquivalence", .serialized)
+@Suite("IncrementalRescanEquivalence")
 struct IncrementalRescanEquivalenceTests {
 
     // MARK: - Deterministic RNG

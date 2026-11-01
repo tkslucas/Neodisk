@@ -133,7 +133,7 @@ import Testing
         let segments = [segment(depth: 0, share: 1), segment(depth: 1, share: 0.6), segment(depth: 2, share: 0.15),
                         segment(depth: 3, share: 0.05)]
         #expect(SunburstLayout.fittedRingCount(of: segments, depthLimit: 8) == 3)
-        #expect(SunburstLayout.ringMetrics(of: segments).depthLimit == 4)
+        #expect(SunburstChartLayout(segments: segments).ringCount == 4)
     }
 
     @Test func neverMoreThanTheLimit() {

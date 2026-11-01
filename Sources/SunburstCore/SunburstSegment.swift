@@ -61,6 +61,16 @@ public struct SunburstSegment: Identifiable, Hashable, Sendable {
         self.itemCount = itemCount
     }
 
+    /// The same arc banded onto other rings: a fitted chart restamps the full layout's arcs.
+    public func withRadii(inner: Double, outer: Double) -> SunburstSegment {
+        SunburstSegment(
+            id: id, nodeID: nodeID, label: label, startAngle: startAngle, endAngle: endAngle,
+            innerRadius: inner, outerRadius: outer, depth: depth, colorToken: colorToken, fillRGB: fillRGB,
+            totalSize: totalSize, isAggregate: isAggregate, isDataless: isDataless,
+            parentFolderID: parentFolderID, itemCount: itemCount
+        )
+    }
+
     public var isFreeSpace: Bool {
         colorToken.role == .freeSpace
     }

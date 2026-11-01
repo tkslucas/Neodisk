@@ -208,8 +208,7 @@ struct SunburstChartView: View {
             if let zoomTransition, let zoomPresentation {
                 SunburstZoomTransitionCanvas(
                     state: zoomTransition,
-                    presentation: zoomPresentation,
-                    metrics: SunburstLayout.ringMetrics(of: zoomTransition.animatedSegments)
+                    presentation: zoomPresentation
                 )
                 .frame(width: chartFrame.width, height: chartFrame.height)
                 .position(x: chartFrame.midX, y: chartFrame.midY)
@@ -377,19 +376,16 @@ struct SunburstChartView: View {
 
         let previousRootID = String(previousParts[1])
         let nextRootID = String(nextParts[1])
-        let outgoingSegments = chartModel.renderedSegments
-        guard !outgoingSegments.isEmpty else {
+        let outgoing = chartModel.renderedLayout
+        guard !outgoing.segments.isEmpty else {
             zoomTransition = nil
             return
         }
 
         if let focus = chartModel.segment(forNodeID: nextRootID) {
-            zoomTransition = .zoomIn(segments: outgoingSegments, focus: focus)
+            zoomTransition = .zoomIn(layout: outgoing, focus: focus, depthLimit: depthLimit)
         } else if treeStore.isAncestor(nextRootID, of: previousRootID) {
-            zoomTransition = .zoomOut(
-                previousSegments: outgoingSegments,
-                previousRootID: previousRootID
-            )
+            zoomTransition = .zoomOut(previous: outgoing, previousRootID: previousRootID)
         } else {
             zoomTransition = nil
         }
@@ -401,16 +397,11 @@ struct SunburstChartView: View {
 
         switch transition.direction {
         case .zoomIn:
-            guard let focus = transition.focus else {
+            guard transition.focus != nil else {
                 zoomTransition = nil
                 return
             }
-            transition.incomingSegments = chartModel.renderedSegments
-            transition.handoffFadeDepthThreshold = SunburstZoomTransitionState.handoffFadeDepthThreshold(
-                animatedSegments: transition.animatedSegments,
-                focus: focus
-            )
-            transition.layoutReadyDate = Date()
+            transition.incomingLayoutLanded(chartModel.renderedLayout)
         case .zoomOut:
             guard let previousRootID = transition.previousRootID,
                   let focus = chartModel.segment(forNodeID: previousRootID),
@@ -418,13 +409,7 @@ struct SunburstChartView: View {
                 zoomTransition = nil
                 return
             }
-            transition.animatedSegments = chartModel.renderedSegments
-            transition.focus = focus
-            transition.handoffFadeDepthThreshold = SunburstZoomTransitionState.handoffFadeDepthThreshold(
-                animatedSegments: transition.animatedSegments,
-                focus: focus
-            )
-            transition.layoutReadyDate = Date()
+            transition.parentLayoutLanded(chartModel.renderedLayout, focus: focus)
         }
 
         zoomTransition = transition

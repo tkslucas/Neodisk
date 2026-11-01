@@ -23,13 +23,13 @@ struct SunburstLayoutRequest: Sendable {
 }
 
 protocol SunburstLayouting: Sendable {
-    func segments(for request: SunburstLayoutRequest) async throws -> [SunburstSegment]
+    func layout(for request: SunburstLayoutRequest) async throws -> SunburstChartLayout
 }
 
 actor SunburstLayoutService: SunburstLayouting {
     /// Returns unstyled segments; the chart model applies the fill pass.
-    func segments(for request: SunburstLayoutRequest) async throws -> [SunburstSegment] {
-        try SunburstLayout.segments(
+    func layout(for request: SunburstLayoutRequest) async throws -> SunburstChartLayout {
+        try SunburstLayout.layout(
             in: request.treeStore,
             rootID: request.rootID,
             depthLimit: request.depthLimit,
@@ -54,13 +54,16 @@ final class SunburstChartModel: ObservableObject {
     private let layoutService: any SunburstLayouting
     private var layoutGeneration = 0
     private var activeLayoutID: String?
-    private var layoutTask: Task<[SunburstSegment], Error>?
+    private var layoutTask: Task<SunburstChartLayout, Error>?
     private var selectionOverlayCache = SunburstSelectionOverlayCache(capacity: 8)
     private var cleanupOverlayCache: (key: SunburstCleanupOverlayKey, overlay: SunburstCleanupOverlay)?
     private var legendPresentationCache = SunburstLegendPresentationCache()
     /// The rendered layout before fills, kept so a style change re-resolves
     /// colors over the finished geometry instead of re-laying out.
-    private var unstyledSegments: [SunburstSegment] = []
+    private var unstyledLayout = SunburstChartLayout.empty
+    /// The rendered layout's rings past the fit, styled, which only the drill transition draws.
+    private var renderedDeepSegments: [SunburstSegment] = []
+    private var renderedRingCount = 1
     private var currentStyle = SunburstColorStyle()
 
     init(layoutService: any SunburstLayouting = SunburstLayoutService()) {
@@ -73,6 +76,13 @@ final class SunburstChartModel: ObservableObject {
 
     var renderedSegments: [SunburstSegment] {
         renderState.segments
+    }
+
+    /// The chart on screen with its deep rings, for the drill transition.
+    var renderedLayout: SunburstChartLayout {
+        SunburstChartLayout(
+            segments: renderState.segments, deepSegments: renderedDeepSegments, ringCount: renderedRingCount
+        )
     }
 
     var hoveredSegmentID: SunburstSegment.ID? {
@@ -192,9 +202,9 @@ final class SunburstChartModel: ObservableObject {
     func applyStyle(_ style: SunburstColorStyle, in treeStore: FileTreeStore) {
         guard style != currentStyle else { return }
         currentStyle = style
-        guard !unstyledSegments.isEmpty else { return }
+        guard !unstyledLayout.segments.isEmpty else { return }
         apply(
-            SunburstLayout.styled(unstyledSegments, style: style, in: treeStore),
+            SunburstLayout.styled(unstyledLayout, style: style, in: treeStore),
             preservingHover: true
         )
     }
@@ -210,12 +220,12 @@ final class SunburstChartModel: ObservableObject {
         currentStyle = request.style
 
         let task = Task(priority: .userInitiated) { [layoutService] in
-            try await layoutService.segments(for: request)
+            try await layoutService.layout(for: request)
         }
         layoutTask = task
 
         do {
-            let segments = try await withTaskCancellationHandler {
+            let layout = try await withTaskCancellationHandler {
                 try await task.value
             } onCancel: {
                 task.cancel()
@@ -226,10 +236,10 @@ final class SunburstChartModel: ObservableObject {
             }
 
             layoutTask = nil
-            unstyledSegments = segments
+            unstyledLayout = layout
             // Styled with the latest style — it may have moved on (via
             // applyStyle) while the layout ran.
-            apply(SunburstLayout.styled(segments, style: currentStyle, in: request.treeStore))
+            apply(SunburstLayout.styled(layout, style: currentStyle, in: request.treeStore))
             drawnRootID = request.rootID
             setIsLayoutPending(false)
             return true
@@ -255,11 +265,13 @@ final class SunburstChartModel: ObservableObject {
         layoutGeneration == generation && activeLayoutID == layoutID
     }
 
-    private func apply(_ segments: [SunburstSegment], preservingHover: Bool = false) {
+    private func apply(_ layout: SunburstChartLayout, preservingHover: Bool = false) {
         selectionOverlayCache.removeAll()
         legendPresentationCache.removeAll()
+        renderedDeepSegments = layout.deepSegments
+        renderedRingCount = layout.ringCount
         renderState = SunburstChartRenderState(
-            segments: segments,
+            segments: layout.segments,
             hoveredSegmentID: preservingHover ? renderState.hoveredSegmentID : nil,
             version: renderState.version + 1
         )

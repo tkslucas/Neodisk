@@ -37,22 +37,57 @@ public enum SunburstLayout {
         hiddenSpaceLabel: String = "Hidden Space",
         cancellationCheck: CancellationCheck
     ) throws -> [SunburstSegment] {
+        try layout(
+            in: treeStore, rootID: rootID, depthLimit: depthLimit, minimumAngle: minimumAngle,
+            freeSpaceBytes: freeSpaceBytes, hiddenSpaceBytes: hiddenSpaceBytes,
+            expandedAggregateIDs: expandedAggregateIDs, includeCloudOnly: includeCloudOnly,
+            freeSpaceLabel: freeSpaceLabel, hiddenSpaceLabel: hiddenSpaceLabel, cancellationCheck: cancellationCheck
+        ).segments
+    }
+
+    /// The chart with its rings sized for the depth it shows, so a shallow tree, or one with a single deep
+    /// branch, gets thick rings instead of one thin ring in an empty pane. The rings past the fit come along
+    /// for the drill transition. One traversal: aggregation never depends on the depth limit, so the fitted
+    /// chart is the full one's shallow rings, restamped.
+    public nonisolated static func layout<Tree: SunburstTreeReading>(
+        in treeStore: Tree,
+        rootID: String,
+        depthLimit: Int,
+        minimumAngle: Double = .pi / 90,
+        freeSpaceBytes: Int64? = nil,
+        hiddenSpaceBytes: Int64? = nil,
+        expandedAggregateIDs: Set<String> = [],
+        includeCloudOnly: Bool = false,
+        freeSpaceLabel: String = "Free Space",
+        hiddenSpaceLabel: String = "Hidden Space",
+        cancellationCheck: CancellationCheck
+    ) throws -> SunburstChartLayout {
         let full = try layOut(
             in: treeStore, rootID: rootID, depthLimit: depthLimit, minimumAngle: minimumAngle,
             freeSpaceBytes: freeSpaceBytes, hiddenSpaceBytes: hiddenSpaceBytes,
             expandedAggregateIDs: expandedAggregateIDs, includeCloudOnly: includeCloudOnly,
             freeSpaceLabel: freeSpaceLabel, hiddenSpaceLabel: hiddenSpaceLabel, cancellationCheck: cancellationCheck
         )
-        // Rings are sized for the depth the chart shows, so a shallow tree, or one with a single deep branch,
-        // gets thick rings instead of one thin ring in an empty pane.
         let rings = fittedRingCount(of: full, depthLimit: depthLimit)
-        guard rings < depthLimit else { return full }
-        return try layOut(
-            in: treeStore, rootID: rootID, depthLimit: rings, minimumAngle: minimumAngle,
-            freeSpaceBytes: freeSpaceBytes, hiddenSpaceBytes: hiddenSpaceBytes,
-            expandedAggregateIDs: expandedAggregateIDs, includeCloudOnly: includeCloudOnly,
-            freeSpaceLabel: freeSpaceLabel, hiddenSpaceLabel: hiddenSpaceLabel, cancellationCheck: cancellationCheck
-        )
+        guard rings < depthLimit else {
+            return SunburstChartLayout(segments: full, ringCount: max(depthLimit, 1))
+        }
+
+        let metrics = SunburstRingMetrics(depthLimit: rings)
+        let rim = SunburstRingMetrics.outerRadius
+        var shown: [SunburstSegment] = []
+        var deep: [SunburstSegment] = []
+        for segment in full {
+            if segment.depth < rings {
+                shown.append(segment.withRadii(
+                    inner: metrics.innerRadius(depth: segment.depth),
+                    outer: metrics.drawnOuterRadius(depth: segment.depth)
+                ))
+            } else {
+                deep.append(segment.withRadii(inner: rim, outer: rim))
+            }
+        }
+        return SunburstChartLayout(segments: shown, deepSegments: deep, ringCount: rings)
     }
 
     /// A ring counts when its arcs cover at least this share of the circle; deeper, sparser rings are left to
@@ -65,13 +100,31 @@ public enum SunburstLayout {
         for segment in segments where segment.depth < coverage.count {
             coverage[segment.depth] += (segment.endAngle - segment.startAngle) / (.pi * 2)
         }
-        let deepest = coverage.lastIndex { $0 >= minimumRingCoverage } ?? 0
-        return deepest + 1
+        return fittedRingCount(coverage: coverage)
     }
 
-    /// The ring geometry a laid-out chart was drawn with, for transitions that remap its arcs.
-    public nonisolated static func ringMetrics(of segments: [SunburstSegment]) -> SunburstRingMetrics {
-        SunburstRingMetrics(depthLimit: (segments.map(\.depth).max() ?? 0) + 1)
+    /// The rings the chart drilled into `focus` will fit, judged by the arcs under it here (shown and deep).
+    /// Arcs this layout pooled can hide deeper rings, so the drilled layout may still correct it.
+    public nonisolated static func predictedRingCount(
+        drillingInto focus: SunburstSegment,
+        in segments: [SunburstSegment],
+        depthLimit: Int
+    ) -> Int {
+        let span = focus.endAngle - focus.startAngle
+        guard span > 0 else { return 1 }
+        var coverage = [Double](repeating: 0, count: max(depthLimit, 1))
+        for segment in segments where segment.depth > focus.depth
+            && segment.startAngle >= focus.startAngle - 1e-9 && segment.endAngle <= focus.endAngle + 1e-9 {
+            let ring = segment.depth - focus.depth - 1
+            guard ring < coverage.count else { continue }
+            coverage[ring] += (segment.endAngle - segment.startAngle) / span
+        }
+        return fittedRingCount(coverage: coverage)
+    }
+
+    private nonisolated static func fittedRingCount(coverage: [Double]) -> Int {
+        let deepest = coverage.lastIndex { $0 >= minimumRingCoverage } ?? 0
+        return deepest + 1
     }
 
     private nonisolated static func layOut<Tree: SunburstTreeReading>(
@@ -470,5 +523,33 @@ public enum SunburstLayout {
                 itemCount: 0
             )
         }
+    }
+}
+
+/// A laid-out chart: the rings it shows, and the rings past them, which only the drill transition draws.
+public struct SunburstChartLayout: Sendable, Equatable {
+    /// Banded for `ringCount` rings.
+    public var segments: [SunburstSegment]
+    /// Deeper rings, at the rim with no thickness, where the shown chart would hold them: a drill-in grows them
+    /// into view, a drill-out shrinks them back.
+    public var deepSegments: [SunburstSegment]
+    public var ringCount: Int
+
+    /// `ringCount` defaults to the rings `segments` occupy.
+    public init(segments: [SunburstSegment], deepSegments: [SunburstSegment] = [], ringCount: Int? = nil) {
+        self.segments = segments
+        self.deepSegments = deepSegments
+        self.ringCount = ringCount ?? ((segments.map(\.depth).max() ?? 0) + 1)
+    }
+
+    public static let empty = SunburstChartLayout(segments: [])
+
+    /// Shown arcs first, so ancestors precede descendants, as the transition draws them.
+    public var transitionSegments: [SunburstSegment] {
+        segments + deepSegments
+    }
+
+    public var metrics: SunburstRingMetrics {
+        SunburstRingMetrics(depthLimit: ringCount)
     }
 }

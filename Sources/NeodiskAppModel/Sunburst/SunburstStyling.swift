@@ -94,6 +94,19 @@ extension SunburstLayout {
         }
     }
 
+    /// Deep rings too, so the drill transition draws them in their colors.
+    package nonisolated static func styled(
+        _ layout: SunburstChartLayout,
+        style: SunburstColorStyle,
+        in treeStore: FileTreeStore
+    ) -> SunburstChartLayout {
+        SunburstChartLayout(
+            segments: styled(layout.segments, style: style, in: treeStore),
+            deepSegments: styled(layout.deepSegments, style: style, in: treeStore),
+            ringCount: layout.ringCount
+        )
+    }
+
     // MARK: - Fill resolution
 
     /// Kind/age modes mirror the treemap; branch mode resolves the token. Not private so the legend can

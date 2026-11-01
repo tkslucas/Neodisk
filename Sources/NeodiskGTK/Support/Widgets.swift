@@ -118,6 +118,10 @@ enum Widgets {
                 }
             }
             cache = popover
+        } else {
+            // Labels may follow the selection ("Copy Paths" for several): the items are rebuilt, the popover kept.
+            let model = menu(sections)
+            gtk_popover_menu_set_menu_model(ptr(cache), ptr(model.pointer))
         }
         if hadTooltip {
             gtk_widget_set_has_tooltip(ptr(parent), gbool(false))

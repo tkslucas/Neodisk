@@ -25,11 +25,15 @@ enum DevLaunchHooks {
         let url = URL(filePath: path, directoryHint: .isDirectory).standardizedFileURL
         model.open(ScanTarget(url: url))
 
-        if let selection = environment["NEODISK_SELECT"] {
+        // NEODISK_SELECT=<path>[:<path>...]: those items selected once on screen, the last one primary.
+        if let rawSelection = environment["NEODISK_SELECT"] {
+            let paths = rawSelection.split(separator: ":").map(String.init)
             tokens.append(track {
-                guard model.phase == .displaying, model.store?.node(id: selection) != nil,
-                      model.selectedNodeID == nil else { return }
-                model.select(selection)
+                guard model.phase == .displaying, model.selection.isEmpty, let store = model.store else { return }
+                let ids = paths.filter { store.node(id: $0) != nil }
+                guard !ids.isEmpty else { return }
+                model.select(ids.last)
+                model.selection.replace(with: ids, primary: ids.last)
             })
         }
 
@@ -47,28 +51,37 @@ enum DevLaunchHooks {
             }
         }
 
-        // NEODISK_AUTOTRASH=<path>[:<path>...] moves those items as if each was confirmed, once the scan is on
-        // screen: every safety check still runs, and the window reports each move as it would (with
-        // NEODISK_UI_SNAPSHOT, the capture shows the last report). One line per item on stderr.
+        // NEODISK_AUTOTRASH=<path>[:<path>...] moves those items as if confirmed, once the scan is on screen: one
+        // item alone, several together as a multi-selection goes. Every safety check still runs, and the window
+        // reports as it would (with NEODISK_UI_SNAPSHOT, the capture shows the report). One line per item on stderr.
         if let rawPaths = environment["NEODISK_AUTOTRASH"] {
             var started = false
             tokens.append(track {
                 guard !started, model.phase == .displaying, model.snapshot?.isComplete == true else { return }
                 started = true
                 Task { @MainActor in
+                    var nodes: [FileNodeRecord] = []
                     for path in rawPaths.split(separator: ":").map(String.init) {
-                        guard let node = model.store?.node(id: path) else {
+                        if let node = model.store?.node(id: path) {
+                            nodes.append(node)
+                        } else {
                             FileHandle.standardError.write(Data("NEODISK_AUTOTRASH: \(path): not in the scan\n".utf8))
-                            continue
                         }
-                        let outcome = await window.move(node)
+                    }
+                    var outcomes: [TrashOutcome?] = nodes.map { _ in nil }
+                    if nodes.count == 1 {
+                        outcomes = [await window.move(nodes[0])]
+                    } else if let moved = await window.move(nodes) {
+                        outcomes = moved
+                    }
+                    for (node, outcome) in zip(nodes, outcomes) {
                         let line = switch outcome {
                         case .moved(let bytes): "moved \(bytes) bytes"
                         case .alreadyGone: "already gone"
                         case .failed(let reason): "refused: \(reason)"
                         case nil: "busy"
                         }
-                        FileHandle.standardError.write(Data("NEODISK_AUTOTRASH: \(path): \(line)\n".utf8))
+                        FileHandle.standardError.write(Data("NEODISK_AUTOTRASH: \(node.path): \(line)\n".utf8))
                     }
                     FileHandle.standardError.write(Data(
                         "NEODISK_AUTOTRASH: done; root \(model.snapshot?.root.allocatedSize ?? -1) bytes\n".utf8

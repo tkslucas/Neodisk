@@ -102,6 +102,14 @@ package struct NodeSelection: Equatable, Sendable {
         replace(with: kept + listIDs, primary: primary)
     }
 
+    /// The primary item after a list reports `listIDs`, for lists that can't say which row was picked last:
+    /// the last row that just joined, else the current primary if still picked, else the last row.
+    package func listPrimary(for listIDs: [String]) -> String? {
+        if let joined = listIDs.last(where: { !members.contains($0) }) { return joined }
+        if let primaryID, listIDs.contains(primaryID) { return primaryID }
+        return listIDs.last
+    }
+
     // MARK: - Reading it
 
     /// What an action from a context menu applies to: the whole selection when the clicked item is in it, else

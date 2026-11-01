@@ -524,3 +524,8 @@
 "All in Cleanup" = "Tous dans le Nettoyage";
 "%lld in Cleanup" = "%lld dans le Nettoyage";
 "%lld items" = "%lld éléments";
+"Can't Move %lld Items to the Trash" = "Impossible de placer %lld éléments dans la Corbeille";
+"Couldn't Move 1 Item to the Trash" = "1 élément n'a pas pu être placé dans la Corbeille";
+"Couldn't Move %lld Items to the Trash" = "%lld éléments n'ont pas pu être placés dans la Corbeille";
+"Select All" = "Tout sélectionner";
+"Add to Selection" = "Ajouter à la sélection";

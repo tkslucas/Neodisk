@@ -151,6 +151,8 @@ final class AppModel {
     var rootID: String? { store?.rootID }
     var focusedRootID: String? { focusID ?? store?.rootID }
     var selectedNode: FileNodeRecord? { store?.node(id: selectedNodeID) }
+    /// The selected items, in the order they were picked.
+    var selectedNodes: [FileNodeRecord] { store.map { selection.nodes(in: $0) } ?? [] }
     var hoveredNode: FileNodeRecord? { store?.node(id: hoveredNodeID) }
     var palette: VizPalette { preferences.palette }
 
@@ -484,11 +486,44 @@ final class AppModel {
     func select(_ nodeID: String?) {
         guard selection.ids != (nodeID.map { [$0] } ?? []) else { return }
         selection.replace(with: nodeID)
-        // A selection outside the drilled-in folder widens the focus to show
-        // it, as on the Mac.
+        widenFocus(toShow: nodeID)
+    }
+
+    /// A selection outside the drilled-in folder widens the focus to show it, as on the Mac. Only the primary
+    /// item counts: the rest of a multi-selection may lie anywhere.
+    private func widenFocus(toShow nodeID: String?) {
         if let nodeID, let store, let focusID, !store.isAncestor(focusID, of: nodeID), focusID != nodeID {
             self.focusID = store.parent(of: nodeID)?.id
         }
+    }
+
+    /// The rows a list reports. A Ctrl- or Shift-gesture keeps the items the list doesn't show.
+    func select(fromList ids: [String], extending: Bool, listShows: (String) -> Bool) {
+        let primary = selection.listPrimary(for: ids)
+        selection.applyList(selected: ids, primary: primary, extending: extending, listShows: listShows)
+        widenFocus(toShow: selection.primaryID)
+    }
+
+    /// Ctrl- or Shift-click in a map: the item joins as the primary, or leaves.
+    func toggleSelection(_ nodeID: String) {
+        selection.toggle(nodeID)
+        if selection.primaryID == nodeID { widenFocus(toShow: nodeID) }
+    }
+
+    /// Shift+arrow in a map: the item joins as the primary.
+    func extendSelection(to nodeID: String) {
+        selection.add(nodeID)
+        widenFocus(toShow: nodeID)
+    }
+
+    /// Ctrl+A in a map: everything the map is rooted at, one level down.
+    @discardableResult
+    func selectAllInMap() -> Bool {
+        guard let store, let rootID = focusedRootID else { return false }
+        let children = store.children(of: rootID).filter { !$0.isSynthetic && $0.allocatedSize > 0 }
+        guard !children.isEmpty else { return false }
+        selection.replace(with: children.map(\.id), primary: children.first?.id)
+        return true
     }
 
     /// Re-roots the visualizations at `nodeID` (a folder on the path above
@@ -515,7 +550,9 @@ final class AppModel {
         let children = store.children(of: folder.id).filter { $0.allocatedSize > 0 }
         guard !children.isEmpty else { return false }
         focusID = folder.id == store.rootID ? nil : folder.id
-        if node.isDirectory, let largest = children.max(by: { $0.allocatedSize < $1.allocatedSize }) {
+        // Lands on the largest child so the keyboard keeps working inside; a multi-selection stays as it is.
+        if node.isDirectory, !selection.isMultiple,
+           let largest = children.max(by: { $0.allocatedSize < $1.allocatedSize }) {
             selection.replace(with: largest.id)
         }
         return true
@@ -531,7 +568,7 @@ final class AppModel {
         guard let store, let focusID else { return }
         let parent = store.parent(of: focusID)?.id
         self.focusID = parent == store.rootID ? nil : parent
-        selection.replace(with: focusID)
+        if !selection.isMultiple { selection.replace(with: focusID) }
     }
 
     var canFocusOut: Bool { focusID != nil }
@@ -566,7 +603,8 @@ final class AppModel {
         isSteppingDrillHistory = false
         // Keep the selection when it is still inside the map; otherwise land
         // on the largest child, as drilling in does.
-        if let selected = selectedNodeID, selected == target || !store.isAncestor(target, of: selected) {
+        if !selection.isMultiple, let selected = selectedNodeID,
+           selected == target || !store.isAncestor(target, of: selected) {
             let children = store.children(of: target).filter { $0.allocatedSize > 0 }
             if let largest = children.max(by: { $0.allocatedSize < $1.allocatedSize }) {
                 selection.replace(with: largest.id)
@@ -584,6 +622,30 @@ enum TrashOutcome {
     /// Gone before the move (deleted some other way): the tree drops it too.
     case alreadyGone
     case failed(String)
+}
+
+/// Several moves added up for one report.
+struct TrashBatchSummary {
+    private(set) var moved = 0
+    private(set) var bytes: Int64 = 0
+    private(set) var gone = 0
+    private(set) var failed = 0
+    private(set) var firstFailure: String?
+
+    init(_ outcomes: [TrashOutcome]) {
+        for outcome in outcomes {
+            switch outcome {
+            case .moved(let movedBytes):
+                moved += 1
+                bytes &+= movedBytes
+            case .alreadyGone:
+                gone += 1
+            case .failed(let reason):
+                failed += 1
+                if firstFailure == nil { firstFailure = reason }
+            }
+        }
+    }
 }
 
 extension AppModel {
@@ -618,33 +680,55 @@ extension AppModel {
     /// Moves one confirmed item, re-checked right before the move, then cuts it out of the tree on screen and
     /// the cache: no rescan. Nil when another move is still running.
     func moveToTrash(_ node: FileNodeRecord) async -> TrashOutcome? {
+        guard let outcomes = await moveToTrash([node]), let outcome = outcomes.first else { return nil }
+        return outcome
+    }
+
+    /// Moves confirmed items one by one, each re-checked right before its move, then cuts the moved ones out of
+    /// the tree on screen and the cache in one splice. One outcome per item; nil when another move is running.
+    func moveToTrash(_ nodes: [FileNodeRecord]) async -> [TrashOutcome]? {
         guard !isMovingToTrash else { return nil }
         // The confirmation was modal, but a scan or another location could have started behind it.
-        if let reason = trashRefusalReason(for: node) {
-            return .failed(reason)
+        if let reason = trashUnavailableReason {
+            return nodes.map { _ in .failed(reason) }
         }
-        guard let snapshot, snapshot.treeStore.node(id: node.id) != nil else {
-            return .failed(TrashFailure.changedSinceScan.localizedReason)
+        guard let snapshot else {
+            return nodes.map { _ in .failed(TrashFailure.changedSinceScan.localizedReason) }
         }
         isMovingToTrash = true
         defer { isMovingToTrash = false }
         let rootID = snapshot.root.id
-        let result = await Task.detached(priority: .userInitiated) {
-            TrashMover(policy: .live(), trashItem: GioTrash.trashItem).move(node, scanRootID: rootID)
-        }.value
-        let outcome: TrashOutcome
-        switch result {
-        case .success:
-            outcome = .moved(bytes: node.allocatedSize)
-        case .failure(.missing):
-            outcome = .alreadyGone
-        case .failure(let failure):
-            return .failed(failure.localizedReason)
+        var outcomes: [TrashOutcome] = []
+        var gone: [String] = []
+        for node in nodes {
+            if let reason = trashRefusalReason(for: node) {
+                outcomes.append(.failed(reason))
+                continue
+            }
+            guard snapshot.treeStore.node(id: node.id) != nil else {
+                outcomes.append(.failed(TrashFailure.changedSinceScan.localizedReason))
+                continue
+            }
+            let result = await Task.detached(priority: .userInitiated) {
+                TrashMover(policy: .live(), trashItem: GioTrash.trashItem).move(node, scanRootID: rootID)
+            }.value
+            switch result {
+            case .success:
+                outcomes.append(.moved(bytes: node.allocatedSize))
+                gone.append(node.id)
+            case .failure(.missing):
+                outcomes.append(.alreadyGone)
+                gone.append(node.id)
+            case .failure(let failure):
+                outcomes.append(.failed(failure.localizedReason))
+            }
         }
-        // A mount may have come or gone with the move.
+        // A mount may have come or gone with the moves.
         cachedTrashPolicy = nil
-        await removeFromTree(node.id, of: snapshot)
-        return outcome
+        if !gone.isEmpty {
+            await removeFromTree(gone, of: snapshot)
+        }
+        return outcomes
     }
 
     private var trashPolicy: TrashSafetyPolicy {
@@ -657,25 +741,25 @@ extension AppModel {
     /// Splices the moved item out off the main actor and shows the result the way a finished scan is shown.
     /// A scan of the location that took over meanwhile wins: what it lands is the truth. Another location on
     /// screen: the item leaves this one's saved scan, or reopening it would show it again.
-    private func removeFromTree(_ nodeID: String, of snapshot: ScanSnapshot) async {
+    private func removeFromTree(_ nodeIDs: [String], of snapshot: ScanSnapshot) async {
         guard let current = self.snapshot, current.target.id == snapshot.target.id else {
-            await removeFromSavedScan(nodeID, of: snapshot.target)
+            await removeFromSavedScan(nodeIDs, of: snapshot.target)
             return
         }
         guard !isScanning else { return }
         let updated = await Task.detached(priority: .userInitiated) {
-            try? current.removingNodes(ids: [nodeID])
+            try? current.removingNodes(ids: nodeIDs)
         }.value
         guard let updated, self.snapshot?.id == current.id, !isScanning else { return }
-        moveOffRemoved(nodeID, in: current.treeStore)
+        moveOffRemoved(Set(nodeIDs), in: current.treeStore)
         display(updated)
         await persist(updated, rotatesPrevious: false)
     }
 
-    private func removeFromSavedScan(_ nodeID: String, of target: ScanTarget) async {
+    private func removeFromSavedScan(_ nodeIDs: [String], of target: ScanTarget) async {
         guard let saved = await snapshotCache.loadSnapshot(for: target) else { return }
         let updated = await Task.detached(priority: .userInitiated) {
-            try? saved.removingNodes(ids: [nodeID])
+            try? saved.removingNodes(ids: nodeIDs)
         }.value
         guard let updated else { return }
         await persist(updated, rotatesPrevious: false)
@@ -683,8 +767,7 @@ extension AppModel {
 
     /// A selection, hover or drill root inside the removed item moves to the folder that held it, so the views
     /// land somewhere that still exists (`display` keeps them when they do).
-    private func moveOffRemoved(_ nodeID: String, in store: FileTreeStore) {
-        let removed: Set<String> = [nodeID]
+    private func moveOffRemoved(_ removed: Set<String>, in store: FileTreeStore) {
         if let focusID, let kept = store.survivor(of: focusID, removing: removed), kept != focusID {
             self.focusID = kept == store.rootID ? nil : kept
         }

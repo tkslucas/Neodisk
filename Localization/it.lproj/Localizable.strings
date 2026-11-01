@@ -524,3 +524,8 @@
 "All in Cleanup" = "Tutti in Pulizia";
 "%lld in Cleanup" = "%lld in Pulizia";
 "%lld items" = "%lld elementi";
+"Can't Move %lld Items to the Trash" = "Impossibile spostare %lld elementi nel Cestino";
+"Couldn't Move 1 Item to the Trash" = "Non è stato possibile spostare 1 elemento nel Cestino";
+"Couldn't Move %lld Items to the Trash" = "Non è stato possibile spostare %lld elementi nel Cestino";
+"Select All" = "Seleziona tutto";
+"Add to Selection" = "Aggiungi alla selezione";

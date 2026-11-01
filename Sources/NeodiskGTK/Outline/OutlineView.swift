@@ -17,6 +17,8 @@ final class OutlineView {
     private var lastRebuild = ContinuousClock.now - .seconds(10)
     private var rebuildTask: Task<Void, Never>?
     private var isSyncingSelection = false
+    /// The input that changed the rows held Ctrl or Shift: the items the outline doesn't show stay selected.
+    private var isExtending = false
     private var contextMenu: GPtr?
     private var columns: [OutlineColumn: GPtr] = [:]
     /// The header menu's check items, one per column that can hide.
@@ -70,6 +72,21 @@ final class OutlineView {
         }
         gtk_widget_add_controller(ptr(columnView), ptr(keys))
 
+        // Seen before the view acts on them, so a selection change knows whether it extends the selection.
+        let extendKeys = raw(gtk_event_controller_key_new())!
+        gtk_event_controller_set_propagation_phase(ptr(extendKeys), GTK_PHASE_CAPTURE)
+        connectKey(extendKeys) { [unowned self] _, state in
+            self.isExtending = Self.extends(state)
+            return false
+        }
+        gtk_widget_add_controller(ptr(columnView), ptr(extendKeys))
+        let press = raw(gtk_gesture_click_new())!
+        gtk_event_controller_set_propagation_phase(ptr(press), GTK_PHASE_CAPTURE)
+        connectPress(press, "pressed") { [unowned self] _, _, _ in
+            self.isExtending = Self.extends(gtk_event_controller_get_current_event_state(ptr(press)).rawValue)
+        }
+        gtk_widget_add_controller(ptr(columnView), ptr(press))
+
         connectPosition(columnView, "activate") { [unowned self] position in
             guard let node = self.node(atPosition: position), node.isDirectory else { return }
             self.model.drillIn(to: node.id)
@@ -82,7 +99,8 @@ final class OutlineView {
             self.scheduleRebuild()
         })
         tokens.append(track { [unowned self] in
-            self.reveal(self.model.selectedNodeID)
+            _ = self.model.selection
+            self.syncSelection()
         })
     }
 
@@ -353,7 +371,7 @@ final class OutlineView {
             }
         )
         setModel(tree.map { GObjectRef(adopting: raw($0)!) })
-        reveal(model.selectedNodeID)
+        syncSelection()
     }
 
     /// Children of `id` as a GListStore of GtkStringObjects (node IDs), in
@@ -378,22 +396,76 @@ final class OutlineView {
             selection = nil
             return
         }
-        // gtk_single_selection_new takes ownership of one model reference.
+        // gtk_multi_selection_new takes ownership of one model reference. Ctrl- and Shift-click and Ctrl+A
+        // pick several rows.
         g_object_ref(tree.pointer)
-        let single = raw(gtk_single_selection_new(ptr(tree.pointer)))!
-        gtk_single_selection_set_autoselect(ptr(single), gbool(false))
-        gtk_single_selection_set_can_unselect(ptr(single), gbool(true))
-        gtk_single_selection_set_selected(ptr(single), neodisk_invalid_list_position())
-        selection = GObjectRef(adopting: single)
-        gtk_column_view_set_model(ptr(columnView), ptr(single))
-        connectSelectionChanged(single) { [unowned self] in
+        let multi = raw(gtk_multi_selection_new(ptr(tree.pointer)))!
+        selection = GObjectRef(adopting: multi)
+        gtk_column_view_set_model(ptr(columnView), ptr(multi))
+        connectSelectionChanged(multi) { [unowned self] in
             guard !self.isSyncingSelection else { return }
-            let position = gtk_single_selection_get_selected(ptr(single))
-            guard position != neodisk_invalid_list_position(), let node = self.node(atPosition: position) else { return }
-            self.isSyncingSelection = true
-            self.model.select(node.id)
-            self.isSyncingSelection = false
+            self.rowsDidChange()
         }
+    }
+
+    private static func extends(_ state: UInt32) -> Bool {
+        state & (GDK_CONTROL_MASK.rawValue | GDK_SHIFT_MASK.rawValue) != 0
+    }
+
+    private var rowCount: UInt32 {
+        treeModel.map { g_list_model_get_n_items(ptr($0.pointer)) } ?? 0
+    }
+
+    private func id(atPosition position: UInt32) -> String? {
+        guard let tree = treeModel,
+              let row = gtk_tree_list_model_get_row(ptr(tree.pointer), position) else { return nil }
+        defer { g_object_unref(raw(row)) }
+        guard let item = gtk_tree_list_row_get_item(row) else { return nil }
+        defer { g_object_unref(item) }
+        return string(from: gtk_string_object_get_string(ptr(item)))
+    }
+
+    /// The user's rows become the model's selection.
+    private func rowsDidChange() {
+        guard let selection else { return }
+        let bitset = gtk_selection_model_get_selection(ptr(selection.pointer))
+        defer { gtk_bitset_unref(bitset) }
+        var picked: [String] = []
+        for index in 0..<gtk_bitset_get_size(bitset) {
+            if let id = id(atPosition: gtk_bitset_get_nth(bitset, guint(index))) { picked.append(id) }
+        }
+        // Only an extending gesture needs to know what the outline shows (it keeps the rest).
+        var shown = Set<String>()
+        if isExtending {
+            for position in 0..<rowCount {
+                if let id = id(atPosition: position) { shown.insert(id) }
+            }
+        }
+        isSyncingSelection = true
+        model.select(fromList: picked, extending: isExtending) { shown.contains($0) }
+        isSyncingSelection = false
+    }
+
+    /// The model's selection becomes the rows: the primary item revealed (ancestors expanded, scrolled to),
+    /// the others highlighted where their rows are showing.
+    private func syncSelection() {
+        guard !isSyncingSelection, let selection else { return }
+        let primary = reveal(model.selectedNodeID)
+        let wanted = model.selection
+        let selected = gtk_bitset_new_empty()
+        if wanted.isMultiple {
+            for position in 0..<rowCount {
+                if let id = id(atPosition: position), wanted.contains(id) { gtk_bitset_add(selected, position) }
+            }
+        } else if let primary {
+            gtk_bitset_add(selected, primary)
+        }
+        let mask = gtk_bitset_new_range(0, rowCount)
+        isSyncingSelection = true
+        gtk_selection_model_set_selection(ptr(selection.pointer), selected, mask)
+        isSyncingSelection = false
+        gtk_bitset_unref(selected)
+        gtk_bitset_unref(mask)
     }
 
     private func node(atPosition position: UInt32) -> FileNodeRecord? {
@@ -406,17 +478,11 @@ final class OutlineView {
         return model.store?.node(id: id)
     }
 
-    /// Expands the outline down to `nodeID`, selects its row, and scrolls
-    /// it into view.
-    private func reveal(_ nodeID: String?) {
-        guard !isSyncingSelection, let selection, let tree = treeModel else { return }
-        guard let nodeID, let store = model.store, let rootID = builtFor?.rootID,
-              nodeID != rootID, store.isAncestor(rootID, of: nodeID) else {
-            isSyncingSelection = true
-            gtk_single_selection_set_selected(ptr(selection.pointer), neodisk_invalid_list_position())
-            isSyncingSelection = false
-            return
-        }
+    /// Expands the outline down to `nodeID` and scrolls its row into view; its position, or nil when the
+    /// outline doesn't hold it.
+    private func reveal(_ nodeID: String?) -> UInt32? {
+        guard let tree = treeModel, let nodeID, let store = model.store, let rootID = builtFor?.rootID,
+              nodeID != rootID, store.isAncestor(rootID, of: nodeID) else { return nil }
         let chain = store.path(to: nodeID).drop { $0.id != rootID }.dropFirst()
         var row: OpaquePointer?
         var parentID = rootID
@@ -430,17 +496,15 @@ final class OutlineView {
             } else {
                 next = gtk_tree_list_model_get_child_row(ptr(tree.pointer), guint(index))
             }
-            guard let next else { return }
+            guard let next else { return nil }
             row = next
             parentID = node.id
         }
-        guard let row else { return }
+        guard let row else { return nil }
         let position = gtk_tree_list_row_get_position(row)
         g_object_unref(raw(row))
-        isSyncingSelection = true
-        gtk_single_selection_set_selected(ptr(selection.pointer), position)
-        isSyncingSelection = false
         gtk_column_view_scroll_to(ptr(columnView), position, nil, GTK_LIST_SCROLL_NONE, nil)
+        return position
     }
 
     // MARK: - Context menu
@@ -450,7 +514,8 @@ final class OutlineView {
         gtk_gesture_single_set_button(ptr(click), 3)
         connectPress(click, "pressed") { [unowned self, unowned cell] _, x, y in
             guard let id = cell.nodeID else { return }
-            self.model.select(id)
+            // The menu acts on the selection: a row outside it becomes it (GNOME's rule).
+            if !self.model.selection.contains(id) { self.model.select(id) }
             var point = graphene_point_t(x: Float(x), y: Float(y))
             var local = graphene_point_t()
             guard gtk_widget_compute_point(ptr(cell.root), ptr(self.columnView), &point, &local) != 0 else { return }
@@ -460,8 +525,9 @@ final class OutlineView {
     }
 
     private func showContextMenu(at point: CGPoint) {
+        let copy = model.selection.isMultiple ? L("Copy Paths") : L("Copy Path")
         Widgets.popupMenu(&contextMenu, sections: [
-            [(L("Open"), "win.open-item"), (L("Show in Files"), "win.show-in-files"), (L("Copy Path"), "win.copy-path")],
+            [(L("Open"), "win.open-item"), (L("Show in Files"), "win.show-in-files"), (copy, "win.copy-path")],
             [(L("Zoom In"), "win.focus-in")],
             [(L("Move to Trash…"), "win.move-to-trash")],
         ], on: columnView, at: point)

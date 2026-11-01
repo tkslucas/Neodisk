@@ -317,7 +317,8 @@ final class MainWindow {
             }
         })
         tokens.append(track { [unowned self] in
-            let canMove = self.model.selectedNode.map { self.model.canMoveToTrash($0) } ?? false
+            // Several items: enabled while any can go; the confirmation then says which can't.
+            let canMove = self.model.selectedNodes.contains { self.model.canMoveToTrash($0) }
             setActionEnabled(self.trashAction?.pointer, canMove)
         })
         tokens.append(track { [unowned self] in
@@ -417,16 +418,16 @@ final class MainWindow {
             self.showView(.sunburst)
         }
         actions["open-item"] = addAction(to: window, "open-item") { [unowned self] _ in
-            guard let path = self.model.selectedNode?.path else { return }
-            FileActions.open(path, from: self.window)
+            for node in self.model.selectedNodes { FileActions.open(node.path, from: self.window) }
         }
         actions["show-in-files"] = addAction(to: window, "show-in-files") { [unowned self] _ in
             guard let path = self.model.selectedNode?.path else { return }
             FileActions.showInFileManager(path, from: self.window)
         }
         actions["copy-path"] = addAction(to: window, "copy-path") { [unowned self] _ in
-            guard let path = self.model.selectedNode?.path else { return }
-            FileActions.copyPath(path, from: self.window)
+            let paths = self.model.selectedNodes.map(\.path)
+            guard !paths.isEmpty else { return }
+            FileActions.copyPath(paths.joined(separator: "\n"), from: self.window)
         }
         addAction(to: window, "open-trash") { [unowned self] _ in
             FileActions.openTrash(from: self.window)
@@ -469,9 +470,10 @@ final class MainWindow {
         return true
     }
 
-    /// Explains a refusal instead of doing nothing; otherwise asks, then moves.
+    /// Explains a refusal instead of doing nothing; otherwise asks, then moves. Several selected items go after
+    /// one confirmation (a folder takes what's selected inside it); the ones that can't are named there.
     func moveSelectionToTrash() {
-        guard let node = model.selectedNode, !model.isMovingToTrash else {
+        guard let store = model.store, !model.selection.isEmpty, !model.isMovingToTrash else {
             gtk_widget_error_bell(ptr(window))
             return
         }
@@ -479,21 +481,52 @@ final class MainWindow {
             showToast(reason)
             return
         }
+        let nodes = model.selection.topLevelIDs(in: store).compactMap { store.node(id: $0) }
+        guard nodes.count > 1 else {
+            if let node = nodes.first { moveToTrash(node) }
+            return
+        }
+        let reasons = nodes.map { model.trashRefusalReason(for: $0) }
+        let allowed = zip(nodes, reasons).compactMap { $1 == nil ? $0 : nil }
+        let refusals = reasons.compactMap { $0 }
+        guard !allowed.isEmpty else {
+            showAlert(heading: L("Can't Move %lld Items to the Trash", Int64(nodes.count)), body: refusals.first ?? "")
+            return
+        }
+        let confirmation = TrashConfirmation(nodes: allowed, scannedAt: model.snapshot?.finishedAt)
+        var message = confirmation.message
+        if let firstRefusal = refusals.first {
+            message += "\n\n" + (refusals.count == 1
+                ? L("1 item can't go to the Trash. %@", firstRefusal)
+                : L("%lld items can't go to the Trash. %@", Int64(refusals.count), firstRefusal))
+        }
+        confirm(title: confirmation.title, message: message) { [unowned self] in
+            Task { await self.move(allowed) }
+        }
+    }
+
+    private func moveToTrash(_ node: FileNodeRecord) {
         if let reason = model.trashRefusalReason(for: node) {
             showAlert(heading: L("Can't Move “%@” to the Trash", node.name), body: reason)
             return
         }
         let confirmation = TrashConfirmation(nodes: [node], scannedAt: model.snapshot?.finishedAt)
-        let dialog = raw(adw_alert_dialog_new(confirmation.title, confirmation.message))!
+        confirm(title: confirmation.title, message: confirmation.message) { [unowned self] in
+            Task { await self.move(node) }
+        }
+    }
+
+    private func confirm(title: String, message: String, then move: @escaping @MainActor () -> Void) {
+        let dialog = raw(adw_alert_dialog_new(title, message))!
         adw_alert_dialog_add_response(ptr(dialog), "cancel", L("Cancel"))
         adw_alert_dialog_add_response(ptr(dialog), "trash", L("Move to Trash"))
         adw_alert_dialog_set_response_appearance(ptr(dialog), "trash", ADW_RESPONSE_DESTRUCTIVE)
         // GNOME's rule for destructive responses: Return and Escape both cancel.
         adw_alert_dialog_set_default_response(ptr(dialog), "cancel")
         adw_alert_dialog_set_close_response(ptr(dialog), "cancel")
-        connectPointer(dialog, "response") { [unowned self] response in
+        connectPointer(dialog, "response") { response in
             guard string(from: response?.assumingMemoryBound(to: CChar.self)) == "trash" else { return }
-            Task { await self.move(node) }
+            move()
         }
         adw_dialog_present(ptr(dialog), ptr(window))
     }
@@ -507,7 +540,7 @@ final class MainWindow {
         }
         switch outcome {
         case .moved(let bytes):
-            reportMoved(bytes: bytes)
+            reportMoved(count: 1, bytes: bytes)
         case .alreadyGone:
             showToast(L("1 item was already gone."))
         case .failed(let reason):
@@ -516,9 +549,30 @@ final class MainWindow {
         return outcome
     }
 
+    /// Moves confirmed items and reports them together: one toast for what moved, one alert for what didn't.
+    @discardableResult
+    func move(_ nodes: [FileNodeRecord]) async -> [TrashOutcome]? {
+        guard let outcomes = await model.moveToTrash(nodes) else {
+            gtk_widget_error_bell(ptr(window))
+            return nil
+        }
+        let summary = TrashBatchSummary(outcomes)
+        if summary.moved > 0 { reportMoved(count: summary.moved, bytes: summary.bytes) }
+        if summary.gone > 0 {
+            showToast(summary.gone == 1
+                ? L("1 item was already gone.") : L("%lld items were already gone.", Int64(summary.gone)))
+        }
+        if let reason = summary.firstFailure {
+            showAlert(heading: summary.failed == 1
+                ? L("Couldn't Move 1 Item to the Trash")
+                : L("Couldn't Move %lld Items to the Trash", Int64(summary.failed)), body: reason)
+        }
+        return outcomes
+    }
+
     /// No Undo: putting an item back is the file manager's job, and it knows where each one came from.
-    private func reportMoved(bytes: Int64) {
-        let count = (movedToast?.count ?? 0) + 1
+    private func reportMoved(count moved: Int, bytes: Int64) {
+        let count = (movedToast?.count ?? 0) + moved
         let total = (movedToast?.bytes ?? 0) + bytes
         if let previous = movedToast?.toast.pointer {
             adw_toast_dismiss(ptr(previous))

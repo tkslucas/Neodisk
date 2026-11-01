@@ -152,4 +152,12 @@ import NeodiskKit
         #expect(!selection.containsAncestor(of: "/s/c/c1", in: store))
         #expect(!NodeSelection(["/s/a"]).containsAncestor(of: "/s/a/a1", in: store))
     }
+
+    @Test func aListWithoutALastPickedRowFindsThePrimary() {
+        let selection = NodeSelection(["/s/a", "/s/b"], primary: "/s/a")
+        #expect(selection.listPrimary(for: ["/s/a", "/s/b", "/s/c"]) == "/s/c")
+        #expect(selection.listPrimary(for: ["/s/a"]) == "/s/a")
+        #expect(selection.listPrimary(for: ["/s/b"]) == "/s/b")
+        #expect(selection.listPrimary(for: []) == nil)
+    }
 }

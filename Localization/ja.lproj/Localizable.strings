@@ -524,3 +524,8 @@
 "All in Cleanup" = "すべてクリーンアップ内";
 "%lld in Cleanup" = "%lld 項目がクリーンアップ内";
 "%lld items" = "%lld 項目";
+"Can't Move %lld Items to the Trash" = "%lld 項目をゴミ箱に入れられません";
+"Couldn't Move 1 Item to the Trash" = "1 項目をゴミ箱に入れられませんでした";
+"Couldn't Move %lld Items to the Trash" = "%lld 項目をゴミ箱に入れられませんでした";
+"Select All" = "すべてを選択";
+"Add to Selection" = "選択に追加";

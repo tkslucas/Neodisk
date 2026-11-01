@@ -31,6 +31,9 @@ enum ShortcutsWindow {
             Shortcut(title: L("Move Selection"), accelerator: "Left Right Up Down"),
         ]),
         (L("Selection"), [
+            Shortcut(title: L("Select All"), accelerator: "<Control>a"),
+            Shortcut(title: L("Deselect All"), accelerator: "Escape"),
+            Shortcut(title: L("Add to Selection"), accelerator: "<Shift>Left <Shift>Right <Shift>Up <Shift>Down"),
             Shortcut(title: L("Open"), accelerator: "<Control>Return"),
             Shortcut(title: L("Copy Path"), accelerator: "<Control><Shift>c"),
             Shortcut(title: L("Move to Trash"), accelerator: "Delete"),

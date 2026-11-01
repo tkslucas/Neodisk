@@ -19,7 +19,6 @@ final class OutlineSearch {
     private let caption: GPtr
     private let debouncer = SearchDebouncer()
     private var resultIDs: [String] = []
-    private var isSyncingSelection = false
     private var listActions: ItemListActions?
     private var tokens: [ObservationToken] = []
 
@@ -54,12 +53,6 @@ final class OutlineSearch {
             self.model.select(first)
         }
         connect(entry, "stop-search") { [unowned self] in self.clear() }
-        connectPointer(results, "row-selected") { [unowned self] row in
-            guard !self.isSyncingSelection, let row else { return }
-            let index = Int(gtk_list_box_row_get_index(ptr(row)))
-            guard self.resultIDs.indices.contains(index) else { return }
-            self.model.select(self.resultIDs[index])
-        }
         // Down from the field walks into the matches.
         let keys = raw(gtk_event_controller_key_new())!
         connectKey(keys) { [unowned self] keyval, _ in
@@ -84,9 +77,12 @@ final class OutlineSearch {
             self.schedule()
         })
         tokens.append(track { [unowned self] in
-            self.syncSelection(self.model.selectedNodeID)
+            _ = self.model.selection
+            self.listActions?.sync()
         })
-        listActions = ItemListActions(list: results, model: model) { [unowned self] index in
+        listActions = ItemListActions(list: results, model: model, itemCount: { [unowned self] in
+            self.resultIDs.count
+        }) { [unowned self] index in
             self.resultIDs.indices.contains(index) ? self.resultIDs[index] : nil
         }
     }
@@ -141,9 +137,7 @@ final class OutlineSearch {
 
     private func show(ids: [String], total: Int, query: String) {
         gtk_stack_set_visible_child_name(ptr(stack), query.isEmpty ? "outline" : "results")
-        isSyncingSelection = true
-        gtk_list_box_remove_all(ptr(results))
-        isSyncingSelection = false
+        listActions?.whileRebuilding { gtk_list_box_remove_all(ptr(results)) }
         resultIDs = ids
         if query.isEmpty {
             gtk_label_set_text(ptr(caption), "")
@@ -171,21 +165,6 @@ final class OutlineSearch {
             gtk_widget_set_tooltip_text(ptr(row), node.path)
             gtk_list_box_append(ptr(results), ptr(row))
         }
-        syncSelection(model.selectedNodeID)
-    }
-
-    /// Keeps the picked match highlighted, and drops the highlight when the
-    /// selection moves elsewhere.
-    private func syncSelection(_ nodeID: String?) {
-        let currentIndex = gtk_list_box_get_selected_row(ptr(results)).map { Int(gtk_list_box_row_get_index($0)) }
-        let wanted = nodeID.flatMap { id in resultIDs.firstIndex(of: id) }
-        guard currentIndex != wanted else { return }
-        isSyncingSelection = true
-        if let wanted {
-            gtk_list_box_select_row(ptr(results), gtk_list_box_get_row_at_index(ptr(results), Int32(wanted)))
-        } else {
-            gtk_list_box_unselect_all(ptr(results))
-        }
-        isSyncingSelection = false
+        listActions?.sync()
     }
 }

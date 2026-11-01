@@ -32,7 +32,14 @@ final class StatusBar {
             return
         }
         Widgets.setVisible(widget, true)
-        if let node {
+        if model.hoveredNode == nil, model.selection.isMultiple {
+            // Several selected: how many, and their size (what's inside a selected folder counts once).
+            let total = model.selection.topLevelIDs(in: store)
+                .reduce(Int64(0)) { $0 &+ (store.node(id: $1)?.allocatedSize ?? 0) }
+            gtk_label_set_text(ptr(nameLabel), L("%lld items selected", Int64(model.selection.count)))
+            gtk_label_set_text(ptr(detailLabel), NeodiskFormatters.size(total))
+            swatch.rgb = nil
+        } else if let node {
             gtk_label_set_text(ptr(nameLabel), node.name)
             var parts = [NeodiskFormatters.size(node.allocatedSize)]
             if let share = NeodiskFormatters.percentage(part: node.allocatedSize, total: store.root.allocatedSize) {

@@ -524,3 +524,8 @@
 "All in Cleanup" = "All in Cleanup";
 "%lld in Cleanup" = "%lld in Cleanup";
 "%lld items" = "%lld items";
+"Can't Move %lld Items to the Trash" = "Can't Move %lld Items to the Trash";
+"Couldn't Move 1 Item to the Trash" = "Couldn't Move 1 Item to the Trash";
+"Couldn't Move %lld Items to the Trash" = "Couldn't Move %lld Items to the Trash";
+"Select All" = "Select All";
+"Add to Selection" = "Add to Selection";

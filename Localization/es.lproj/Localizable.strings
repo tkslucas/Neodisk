@@ -525,3 +525,8 @@
 "All in Cleanup" = "Todos en Limpieza";
 "%lld in Cleanup" = "%lld en Limpieza";
 "%lld items" = "%lld elementos";
+"Can't Move %lld Items to the Trash" = "No se pueden mover %lld elementos a la Papelera";
+"Couldn't Move 1 Item to the Trash" = "No se ha podido mover 1 elemento a la Papelera";
+"Couldn't Move %lld Items to the Trash" = "No se han podido mover %lld elementos a la Papelera";
+"Select All" = "Seleccionar todo";
+"Add to Selection" = "Añadir a la selección";

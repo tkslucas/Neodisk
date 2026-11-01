@@ -524,3 +524,8 @@
 "All in Cleanup" = "全部在清理中";
 "%lld in Cleanup" = "%lld 个在清理中";
 "%lld items" = "%lld 个项目";
+"Can't Move %lld Items to the Trash" = "无法将 %lld 个项目移到废纸篓";
+"Couldn't Move 1 Item to the Trash" = "未能将 1 个项目移到废纸篓";
+"Couldn't Move %lld Items to the Trash" = "未能将 %lld 个项目移到废纸篓";
+"Select All" = "全选";
+"Add to Selection" = "添加到所选内容";

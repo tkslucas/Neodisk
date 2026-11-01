@@ -524,3 +524,8 @@
 "All in Cleanup" = "Alle in „Aufräumen“";
 "%lld in Cleanup" = "%lld in „Aufräumen“";
 "%lld items" = "%lld Objekte";
+"Can't Move %lld Items to the Trash" = "%lld Objekte können nicht in den Papierkorb gelegt werden";
+"Couldn't Move 1 Item to the Trash" = "1 Objekt konnte nicht in den Papierkorb gelegt werden";
+"Couldn't Move %lld Items to the Trash" = "%lld Objekte konnten nicht in den Papierkorb gelegt werden";
+"Select All" = "Alles auswählen";
+"Add to Selection" = "Zur Auswahl hinzufügen";

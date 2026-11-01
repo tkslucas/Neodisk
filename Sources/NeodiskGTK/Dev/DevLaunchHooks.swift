@@ -1,6 +1,4 @@
-// Dev env hooks, named like the macOS app's: NEODISK_AUTOSCAN, NEODISK_UI_SNAPSHOT (works under Xvfb),
-// NEODISK_SNAPSHOT_DELAY, NEODISK_VIZ_MODE, NEODISK_TREEMAP_STYLE, NEODISK_ANALYSIS_TAB, NEODISK_SELECT,
-// NEODISK_AUTOTRASH.
+// Dev env hooks, named like the macOS app's (the list is in AGENTS.md); NEODISK_UI_SNAPSHOT works under Xvfb.
 
 import CGtk
 import Foundation
@@ -37,6 +35,19 @@ enum DevLaunchHooks {
             })
         }
 
+        // NEODISK_POPUP=primary|sections|status|views|preferences: that menu opens once the scan is on screen.
+        if let menu = environment["NEODISK_POPUP"] {
+            var opened = false
+            tokens.append(track {
+                guard !opened, model.phase == .displaying else { return }
+                opened = true
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(500))
+                    window.popUpForCapture(menu)
+                }
+            })
+        }
+
         let snapshotOutput = environment["NEODISK_UI_SNAPSHOT"]
         let delay = environment["NEODISK_SNAPSHOT_DELAY"].flatMap(Double.init) ?? 1.5
         func captureAndQuit(to output: String) {
@@ -51,9 +62,8 @@ enum DevLaunchHooks {
             }
         }
 
-        // NEODISK_AUTOTRASH=<path>[:<path>...] moves those items as if confirmed, once the scan is on screen: one
-        // item alone, several together as a multi-selection goes. Every safety check still runs, and the window
-        // reports as it would (with NEODISK_UI_SNAPSHOT, the capture shows the report). One line per item on stderr.
+        // NEODISK_AUTOTRASH=<path>[:<path>...]: moved as if confirmed (together when several), every check still run
+        // and reported as the window would; one line per item on stderr.
         if let rawPaths = environment["NEODISK_AUTOTRASH"] {
             var started = false
             tokens.append(track {

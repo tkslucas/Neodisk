@@ -1,17 +1,20 @@
 # AGENTS.md
 
 Neodisk is a native disk space analyzer for macOS and Linux in Swift: one shared, UI-free core and one native
-app per platform (SwiftUI/AppKit on macOS, GTK 4/libadwaita on Linux). Layout and data flow: ARCHITECTURE.md.
+app per platform (SwiftUI/AppKit on macOS, GTK 4/libadwaita on Linux). The core and `diskscan` also build on
+Windows. Layout and data flow: ARCHITECTURE.md.
 
 ## Commits
 
 - Small, focused Conventional Commits; don't mix refactors with behavior changes.
-- Bump `AppVersion.string` (`Sources/NeodiskAppModel/AppVersion.swift`) on every user-visible change.
+- PRs don't touch `AppVersion.string` (`Sources/NeodiskAppModel/AppVersion.swift`): it's bumped once, in the release step (nightlies carry the date).
 
 ## macOS
 
 - Swift 6, macOS 14.0+. **Command Line Tools only, no Xcode**: `swift build`, `swift test`, `swift run`;
   never `xcodebuild`.
+- Agents and worktrees build with `--scratch-path <main checkout>/.build-<agent>.noindex`: one incremental folder per
+  agent, reused across worktrees; `.noindex` keeps Spotlight from indexing it.
 - `swift test` works on CLT only because `Package.swift` declares swift-testing and the
   `lib_TestingInterop` linker flags. Don't remove either.
 - Run the app: `swift run -c release Neodisk`. `-Xswiftc -DNEODISK_NIGHTLY` builds Neodisk Nightly, which
@@ -27,6 +30,8 @@ The most used ones; the rest live in `Sources/NeodiskUI/Dev/`.
   (`NEODISK_RENDER_COLOR_MODE`, `NEODISK_RENDER_PALETTE`, `NEODISK_RENDER_STYLE`, `NEODISK_RENDER_CLOUD_ONLY=0`).
 - `NEODISK_ANALYSIS_TAB`, `NEODISK_VIZ_MODE`, `NEODISK_TREEMAP_STYLE`, `NEODISK_OUTLINE_POSITION`,
   `NEODISK_UPDATE_STATE`: force that UI state on launch without persisting it.
+- `NEODISK_FULL_DISK_ACCESS=off` (debug): act as without Full Disk Access (the first-scan offer, the wait status);
+  `NEODISK_SIMULATE_PERMISSION_WAIT=<folder>` + `NEODISK_SCAN_BULK=0` holds that listing a minute, as a prompt would.
 - `NEODISK_INCREMENTAL=0`: every rescan runs the full traversal (fallback, and the honest benchmark baseline).
 - `NEODISK_SCAN_TIMING=1`: per-phase timings on stderr as `NEODISK_SCAN_TIMING phase=<name> ms=<value>`
   lines, a parsing contract for tooling; `diskscan --bench-rescan` exercises it.
@@ -42,6 +47,7 @@ The most used ones; the rest live in `Sources/NeodiskUI/Dev/`.
 - The sidebar's material background renders blank in offscreen captures: `NEODISK_SIDEBAR_SNAPSHOT=<out.png>`
   renders the sidebar alone (`NEODISK_SIDEBAR_SNAPSHOT_WIDTH`), `NEODISK_TABBAR_SNAPSHOT=<out.png>` the statistics
   tabs at several widths; both take `NEODISK_SNAPSHOT_APPEARANCE=light` and `NEODISK_SNAPSHOT_TEXT_SCALE`.
+  `NEODISK_SIDEBAR_COLLAPSED=<volumes,cloudFiles,…>` collapses those sidebar sections for the run, unsaved.
 
 ## Linux
 
@@ -56,9 +62,28 @@ The most used ones; the rest live in `Sources/NeodiskUI/Dev/`.
 - Hooks: `NEODISK_AUTOSCAN`, `NEODISK_UI_SNAPSHOT` (GSK render to PNG, then quit; `NEODISK_SNAPSHOT_DELAY`),
   `NEODISK_VIZ_MODE`, `NEODISK_TREEMAP_STYLE`, `NEODISK_ANALYSIS_TAB`, `NEODISK_SELECT=<path>[:<path>…]`, `NEODISK_SCAN_TIMING`,
   `NEODISK_AUTOTRASH=<path>[:<path>…]` (moves them as if confirmed, reported as the window would; really trashes:
-  temp dirs only; with `NEODISK_UI_SNAPSHOT`, the capture waits for the moves and shows the toast).
+  temp dirs only; with `NEODISK_UI_SNAPSHOT`, the capture waits for the moves and shows the toast),
+  `NEODISK_POPUP=primary|sections|status|views|preferences` (opens that menu; popovers miss the window capture, so grab the X screen).
   `XDG_CONFIG_HOME` isolates settings. Example:
   `NEODISK_AUTOSCAN=/usr NEODISK_UI_SNAPSHOT=/tmp/shot.png xvfb-run -a -s "-screen 0 1600x1000x24" .build/debug/neodisk`
+
+## Windows
+
+- Swift 6.4.2 with Visual Studio 2022's C++ tools and a Windows SDK. `swift build` builds the core and `diskscan`;
+  `swift test` runs the core suites. CI: `.github/workflows/windows.yml`.
+- Platform code sits next to the Linux code: `#if os(Windows)` arms and `+Windows.swift` files (`WindowsFileInfo`,
+  `WindowsPath`, `WindowsVolume`), with `import WinSDK` only in files that need it: WinSDK's `UUID` and others
+  shadow Foundation's.
+- Paths stay `URL.path` spellings (`C:/Users/x`); Win32 calls go through `WindowsPath.withWidePath`, which adds
+  `\\?\` past `MAX_PATH`. Never follow reparse points (`FILE_FLAG_OPEN_REPARSE_POINT`).
+- Foundation on Windows: `FileManager.linkItem` makes a symbolic link (use `WindowsPath.createHardLink`) and
+  `standardizedFileURL` breaks drive roots (use `WindowsPath.lexicallyStandardized`). Hidden means the attribute,
+  not a dot name.
+- Tests that need POSIX behavior get `#if !os(Windows)` with a one-line reason; Windows-only cases live in
+  `WindowsPlatformTests`. Symbolic link tests need an elevated shell or Developer Mode.
+- `NEODISK_SCAN_ENGINE=walk|mft|auto` (`diskscan --engine`) forces how directories are read: `mft` reads the NTFS
+  file table for any folder, not only a whole volume (elevated shell). Records the engines disagree on are files
+  being written, whose directory entries lag the file table; compare with `--dump-records`.
 
 ## Product constraints
 
@@ -105,7 +130,10 @@ The most used ones; the rest live in `Sources/NeodiskUI/Dev/`.
 
 - Workspace text scales (`TextScale`): write `.neoFont(…)`, never `.font(.system(size:))`; sizes around text read `neoTextScale`.
 - AppKit surfaces scale through `OutlineRowMetrics.scale` and `TreemapScene.labelScale`; window chrome stays system size.
-- A push button sizes from `controlSize`, not its label: pair `.neoFont(.body)` with `.neoControlSize(base:)`.
+- A push button sizes from `controlSize`, not its label: pair `.neoFont(.body)` with `.neoControlSize(base:)`. The font
+  goes on the label's `Text` (`Button { } label: { Text("…").neoFont(11) }`): SwiftUI controls ignore a `.font` around them,
+  and segmented and pop-up pickers ignore it entirely, so those are `NeoSegmentedPicker` / `NeoPopUpPicker`.
+- Sheets don't inherit the root's scale: present them with `.neoWorkspaceText(scale:)`.
 - Inline bars beside text (capacity, percentage, scan progress) scale with the text too.
 - Treemap gestures mutate the `CALayer` transform in `TreemapNSView`, never SwiftUI state (that version twitched).
 - On macOS 14+ `NSView.clipsToBounds` defaults to false and overrides `.clipped()`; set it explicitly.

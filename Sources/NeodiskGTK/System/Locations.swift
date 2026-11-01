@@ -14,7 +14,6 @@ struct Location: Equatable, Identifiable {
 
     let id: String
     let title: String
-    let subtitle: String?
     let kind: Kind
     let space: VolumeSpaceInfo?
 
@@ -42,15 +41,17 @@ struct Location: Equatable, Identifiable {
 }
 
 enum Locations {
-    /// Home, the root filesystem, then other volumes by mount point.
-    static func current() -> [Location] {
+    static func home() -> Location {
         let home = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL.path
+        return Location(id: home, title: L("Home"), kind: .home, space: nil)
+    }
+
+    /// The root filesystem, then other volumes by mount point.
+    static func volumes() -> [Location] {
         var locations = [
-            Location(id: home, title: L("Home"), subtitle: home, kind: .home, space: nil),
             Location(
                 id: "/",
                 title: L("Computer"),
-                subtitle: "/",
                 kind: .root,
                 space: VolumeSpaceInfo.load(for: URL(filePath: "/"))
             ),
@@ -67,7 +68,6 @@ enum Locations {
             locations.append(Location(
                 id: mount.mountPoint,
                 title: volumeName(for: mount),
-                subtitle: mount.mountPoint,
                 kind: .volume(removable: isRemovable(mount), network: isNetwork),
                 space: VolumeSpaceInfo.load(for: url)
             ))
@@ -106,12 +106,9 @@ enum Locations {
     /// A recently scanned folder as a sidebar row.
     static func folder(_ path: String) -> Location {
         let url = URL(filePath: path, directoryHint: .isDirectory)
-        let home = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL.path
-        let subtitle = path.hasPrefix(home + "/") ? "~" + path.dropFirst(home.count) : path
         return Location(
             id: path,
             title: url.lastPathComponent.isEmpty ? path : url.lastPathComponent,
-            subtitle: String(subtitle),
             kind: .folder,
             space: nil
         )

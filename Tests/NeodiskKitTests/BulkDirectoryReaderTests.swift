@@ -73,6 +73,8 @@ import Foundation
         #expect(folder.deviceID == folder.metadata?.fileIdentity?.fileSystemDeviceID)
     }
 
+    // The Windows reader covers every volume and reports open errors itself instead of falling back.
+    #if !os(Windows)
     @Test func bulkOpenFailureFallsBackToInjectedEnumerator() async throws {
         let missingURL = FileManager.default.temporaryDirectory
             .appending(path: "bulk-fallback-\(UUID().uuidString)", directoryHint: .isDirectory)
@@ -102,6 +104,7 @@ import Foundation
         #expect(result.entries.isEmpty)
         #expect(calls.value == 1)
     }
+    #endif
 
     @Test func dedicatedIOWorkerObservesTaskCancellation() async throws {
         let executor = DirectoryIOExecutor(workerCount: 1)
@@ -186,6 +189,8 @@ import Foundation
         #expect(small.fileIdentity == nil)
     }
 
+    // The Windows walk counts each hard link: directory info has no link count (see WindowsFileInfo).
+    #if !os(Windows)
     @Test func testHardLinkedFilesCarrySharedFileSystemIdentity() throws {
         let rootURL = try makeBulkTestDirectory()
         defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -207,6 +212,7 @@ import Foundation
         #expect(originalIdentity.isFileSystemIdentity)
         #expect(originalIdentity == hardlink.fileIdentity)
     }
+    #endif
 
     #if canImport(Darwin)
     @Test func testHiddenClassificationMatchesFileManager() throws {
@@ -260,7 +266,17 @@ import Foundation
             let expected = try childURL.resourceValues(forKeys: [.isPackageKey]).isPackage ?? false
             let bulkVerdict = try #require(children[name]?.metadata?.isPackage as Bool?)
             #expect(bulkVerdict == expected, "package mismatch for \(name)")
+            #expect(BulkDirectoryReader.isPackageDirectory(atPath: childURL.path) == expected, "path verdict for \(name)")
         }
+
+        // The Finder bundle bit makes any folder a package, for the single-path check as for the bulk read.
+        let flagged = rootURL.appending(path: "Flagged", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: flagged, withIntermediateDirectories: false)
+        var finderInfo = [UInt8](repeating: 0, count: 32)
+        finderInfo[8] = 0x20
+        #expect(setxattr(flagged.path, "com.apple.FinderInfo", &finderInfo, 32, 0, 0) == 0)
+        #expect(try readBulkChildren(of: rootURL)["Flagged"]?.metadata?.isPackage == true)
+        #expect(BulkDirectoryReader.isPackageDirectory(atPath: flagged.path))
     }
     #endif
 
@@ -390,9 +406,17 @@ import Foundation
     @Test func testMissingDirectoryThrowsOpenFailure() throws {
         let missingURL = FileManager.default.temporaryDirectory
             .appending(path: "bulk-missing-\(UUID().uuidString)", directoryHint: .isDirectory)
+        #if os(Windows)
+        // The Windows reader reports the system's error itself (see BulkDirectoryReader+Windows.swift).
+        let error = #expect(throws: NSError.self) {
+            _ = try BulkDirectoryReader.children(ofDirectory: missingURL, cancellationCheck: {})
+        }
+        #expect(error?.domain == NSPOSIXErrorDomain && error?.code == Int(ENOENT))
+        #else
         #expect(throws: BulkDirectoryReadError.self) {
             _ = try BulkDirectoryReader.children(ofDirectory: missingURL, cancellationCheck: {})
         }
+        #endif
     }
 
     @Test func testCancellationPropagates() throws {
@@ -449,11 +473,15 @@ private func readBulkChildren(of url: URL) throws -> [String: BulkDirectoryChild
 private func makeBulkTestDirectory() throws -> URL {
     // FileManager canonicalizes children to /private/var while the root keeps /var; realpath keeps IDs comparable.
     let temporaryPath = FileManager.default.temporaryDirectory.path
+    #if os(Windows)
+    let canonicalPath = WindowsPath.resolved(temporaryPath) ?? temporaryPath
+    #else
     let canonicalPath = temporaryPath.withCString { pointer -> String in
         guard let resolved = realpath(pointer, nil) else { return temporaryPath }
         defer { free(resolved) }
         return String(cString: resolved)
     }
+    #endif
     let url = URL(fileURLWithPath: canonicalPath, isDirectory: true)
         .appending(path: "bulk-reader-\(UUID().uuidString)", directoryHint: .isDirectory)
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)

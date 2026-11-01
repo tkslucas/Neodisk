@@ -21,17 +21,65 @@ enum DevLaunchHooks {
 
         // NEODISK_AUTOSCAN=<path> scans on launch.
         if let path = environment["NEODISK_AUTOSCAN"], model.coordinator.phase == .idle {
-            model.startScan(ScanTarget(url: URL(filePath: path, directoryHint: .isDirectory)))
+            let target = ScanTarget(url: URL(filePath: path, directoryHint: .isDirectory))
+            #if DEBUG
+            // Without access, scan as a click would once the index is in: a first scan offers Full Disk Access.
+            if environment["NEODISK_FULL_DISK_ACCESS"] == "off" {
+                model.warnings.fullDiskAccessStatus = .notGranted
+                Task { @MainActor in
+                    while !model.session.hasIndexedSnapshotCache { try? await Task.sleep(for: .milliseconds(50)) }
+                    model.startChosenScan(target)
+                }
+            } else {
+                model.startScan(target)
+            }
+            #else
+            model.startScan(target)
+            #endif
             // NEODISK_BENCH_RESCANS drives repeated in-app rescans of the
             // just-started scan to measure felt rescan cost with the baseline
             // in memory (no relaunch/decode).
             BenchRescanDriver.shared.startIfRequested(model: model)
+            BenchActionDriver.startIfRequested(model: model)
+        }
+
+        // NEODISK_OPEN_CACHED=<path> shows that location's cached snapshot (NEODISK_SNAPSHOT_DIR) and never scans:
+        // profiling on a big real tree without touching the disk.
+        if let path = environment["NEODISK_OPEN_CACHED"], model.coordinator.phase == .idle {
+            MainThreadMonitor.startIfProfiling()
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(2))
+                let target = ScanTarget(url: URL(filePath: path, directoryHint: .isDirectory))
+                model.coordinator.beginSnapshotRestore(target)
+                let started = ScanProfile.now()
+                // Its own cache instance (same NEODISK_SNAPSHOT_DIR): a miss logs and stops, never scans.
+                guard let cached = await ScanSnapshotCache().loadSnapshot(for: target) else {
+                    ScanTiming.note("openCached: no snapshot for \(target.id)")
+                    return
+                }
+                let nodes = cached.treeStore.nodeCount
+                ScanTiming.note("openCached decoded ms=\((ScanProfile.now() &- started) / 1_000_000) nodes=\(nodes)")
+                model.coordinator.completeSnapshotRestore(cached)
+            }
+            BenchActionDriver.startIfRequested(model: model)
         }
 
         // NEODISK_ANALYSIS_TAB=<kinds|largest|age|duplicates|changes> opens
         // that statistics tab, so headless snapshots can capture any tab.
         if let rawTab = environment["NEODISK_ANALYSIS_TAB"], let tab = AnalysisTab(rawValue: rawTab) {
             model.analysisTab = tab
+        }
+
+        // NEODISK_SIDEBAR_COLLAPSED=<volumes,cloudFiles,folders,cleanup> collapses those sidebar sections (the
+        // rest expanded) for this run.
+        if let raw = environment["NEODISK_SIDEBAR_COLLAPSED"] {
+            let collapsed = Set(raw.split(separator: ",").compactMap { SidebarSection(rawValue: String($0)) })
+            model.devSidebarSectionsOverride = { sections in
+                for section in SidebarSection.allCases {
+                    sections.setExpanded(section, !collapsed.contains(section))
+                }
+            }
+            model.syncSidebarSections()
         }
 
         // NEODISK_VIZ_MODE=<treemap|sunburst>, NEODISK_TREEMAP_STYLE=<cushion|flat> and
@@ -78,6 +126,21 @@ enum DevLaunchHooks {
                         model.select(node.id)
                         break
                     }
+                }
+            }
+        }
+
+        // NEODISK_AUTODRILL=<path> roots the map at that folder once the scan finishes, as a drill would: headless
+        // snapshots show the drilled path bar, center and legend.
+        if let drillPath = environment["NEODISK_AUTODRILL"] {
+            Task { @MainActor in
+                for _ in 0..<120 {
+                    try? await Task.sleep(for: .milliseconds(500))
+                    guard !model.coordinator.isScanning, model.coordinator.snapshot?.isComplete == true else {
+                        continue
+                    }
+                    if let node = findNode(at: drillPath, in: model) { _ = model.drillIn(to: node.id) }
+                    break
                 }
             }
         }
@@ -164,7 +227,7 @@ enum DevLaunchHooks {
     /// Walks the scanned tree down to the node whose path matches, for the
     /// NEODISK_AUTOREVEAL dev hook.
     @MainActor
-    private static func findNode(at path: String, in model: NeodiskViewModel) -> FileNodeRecord? {
+    static func findNode(at path: String, in model: NeodiskViewModel) -> FileNodeRecord? {
         guard let store = model.store else { return nil }
         var node = store.root
         while node.path != path {

@@ -9,6 +9,12 @@ enum MainThreadMonitor {
     nonisolated(unsafe) private static var mainThread: thread_act_t = 0
     private static let lock = NSLock()
     nonisolated(unsafe) private static var stackCounts: [[UInt]: Int] = [:]
+    nonisolated(unsafe) private static var monitorStart: UInt64 = 0
+    /// NEODISK_STALL_LOG_MS (default 100): stalls longer than this get their own line.
+    private static let stallLogThreshold: UInt64 = 1_000_000 * (ProcessInfo.processInfo.environment["NEODISK_STALL_LOG_MS"]
+        .flatMap(UInt64.init) ?? 100)
+    /// Milliseconds since the monitor started: the clock its stall lines use.
+    static var elapsedMs: UInt64 { (ScanProfile.now() &- monitorStart) / 1_000_000 }
 
     static func startIfProfiling() {
         guard ScanProfile.isEnabled, !started else { return }
@@ -16,6 +22,7 @@ enum MainThreadMonitor {
         // Started from FeltTiming on the main thread.
         guard Thread.isMainThread else { started = false; return }
         mainThread = mach_thread_self()
+        monitorStart = ScanProfile.now()
         let thread = Thread {
             while true {
                 let since = ScanProfile.now()
@@ -29,9 +36,12 @@ enum MainThreadMonitor {
                 }
                 // Late past 20 ms: sample what the main thread is doing.
                 if answered.wait(timeout: .now() + .milliseconds(20)) == .timedOut {
+                    var stall: [[UInt]] = []
                     while answered.wait(timeout: .now() + .milliseconds(5)) == .timedOut {
-                        sampleMainThread()
+                        if let frames = sampleMainThread() { stall.append(frames) }
                     }
+                    let elapsed = ScanProfile.now() &- since
+                    if elapsed > stallLogThreshold { logStall(stall, at: since &- monitorStart, lasting: elapsed) }
                 }
                 Thread.sleep(forTimeInterval: 0.016)
             }
@@ -41,9 +51,32 @@ enum MainThreadMonitor {
         thread.start()
     }
 
+    /// One line per stall over the threshold, when it began (ms since the monitor started), and the Neodisk frames
+    /// (marked `*`) seen in most of its samples, innermost first: which interaction stalled, and in what code.
+    private static func logStall(_ samples: [[UInt]], at offset: UInt64, lasting elapsed: UInt64) {
+        var inclusive: [String: Int] = [:]
+        for frames in samples {
+            for symbol in Set(frames.map(symbol(for:))) where symbol.hasPrefix("*") {
+                inclusive[symbol, default: 0] += 1
+            }
+        }
+        let own = inclusive.sorted { $0.value > $1.value }.prefix(6)
+            .map { "\($0.value)/\(samples.count) \($0.key)" }
+        // Leaf-side frames shared by most samples, to name framework work (layout, display) the own frames miss.
+        var leafCounts: [String: Int] = [:]
+        for frames in samples {
+            for symbol in Set(frames.prefix(12).map(symbol(for:))) { leafCounts[symbol, default: 0] += 1 }
+        }
+        let leaves = leafCounts.filter { $0.key != "?" }.sorted { $0.value > $1.value }.prefix(5)
+            .map { "\($0.value) \($0.key.prefix(70))" }
+        ScanTiming.note("mainStall atMs=\(offset / 1_000_000) ms=\(elapsed / 1_000_000) | " + own.joined(separator: " | ")
+            + " || leaf: " + leaves.joined(separator: " | "))
+    }
+
     /// Suspends the main thread, walks its frame-pointer chain, resumes it.
-    private static func sampleMainThread() {
-        guard thread_suspend(mainThread) == KERN_SUCCESS else { return }
+    @discardableResult
+    private static func sampleMainThread() -> [UInt]? {
+        guard thread_suspend(mainThread) == KERN_SUCCESS else { return nil }
         var frames: [UInt] = []
         #if arch(arm64)
         var state = arm_thread_state64_t()
@@ -71,10 +104,11 @@ enum MainThreadMonitor {
         }
         #endif
         thread_resume(mainThread)
-        guard !frames.isEmpty else { return }
+        guard !frames.isEmpty else { return nil }
         lock.lock()
         stackCounts[frames, default: 0] += 1
         lock.unlock()
+        return frames
     }
 
     /// Prints the stall stacks sampled most often, grouped by their innermost

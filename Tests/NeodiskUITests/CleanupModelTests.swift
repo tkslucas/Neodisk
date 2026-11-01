@@ -212,7 +212,11 @@ import NeodiskAppModel
         let model = environment.makeModel(protecting: [environment.path("Keep")])
         let policyBuilds = PolicyBuildCounter()
         let makePolicy = model.cleanup.makePolicy
-        model.cleanup.makePolicy = { policyBuilds.increment(); return makePolicy() }
+        // Only main-thread builds count: the warm-up when the scan lands runs in the background.
+        model.cleanup.makePolicy = {
+            if Thread.isMainThread { policyBuilds.increment() }
+            return makePolicy()
+        }
         model.coordinator.replaceCurrentSnapshot(try await environment.scan())
         let store = try #require(model.store)
         let nodes = try ["a.bin", "Keep", "Keep/b.bin", "Old", "Old/d.bin"]

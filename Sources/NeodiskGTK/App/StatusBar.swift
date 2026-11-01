@@ -1,3 +1,5 @@
+// The hovered or selected item's name, size and path. Right-click hides it; the primary menu brings it back.
+
 import CGtk
 import Foundation
 import NeodiskAppModel
@@ -11,6 +13,7 @@ final class StatusBar {
     private let nameLabel: GPtr
     private let detailLabel: GPtr
     private let warningLabel: GPtr
+    private var menu: GPtr?
     private var tokens: [ObservationToken] = []
 
     init(model: AppModel) {
@@ -22,12 +25,20 @@ final class StatusBar {
         widget = Widgets.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8, classes: ["neodisk-statusbar"], [
             swatch.widget, nameLabel, detailLabel, warningLabel,
         ])
+        let click = raw(gtk_gesture_click_new())!
+        gtk_gesture_single_set_button(ptr(click), 3)
+        connectPress(click, "pressed") { [unowned self] _, x, y in self.showMenu(at: CGPoint(x: x, y: y)) }
+        gtk_widget_add_controller(ptr(widget), ptr(click))
         tokens.append(track { [unowned self] in self.update() })
+    }
+
+    func showMenu(at point: CGPoint) {
+        Widgets.popupMenu(&menu, sections: [[(L("Hide Status Bar"), "win.hide-status-bar")]], on: widget, at: point)
     }
 
     private func update() {
         let node = model.hoveredNode ?? model.selectedNode
-        guard let store = model.store else {
+        guard let store = model.store, model.preferences.showsStatusBar else {
             Widgets.setVisible(widget, false)
             return
         }

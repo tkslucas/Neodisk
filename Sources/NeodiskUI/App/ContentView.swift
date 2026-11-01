@@ -20,29 +20,33 @@ public struct ContentView: View {
 
     private var textScale: CGFloat { CGFloat(model.textScale) }
 
+    private var minimumSize: CGSize {
+        PaneLayout.windowMinSize(scale: model.textScale, screen: NSScreen.main?.visibleFrame.size)
+    }
+
     public var body: some View {
         NavigationSplitView(columnVisibility: $model.sidebarVisibility) {
             SidebarPane(model: model)
                 .navigationSplitViewColumnWidth(
-                    min: 210 * textScale, ideal: 250 * textScale, max: 320 * textScale
+                    min: PaneLayout.sidebarMinWidth(scale: model.textScale),
+                    ideal: PaneLayout.sidebarIdealWidth(scale: model.textScale),
+                    max: PaneLayout.sidebarMaxWidth(scale: model.textScale)
                 )
         } detail: {
             detailContent
-                .dropDestination(for: URL.self) { urls, _ in
-                    model.addDroppedFolders(urls)
-                }
+                .addLocationDropTarget(model: model)
         }
-        // The one place the workspace text scale enters the view tree; other scenes keep the system size.
-        .environment(\.neoTextScale, textScale)
-        // For views that never name a font. macOS's default is 13pt, so 100% renders as before.
-        .font(.system(size: 13 * textScale))
+        // The workspace text scale enters here and in the welcome sheet; other scenes (Settings, About) and the
+        // window's chrome keep the system size.
+        .neoWorkspaceText(scale: textScale)
         .frame(
-            minWidth: PaneLayout.windowMinWidth(scale: model.textScale),
-            minHeight: PaneLayout.windowMinHeight(scale: model.textScale)
+            minWidth: minimumSize.width,
+            minHeight: minimumSize.height
         )
         .background(SnapshotWindowHider())
         .sheet(isPresented: $model.showWelcomeSheet) {
             WelcomeSheet(model: model)
+                .neoWorkspaceText(scale: textScale)
         }
         .onAppear {
             // This window can host the unobtrusive update indicator; while
@@ -68,8 +72,12 @@ public struct ContentView: View {
         ) { _ in
             Task { await model.warnings.refreshFullDiskAccessStatus() }
         }
+        .onChange(of: model.warnings.fullDiskAccessStatus) { _, status in
+            if status == .granted { model.passFullDiskAccessGate(remembering: false) }
+        }
         .toolbar { toolbarContent }
         .navigationTitle(windowTitle)
+        .navigationSubtitle(windowSubtitle)
         .alert(
             "Something went wrong",
             isPresented: Binding(
@@ -85,6 +93,15 @@ public struct ContentView: View {
 
     @ViewBuilder
     private var detailContent: some View {
+        if model.fullDiskAccessGate != nil {
+            FullDiskAccessGateView(model: model)
+        } else {
+            phaseContent
+        }
+    }
+
+    @ViewBuilder
+    private var phaseContent: some View {
         switch model.coordinator.phase {
         case .idle:
             WelcomeView(model: model)
@@ -106,30 +123,39 @@ public struct ContentView: View {
         }
     }
 
+    /// The location in the title, its size in the subtitle beneath it.
     private var windowTitle: String {
-        Self.windowTitle(
-            targetName: model.coordinator.selectedTarget?.displayName,
+        (model.fullDiskAccessGate ?? model.coordinator.selectedTarget)?.displayName ?? AppChannel.current.appName
+    }
+
+    private var windowSubtitle: String {
+        guard model.fullDiskAccessGate == nil else { return "" }
+        return Self.windowSubtitle(
             targetKind: model.coordinator.selectedTarget?.kind,
             finderUsedBytes: model.freeSpace.finderUsedBytes,
+            freeBytes: model.freeSpace.freeSpaceBytes,
             scannedTotalBytes: model.coordinator.snapshot?.aggregateStats.totalAllocatedSize
         )
     }
 
-    /// Volume scans title the system's "used" figure so the window agrees with Finder and the legend.
-    nonisolated static func windowTitle(
-        targetName: String?,
+    /// A volume states the system's used, capacity and free figures, so the window agrees with Finder and the
+    /// legend; a folder states what the scan accounted for.
+    nonisolated static func windowSubtitle(
         targetKind: ScanTargetKind?,
         finderUsedBytes: Int64?,
+        freeBytes: Int64?,
         scannedTotalBytes: Int64?
     ) -> String {
-        guard let targetName else { return AppChannel.current.appName }
-        let total: Int64? = if targetKind == .volume, let finderUsedBytes {
-            finderUsedBytes
-        } else {
-            scannedTotalBytes
+        if targetKind == .volume, let finderUsedBytes {
+            guard let freeBytes else { return NeodiskFormatters.size(finderUsedBytes) }
+            return String(
+                format: NSLocalizedString("%@ of %@ used · %@ free", comment: "Window subtitle for a scanned volume"),
+                NeodiskFormatters.size(finderUsedBytes),
+                NeodiskFormatters.size(finderUsedBytes + freeBytes),
+                NeodiskFormatters.size(freeBytes)
+            )
         }
-        guard let total else { return targetName }
-        return "\(targetName) (\(NeodiskFormatters.size(total)))"
+        return scannedTotalBytes.map(NeodiskFormatters.size) ?? ""
     }
 
     @ToolbarContentBuilder
@@ -169,7 +195,8 @@ public struct ContentView: View {
             views: model.layout.views,
             current: model.vizView,
             isEnabled: model.coordinator.snapshot != nil,
-            update: model.updateLayout
+            update: model.updateLayout,
+            menuItems: { NSMenu.workspaceLayoutItems(model: model) }
         )
     }
 
@@ -259,6 +286,14 @@ private struct WorkspaceView: View {
                 workspacePanes(metrics: metrics)
             }
 
+            if let notice = model.session.snapshotNotice {
+                VStack(spacing: 0) {
+                    Divider()
+                    SnapshotNoticeStrip(model: model, notice: notice)
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+
             if let superseded = model.session.supersededScanNotice {
                 Divider()
                 SupersededScanStrip(displayName: superseded.displayName) {
@@ -283,11 +318,11 @@ private struct WorkspaceView: View {
             if model.showsStatusBar {
                 Divider()
                 StatusBar(model: model)
-                    .contextMenu {
-                        Button("Hide Status Bar") { model.setStatusBarShown(false) }
-                    }
+                    .contextMenu { WorkspaceLayoutMenuItems(model: model) }
             }
         }
+        // The snapshot strip slides in and out instead of jumping the map under the pointer.
+        .animation(.easeInOut(duration: 0.2), value: model.session.snapshotNotice == nil)
     }
 
     private func paneMetrics(available: CGSize) -> WorkspacePaneMetrics {
@@ -325,7 +360,7 @@ private struct WorkspaceView: View {
     }
 
     private func workspacePanes(metrics: WorkspacePaneMetrics) -> some View {
-        ZStack(alignment: .bottomTrailing) {
+        Group {
             HStack(spacing: 0) {
                 if model.layout.showsLeadingList {
                     OutlinePane(model: model)
@@ -371,7 +406,8 @@ private struct WorkspaceView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .layoutPriority(1)
 
-                if model.showKindStats, !metrics.analysisFloats {
+                // Always docked, beside the map and never over it, so its edge is a divider like the others.
+                if model.showKindStats {
                     PaneSplitter(
                         size: kindStatsPaneSize,
                         range: metrics.analysisRange,
@@ -384,27 +420,12 @@ private struct WorkspaceView: View {
                     )
                     AnalysisPane(model: model)
                         .frame(width: metrics.analysisWidth)
-                        .transition(.move(edge: .trailing))
                 }
             }
-            // A window too narrow to dock the analysis pane beside the map
-            // floats it over the map's trailing edge instead.
-            .overlay(alignment: .trailing) {
-                if model.showKindStats, metrics.analysisFloats {
-                    AnalysisPane(model: model)
-                        .frame(width: metrics.analysisWidth)
-                        .frame(maxHeight: .infinity)
-                        .background(.background)
-                        .overlay(alignment: .leading) { Divider() }
-                        .shadow(color: .black.opacity(0.18), radius: 10, x: -2)
-                        .transition(.move(edge: .trailing))
-                }
-            }
-            .animation(.easeInOut(duration: 0.22), value: model.showKindStats)
+            // The statistics panel shows and hides at once, unanimated: a sliding panel resized the map and the
+            // file list on every frame, redrawing the sunburst and the tables each time (200-300 ms stalls, and a
+            // 1.7 s freeze on a big scan).
             .clipped()
-
-            SnapshotNoticePanel(model: model)
-                .animation(.easeInOut(duration: 0.2), value: model.session.snapshotNotice)
         }
     }
 }
@@ -445,8 +466,10 @@ private struct ScanIssuesStrip: View {
                 ScanIssuesPopover(model: model)
             }
             if model.warnings.suggestFullDiskAccess {
-                Button("Grant Full Disk Access…") {
+                Button {
                     _ = SystemIntegration.prepareAndOpenFullDiskAccessSettings()
+                } label: {
+                    Text("Grant Full Disk Access…").neoFont(11)
                 }
                 .neoControlSize(base: .small)
             }
@@ -545,39 +568,50 @@ private struct LiveScanStrip: View {
     var onStop: (() -> Void)?
     var onResume: (() -> Void)?
 
+    @Environment(\.neoTextScale) private var textScale
+
     var body: some View {
+        // Reads like the status bar below it: what's happening leading, the bar and its button at the trailing end.
         HStack(spacing: 10) {
+            // The caption says what's happening, so it gives way last: the counts go first, then the bar narrows.
+            Text(statusText)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .layoutPriority(2)
+            // No counters have moved yet while checking for changes; "0 files"
+            // next to that caption would read as lost data.
+            if !progress.metrics.isCheckingChanges {
+                ViewThatFits(in: .horizontal) {
+                    Text(AppStrings.plural(
+                        progress.metrics.filesVisited, one: "%@ file · %@", other: "%@ files · %@",
+                        progress.metrics.filesVisited.formatted(), NeodiskFormatters.size(progress.metrics.bytesDiscovered)
+                    ))
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .fixedSize()
+                    Color.clear.frame(width: 0, height: 0)
+                }
+                .foregroundStyle(.secondary)
+                .layoutPriority(1)
+            }
+            Spacer(minLength: 12)
+
             // Always determinate and monotonic: held phases keep their fraction with a caption, and the stripe
             // sheen signals liveness meanwhile.
             StripedProgressBar(
                 value: progress.metrics.progressFraction,
                 isActive: !isStopped
             )
-            .frame(width: 160)
+            .frame(minWidth: (80 * textScale).rounded(), maxWidth: (160 * textScale).rounded())
             .opacity(isStopped ? 0.5 : 1)
 
             if isStopped {
-                Button("Restart", action: { onResume?() })
+                Button { onResume?() } label: { Text("Restart").neoFont(11) }
                     .neoControlSize(base: .small)
             } else if let onStop {
-                Button("Stop", action: onStop)
+                Button(action: onStop) { Text("Stop").neoFont(11) }
                     .neoControlSize(base: .small)
             }
-
-            Text(statusText)
-                .foregroundStyle(.secondary)
-            // No counters have moved yet while checking for changes; "0 files"
-            // next to that caption would read as lost data.
-            if !progress.metrics.isCheckingChanges {
-                Text(AppStrings.plural(
-                    progress.metrics.filesVisited, one: "%@ file · %@", other: "%@ files · %@",
-                    progress.metrics.filesVisited.formatted(), NeodiskFormatters.size(progress.metrics.bytesDiscovered)
-                ))
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            Spacer()
         }
         .neoFont(11)
         .padding(.horizontal, 10)
@@ -589,6 +623,10 @@ private struct LiveScanStrip: View {
             return cachedScanDate != nil
                 ? NSLocalizedString("Stopped — showing last scan", comment: "Live strip, stopped with a cached scan")
                 : NSLocalizedString("Stopped — showing partial results", comment: "Live strip, stopped mid-scan")
+        }
+        // The one wait only the user can end comes first.
+        if let permissionWaitText = progress.permissionWaitText {
+            return permissionWaitText
         }
         // Activity phases outrank the cached-scan caption: the refresh path
         // is exactly where these silent phases used to look like a hang.

@@ -75,3 +75,30 @@ import TreemapKit
         }
     }
 }
+
+/// `shade(of:at:)` is how labels read the color under them, so it must agree with the raster.
+@Suite struct CushionShadeTests {
+    @Test func shadeMatchesRasterizedPixel() throws {
+        let bounds = CGRect(x: 0, y: 0, width: 40, height: 30)
+        var surface = CushionSurface()
+        surface.addRidge(over: bounds, height: 0.5)
+        surface.addRidge(over: CGRect(x: 0, y: 0, width: 20, height: 30), height: 0.4)
+        let rgb = SIMD3<Float>(0.6, 0.4, 0.8)
+        let cell = TreemapCell(
+            nodeID: "a", rect: bounds, rgb: rgb, surface: surface, isDirectory: false
+        )
+        let raster = try #require(
+            CushionTreemapRenderer.rasterizeRGBA(cells: [cell], bounds: bounds, scale: 1)
+        )
+        for (x, y) in [(3, 4), (10, 15), (17, 26), (35, 8)] {
+            let shade = CushionTreemapRenderer.shade(
+                of: surface, at: CGPoint(x: Double(x) + 0.5, y: Double(y) + 0.5)
+            )
+            let offset = (y * raster.width + x) * 4
+            for channel in 0..<3 {
+                let expected = Double(rgb[channel]) * shade * 255
+                #expect(abs(Double(raster.pixels[offset + channel]) - expected) <= 1)
+            }
+        }
+    }
+}

@@ -221,6 +221,24 @@ import Testing
         }
     }
 
+    /// A reopened saved scan must verify like the fresh one it was saved from: files and folders alike.
+    @Test func itemsOfAReopenedSavedScanVerifyAsUnchanged() async throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root.appending(path: "Folder/Nested"), withIntermediateDirectories: true)
+        try Data(count: 10).write(to: root.appending(path: "small.txt"))
+        try Data(count: 3_000_000).write(to: root.appending(path: "Folder/big.bin"))
+        try Data(count: 50).write(to: root.appending(path: "Folder/Nested/note.md"))
+
+        let reopened = try ScanSnapshotCodec.decode(ScanSnapshotCodec.encode(try await scan(root)))
+        let store = reopened.treeStore
+        let nodes = store.indexedNodeIDs().compactMap { store.node(id: $0) }.filter { $0.id != reopened.root.id }
+        #expect(nodes.contains { $0.isDirectory } && nodes.contains { !$0.isDirectory })
+        for node in nodes where !node.isSynthetic {
+            #expect(TrashMover.verify(node) == nil, "\(node.path)")
+        }
+    }
+
     @Test func replacedEditedAndMissingItemsAreCaught() async throws {
         let root = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }

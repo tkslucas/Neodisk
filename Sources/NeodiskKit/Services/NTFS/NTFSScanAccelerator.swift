@@ -31,9 +31,9 @@ nonisolated final class VolumeIndexLease: Sendable {
 }
 
 nonisolated enum NTFSScanAccelerator {
-    /// The bar's share for reading the file table. Reading C:\ (660 MB of records) took about as long as the
-    /// traversal that follows it, measured on Windows 11.
-    static let preparationSpan = 0.4
+    /// The bar's share for reading the file table: 30-45% of a whole C:\ scan on the test VM (695 MB of records,
+    /// 1.0-2.3 s of 3.4-4.7 s).
+    static let preparationSpan = 0.35
 
     /// The walk reports a link count of 1 for every file (directory listings carry none), so the index does the
     /// same: both engines then count every hard link, and their totals agree.

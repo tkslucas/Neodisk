@@ -2,6 +2,10 @@
 // saves the window as PNG once the scan is on screen (NEODISK_SNAPSHOT_DELAY seconds later), then quits.
 // NEODISK_SELECT=<path> selects an item once shown. NEODISK_THEME=light|dark and NEODISK_SCALE=<factor> are
 // read where the theme and the DPI scale are.
+//
+// A clean profile, as a first launch sees it: APPDATA=<dir> moves settings.json (the sidebar's folders, the
+// window, the view) and NEODISK_SNAPSHOT_DIR=<dir> the saved scans. NEODISK_DATA_DIR isn't one of them: as on
+// Linux, it's where the Localization catalogs are read from.
 
 import CNeodiskWin
 import Foundation

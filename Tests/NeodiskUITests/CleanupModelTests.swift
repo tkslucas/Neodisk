@@ -343,6 +343,39 @@ import NeodiskAppModel
         #expect(model.cleanup.failures[lockedPath] != nil)
     }
 
+    @Test func aFailureReasonSurvivesVisitingAnotherLocation() async throws {
+        let environment = try Environment()
+        defer { environment.tearDown() }
+        try environment.write("A/stuck.bin", bytes: 100)
+        try environment.write("B/other.bin", bytes: 100)
+        let model = environment.makeModel()
+        model.cleanup.trashItem = { _ in throw CocoaError(.fileWriteNoPermission) }
+        func scan(_ folder: String) async throws -> ScanSnapshot {
+            var finished: ScanSnapshot?
+            let target = ScanTarget(url: environment.root.appending(path: folder, directoryHint: .isDirectory))
+            for try await event in ScanEngine().scan(target: target, options: ScanOptions()) {
+                if case .finished(let snapshot) = event { finished = snapshot }
+            }
+            return try #require(finished)
+        }
+        let a = try await scan("A")
+        let b = try await scan("B")
+        let stuck = environment.path("A/stuck.bin")
+
+        model.coordinator.replaceCurrentSnapshot(a)
+        model.cleanup.add([try #require(a.treeStore.node(id: stuck))])
+        model.cleanup.moveAllToTrash()
+        try await waitUntil("move failed") { model.cleanup.failures[stuck] != nil && !model.cleanup.isMoving }
+        model.coordinator.replaceCurrentSnapshot(b)
+        model.cleanup.add([try #require(b.treeStore.node(id: environment.path("B/other.bin")))])
+        // Any tree change of B (an expansion, a move) reconciles its pile.
+        model.coordinator.replaceCurrentSnapshot(b)
+        model.coordinator.replaceCurrentSnapshot(a)
+
+        #expect(model.cleanup.itemIDs == [stuck])
+        #expect(model.cleanup.failures[stuck] != nil)
+    }
+
     @Test func aRescanThatReplacesACollectedItemDropsIt() async throws {
         let environment = try Environment()
         defer { environment.tearDown() }

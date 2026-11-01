@@ -218,7 +218,8 @@ final class CleanupModel {
         guard let snapshot, snapshot.isComplete, var current = piles[snapshot.target.id] else { return }
         let changed = current.reconcile(with: snapshot.treeStore)
         piles[snapshot.target.id] = current.isEmpty ? nil : current
-        failures = failures.filter { snapshot.treeStore.node(id: $0.key) != nil }
+        // Kept while the item is in a pile, this location's or another's.
+        failures = failures.filter { id, _ in piles.values.contains { $0.contains(id) } }
         if changed > 0 {
             show(Notice(kind: .info, text: changed == 1
                 ? NSLocalizedString("1 item changed since you collected it and left Cleanup.", comment: "Cleanup notice")

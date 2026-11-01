@@ -67,8 +67,6 @@ final class TreemapView: CanvasDelegate {
     private var dragStart: TreemapViewport?
     private var isPanning = false
     private var contextMenu: GPtr?
-    /// The "smaller items" cells' menu: the same without Move to Trash (each menu is built once and kept).
-    private var aggregateContextMenu: GPtr?
     private var tokens: [ObservationToken] = []
 
     init(model: AppModel) {
@@ -710,10 +708,6 @@ final class TreemapView: CanvasDelegate {
         if includeTrash {
             sections.append([(L("Move to Trash…"), "win.move-to-trash")])
         }
-        if includeTrash {
-            Widgets.popupMenu(&contextMenu, sections: sections, on: canvas.widget, at: point)
-        } else {
-            Widgets.popupMenu(&aggregateContextMenu, sections: sections, on: canvas.widget, at: point)
-        }
+        Widgets.popupMenu(&contextMenu, sections: sections, on: canvas.widget, at: point)
     }
 }

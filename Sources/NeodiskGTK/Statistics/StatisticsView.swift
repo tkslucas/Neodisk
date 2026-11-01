@@ -394,7 +394,6 @@ final class StatisticsView {
         return top
     }
 
-
     private func showLargest(_ nodes: [FileNodeRecord], rootSize: Int64) {
         largestActions?.whileRebuilding { Widgets.removeAllRows(of: largestList) }
         largestIDs = nodes.map(\.id)

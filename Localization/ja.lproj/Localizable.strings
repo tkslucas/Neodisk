@@ -502,3 +502,7 @@
 "Reset Tabs" = "タブをリセット";
 "Percentage" = "割合";
 "More tabs" = "その他のタブ";
+"This is part of an app or plug-in, which needs it to work. Move the whole app or plug-in instead." = "これはアプリまたはプラグインの一部で、動作に必要です。代わりにアプリまたはプラグイン全体を移動してください。";
+"It's locked. Unlock it in Get Info to move it." = "ロックされています。「情報を見る」でロックを解除してから移動してください。";
+"Moved 1 item to the Trash." = "1 項目をゴミ箱に入れました。";
+"Moved %lld items to the Trash." = "%lld 項目をゴミ箱に入れました。";

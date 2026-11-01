@@ -502,3 +502,7 @@
 "Reset Tabs" = "重置标签页";
 "Percentage" = "百分比";
 "More tabs" = "更多标签页";
+"This is part of an app or plug-in, which needs it to work. Move the whole app or plug-in instead." = "这是某个应用或插件的一部分，它需要此项才能运行。请改为移动整个应用或插件。";
+"It's locked. Unlock it in Get Info to move it." = "此项已锁定。请在“显示简介”中解锁后再移动。";
+"Moved 1 item to the Trash." = "已将 1 个项目移到废纸篓。";
+"Moved %lld items to the Trash." = "已将 %lld 个项目移到废纸篓。";

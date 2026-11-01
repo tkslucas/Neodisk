@@ -334,7 +334,12 @@ final class CleanupModel {
 
     private func report(moved: Int, bytes: Int64, missing: Int, failed: Int) {
         var parts: [String] = []
-        if moved > 0 {
+        // No "(Zero bytes)": a hard link's other name frees nothing, and the size would read as a mistake.
+        if moved > 0, bytes == 0 {
+            parts.append(moved == 1
+                ? NSLocalizedString("Moved 1 item to the Trash.", comment: "Cleanup result")
+                : String(format: NSLocalizedString("Moved %lld items to the Trash.", comment: "Cleanup result"), moved))
+        } else if moved > 0 {
             parts.append(moved == 1
                 ? String(format: NSLocalizedString("Moved 1 item (%@) to the Trash.", comment: "Cleanup result"), NeodiskFormatters.size(bytes))
                 : String(format: NSLocalizedString("Moved %lld items (%@) to the Trash.", comment: "Cleanup result"), moved, NeodiskFormatters.size(bytes)))

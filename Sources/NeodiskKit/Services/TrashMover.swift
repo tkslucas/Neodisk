@@ -7,6 +7,8 @@ public enum TrashFailure: Error, Sendable, Equatable {
     case missing
     /// Something else is at the path now (replaced, or a different kind of item).
     case changedSinceScan
+    /// The item is locked (Finder's Get Info), which the Trash won't take.
+    case locked
     /// The system declined the move: no Trash on that volume, no permission, a locked file, SIP.
     case systemError(String)
 }
@@ -94,8 +96,19 @@ public struct TrashMover: Sendable {
         do {
             return .success(try trashItem(node.url))
         } catch {
-            return .failure(.systemError(error.localizedDescription))
+            return .failure(Self.isLocked(node.path) ? .locked : .systemError(error.localizedDescription))
         }
+    }
+
+    /// The user or system immutable flag, which the system reports only as "no permission".
+    static func isLocked(_ path: String) -> Bool {
+        #if canImport(Darwin)
+        var info = stat()
+        guard lstat(path, &info) == 0 else { return false }
+        return info.st_flags & UInt32(UF_IMMUTABLE | SF_IMMUTABLE) != 0
+        #else
+        return false
+        #endif
     }
 
     /// Nil when the path still holds the scanned item: same device and inode when known, and for files also the

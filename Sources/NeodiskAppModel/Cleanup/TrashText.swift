@@ -34,6 +34,8 @@ package extension TrashFailure {
             AppStrings.localized("It's no longer there.", comment: "Trash failure")
         case .changedSinceScan:
             AppStrings.localized("It changed since the scan. Rescan to move it.", comment: "Trash failure")
+        case .locked:
+            AppStrings.localized("It's locked. Unlock it in Get Info to move it.", comment: "Trash failure")
         case .systemError(let message):
             message
         }

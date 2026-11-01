@@ -502,3 +502,7 @@
 "Reset Tabs" = "Reset Tabs";
 "Percentage" = "Percentage";
 "More tabs" = "More tabs";
+"This is part of an app or plug-in, which needs it to work. Move the whole app or plug-in instead." = "This is part of an app or plug-in, which needs it to work. Move the whole app or plug-in instead.";
+"It's locked. Unlock it in Get Info to move it." = "It's locked. Unlock it in Get Info to move it.";
+"Moved 1 item to the Trash." = "Moved 1 item to the Trash.";
+"Moved %lld items to the Trash." = "Moved %lld items to the Trash.";

@@ -507,7 +507,9 @@ final class MainWindow {
             }
             switch outcome {
             case .moved(let bytes):
-                self.showToast(L("Moved 1 item (%@) to the Trash.", NeodiskFormatters.size(bytes)))
+                self.showToast(bytes == 0
+                    ? L("Moved 1 item to the Trash.")
+                    : L("Moved 1 item (%@) to the Trash.", NeodiskFormatters.size(bytes)))
             case .alreadyGone:
                 self.showToast(L("1 item was already gone."))
             case .failed(let reason):

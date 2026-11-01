@@ -503,3 +503,7 @@
 "Reset Tabs" = "Restablecer pestañas";
 "Percentage" = "Porcentaje";
 "More tabs" = "Más pestañas";
+"This is part of an app or plug-in, which needs it to work. Move the whole app or plug-in instead." = "Forma parte de una app o un complemento que lo necesita para funcionar. Mueve la app o el complemento completo.";
+"It's locked. Unlock it in Get Info to move it." = "Está bloqueado. Desbloquéalo en Obtener información para moverlo.";
+"Moved 1 item to the Trash." = "Se movió 1 elemento a la Papelera.";
+"Moved %lld items to the Trash." = "Se movieron %lld elementos a la Papelera.";

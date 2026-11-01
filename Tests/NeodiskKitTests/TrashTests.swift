@@ -390,3 +390,21 @@ private final class CallCounter: @unchecked Sendable {
     var value: Int { lock.withLock { count } }
     func increment() { lock.withLock { count += 1 } }
 }
+
+#if canImport(Darwin)
+@Suite struct TrashLockedTests {
+    @Test func lockedFileReportsLockedNotPermission() throws {
+        let dir = FileManager.default.temporaryDirectory.appending(path: "trash-locked-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let file = dir.appending(path: "locked.txt")
+        try Data("x".utf8).write(to: file)
+        try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: file.path)
+        defer {
+            try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: file.path)
+            try? FileManager.default.removeItem(at: dir)
+        }
+        #expect(TrashMover.isLocked(file.path))
+        #expect(!TrashMover.isLocked(dir.path))
+    }
+}
+#endif

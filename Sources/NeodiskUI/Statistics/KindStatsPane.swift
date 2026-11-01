@@ -48,7 +48,7 @@ struct KindStatsPane: View {
                 .labelsHidden()
                 .fixedSize()
             }
-            .padding(.horizontal, 10)
+            .padding(.horizontal, StatsListMetrics.inset)
             .padding(.vertical, 4)
 
             Divider()

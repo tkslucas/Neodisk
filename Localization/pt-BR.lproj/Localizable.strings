@@ -489,6 +489,7 @@
 "1 item changed since you collected it and left Cleanup." = "1 item mudou desde que você o juntou e saiu da Limpeza.";
 "%lld items changed since you collected them and left Cleanup." = "%lld itens mudaram desde que você os juntou e saíram da Limpeza.";
 "Reset Tabs" = "Redefinir abas";
+"More tabs" = "Mais abas";
 "Percentage" = "Porcentagem";
 "It's locked. Unlock it in Get Info to move it." = "Está bloqueado. Desbloqueie em Obter Informações para movê-lo.";
 "Moved 1 item to the Trash." = "1 item movido para a Lixeira.";

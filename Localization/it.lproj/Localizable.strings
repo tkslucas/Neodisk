@@ -488,6 +488,7 @@
 "1 item changed since you collected it and left Cleanup." = "1 elemento è cambiato da quando l'hai raccolto ed è uscito da Pulizia.";
 "%lld items changed since you collected them and left Cleanup." = "%lld elementi sono cambiati da quando li hai raccolti e sono usciti da Pulizia.";
 "Reset Tabs" = "Ripristina schede";
+"More tabs" = "Altre schede";
 "Percentage" = "Percentuale";
 "It's locked. Unlock it in Get Info to move it." = "È bloccato. Sbloccalo in Ottieni informazioni per spostarlo.";
 "Moved 1 item to the Trash." = "1 elemento spostato nel Cestino.";

@@ -488,6 +488,7 @@
 "1 item changed since you collected it and left Cleanup." = "1 item changed since you collected it and left Cleanup.";
 "%lld items changed since you collected them and left Cleanup." = "%lld items changed since you collected them and left Cleanup.";
 "Reset Tabs" = "Reset Tabs";
+"More tabs" = "More tabs";
 "Percentage" = "Percentage";
 "It's locked. Unlock it in Get Info to move it." = "It's locked. Unlock it in Get Info to move it.";
 "Moved 1 item to the Trash." = "Moved 1 item to the Trash.";

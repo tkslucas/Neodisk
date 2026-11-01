@@ -61,7 +61,6 @@
 "Hidden space on this volume" = "此宗卷上的隐藏空间";
 "Purgeable space, local snapshots, and files the scan could not see." = "可清除空间、本地快照以及扫描无法看到的文件。";
 "%@ smaller items in %@" = "%2$@ 中有 %1$@ 个较小项目";
-"Hover the treemap or select a row to inspect an item." = "将指针悬停在矩形树图上，或选择一行以查看项目详情。";
 
 /* MARK: - 设置：分区与控件 */
 "General" = "通用";

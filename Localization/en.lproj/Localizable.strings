@@ -61,7 +61,6 @@
 "Hidden space on this volume" = "Hidden space on this volume";
 "Purgeable space, local snapshots, and files the scan could not see." = "Purgeable space, local snapshots, and files the scan could not see.";
 "%@ smaller items in %@" = "%@ smaller items in %@";
-"Hover the treemap or select a row to inspect an item." = "Hover the treemap or select a row to inspect an item.";
 
 /* MARK: - Settings: sections & controls */
 "General" = "General";

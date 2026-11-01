@@ -61,7 +61,6 @@
 "Hidden space on this volume" = "Spazio nascosto su questo volume";
 "Purgeable space, local snapshots, and files the scan could not see." = "Spazio eliminabile, istantanee locali e file che la scansione non ha potuto vedere.";
 "%@ smaller items in %@" = "%@ elementi più piccoli in %@";
-"Hover the treemap or select a row to inspect an item." = "Passa il puntatore sulla treemap o seleziona una riga per ispezionare un elemento.";
 
 /* MARK: - Settings: sections & controls */
 "General" = "Generale";

@@ -102,6 +102,10 @@ struct StatsFileListView: View {
                 ProgressView().neoControlSize(base: .small)
                     .frame(maxWidth: .infinity)
                 Spacer()
+            } else if totalMatches == 0, !filterText.trimmingCharacters(in: .whitespaces).isEmpty {
+                StatsEmptyState(symbol: "magnifyingglass", message: Text("No matches"))
+            } else if totalMatches == 0, model.coordinator.snapshot?.isComplete == true {
+                StatsEmptyState.noFiles
             } else {
                 // Only ids the store still resolves: a row with no node
                 // would be an empty row.

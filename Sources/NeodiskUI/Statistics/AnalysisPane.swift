@@ -59,81 +59,32 @@ struct AnalysisPane: View {
     }
 }
 
-/// Text tabs, not a segmented picker: bezel padding truncates localized titles. Tabs that don't fit go in a »
-/// menu instead of truncating; right-click shows or hides them. Dragging a tab moves the tab itself (no drag
-/// image): its neighbors slide aside as it crosses their middles, and it settles into its slot on release.
+/// A segmented control while every shown tab fits its full title, else a pop-up of them: titles never truncate,
+/// whatever the pane's width, language or text size. Right-click chooses which tabs show; hiding some lets the
+/// segmented control fit a narrower pane.
 struct AnalysisTabBar: View {
     let model: NeodiskViewModel
 
-    @Namespace private var underlineNamespace
-    @Environment(\.neoTextScale) private var textScale
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var width: CGFloat = 0
-    @State private var drag: TabDrag?
-
-    private static let spacing: CGFloat = 12
-    private static let padding: CGFloat = 10
-
-    private struct TabDrag: Equatable {
-        let tab: AnalysisTab
-        /// Where in the tab the pointer took hold of it.
-        let grab: CGFloat
-        /// The tab's leading edge, following the pointer.
-        var left: CGFloat
-    }
-
     var body: some View {
-        let strip = strip
-        let (shown, overflow) = fitting(strip)
-        HStack(spacing: Self.spacing) {
-            ForEach(shown) { tab in
-                AnalysisTabButton(
-                    tab: tab,
-                    isActive: model.analysisTab == tab,
-                    namespace: underlineNamespace
-                ) {
-                    select(tab)
-                }
-                .offset(x: offset(of: tab, in: shown, strip: strip))
-                .zIndex(drag?.tab == tab ? 1 : 0)
-                .transaction { if drag?.tab == tab { $0.animation = nil } }
-                .simultaneousGesture(reorderGesture(for: tab))
+        ViewThatFits(in: .horizontal) {
+            AnalysisSegmentedControl(tabs: model.analysisTabs.visible, selection: model.analysisTab) {
+                model.analysisTab = $0
             }
-            Spacer(minLength: 0)
-            if !overflow.isEmpty {
-                Menu {
-                    ForEach(overflow) { tab in
-                        Button(LocalizedStringKey(tab.title)) { select(tab) }
-                    }
-                } label: {
-                    Image(systemName: "chevron.right.2")
-                        .neoFont(10, weight: .semibold)
-                        .foregroundStyle(.secondary)
-                        .frame(height: 20 * textScale)
-                        .contentShape(Rectangle())
+            Picker("Statistics", selection: Binding(get: { model.analysisTab }, set: { model.analysisTab = $0 })) {
+                ForEach(model.analysisTabs.visible) { tab in
+                    Text(LocalizedStringKey(tab.title)).tag(tab)
                 }
-                // A plain button, so the chevron draws in the inactive tabs' gray and scales with them.
-                .menuStyle(.button)
-                .buttonStyle(.plain)
-                .menuIndicator(.hidden)
-                .fixedSize()
-                .help(Text("More tabs"))
             }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .fixedSize()
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.horizontal, Self.padding)
-        // minWidth 0: the bar measures the pane, not its own tabs.
-        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-        .clipped()
-        .coordinateSpace(name: Self.space)
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
-        .contentShape(Rectangle())
+        .neoControlSize(base: .small)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .frame(minWidth: 0, maxWidth: .infinity)
         .contextMenu { visibilityMenu }
-    }
-
-    private static let space = "analysisTabBar"
-
-    private var settle: Animation? {
-        reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.86)
     }
 
     @ViewBuilder
@@ -145,116 +96,83 @@ struct AnalysisTabBar: View {
                 set: { isShown in
                     var updated = layout
                     updated.setHidden(tab, !isShown)
-                    withAnimation(settle) { model.setAnalysisTabs(updated) }
+                    model.setAnalysisTabs(updated)
                 }
             ))
             .disabled(!layout.isHidden(tab) && !layout.canHide(tab))
         }
         Divider()
-        Button("Reset Tabs") {
-            withAnimation(settle) { model.setAnalysisTabs(ItemLayout()) }
-        }
-        .disabled(layout.isStandard)
-    }
-
-    private func select(_ tab: AnalysisTab) {
-        withAnimation(.easeInOut(duration: 0.15)) {
-            model.analysisTab = tab
-        }
-    }
-
-    // MARK: Dragging
-
-    private func offset(of tab: AnalysisTab, in shown: [AnalysisTab], strip: TabStrip<AnalysisTab>) -> CGFloat {
-        guard let drag, drag.tab == tab, let slot = strip.slots(shown)[tab] else { return 0 }
-        return drag.left - slot
-    }
-
-    /// Reads the bar afresh on every update rather than capturing it: each swap changes the slots.
-    private func reorderGesture(for tab: AnalysisTab) -> some Gesture {
-        DragGesture(minimumDistance: 3, coordinateSpace: .named(Self.space))
-            .onChanged { value in
-                let strip = strip
-                let (shown, overflow) = fitting(strip)
-                guard let slot = strip.slots(shown)[tab] else { return }
-                // A drag of another tab that never ended (its tab left the bar mid-drag) doesn't carry over.
-                var current = TabDrag(tab: tab, grab: value.startLocation.x - slot, left: slot)
-                if let drag, drag.tab == tab {
-                    current = drag
-                } else if model.analysisTab != tab {
-                    select(tab)
-                }
-                current.left = strip.clampedLeft(value.location.x - current.grab, of: tab, in: shown)
-                drag = current
-                let order = strip.reordered(shown, dragging: tab, left: current.left)
-                guard order != shown else { return }
-                // The » menu's tabs follow the shown ones, so a tab shown out of order stays where it was dropped.
-                var layout = model.analysisTabs
-                layout.setVisibleOrder(order + overflow)
-                withAnimation(settle) { model.setAnalysisTabs(layout) }
-            }
-            .onEnded { _ in
-                withAnimation(settle) { drag = nil }
-            }
-    }
-
-    // MARK: Fitting
-
-    /// Measured in the font the tabs draw with, so the slots match the laid-out tabs.
-    private var strip: TabStrip<AnalysisTab> {
-        let font = NSFont.systemFont(ofSize: 11 * textScale, weight: .medium)
-        let widths = Dictionary(uniqueKeysWithValues: AnalysisTab.allCases.map { tab in
-            (tab, (NSLocalizedString(tab.title, comment: "Statistics tab") as NSString)
-                .size(withAttributes: [.font: font]).width)
-        })
-        return TabStrip(padding: Self.padding, spacing: Self.spacing, widths: widths)
-    }
-
-    /// The shown tabs that fit the bar's width, always including the active one, and the rest.
-    private func fitting(_ strip: TabStrip<AnalysisTab>) -> (shown: [AnalysisTab], overflow: [AnalysisTab]) {
-        strip.fit(
-            model.analysisTabs.visible, barWidth: width,
-            menuWidth: (16 * textScale).rounded(), active: model.analysisTab
-        )
+        Button("Reset Tabs") { model.setAnalysisTabs(ItemLayout()) }
+            .disabled(layout.isStandard)
     }
 }
 
-/// Fixed weight so the active state never shifts layout.
-private struct AnalysisTabButton: View {
-    @Environment(\.neoTextScale) private var textScale
+/// Segments as wide as their titles, not all as wide as the widest, so the control fits the narrowest pane it can;
+/// it stretches proportionally to fill the rest.
+private struct AnalysisSegmentedControl: NSViewRepresentable {
+    let tabs: [AnalysisTab]
+    let selection: AnalysisTab
+    let select: (AnalysisTab) -> Void
 
-    let tab: AnalysisTab
-    let isActive: Bool
-    let namespace: Namespace.ID
-    let action: () -> Void
+    func makeCoordinator() -> Coordinator { Coordinator() }
 
-    @State private var isHovering = false
+    func makeNSView(context: Context) -> NSSegmentedControl {
+        let control = NSSegmentedControl()
+        control.trackingMode = .selectOne
+        control.segmentDistribution = .fillProportionally
+        control.target = context.coordinator
+        control.action = #selector(Coordinator.picked(_:))
+        control.setAccessibilityLabel(NSLocalizedString("Statistics", comment: "Statistics tabs"))
+        control.setContentCompressionResistancePriority(.required, for: .horizontal)
+        return control
+    }
 
-    var body: some View {
-        Button(action: action) {
-            Text(LocalizedStringKey(tab.title))
-                .neoFont(11, weight: .medium)
-                .foregroundStyle(
-                    isActive ? Color.accentColor : isHovering ? Color.primary : Color.secondary
-                )
-                .lineLimit(1)
-                .fixedSize()
-                .padding(.vertical, 7)
-                .overlay(alignment: .bottom) {
-                    if isActive {
-                        RoundedRectangle(cornerRadius: 1)
-                            .fill(Color.accentColor)
-                            .frame(height: (2 * textScale).rounded())
-                            .matchedGeometryEffect(id: "analysisTabUnderline", in: namespace)
-                    }
-                }
-                .contentShape(Rectangle())
+    func updateNSView(_ control: NSSegmentedControl, context: Context) {
+        context.coordinator.control = self
+        let size = NSControl.ControlSize(context.environment.controlSize)
+        if control.controlSize != size {
+            control.controlSize = size
+            control.font = .systemFont(ofSize: NSFont.systemFontSize(for: size))
         }
-        .buttonStyle(.plain)
-        .onHover { isHovering = $0 }
-        .accessibilityAddTraits(isActive ? .isSelected : [])
+        if control.segmentCount != tabs.count || context.coordinator.tabs != tabs {
+            context.coordinator.tabs = tabs
+            control.segmentCount = tabs.count
+            for (index, tab) in tabs.enumerated() {
+                control.setLabel(NSLocalizedString(tab.title, comment: "Statistics tab"), forSegment: index)
+            }
+        }
+        control.selectedSegment = tabs.firstIndex(of: selection) ?? -1
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSSegmentedControl, context: Context) -> CGSize? {
+        let fitting = nsView.intrinsicContentSize
+        return CGSize(width: max(proposal.width ?? fitting.width, fitting.width), height: fitting.height)
+    }
+
+    @MainActor
+    final class Coordinator: NSObject {
+        var control: AnalysisSegmentedControl?
+        var tabs: [AnalysisTab] = []
+
+        @objc func picked(_ sender: NSSegmentedControl) {
+            guard tabs.indices.contains(sender.selectedSegment) else { return }
+            control?.select(tabs[sender.selectedSegment])
+        }
     }
 }
+
+private extension NSControl.ControlSize {
+    init(_ size: ControlSize) {
+        switch size {
+        case .mini: self = .mini
+        case .small: self = .small
+        case .large: self = .large
+        case .extraLarge: self = .large
+        default: self = .regular
+        }
+    }
+}
+
 
 /// Size-descending file list shared by the drill-ins and the Largest tab. Drill-ins pass onClose for
 /// the back button.

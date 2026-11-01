@@ -232,7 +232,7 @@ struct NeodiskCommands: Commands {
                 Label("Zoom Into Selection", systemImage: "plus.magnifyingglass")
             }
             .keyboardShortcut(.downArrow)
-            .disabled(model.selectedNode == nil)
+            .disabled(!model.canDrillIntoSelection)
 
             Divider()
 

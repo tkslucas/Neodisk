@@ -122,23 +122,11 @@ extension NeodiskViewModel {
     /// caller beep.
     @discardableResult
     func drillIntoSelection() -> Bool {
-        guard let store, let node = selectedNode else { return false }
-        // A selected directory is drilled into; a selected file drills into
-        // its containing folder.
-        let targetDir = node.isDirectory ? node : store.parent(of: node.id)
-        guard let dir = targetDir, dir.isDirectory, dir.id != effectiveRootID else {
-            return false
-        }
+        guard let store, let node = selectedNode, let dir = selectionDrillTarget else { return false }
         // A summarized folder has no children yet: expand it in place first; a second ⌘↓ then drills in.
         if dir.isAutoSummarized {
-            guard canRefreshSubtree else { return false }
             expandNodeContents(dir)
             return true
-        }
-        // Other childless folders (empty dirs, opaque packages) have nothing
-        // to render — don't re-root into a blank map.
-        guard store.children(of: dir.id).contains(where: { $0.allocatedSize > 0 }) else {
-            return false
         }
         zoomRootID = dir.id == store.root.id ? nil : dir.id
         // When the user explicitly drilled into a folder, land the selection
@@ -147,6 +135,34 @@ extension NeodiskViewModel {
             selectLargestChild(of: dir.id, in: store)
         }
         return true
+    }
+
+    /// Enablement for Go > Zoom Into Selection: false where ⌘↓ would only beep.
+    var canDrillIntoSelection: Bool { selectionDrillTarget != nil }
+
+    /// The folder ⌘↓ drills into: the selected folder, or a selected file's folder. Nil when that's already the
+    /// root or has nothing to render (empty folders, opaque packages like most apps).
+    private var selectionDrillTarget: FileNodeRecord? {
+        guard let store, let node = selectedNode else { return nil }
+        let targetDir = node.isDirectory ? node : store.parent(of: node.id)
+        guard let dir = targetDir, dir.isDirectory, dir.id != effectiveRootID else { return nil }
+        if dir.isAutoSummarized { return canRefreshSubtree ? dir : nil }
+        return store.children(of: dir.id).contains(where: { $0.allocatedSize > 0 }) ? dir : nil
+    }
+
+    /// Double-click in a file list, as in Finder: a folder opens, here by drilling the map into it (as a
+    /// double-click on the flat treemap does); anything else, or a folder with nothing to show, opens.
+    func activate(_ node: FileNodeRecord) {
+        if node.isDirectory, let store, let effectiveRootID {
+            if node.id == effectiveRootID || drillIn(to: node.id) || reRoot(to: node.id) { return }
+            // A folder in another branch than the map's root (the list shows the whole scan).
+            if store.children(of: node.id).contains(where: { $0.allocatedSize > 0 }) {
+                zoomRootID = node.id == store.root.id ? nil : node.id
+                return
+            }
+        }
+        guard supportsFileActions(node) else { return }
+        open(node)
     }
 
     /// Only drills out; the selection stays untouched. False lets the caller fall back to selecting the crumb.

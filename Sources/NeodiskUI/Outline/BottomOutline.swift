@@ -572,9 +572,8 @@ struct BottomOutlineTable: NSViewRepresentable {
             guard let tableView,
                   case let row = tableView.clickedRow, row >= 0, row < rows.count else { return }
             let node = rows[row].node
-            guard model.supportsFileActions(node) else { return }
             model.select(node.id)
-            model.reveal(node)
+            model.activate(node)
         }
 
         // MARK: Columns

@@ -35,7 +35,7 @@ final class TreemapView: CanvasDelegate {
     private struct Frame {
         let inputs: RenderInputs
         let scene: TreemapScene
-        let texture: GObjectRef
+        let texture: Texture
         let labels: [LabelLayout]
     }
 
@@ -160,7 +160,7 @@ final class TreemapView: CanvasDelegate {
         let palette = model.preferences.palette
         let background = Self.backgroundRGB(isDark: inputs.isDark)
         renderTask = Task { [weak self] in
-            let rendered = await Task.detached(priority: .userInitiated) { () -> (TreemapScene, (pixels: [UInt8], width: Int, height: Int)?) in
+            let rendered = await Task.detached(priority: .userInitiated) { () -> (TreemapScene, Texture?) in
                 let scene = TreemapScene.build(
                     store: store,
                     rootID: inputs.rootID,
@@ -180,12 +180,14 @@ final class TreemapView: CanvasDelegate {
                 let raster = inputs.style == .flat
                     ? FlatTreemapRenderer.rasterizeRGBA(cells: scene.cells, bounds: scene.renderBounds, scale: inputs.scale, background: nil)
                     : CushionTreemapRenderer.rasterizeRGBA(cells: scene.cells, bounds: scene.renderBounds, scale: inputs.scale, background: nil)
-                return (scene, raster)
+                let texture = raster.flatMap {
+                    makeTexture(pixels: $0.pixels, width: $0.width, height: $0.height, stride: $0.width * 4, format: GDK_MEMORY_R8G8B8A8_PREMULTIPLIED)
+                }
+                return (scene, texture)
             }.value
             guard let self else { return }
             self.inFlight = nil
-            if let raster = rendered.1,
-               let texture = makeTexture(rgba: raster.pixels, width: raster.width, height: raster.height) {
+            if let texture = rendered.1 {
                 self.frame = Frame(
                     inputs: inputs,
                     scene: rendered.0,
@@ -254,7 +256,7 @@ final class TreemapView: CanvasDelegate {
         Snapshot.pushClip(snapshot, bounds)
         defer { Snapshot.pop(snapshot) }
 
-        Snapshot.texture(snapshot, frame.texture.pointer, in: mapped(frame.scene.renderBounds, mapping))
+        Snapshot.texture(snapshot, frame.texture.ref.pointer, in: mapped(frame.scene.renderBounds, mapping))
 
         let isDark = frame.inputs.isDark
         let textColor = isDark ? RGBA.white : RGBA(red: 0, green: 0, blue: 0, alpha: 0.85)

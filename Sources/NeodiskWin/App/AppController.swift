@@ -289,7 +289,15 @@ final class AppController {
                 caption: progressCaption(metrics)
             )
         }
-        window.header.state = HeaderView.State(title: title, caption: summary(), progress: progress)
+        // Drilled into a folder: the header names it, since the window has no path bar.
+        let shown = focusedFolder()
+        window.header.state = HeaderView.State(title: shown?.name ?? title, caption: summary(), progress: progress)
+    }
+
+    /// The folder the map shows when it isn't the scan's root.
+    private func focusedFolder() -> FileNodeRecord? {
+        guard let store = workspace.store, let id = workspace.focusedRootID, id != store.rootID else { return nil }
+        return store.node(id: id)
     }
 
     private func progressCaption(_ metrics: ScanMetrics) -> String {
@@ -307,6 +315,9 @@ final class AppController {
     private func summary() -> String {
         _ = model.minuteTick
         guard let store = workspace.store else { return "" }
+        if let folder = focusedFolder() {
+            return [NeodiskFormatters.size(folder.allocatedSize), displayPath(folder.path)].joined(separator: " · ")
+        }
         var parts = [NeodiskFormatters.size(store.root.allocatedSize)]
         if let space = workspace.volumeSpace {
             parts.append(L("%@ free", NeodiskFormatters.size(space.availableCapacity)))

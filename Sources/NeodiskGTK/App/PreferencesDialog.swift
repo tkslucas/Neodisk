@@ -8,7 +8,8 @@ import TreemapKit
 
 @MainActor
 enum PreferencesDialog {
-    static func present(model: AppModel, from window: GPtr?) {
+    /// `onScanPage` opens on the Scanning page (a dev hook's capture).
+    static func present(model: AppModel, from window: GPtr?, onScanPage: Bool = false) {
         let preferences = model.preferences
         let dialog = raw(adw_preferences_dialog_new())!
 
@@ -94,6 +95,7 @@ enum PreferencesDialog {
             }
         }
 
+        if onScanPage { adw_preferences_dialog_set_visible_page(ptr(dialog), ptr(scanPage)) }
         adw_dialog_present(ptr(dialog), ptr(window))
     }
 

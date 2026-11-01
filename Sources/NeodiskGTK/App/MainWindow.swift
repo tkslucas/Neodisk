@@ -285,6 +285,7 @@ final class MainWindow {
         case "sections": sidebar.showSectionsMenu(from: .volumes, at: CGPoint(x: 40, y: 8))
         case "status": statusBar.showMenu(at: CGPoint(x: 40, y: 8))
         case "views": showViewMenu(at: CGPoint(x: 20, y: 20))
+        case "preferences": PreferencesDialog.present(model: model, from: window, onScanPage: true)
         default: break
         }
     }

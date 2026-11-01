@@ -767,6 +767,15 @@ final class NeodiskViewModel {
         }
         sidebarFolders.removeAll { ids.contains($0.id) }
 
+        // The location on screen left the sidebar: back to the empty state, so nothing on screen (Rescan
+        // included) points at a location that's no longer listed. A built-in one is still listed.
+        if let shown = coordinator.selectedTarget?.id, ids.contains(shown),
+           !builtInLocations.contains(where: { $0.id == shown }) {
+            session.snapshotNotice = nil
+            resetPerScanState()
+            coordinator.clearScan()
+        }
+
         // A removed folder loses its persisted snapshot too — unless it is
         // also a built-in location, which keeps its own cache entry.
         let removedIDs = ids.subtracting(builtInLocations.map(\.id))

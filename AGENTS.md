@@ -34,7 +34,8 @@ The most used ones; the rest live in `Sources/NeodiskUI/Dev/`.
   benchmark runs. A bench run that could draw on screen is a bug.
 - `NEODISK_SNAPSHOT_DIR=<dir>`: isolate the snapshot cache from the developer's real one.
 - `NEODISK_AUTOCOLLECT=<path>[:<path>…]`: collect those items in Cleanup after the scan; with
-  `NEODISK_AUTOTRASH=1`, then move them as if confirmed (really trashes: temp dirs only).
+  `NEODISK_AUTOTRASH=1`, then move them as if confirmed (really trashes: temp dirs only); `=fail` fails every move,
+  `=hold` holds them in the moving state (neither moves anything).
 - Headless runs share the `Neodisk` UserDefaults domain with your `swift run` sessions: check
   `defaults read Neodisk <key>` before concluding a feature regressed.
 - The sidebar's material background renders blank in offscreen captures: `NEODISK_SIDEBAR_SNAPSHOT=<out.png>`

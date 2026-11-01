@@ -263,7 +263,7 @@ final class D2DCanvas {
 enum CanvasLog {
     nonisolated(unsafe) private static var handle: FileHandle? = {
         guard let path = ProcessInfo.processInfo.environment["NEODISK_CANVAS_LOG"] else { return nil }
-        FileManager.default.createFile(atPath: path, contents: nil)
+        _ = FileManager.default.createFile(atPath: path, contents: nil)
         return FileHandle(forWritingAtPath: path)
     }()
     private static let lock = NSLock()

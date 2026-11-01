@@ -21,7 +21,7 @@ final class TreemapPresenter {
         var size: CGSize
         var scale: Double
         var style: TreemapStyle
-        var catalogBuildID: UUID
+        var catalogBuildID: Foundation.UUID
         var colorMode: TreemapColorMode
         var highlight: TreemapHighlight?
         var paletteID: String

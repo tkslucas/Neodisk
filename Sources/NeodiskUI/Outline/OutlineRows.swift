@@ -15,6 +15,8 @@ struct OutlineNameSection: View {
     var truncatesName = false
     /// Where the chevron's slot starts: the left pane's edge inset, or the bottom table's name column edge.
     var leadingInset = OutlineRowMetrics.nameLeadingInset
+    /// Each level's indentation; the bottom table narrows it for deep trees.
+    var indentPerDepth = OutlineRowMetrics.indentPerDepth
     /// Never read, but makes a text-size change a change to the view's value; otherwise a reused cell keeps
     /// the old font and widths (issue #10).
     var scale = OutlineRowMetrics.scale
@@ -66,7 +68,7 @@ struct OutlineNameSection: View {
         }
         .font(.system(size: OutlineRowMetrics.fontSize))
         .cleanupDimmed(cleanupMark.isMarked, onAccent: state.showsAccentSelection)
-        .padding(.leading, leadingInset + CGFloat(row.depth) * OutlineRowMetrics.indentPerDepth)
+        .padding(.leading, leadingInset + CGFloat(row.depth) * indentPerDepth)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
 

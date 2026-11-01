@@ -256,11 +256,13 @@ final class TreemapView: CanvasDelegate {
 
         Snapshot.texture(snapshot, frame.texture.pointer, in: mapped(frame.scene.renderBounds, mapping))
 
-        // White on every fill and appearance, over the scene's tight dark edge and soft glow (as on the Mac).
+        // White on every fill and appearance, over the scene's tight dark edge and soft glow (as on the Mac). GSK's
+        // blur radius spreads half as far as Core Animation's, and its regular-weight text is thinner than the
+        // Mac's medium, so the radii double and the shadows are a little denser.
         let shadows = [TreemapScene.labelEdgeShadow, TreemapScene.labelGlowShadow].map {
             GskShadow(
-                color: RGBA(red: 0, green: 0, blue: 0, alpha: Float($0.opacity)).gdk,
-                dx: 0, dy: 0, radius: Float($0.radius)
+                color: RGBA(red: 0, green: 0, blue: 0, alpha: Float(min(1, $0.opacity * 1.3))).gdk,
+                dx: 0, dy: 0, radius: Float($0.radius * 2)
             )
         }
         let isStretched = mapping != .identity

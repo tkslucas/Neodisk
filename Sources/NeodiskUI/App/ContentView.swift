@@ -34,9 +34,7 @@ public struct ContentView: View {
                 )
         } detail: {
             detailContent
-                .dropDestination(for: URL.self) { urls, _ in
-                    model.addDroppedFolders(urls)
-                }
+                .addLocationDropTarget(model: model)
         }
         // The one place the workspace text scale enters the view tree; other scenes keep the system size.
         .environment(\.neoTextScale, textScale)

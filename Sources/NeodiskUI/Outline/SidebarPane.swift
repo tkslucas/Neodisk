@@ -22,6 +22,8 @@ struct SidebarPane: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.neoTextScale) private var textScale
+    /// The window's: removing folders from the sidebar is undoable.
+    @Environment(\.undoManager) private var undoManager
 
     /// Sidebar folders, minus any that duplicate a built-in location.
     private var visibleFolders: [ScanTarget] {
@@ -273,7 +275,7 @@ struct SidebarPane: View {
             // Refuse removal while a scan is in flight — dropping the cache mid-scan would orphan the session (the
             // model guard backs this). A bulk remove stays live as long as one selected folder is idle.
             Button(ids.count > 1 ? "Remove \(ids.count) Folders from Sidebar" : "Remove from Sidebar") {
-                model.removeSidebarFolders(ids: ids)
+                model.removeSidebarFolders(ids: ids, undoManager: undoManager)
                 selection.subtract(ids)
             }
             .disabled(ids.allSatisfy { isScanning($0) })
@@ -283,7 +285,7 @@ struct SidebarPane: View {
     private func removeSelectedFolders() {
         let ids = selectedFolderIDs
         guard !ids.isEmpty else { return }
-        model.removeSidebarFolders(ids: ids)
+        model.removeSidebarFolders(ids: ids, undoManager: undoManager)
         selection.subtract(ids)
     }
 

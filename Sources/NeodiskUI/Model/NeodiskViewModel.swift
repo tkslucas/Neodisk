@@ -755,17 +755,31 @@ final class NeodiskViewModel {
         return true
     }
 
-    func removeSidebarFolders(ids requestedIDs: Set<String>) {
+    /// With an undo manager (the sidebar) the removal is undoable and the saved scans stay, so Undo or adding the
+    /// folder again brings them back; the next launch's prune drops them if the folder is still gone. Without one
+    /// (Settings' Clear Added Folders) they go now.
+    func removeSidebarFolders(ids requestedIDs: Set<String>, undoManager: UndoManager? = nil) {
         // A location with a scan in flight (foreground or a demoted background
         // scan) must not be pulled out from under it — dropping its cache mid-
         // scan would orphan the session. Refuse those; Stage 3 disables the UI.
         let ids = requestedIDs.filter { session.activeSession(forTargetID: $0) == nil }
-        guard !ids.isEmpty else { return }
+        let removed = sidebarFolders.enumerated().filter { ids.contains($0.element.id) }
+        guard !removed.isEmpty else { return }
 
-        for target in sidebarFolders where ids.contains(target.id) {
+        for (_, target) in removed {
             sidebarFolderStore.remove(target)
         }
         sidebarFolders.removeAll { ids.contains($0.id) }
+
+        if let undoManager {
+            undoManager.registerUndo(withTarget: self) { model in
+                MainActor.assumeIsolated {
+                    model.restoreSidebarFolders(removed.map { ($0.offset, $0.element) }, undoManager: undoManager)
+                }
+            }
+            undoManager.setActionName(NSLocalizedString("Remove from Sidebar", comment: "Undo action"))
+            return
+        }
 
         // A removed folder loses its persisted snapshot too — unless it is
         // also a built-in location, which keeps its own cache entry.
@@ -789,6 +803,20 @@ final class NeodiskViewModel {
 
     func restoreCommonSidebarFolders() {
         sidebarFolders = sidebarFolderStore.restoreCommonFolders(keeping: sidebarFolders)
+    }
+
+    /// Undo of a sidebar removal: each folder back where it was; Redo removes them again.
+    private func restoreSidebarFolders(_ removed: [(index: Int, target: ScanTarget)], undoManager: UndoManager) {
+        for (index, target) in removed where !sidebarFolders.contains(where: { $0.id == target.id }) {
+            sidebarFolders.insert(target, at: min(index, sidebarFolders.count))
+        }
+        sidebarFolderStore.save(sidebarFolders)
+        undoManager.registerUndo(withTarget: self) { model in
+            MainActor.assumeIsolated {
+                model.removeSidebarFolders(ids: Set(removed.map(\.target.id)), undoManager: undoManager)
+            }
+        }
+        undoManager.setActionName(NSLocalizedString("Remove from Sidebar", comment: "Undo action"))
     }
 
     /// The location of the last displayed tree, so a newer tree of the same

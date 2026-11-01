@@ -117,10 +117,10 @@ var targets: [Target] = [
         dependencies: ["NeodiskKit", "TreemapKit", "SunburstCore"],
         path: "Sources/NeodiskAppModel"
     ),
-    // Linux's snapshot payload codec (Apple platforms use LZFSE from the
-    // Compression framework instead).
     // getdents64 for the Linux directory reader; header only.
     .systemLibrary(name: "CLinuxDirent", path: "Sources/CLinuxDirent"),
+    // Linux's snapshot payload codec (Apple platforms use LZFSE from the
+    // Compression framework instead).
     .systemLibrary(
         name: "CZstd",
         path: "Sources/CZstd",

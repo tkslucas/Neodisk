@@ -351,7 +351,8 @@ struct IncrementalRescanEquivalenceTests {
 
     // POSIX permissions can't make a folder unreadable on Windows; WindowsPlatformTests denies it through its ACL.
     #if !os(Windows)
-    @Test func directlyNamedUnreadableDirectoryConvergesViaDeepRewalk() async throws {
+    @Test(.enabled(if: geteuid() != 0, "root reads unreadable directories"))
+    func directlyNamedUnreadableDirectoryConvergesViaDeepRewalk() async throws {
         let root = try makeControlledTree() // has d0/sub with a file
         let secret = root.appending(path: "d0/sub", directoryHint: .isDirectory)
         defer { chmodPath(secret, 0o755); try? FileManager.default.removeItem(at: root) }
@@ -386,7 +387,8 @@ struct IncrementalRescanEquivalenceTests {
     /// refreshing only `lastModified` missed it.
     // POSIX permissions can't make a folder unreadable on Windows; WindowsPlatformTests denies it through its ACL.
     #if !os(Windows)
-    @Test func inaccessibleDirectoryBecomingReadableRefreshesOwnRecord() async throws {
+    @Test(.enabled(if: geteuid() != 0, "root reads unreadable directories"))
+    func inaccessibleDirectoryBecomingReadableRefreshesOwnRecord() async throws {
         let root = try makeControlledTree() // has d0/sub with s.bin
         let secret = root.appending(path: "d0/sub", directoryHint: .isDirectory)
         defer { chmodPath(secret, 0o755); try? FileManager.default.removeItem(at: root) }

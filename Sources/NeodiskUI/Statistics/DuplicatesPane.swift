@@ -167,7 +167,7 @@ private struct DuplicateResultsView: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
                 .disabled(!model.duplicates.canScan)
-                .help("Search for duplicates again")
+                .neoHelp("Search for duplicates again")
             }
             .padding(.horizontal, StatsListMetrics.inset)
             .padding(.vertical, 7)
@@ -240,7 +240,7 @@ private struct DuplicateGroupList: View {
             }
         ) { group in
             DuplicateGroupRow(model: model, group: group)
-                .help("Show the copies in this group")
+                .neoHelp("Show the copies in this group")
         }
     }
 }

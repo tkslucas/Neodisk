@@ -83,7 +83,7 @@ struct SidebarTargetRow: View {
             }
         }
         .padding(.vertical, 1)
-        .help(target.id)
+        .neoHelp(target.id)
     }
 
     private var lineSpacing: CGFloat { (1 * textScale).rounded() }

@@ -32,7 +32,7 @@ struct UpdateIndicator: View {
                 }
             }
             .background(Capsule().fill(.quaternary.opacity(0.6)))
-            .help(helpText)
+            .neoHelp(helpText)
             .accessibilityElement(children: .contain)
             .accessibilityLabel(Text(verbatim: viewModel.state.title))
         }

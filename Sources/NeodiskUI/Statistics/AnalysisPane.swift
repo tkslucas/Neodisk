@@ -69,7 +69,7 @@ struct StatsFileListView: View {
     /// header: the Largest tab's list is named by the tab.
     let title: String?
     let swatch: Color?
-    var backHelp: LocalizedStringKey = ""
+    var backHelp: LocalizedStringResource = ""
     let isLoading: Bool
     let visibleIDs: [String]
     /// The rows' records when the list keeps its own; else `visibleIDs` resolve in the displayed tree.
@@ -114,7 +114,7 @@ struct StatsFileListView: View {
                             .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
-                    .help("Clear search")
+                    .neoHelp("Clear search")
                 }
             }
             .padding(.horizontal, StatsListMetrics.inset)
@@ -203,7 +203,7 @@ struct StatsFileListView: View {
 /// back button in a navigation bar is, and the chevron brightens under the pointer. Esc does the same (the list
 /// and the filter field handle it).
 struct DrillInBackButton<Title: View>: View {
-    let help: LocalizedStringKey
+    let help: LocalizedStringResource
     let action: () -> Void
     @ViewBuilder let title: Title
     @State private var isHovered = false
@@ -222,7 +222,7 @@ struct DrillInBackButton<Title: View>: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovered = $0 }
-        .help(help)
+        .neoHelp(help)
         .accessibilityLabel(Text(help))
     }
 }

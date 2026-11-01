@@ -142,6 +142,8 @@ The most used ones; the rest live in `Sources/NeodiskUI/Dev/`.
 
 ## Notes
 
+- Tooltips: `.neoHelp(…)` (AppKit), never SwiftUI's `.help` except on menu items: on macOS 15 `.help` crashed when a click removed
+  the view under the pointer (F54). `HelpTooltipTests` enforces it.
 - Workspace text scales (`TextScale`): write `.neoFont(…)`, never `.font(.system(size:))`; sizes around text read `neoTextScale`.
 - AppKit surfaces scale through `OutlineRowMetrics.scale` and `TreemapScene.labelScale`; window chrome stays system size.
 - A push button sizes from `controlSize`, not its label: pair `.neoFont(.body)` with `.neoControlSize(base:)`. The font

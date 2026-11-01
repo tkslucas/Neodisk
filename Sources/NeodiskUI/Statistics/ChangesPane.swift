@@ -234,7 +234,7 @@ private struct ChangeEntryRow: View {
         }
         .neoFont(12)
         .cleanupDimmed(cleanupMark.isMarked, onAccent: backgroundProminence == .increased)
-        .help(helpText)
+        .neoHelp(helpText)
     }
 
     private var kindSymbol: String {

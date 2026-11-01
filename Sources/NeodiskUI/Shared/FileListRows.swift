@@ -76,7 +76,7 @@ struct FileResultRow: View {
         }
         .neoFont(12)
         .cleanupDimmed(cleanupMark.isMarked, onAccent: onAccent)
-        .help(node.path)
+        .neoHelp(node.path)
     }
 
     private var containingFolder: String {

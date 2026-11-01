@@ -80,8 +80,12 @@ final class AppPreferences: ObservableObject {
     /// Where the file outline docks (bottom table — the default — or the
     /// compact left column). See OutlinePosition.
     @AppStorage("outlinePosition") var outlinePositionRaw = OutlinePosition.bottom.rawValue
+    @AppStorage("showFileListWithTreemap") var showFileListWithTreemap = true
     /// Opts into the bottom table under the sunburst; it is never shown to the chart's left.
     @AppStorage("showFileListBelowSunburst") var showFileListBelowSunburst = false
+    @AppStorage("showStatusBar") var showStatusBar = true
+    /// The toolbar picker's views, as an ItemLayout string.
+    @AppStorage("vizViews") var vizViewsRaw = ""
     /// The bottom outline table's header sort (column + direction). The
     /// left column has no headers and ignores these.
     @AppStorage("outlineSortField") var outlineSortFieldRaw = OutlineSortField.size.rawValue
@@ -147,9 +151,12 @@ final class AppPreferences: ObservableObject {
         _outlinePositionRaw = AppStorage(
             wrappedValue: OutlinePosition.bottom.rawValue, "outlinePosition", store: defaults
         )
+        _showFileListWithTreemap = AppStorage(wrappedValue: true, "showFileListWithTreemap", store: defaults)
         _showFileListBelowSunburst = AppStorage(
             wrappedValue: false, "showFileListBelowSunburst", store: defaults
         )
+        _showStatusBar = AppStorage(wrappedValue: true, "showStatusBar", store: defaults)
+        _vizViewsRaw = AppStorage(wrappedValue: "", "vizViews", store: defaults)
         _outlineSortFieldRaw = AppStorage(
             wrappedValue: OutlineSortField.size.rawValue, "outlineSortField", store: defaults
         )
@@ -214,20 +221,39 @@ final class AppPreferences: ObservableObject {
         set { vizViewModeRaw = newValue.rawValue }
     }
 
-    /// Picking Sunburst leaves the treemap style alone, same as the toolbar picker.
-    func applyDefaultVizView() {
-        switch defaultVizView {
-        case .lastViewed:
-            break
-        case .cushionTreemap:
-            vizViewMode = .treemap
-            treemapStyle = .cushion
-        case .flatTreemap:
-            vizViewMode = .treemap
-            treemapStyle = .flat
-        case .sunburst:
-            vizViewMode = .sunburst
+    /// The persisted view, picker views and file lists as one value; WorkspaceLayout holds the rules.
+    var workspaceLayout: WorkspaceLayout {
+        get {
+            WorkspaceLayout(
+                mode: vizViewMode,
+                treemapStyle: treemapStyle,
+                views: ItemLayout(stored: vizViewsRaw),
+                listPosition: outlinePosition,
+                showsListWithTreemap: showFileListWithTreemap,
+                showsListBelowSunburst: showFileListBelowSunburst
+            )
         }
+        set {
+            let old = workspaceLayout
+            if newValue.mode != old.mode { vizViewMode = newValue.mode }
+            if newValue.treemapStyle != old.treemapStyle { treemapStyle = newValue.treemapStyle }
+            if newValue.views != old.views {
+                vizViewsRaw = newValue.views.stored
+                // A hidden view can't be the one the app opens in.
+                if let view = defaultVizView.view, newValue.views.isHidden(view) { defaultVizView = .lastViewed }
+            }
+            if newValue.listPosition != old.listPosition { outlinePosition = newValue.listPosition }
+            if newValue.showsListWithTreemap != old.showsListWithTreemap {
+                showFileListWithTreemap = newValue.showsListWithTreemap
+            }
+            if newValue.showsListBelowSunburst != old.showsListBelowSunburst {
+                showFileListBelowSunburst = newValue.showsListBelowSunburst
+            }
+        }
+    }
+
+    func applyDefaultVizView() {
+        workspaceLayout.openAtLaunch(defaultVizView.view)
     }
 
     var treemapStyle: TreemapStyle {
@@ -310,7 +336,11 @@ final class AppPreferences: ObservableObject {
         defaultVizViewRaw = DefaultVizView.lastViewed.rawValue
         vizViewModeRaw = VizViewMode.treemap.rawValue
         treemapStyleRaw = TreemapStyle.cushion.rawValue
+        outlinePositionRaw = OutlinePosition.bottom.rawValue
+        showFileListWithTreemap = true
         showFileListBelowSunburst = false
+        showStatusBar = true
+        vizViewsRaw = ""
         prepareChangesAfterScan = true
         autoScanDuplicates = false
         textScaleRaw = TextScale.standard

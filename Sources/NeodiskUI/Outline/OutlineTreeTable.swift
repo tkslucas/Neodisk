@@ -301,8 +301,12 @@ struct OutlineTreeTable: NSViewRepresentable {
 
         func menuNeedsUpdate(_ menu: NSMenu) {
             menu.removeAllItems()
-            guard let tableView,
-                  case let row = tableView.clickedRow, row >= 0, row < rows.count else { return }
+            guard let tableView else { return }
+            // The column has no header; its empty area carries the header's layout items.
+            guard case let row = tableView.clickedRow, row >= 0, row < rows.count else {
+                menu.addFileListLayoutItems(model: model)
+                return
+            }
             let node = rows[row].node
             guard model.supportsFileActions(node) else { return }
             menu.addFileNodeActionItems(for: node, model: model)

@@ -44,6 +44,9 @@ package struct ItemLayout<Item: RawRepresentable & CaseIterable & Hashable>: Equ
 
     package func isHidden(_ item: Item) -> Bool { hidden.contains(item) }
 
+    /// `item`, or the first shown one in its place when it's hidden.
+    package func shown(_ item: Item) -> Item { isHidden(item) ? visible.first ?? item : item }
+
     /// The pinned item and the last one shown stay.
     package func canHide(_ item: Item) -> Bool {
         item != pinned && !hidden.contains(item) && visible.count > 1

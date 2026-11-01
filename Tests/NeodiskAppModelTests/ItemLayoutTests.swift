@@ -1,4 +1,5 @@
 import Testing
+import TreemapKit
 @testable import NeodiskAppModel
 
 private enum Column: String, CaseIterable { case name, size, files, modified }
@@ -58,5 +59,18 @@ struct ItemLayoutTests {
         layout.setVisibleOrder([.name, .modified, .files])
         #expect(layout.order == [.name, .size, .modified, .files])
         #expect(layout.isHidden(.size))
+    }
+
+    @Test func shownFallsBackToTheFirstVisibleItem() {
+        let layout = ItemLayout<Column>(stored: "size,-name,files,modified")
+        #expect(layout.shown(.name) == .size)
+        #expect(layout.shown(.files) == .files)
+    }
+
+    @Test func vizViewMapsModeAndStyle() {
+        for view in VizView.allCases {
+            #expect(VizView(mode: view.mode, style: view.treemapStyle ?? .flat) == view)
+        }
+        #expect(VizView.sunburst.treemapStyle == nil)
     }
 }

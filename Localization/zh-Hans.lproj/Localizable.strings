@@ -274,6 +274,8 @@
 "Hide Locations Sidebar" = "隐藏位置边栏";
 "Show Statistics" = "显示统计";
 "Hide Statistics" = "隐藏统计";
+"Hide Status Bar" = "隐藏状态栏";
+"Show Status Bar" = "显示状态栏";
 "Go" = "前往";
 "Back" = "返回";
 "Forward" = "前进";
@@ -309,26 +311,21 @@
 "The color set the visualizations draw with. Colorblind-safe stays distinct with common color vision differences. Applies immediately." = "可视化使用的配色方案。色盲友好在常见色觉差异下仍可区分。立即生效。";
 
 /* MARK: - File list position */
-"File List" = "文件列表";
-"Position" = "位置";
-"Left of the treemap" = "矩形树图左侧";
-"Below the treemap" = "矩形树图下方";
-"Below the treemap shows a wide table with percentage, size, file count, and modified-date columns; click a column header to sort. Applies immediately." = "「矩形树图下方」显示一个宽表格，包含占比、大小、文件数和修改日期列；点按列标题即可排序。立即生效。";
-"Show below Sunburst" = "在旭日图下方显示";
-"Shows the same resizable table below the sunburst. It follows the current drilled folder and never appears to the left. Applies immediately." = "在旭日图下方显示同一个可调整大小的表格。它会跟随当前钻取的文件夹，并且不会显示在左侧。立即生效。";
 "Name" = "名称";
 "%" = "%";
 "Size" = "大小";
 "Files" = "文件数";
 "Modified" = "修改日期";
-"File List Below Treemap" = "文件列表位于矩形树图下方";
-"Show File List Below Sunburst" = "在旭日图下方显示文件列表";
+"Hide File List" = "隐藏文件列表";
+"Show File List" = "显示文件列表";
+"File List at Bottom" = "文件列表位于底部";
+"File List on the Left" = "文件列表位于左侧";
 
 /* MARK: - Sunburst & view switcher */
 "View" = "视图";
 "Treemap" = "矩形树图";
 "Sunburst" = "旭日图";
-"Switch between cushion treemap, flat treemap, and sunburst views" = "在衬垫矩形树图、扁平矩形树图和旭日图之间切换";
+"Switch views. Right-click to choose which ones show." = "切换视图。右键点按可选择显示哪些视图。";
 "Cushion Treemap" = "衬垫矩形树图";
 "Flat Treemap" = "扁平矩形树图";
 "Smaller Items" = "较小的项目";
@@ -371,7 +368,6 @@
 
 /* MARK: - Cloud-only files */
 "Cloud-Only Files" = "仅云端文件";
-"No cloud-only files in this scan" = "此次扫描中没有仅云端文件";
 "Hide cloud-only files (files not downloaded from your cloud drives)" = "隐藏仅云端文件（未从你的云盘下载的文件）";
 "Show cloud-only files (files not downloaded from your cloud drives)" = "显示仅云端文件（未从你的云盘下载的文件）";
 "%@ · Cloud-only" = "%@ · 仅云端";

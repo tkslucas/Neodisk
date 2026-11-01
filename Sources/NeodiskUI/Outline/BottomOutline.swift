@@ -499,6 +499,8 @@ struct BottomOutlineTable: NSViewRepresentable {
             menu.removeAllItems()
             if menu === headerMenu {
                 fillHeaderMenu(menu)
+                menu.addItem(.separator())
+                menu.addFileListLayoutItems(model: model)
                 return
             }
             guard let tableView,

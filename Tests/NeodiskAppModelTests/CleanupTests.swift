@@ -90,4 +90,42 @@ import NeodiskKit
         #expect(store.survivor(of: y.id, removing: [leaf.id]) == y.id)
         #expect(store.survivor(of: "/elsewhere", removing: [y.id]) == nil)
     }
+
+    /// A large selection (⌘A on a big list) adds in one top-level pass, not a walk of the pile per item.
+    @Test func fiftyThousandIDsAddWithinABudget() {
+        var folders: [FileNodeRecord] = []
+        var childrenByID: [String: [FileNodeRecord]] = [:]
+        for f in 0..<100 {
+            let files = (0..<500).map { file("d\(f)/f\($0)", size: 1) }
+            let folder = FileNodeRecord.directory(
+                id: "/data/d\(f)", url: URL(filePath: "/data/d\(f)", directoryHint: .isDirectory), name: "d\(f)",
+                children: files, lastModified: nil, fileIdentity: nil, linkCount: 1, isPackage: false,
+                isAccessible: true
+            )
+            folders.append(folder)
+            childrenByID[folder.id] = files
+        }
+        let root = FileNodeRecord.directory(
+            id: "/data", url: URL(filePath: "/data", directoryHint: .isDirectory), name: "data", children: folders,
+            lastModified: nil, fileIdentity: nil, linkCount: 1, isPackage: false, isAccessible: true
+        )
+        childrenByID[root.id] = folders
+        let store = FileTreeStore(root: root, childrenByID: childrenByID)
+        let fileIDs = childrenByID.filter { $0.key != root.id }.values.flatMap { $0.map(\.id) }
+        #expect(fileIDs.count == 50_000)
+
+        var pile = CleanupPile()
+        let clock = ContinuousClock()
+        let elapsed = clock.measure {
+            pile.add(fileIDs, in: store)
+            // Re-adding is a no-op; a folder then absorbs its 500 files.
+            pile.add(fileIDs, in: store)
+            pile.add(["/data/d0"], in: store)
+            _ = pile.reconcile(with: store)
+            for id in fileIDs { _ = pile.collectedItem(containing: id, in: store) }
+        }
+        #expect(pile.itemIDs.count == 49_501)
+        #expect(pile.collectedItem(containing: "/data/d0/f7", in: store) == "/data/d0")
+        #expect(elapsed < .seconds(2), "\(elapsed)")
+    }
 }

@@ -6,6 +6,8 @@ import NeodiskKit
 
 package struct CleanupPile: Equatable, Sendable {
     package private(set) var itemIDs: [String] = []
+    /// `itemIDs` as a set: membership is asked per list row and per ancestor.
+    private var idSet: Set<String> = []
     /// What each item was when it was collected. Ids are paths, so after a rescan the same path may hold
     /// something else: that item leaves the pile instead of standing in for the one the user picked.
     private var fingerprints: [String: Fingerprint] = [:]
@@ -37,42 +39,50 @@ package struct CleanupPile: Equatable, Sendable {
     package var isEmpty: Bool { itemIDs.isEmpty }
 
     package func contains(_ id: String) -> Bool {
-        itemIDs.contains(id)
+        idSet.contains(id)
     }
 
-    /// The collected item that is `id` or holds it.
+    /// The collected item that is `id` or holds it. O(depth).
     package func collectedItem(containing id: String, in store: FileTreeStore) -> String? {
-        if itemIDs.contains(id) { return id }
+        guard !idSet.isEmpty else { return nil }
+        if idSet.contains(id) { return id }
         var cursor = store.parent(of: id)
         while let node = cursor {
-            if itemIDs.contains(node.id) { return node.id }
+            if idSet.contains(node.id) { return node.id }
             cursor = store.parent(of: node.id)
         }
         return nil
     }
 
     /// Adds the ids that exist in `store`. A folder replaces the collected items inside it; an item inside a
-    /// collected folder is already in. Returns the ids actually added.
+    /// collected folder, or inside another id added with it, is already in. Returns the ids actually added.
+    /// O((ids + pile) × depth).
     @discardableResult
     package mutating func add(_ ids: [String], in store: FileTreeStore) -> [String] {
-        var added: [String] = []
-        for id in ids {
-            guard let node = store.node(id: id), collectedItem(containing: id, in: store) == nil else { continue }
-            remove(Set(itemIDs.filter { store.isNodeOrDescendant($0, of: [id]) }))
+        let candidates = ids.filter { collectedItem(containing: $0, in: store) == nil }
+        let added = store.topLevelNodeIDs(from: candidates)
+        guard !added.isEmpty else { return [] }
+        let addedSet = Set(added)
+        remove(Set(itemIDs.filter { store.hasAncestor(in: addedSet, of: $0) }))
+        for id in added {
+            guard let node = store.node(id: id) else { continue }
             itemIDs.append(id)
+            idSet.insert(id)
             fingerprints[id] = Fingerprint(node)
-            added.append(id)
         }
         return added
     }
 
     package mutating func remove(_ ids: Set<String>) {
+        guard !ids.isEmpty else { return }
         itemIDs.removeAll { ids.contains($0) }
+        idSet.subtract(ids)
         for id in ids { fingerprints[id] = nil }
     }
 
     package mutating func removeAll() {
         itemIDs.removeAll()
+        idSet.removeAll()
         fingerprints.removeAll()
     }
 

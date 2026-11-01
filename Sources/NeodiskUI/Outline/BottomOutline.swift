@@ -265,6 +265,9 @@ struct BottomOutlineTable: NSViewRepresentable {
         /// The inset style's margins either side of the columns.
         private static let insetPadding: CGFloat = 20
 
+        /// The Name column's room at 100% text before % or the columns after it may take more of the pane.
+        private static let readableNameWidth: CGFloat = 160
+
         /// Which columns a narrow pane keeps longest: Name, then Size, then the rest.
         private static let fitPriority: [OutlineColumn] = [.name, .size, .percent, .files, .modified]
 
@@ -276,17 +279,29 @@ struct BottomOutlineTable: NSViewRepresentable {
             // Before the first layout there's no width to fit: every layout column shows.
             let width = scrollView?.contentView.bounds.width ?? 0
             var room = width > 0 ? width - Self.insetPadding : .greatestFiniteMagnitude
+            // Past Name and Size, Name keeps room for a readable name at the current text size before any other
+            // column shows: Size still shows beside a short Name, % never squeezes Name.
+            var nameReserve: CGFloat = 0
+            // Once a column misses, the less important ones stay out too, even narrower ones (% never shows
+            // without Size).
+            var isFull = false
             for id in Self.fitPriority {
                 let index = tableView.column(withIdentifier: .init(id.rawValue))
                 guard index >= 0 else { continue }
                 let column = tableView.tableColumns[index]
                 var shows = !appliedColumns.isHidden(id)
                 if shows {
-                    let needed = (id == .name ? column.minWidth : column.width) + spacing
-                    if id != .name, room < needed {
-                        shows = false
+                    if id == .name {
+                        room -= column.minWidth + spacing
+                        nameReserve = max(0, Self.readableNameWidth * appliedTextScale - column.minWidth)
                     } else {
-                        room -= needed
+                        let needed = column.width + spacing
+                        if isFull || room < needed + (id == .size ? 0 : nameReserve) {
+                            isFull = true
+                            shows = false
+                        } else {
+                            room -= needed
+                        }
                     }
                 }
                 if column.isHidden == shows { column.isHidden = !shows }

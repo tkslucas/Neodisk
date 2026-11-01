@@ -49,7 +49,7 @@ import Testing
                 rect: CGRect(x: 0, y: 0, width: width, height: 15),
                 isHeader: isHeader
             ),
-            font: Self.font, textColor: .white, shadowOpacity: 0, backingScale: 2
+            font: Self.font, backingScale: 2
         )
     }
 
@@ -81,8 +81,7 @@ import Testing
             isHeader: true
         )
         let layer = try #require(TreemapNSView.labelLayer(
-            for: label, font: Self.font, textColor: .white,
-            shadowOpacity: 0, backingScale: 2
+            for: label, font: Self.font, backingScale: 2
         ))
         let width = 200, height = 30
         let context = try #require(CGContext(

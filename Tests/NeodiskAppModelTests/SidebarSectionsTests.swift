@@ -50,6 +50,17 @@ struct SidebarSectionsTests {
         #expect(SidebarRowText.scanned(nil) == nil)
     }
 
+    @Test func refusedFolderAndAheadClockReadPlainly() {
+        #expect(SidebarRowText.size(space: nil, scannedBytes: 0, unreadable: true) == "Couldn't be read")
+        #expect(SidebarRowText.size(space: nil, scannedBytes: 0) == NeodiskFormatters.size(0))
+        // A scan date a little ahead of the once-a-minute clock is still the past. The formatter never measures
+        // from before the real clock, so `now` is the real one.
+        let now = Date()
+        #expect(SidebarRowText.scanned(now.addingTimeInterval(90), now: now) == "Scanned just now")
+        #expect(SidebarRowText.scanned(now.addingTimeInterval(-30), now: now) == "Scanned just now")
+        #expect(SidebarRowText.scanned(now.addingTimeInterval(-600), now: now) != "Scanned just now")
+    }
+
     @Test func cleanupSummaryCountsItems() {
         #expect(CleanupText.summary(count: 0, totalSize: 0) == nil)
         #expect(CleanupText.summary(count: 1, totalSize: 8_000) == "8 KB · 1 item")

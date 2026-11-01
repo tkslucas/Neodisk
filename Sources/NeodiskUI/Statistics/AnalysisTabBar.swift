@@ -1,6 +1,7 @@
-// The statistics tabs: a segmented control while every shown tab fits its full title, else a pop-up of them, so
-// titles never truncate at any pane width, language or text size. Dragging a segment moves its tab; right-clicking
-// one (or the pop-up) moves it left or right and shows or hides tabs.
+// The statistics tabs: text tabs, each title whole. Tabs that don't fit the pane's width go in a » menu instead of
+// truncating; the active one always shows. Dragging a tab moves the tab itself (no drag image): its neighbors slide
+// aside as it crosses their middles, and it settles into its slot on release. Right-clicking a tab moves it left or
+// right and shows or hides tabs; ← and → switch tabs once the bar has keyboard focus.
 
 import AppKit
 import SwiftUI
@@ -13,30 +14,231 @@ extension AnalysisTab {
 struct AnalysisTabBar: View {
     let model: NeodiskViewModel
 
+    @Namespace private var underlineNamespace
+    @Environment(\.neoTextScale) private var textScale
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @FocusState private var isFocused: Bool
+    @State private var width: CGFloat = 0
+    @State private var drag: TabDrag?
+
+    private struct TabDrag: Equatable {
+        let tab: AnalysisTab
+        /// Where in the tab the pointer took hold of it.
+        let grab: CGFloat
+        /// The tab's leading edge, following the pointer.
+        var left: CGFloat
+    }
+
+    private static let space = "analysisTabBar"
+
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            AnalysisSegmentedControl(model: model)
-            NeoPopUpPicker(
-                options: model.analysisTabs.visible.map { ($0.localizedTitle, $0) },
-                selection: Binding(get: { model.analysisTab }, set: { model.analysisTab = $0 }),
-                accessibilityLabel: NSLocalizedString("Statistics", comment: "Statistics tabs"),
-                contextMenu: {
-                    let menu = NSMenu()
-                    menu.autoenablesItems = false
-                    menu.addAnalysisTabMoveItems(model: model, moving: model.analysisTab)
-                    menu.addAnalysisTabItems(model: model)
-                    return menu
+        let strip = strip
+        let (shown, overflow) = fitting(strip)
+        HStack(spacing: strip.spacing) {
+            ForEach(shown) { tab in
+                AnalysisTabButton(
+                    tab: tab,
+                    isActive: model.analysisTab == tab,
+                    showsFocus: isFocused && model.analysisTab == tab,
+                    namespace: underlineNamespace
+                ) {
+                    select(tab)
                 }
-            )
-            .frame(maxWidth: .infinity, alignment: .leading)
+                .offset(x: offset(of: tab, in: shown, strip: strip))
+                .zIndex(drag?.tab == tab ? 1 : 0)
+                .transaction { if drag?.tab == tab { $0.animation = nil } }
+                .simultaneousGesture(reorderGesture(for: tab))
+                .contextMenu { tabMenu(for: tab) }
+                .accessibilityAction(named: Text("Move Left")) { move(tab, by: -1) }
+                .accessibilityAction(named: Text("Move Right")) { move(tab, by: 1) }
+            }
+            Spacer(minLength: 0)
+            if !overflow.isEmpty {
+                Menu {
+                    ForEach(overflow) { tab in
+                        Button(LocalizedStringKey(tab.title)) { select(tab) }
+                    }
+                } label: {
+                    Image(systemName: "chevron.right.2")
+                        .neoFont(10, weight: .semibold)
+                        .foregroundStyle(.secondary)
+                        .frame(height: 20 * textScale)
+                        .contentShape(Rectangle())
+                }
+                // A plain button, so the chevron draws in the inactive tabs' gray and scales with them.
+                .menuStyle(.button)
+                .buttonStyle(.plain)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .focusable(false)
+                .help(Text("More tabs"))
+            }
         }
-        .padding(.horizontal, StatsListMetrics.inset)
-        .padding(.vertical, 6)
-        .frame(minWidth: 0, maxWidth: .infinity)
+        .padding(.horizontal, strip.padding)
+        // minWidth 0: the bar measures the pane, not its own tabs.
+        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+        .clipped()
+        .coordinateSpace(name: Self.space)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+        .contentShape(Rectangle())
+        .contextMenu { AnalysisTabsMenuItems(model: model) }
+        // One stop in the key loop, as AppKit's tab controls are: only with keyboard navigation on, and a click
+        // never takes focus from the list.
+        .focusable(interactions: .activate)
+        .focused($isFocused)
+        .focusEffectDisabled()
+        .onKeyPress(.leftArrow) { step(-1) }
+        .onKeyPress(.rightArrow) { step(1) }
+        // The arrows already pick the tab they land on; Space keeps it, without the beep of an unhandled key.
+        .onKeyPress(.space) { .handled }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text("Statistics"))
+    }
+
+    private var settle: Animation? {
+        reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.86)
+    }
+
+    private func select(_ tab: AnalysisTab) {
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.15)) {
+            model.analysisTab = tab
+        }
+    }
+
+    /// Steps through every shown tab, the » menu's too: one picked from there takes the bar's last spot.
+    private func step(_ step: Int) -> KeyPress.Result {
+        let tabs = model.analysisTabs.visible
+        guard let index = tabs.firstIndex(of: model.analysisTab) else { return .ignored }
+        let target = index + step
+        if tabs.indices.contains(target) { select(tabs[target]) }
+        return .handled
+    }
+
+    private func move(_ tab: AnalysisTab, by step: Int) {
+        guard let index = model.analysisTabs.visible.firstIndex(of: tab) else { return }
+        withAnimation(settle) { model.moveAnalysisTab(tab, to: index + step) }
+    }
+
+    @ViewBuilder
+    private func tabMenu(for tab: AnalysisTab) -> some View {
+        let tabs = model.analysisTabs.visible
+        let index = tabs.firstIndex(of: tab) ?? 0
+        Button("Move Left") { move(tab, by: -1) }
+            .disabled(index == 0)
+        Button("Move Right") { move(tab, by: 1) }
+            .disabled(index >= tabs.count - 1)
+        Divider()
+        AnalysisTabsMenuItems(model: model)
+    }
+
+    // MARK: Dragging
+
+    private func offset(of tab: AnalysisTab, in shown: [AnalysisTab], strip: TabStrip<AnalysisTab>) -> CGFloat {
+        guard let drag, drag.tab == tab, let slot = strip.slots(shown)[tab] else { return 0 }
+        return drag.left - slot
+    }
+
+    /// Reads the bar afresh on every update rather than capturing it: each swap changes the slots.
+    private func reorderGesture(for tab: AnalysisTab) -> some Gesture {
+        DragGesture(minimumDistance: 3, coordinateSpace: .named(Self.space))
+            .onChanged { value in
+                let strip = strip
+                let (shown, overflow) = fitting(strip)
+                guard let slot = strip.slots(shown)[tab] else { return }
+                // A drag of another tab that never ended (its tab left the bar mid-drag) doesn't carry over.
+                var current = TabDrag(tab: tab, grab: value.startLocation.x - slot, left: slot)
+                if let drag, drag.tab == tab {
+                    current = drag
+                } else if model.analysisTab != tab {
+                    select(tab)
+                }
+                let held = value.location.x - current.grab
+                current.left = strip.clampedLeft(held, of: tab, in: shown)
+                drag = current
+                // The order follows the pointer, not the clamped tab: a wide tab pushed past the bar's edge still
+                // passes a narrower first or last one, whose middle its clamped middle would never reach.
+                let order = strip.reordered(shown, dragging: tab, left: held)
+                guard order != shown else { return }
+                // The » menu's tabs follow the shown ones, so a tab shown out of order stays where it was dropped.
+                var layout = model.analysisTabs
+                layout.setVisibleOrder(order + overflow)
+                withAnimation(settle) { model.setAnalysisTabs(layout) }
+            }
+            .onEnded { _ in
+                withAnimation(settle) { drag = nil }
+            }
+    }
+
+    // MARK: Fitting
+
+    /// Measured in the font the tabs draw with, so the slots match the laid-out tabs. The leading edge lines up
+    /// with the lists' content; spacing grows with the text, so a bigger title isn't crowded by its neighbors.
+    private var strip: TabStrip<AnalysisTab> {
+        let font = NSFont.systemFont(ofSize: 11 * textScale, weight: .medium)
+        let widths = Dictionary(uniqueKeysWithValues: AnalysisTab.allCases.map { tab in
+            (tab, (tab.localizedTitle as NSString).size(withAttributes: [.font: font]).width.rounded(.up))
+        })
+        return TabStrip(padding: StatsListMetrics.inset, spacing: (12 * textScale).rounded(), widths: widths)
+    }
+
+    /// The shown tabs that fit the bar's width, always including the active one, and the rest.
+    private func fitting(_ strip: TabStrip<AnalysisTab>) -> (shown: [AnalysisTab], overflow: [AnalysisTab]) {
+        strip.fit(
+            model.analysisTabs.visible, barWidth: width,
+            menuWidth: (16 * textScale).rounded(), active: model.analysisTab
+        )
     }
 }
 
-/// Which tabs show, for the pane's SwiftUI menus (its headers and empty space) and View > Statistics Tabs.
+/// Fixed weight so the active state never shifts layout.
+private struct AnalysisTabButton: View {
+    @Environment(\.neoTextScale) private var textScale
+
+    let tab: AnalysisTab
+    let isActive: Bool
+    let showsFocus: Bool
+    let namespace: Namespace.ID
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Text(LocalizedStringKey(tab.title))
+                .neoFont(11, weight: .medium)
+                .foregroundStyle(
+                    isActive ? Color.accentColor : isHovering ? Color.primary : Color.secondary
+                )
+                .lineLimit(1)
+                .fixedSize()
+                .padding(.vertical, (7 * textScale).rounded())
+                .overlay(alignment: .bottom) {
+                    if isActive {
+                        RoundedRectangle(cornerRadius: 1)
+                            .fill(Color.accentColor)
+                            .frame(height: (2 * textScale).rounded())
+                            .matchedGeometryEffect(id: "analysisTabUnderline", in: namespace)
+                    }
+                }
+                .background {
+                    if showsFocus {
+                        RoundedRectangle(cornerRadius: 4)
+                            .strokeBorder(Color(nsColor: .keyboardFocusIndicatorColor), lineWidth: 3)
+                            .padding(.horizontal, -4)
+                            .padding(.vertical, 2)
+                    }
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        // The bar is the one key-loop stop; the arrows move between its tabs.
+        .focusable(false)
+        .onHover { isHovering = $0 }
+        .accessibilityAddTraits(isActive ? .isSelected : [])
+    }
+}
+
+/// Which tabs show, for the pane's SwiftUI menus (its tabs, headers and empty space) and View > Statistics Tabs.
 struct AnalysisTabsMenuItems: View {
     let model: NeodiskViewModel
 
@@ -74,24 +276,7 @@ extension NeodiskViewModel {
 }
 
 extension NSMenu {
-    /// Move Left and Move Right for a shown tab, then a separator.
-    @MainActor func addAnalysisTabMoveItems(model: NeodiskViewModel, moving tab: AnalysisTab) {
-        let visible = model.analysisTabs.visible
-        guard let index = visible.firstIndex(of: tab) else { return }
-        let left = ClosureMenuItem(title: NSLocalizedString("Move Left", comment: "Statistics tab menu")) {
-            model.moveAnalysisTab(tab, to: index - 1)
-        }
-        left.isEnabled = index > 0
-        addItem(left)
-        let right = ClosureMenuItem(title: NSLocalizedString("Move Right", comment: "Statistics tab menu")) {
-            model.moveAnalysisTab(tab, to: index + 1)
-        }
-        right.isEnabled = index < visible.count - 1
-        addItem(right)
-        addItem(.separator())
-    }
-
-    /// AppKit's copy of AnalysisTabsMenuItems, for menus AppKit builds: the controls' and the lists' empty space.
+    /// AppKit's copy of AnalysisTabsMenuItems, for menus AppKit builds: the lists' empty space.
     @MainActor func addAnalysisTabItems(model: NeodiskViewModel) {
         let layout = model.analysisTabs
         for tab in layout.order {
@@ -109,184 +294,4 @@ extension NSMenu {
         reset.isEnabled = !layout.isStandard
         addItem(reset)
     }
-}
-
-/// Segments as wide as their titles, not all as wide as the widest, so the control fits the narrowest pane it can;
-/// it stretches proportionally to fill the rest.
-private struct AnalysisSegmentedControl: NSViewRepresentable {
-    let model: NeodiskViewModel
-
-    func makeCoordinator() -> Coordinator { Coordinator() }
-
-    func makeNSView(context: Context) -> TabSegmentedControl {
-        let control = TabSegmentedControl()
-        control.trackingMode = .selectOne
-        control.segmentDistribution = .fillProportionally
-        control.setAccessibilityLabel(NSLocalizedString("Statistics", comment: "Statistics tabs"))
-        control.setContentCompressionResistancePriority(.required, for: .horizontal)
-        // Clicks select on mouse-down themselves; the action carries keyboard and accessibility picks.
-        control.target = context.coordinator
-        control.action = #selector(Coordinator.picked(_:))
-        let menu = NSMenu()
-        menu.autoenablesItems = false
-        menu.delegate = context.coordinator
-        control.menu = menu
-        return control
-    }
-
-    func updateNSView(_ control: TabSegmentedControl, context: Context) {
-        let coordinator = context.coordinator
-        coordinator.model = model
-        coordinator.control = control
-        control.onPick = { [weak coordinator] index in coordinator?.pick(index) }
-        control.onMove = { [weak coordinator] from, to in coordinator?.move(from: from, to: to) }
-
-        // Titles follow the workspace text like every label beside them; the control size only gives them room.
-        control.applyNeoText(base: .small, scale: context.environment.neoTextScale)
-        let tabs = model.analysisTabs.visible
-        if coordinator.tabs != tabs {
-            coordinator.tabs = tabs
-            control.segmentCount = tabs.count
-            for (index, tab) in tabs.enumerated() {
-                control.setLabel(tab.localizedTitle, forSegment: index)
-            }
-        }
-        control.selectedSegment = tabs.firstIndex(of: model.analysisTab) ?? -1
-    }
-
-    func sizeThatFits(_ proposal: ProposedViewSize, nsView: TabSegmentedControl, context: Context) -> CGSize? {
-        let fitting = nsView.intrinsicContentSize
-        return CGSize(width: max(proposal.width ?? fitting.width, fitting.width), height: fitting.height)
-    }
-
-    @MainActor
-    final class Coordinator: NSObject, NSMenuDelegate {
-        var model: NeodiskViewModel?
-        weak var control: TabSegmentedControl?
-        var tabs: [AnalysisTab] = []
-
-        @objc func picked(_ sender: NSSegmentedControl) {
-            pick(sender.selectedSegment)
-        }
-
-        func pick(_ index: Int) {
-            guard tabs.indices.contains(index) else { return }
-            model?.analysisTab = tabs[index]
-        }
-
-        func move(from: Int, to: Int) {
-            guard tabs.indices.contains(from) else { return }
-            model?.moveAnalysisTab(tabs[from], to: to)
-        }
-
-        func menuNeedsUpdate(_ menu: NSMenu) {
-            menu.removeAllItems()
-            guard let model else { return }
-            if let index = control?.menuSegment, tabs.indices.contains(index) {
-                menu.addAnalysisTabMoveItems(model: model, moving: tabs[index])
-            }
-            menu.addAnalysisTabItems(model: model)
-        }
-    }
-}
-
-/// Selects on mouse-down; a drag then carries the segment's tab along, taking each neighbor's place as the pointer
-/// passes the middle of it. AppKit doesn't expose segment frames, so they're laid out as the distribution does.
-final class TabSegmentedControl: NSSegmentedControl {
-    var onPick: ((Int) -> Void)?
-    var onMove: ((Int, Int) -> Void)?
-    /// The segment the open context menu was raised on.
-    private(set) var menuSegment: Int?
-
-    private var dragged: Int?
-    private var dragStart: CGFloat = 0
-    private var isDragging = false
-
-    override func mouseDown(with event: NSEvent) {
-        guard isEnabled, let index = segment(at: convert(event.locationInWindow, from: nil).x) else {
-            return super.mouseDown(with: event)
-        }
-        dragged = index
-        dragStart = convert(event.locationInWindow, from: nil).x
-        isDragging = false
-        if selectedSegment != index {
-            selectedSegment = index
-            onPick?(index)
-        }
-    }
-
-    override func mouseDragged(with event: NSEvent) {
-        guard let from = dragged else { return super.mouseDragged(with: event) }
-        let x = convert(event.locationInWindow, from: nil).x
-        if !isDragging {
-            guard abs(x - dragStart) >= 3 else { return }
-            isDragging = true
-        }
-        // One neighbor at a time, so a fast drag still passes through every slot in order.
-        let frames = segmentFrames()
-        let to = if from + 1 < frames.count, x > frames[from + 1].mid {
-            from + 1
-        } else if from > 0, x < frames[from - 1].mid {
-            from - 1
-        } else {
-            from
-        }
-        guard to != from else { return }
-        dragged = to
-        onMove?(from, to)
-    }
-
-    override func mouseUp(with event: NSEvent) {
-        guard dragged != nil else { return super.mouseUp(with: event) }
-        dragged = nil
-        isDragging = false
-    }
-
-    /// ← and → switch to the neighboring tab, as tab bars do, rather than only moving the focus ring between
-    /// segments; AppKit still moves the ring, so it stays on the selected tab. Space picks the selected segment
-    /// even where the action doesn't arrive.
-    override func keyDown(with event: NSEvent) {
-        let step = switch event.keyCode {
-        case 123: -1
-        case 124: 1
-        default: 0
-        }
-        super.keyDown(with: event)
-        if event.keyCode == 49, selectedSegment >= 0 { onPick?(selectedSegment) }
-        let index = selectedSegment + step
-        guard step != 0, selectedSegment >= 0, index >= 0, index < segmentCount else { return }
-        selectedSegment = index
-        onPick?(index)
-    }
-
-    override func menu(for event: NSEvent) -> NSMenu? {
-        menuSegment = segment(at: convert(event.locationInWindow, from: nil).x)
-        return super.menu(for: event)
-    }
-
-    private func segment(at x: CGFloat) -> Int? {
-        guard x >= 0, x <= bounds.width else { return nil }
-        return segmentFrames().firstIndex { x < $0.upperBound } ?? (segmentCount > 0 ? segmentCount - 1 : nil)
-    }
-
-    /// Each segment's span as `.fillProportionally` lays them out: shares in proportion to each title.
-    private func segmentFrames() -> [ClosedRange<CGFloat>] {
-        guard segmentCount > 0, bounds.width > 0 else { return [] }
-        let font = font ?? .systemFont(ofSize: NSFont.smallSystemFontSize)
-        let weights: [CGFloat] = (0..<segmentCount).map { index in
-            guard let label = label(forSegment: index) else { return 1 }
-            return (label as NSString).size(withAttributes: [.font: font]).width + 16
-        }
-        let total = weights.reduce(0, +)
-        var start: CGFloat = 0
-        return weights.map { weight in
-            let end = start + weight / total * bounds.width
-            defer { start = end }
-            return start...end
-        }
-    }
-}
-
-private extension ClosedRange<CGFloat> {
-    var mid: CGFloat { (lowerBound + upperBound) / 2 }
 }

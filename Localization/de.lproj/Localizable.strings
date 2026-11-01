@@ -255,6 +255,7 @@
 "Add Folder…" = "Ordner hinzufügen …";
 "Scan any folder or volume and keep it in the sidebar" = "Scanne beliebige Ordner oder Volumes und behalte sie in der Seitenleiste";
 "Scanned %@" = "%@ gescannt";
+"Couldn't be read" = "Nicht lesbar";
 "Remove from Sidebar" = "Aus Seitenleiste entfernen";
 "Remove %lld Folders from Sidebar" = "%lld Ordner aus Seitenleiste entfernen";
 
@@ -358,7 +359,6 @@
 "Support Neodisk…" = "Neodisk unterstützen…";
 "Support" = "Unterstützen";
 "License" = "Lizenz";
-"Privacy" = "Datenschutz";
 "Version %@" = "Version %@";
 
 /* MARK: - Cloud-only files */
@@ -488,6 +488,7 @@
 "1 item changed since you collected it and left Cleanup." = "1 Objekt hat sich seit dem Sammeln geändert und wurde aus „Aufräumen“ entfernt.";
 "%lld items changed since you collected them and left Cleanup." = "%lld Objekte haben sich seit dem Sammeln geändert und wurden aus „Aufräumen“ entfernt.";
 "Reset Tabs" = "Tabs zurücksetzen";
+"More tabs" = "Weitere Tabs";
 "Percentage" = "Prozent";
 "It's locked. Unlock it in Get Info to move it." = "Es ist geschützt. Hebe den Schutz unter „Informationen“ auf, um es zu verschieben.";
 "Moved 1 item to the Trash." = "1 Objekt in den Papierkorb gelegt.";
@@ -527,3 +528,15 @@
 "Statistics Tabs" = "Statistik-Tabs";
 "Top %@ of %@ files" = "Top %@ von %@ Dateien";
 "No files to show" = "Keine Dateien";
+
+/* Windows app */
+"Commands" = "Befehle";
+"Location" = "Ort";
+"Locations" = "Orte";
+"Status" = "Status";
+"Local Disk" = "Lokaler Datenträger";
+"Drive" = "Laufwerk";
+"Show in File Explorer" = "Im Explorer anzeigen";
+"More" = "Mehr";
+"Scan progress" = "Scanfortschritt";
+"Couldn't Scan" = "Scan nicht möglich";

@@ -102,8 +102,8 @@ extension View {
 
     /// AppKit sizes chrome from the control size, not the label font, so a scaled title alone would overflow.
     /// Pass the `.small` a view chose as `base`; at 100% it is returned unchanged. SwiftUI controls ignore the
-    /// workspace font: give a button's label `Text` a `.neoFont`, and use `NeoSegmentedPicker`/`NeoPopUpPicker`
-    /// for pickers, whose titles SwiftUI never scales.
+    /// workspace font: give a button's label `Text` a `.neoFont`, and use `NeoSegmentedPicker`
+    /// for segmented pickers, whose titles SwiftUI never scales.
     func neoControlSize(base: ControlSize = .regular) -> some View {
         modifier(NeoControlSizeModifier(base: base))
     }

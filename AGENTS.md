@@ -81,6 +81,14 @@ The most used ones; the rest live in `Sources/NeodiskUI/Dev/`.
   not a dot name.
 - Tests that need POSIX behavior get `#if !os(Windows)` with a one-line reason; Windows-only cases live in
   `WindowsPlatformTests`. Symbolic link tests need an elevated shell or Developer Mode.
+- The app is `swift build --product neodisk` (`.build\debug\neodisk.exe`, a GUI program: no console, so logs go
+  to `%LOCALAPPDATA%\Neodisk\Logs`, or to stderr when it's redirected). Settings: `%APPDATA%\Neodisk\settings.json`.
+- App shell: `NeodiskWin` over `ScanWorkspace` (NeodiskAppModel). Custom-drawn chrome subclasses `SurfaceView`, whose
+  element list feeds both hit-testing and its UI Automation provider; keep them one list. Message parameters are
+  bit patterns: convert with `Int(bitPattern:)`/`truncatingIfNeeded:`, never `Int(wParam)` (handles trap).
+- Hooks: `NEODISK_AUTOSCAN=<path>`, `NEODISK_UI_SNAPSHOT=<out.png>` (captures the window from the screen, backdrop
+  included, then quits; `NEODISK_SNAPSHOT_PRINTWINDOW=1` uses PrintWindow), `NEODISK_THEME=light|dark`,
+  `NEODISK_SCALE=<factor>` (lays out as at that DPI scale), `NEODISK_LANGUAGE=<tag>`, `NEODISK_NO_MICA=1`.
 - The maps draw through `CNeodiskCanvas` (Direct3D 11, Direct2D, DirectWrite and WIC behind a C API); rasters
   build off the main thread and reach the canvas window by a posted message. Hooks: `NEODISK_CANVAS_PNG=<prefix>`
   renders the cushion, flat and sunburst headless to `<prefix>-<view>.png`, `NEODISK_CANVAS_BENCH=<report.txt>`
@@ -138,7 +146,7 @@ The most used ones; the rest live in `Sources/NeodiskUI/Dev/`.
 - AppKit surfaces scale through `OutlineRowMetrics.scale` and `TreemapScene.labelScale`; window chrome stays system size.
 - A push button sizes from `controlSize`, not its label: pair `.neoFont(.body)` with `.neoControlSize(base:)`. The font
   goes on the label's `Text` (`Button { } label: { Text("…").neoFont(11) }`): SwiftUI controls ignore a `.font` around them,
-  and segmented and pop-up pickers ignore it entirely, so those are `NeoSegmentedPicker` / `NeoPopUpPicker`.
+  and segmented pickers ignore it entirely, so those are `NeoSegmentedPicker`.
 - Sheets don't inherit the root's scale: present them with `.neoWorkspaceText(scale:)`.
 - Inline bars beside text (capacity, percentage, scan progress) scale with the text too.
 - Treemap gestures mutate the `CALayer` transform in `TreemapNSView`, never SwiftUI state (that version twitched).

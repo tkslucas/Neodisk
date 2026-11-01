@@ -255,6 +255,7 @@
 "Add Folder…" = "フォルダを追加…";
 "Scan any folder or volume and keep it in the sidebar" = "任意のフォルダやボリュームをスキャンしてサイドバーに保持";
 "Scanned %@" = "スキャン: %@";
+"Couldn't be read" = "読み取れませんでした";
 "Remove from Sidebar" = "サイドバーから削除";
 "Remove %lld Folders from Sidebar" = "%lld個のフォルダをサイドバーから削除";
 
@@ -358,7 +359,6 @@
 "Support Neodisk…" = "Neodiskを支援…";
 "Support" = "支援";
 "License" = "ライセンス";
-"Privacy" = "プライバシー";
 "Version %@" = "バージョン %@";
 
 /* MARK: - Cloud-only files */
@@ -488,6 +488,7 @@
 "1 item changed since you collected it and left Cleanup." = "1 項目が集めた後に変更されたため、クリーンアップから外しました。";
 "%lld items changed since you collected them and left Cleanup." = "%lld 項目が集めた後に変更されたため、クリーンアップから外しました。";
 "Reset Tabs" = "タブをリセット";
+"More tabs" = "その他のタブ";
 "Percentage" = "割合";
 "It's locked. Unlock it in Get Info to move it." = "ロックされています。「情報を見る」でロックを解除してから移動してください。";
 "Moved 1 item to the Trash." = "1 項目をゴミ箱に入れました。";
@@ -527,3 +528,15 @@
 "Statistics Tabs" = "統計のタブ";
 "Top %@ of %@ files" = "%2$@件のファイルのうち上位%1$@件";
 "No files to show" = "表示するファイルはありません";
+
+/* Windows app */
+"Commands" = "コマンド";
+"Location" = "場所";
+"Locations" = "場所";
+"Status" = "状態";
+"Local Disk" = "ローカル ディスク";
+"Drive" = "ドライブ";
+"Show in File Explorer" = "エクスプローラーで表示";
+"More" = "その他";
+"Scan progress" = "スキャンの進行状況";
+"Couldn't Scan" = "スキャンできませんでした";

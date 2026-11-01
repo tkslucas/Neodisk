@@ -198,6 +198,8 @@ final class NeodiskViewModel {
     var scanWasStopped = false
     /// Shows the first-launch welcome sheet (also reachable from Settings).
     var showWelcomeSheet = false
+    /// A first scan held while the window offers Full Disk Access; starting any scan clears it.
+    private(set) var fullDiskAccessGate: ScanTarget?
 
     // MARK: Scan warnings
 
@@ -337,7 +339,28 @@ final class NeodiskViewModel {
     /// Selecting a location: the scan session picks the restore / refresh /
     /// live-scan branch; see ScanSessionModel.startScan.
     func startScan(_ target: ScanTarget, forcesRescan: Bool = false) {
+        fullDiskAccessGate = nil
         session.startScan(target, forcesRescan: forcesRescan)
+    }
+
+    /// A location the user picked. Without Full Disk Access its first scan would stop at one macOS prompt per
+    /// protected folder, so it offers access first, until the user chooses Scan Anyway.
+    func startChosenScan(_ target: ScanTarget) {
+        guard preferences?.scansWithoutFullDiskAccess == false,
+              warnings.fullDiskAccessStatus == .notGranted,
+              session.cachedScanInfo[target.id] == nil,
+              PermissionPromptWatch.reachesProtectedFolder(target.url.path) else {
+            startScan(target)
+            return
+        }
+        fullDiskAccessGate = target
+    }
+
+    /// Scan Anyway (remembered), or access granted while the offer was up.
+    func passFullDiskAccessGate(remembering: Bool) {
+        guard let target = fullDiskAccessGate else { return }
+        if remembering { preferences?.scansWithoutFullDiskAccess = true }
+        startScan(target)
     }
 
     var store: FileTreeStore? {
@@ -724,7 +747,7 @@ final class NeodiskViewModel {
             sidebarFolders.append(target)
             sidebarFolderStore.add(target)
         }
-        startScan(target)
+        startChosenScan(target)
     }
 
     /// Handles folders dropped onto the window or the sidebar: adds each
@@ -750,7 +773,7 @@ final class NeodiskViewModel {
             }
         }
         if let firstTarget {
-            startScan(firstTarget)
+            startChosenScan(firstTarget)
         }
         return true
     }

@@ -130,6 +130,8 @@ final class ScanSession: Identifiable {
             handleProgress(metrics)
         case .warning:
             break
+        case .waitingForPermission(let path):
+            progress.setWaitingForPermission(path: path)
         case .partial(let store):
             recordPartialTree(store)
         case .finished(let snapshot):
@@ -153,6 +155,7 @@ final class ScanSession: Identifiable {
 
     private func finishSucceeded(with snapshot: ScanSnapshot) {
         flushPendingProgress()
+        progress.waitingForPermissionFolder = nil
 
         var completedMetrics = scanMetrics
         completedMetrics.recalculateProgress(isComplete: true)

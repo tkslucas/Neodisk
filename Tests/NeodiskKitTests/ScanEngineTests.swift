@@ -906,7 +906,7 @@ import Foundation
                 progressPaths.append(metrics.currentPath)
             case .finished(let snapshot):
                 finalSnapshot = snapshot
-            case .warning, .partial:
+            case .warning, .partial, .waitingForPermission:
                 break
             }
         }
@@ -1585,7 +1585,7 @@ import Foundation
                 finalizingProgress.append(metrics)
             case .finished:
                 didFinish = true
-            case .progress, .warning, .partial:
+            case .progress, .warning, .partial, .waitingForPermission:
                 break
             }
         }
@@ -2140,7 +2140,7 @@ import Foundation
                 progressSnapshots.append(metrics)
             case .finished(let snapshot):
                 finalSnapshot = snapshot
-            case .warning, .partial:
+            case .warning, .partial, .waitingForPermission:
                 break
             }
         }
@@ -2300,7 +2300,7 @@ extension ScanEngineTests {
                 partialStores.append(store)
             case .finished(let snapshot):
                 finalSnapshot = snapshot
-            case .progress, .warning:
+            case .progress, .warning, .waitingForPermission:
                 break
             }
         }

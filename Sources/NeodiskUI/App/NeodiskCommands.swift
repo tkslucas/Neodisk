@@ -75,6 +75,11 @@ struct NeodiskCommands: Commands {
             }
             .keyboardShortcut("s", modifiers: [.control, .command])
 
+            // Where sections hidden from a header's menu come back.
+            Menu("Sidebar Sections") {
+                SidebarSectionsMenuItems(model: model)
+            }
+
             Button {
                 model.showKindStats.toggle()
             } label: {

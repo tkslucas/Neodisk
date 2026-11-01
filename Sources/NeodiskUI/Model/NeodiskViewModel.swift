@@ -102,6 +102,10 @@ final class NeodiskViewModel {
     /// Locations sidebar visibility; lives here so the View menu can toggle
     /// it. Always starts visible.
     var sidebarVisibility = NavigationSplitViewVisibility.all
+    /// Mirror of the sidebar's persisted hidden and collapsed sections; change it through setSidebarSection.
+    private(set) var sidebarSections = SidebarSectionState()
+    /// Set by the toolbar's Cleanup button; the panel flashes once so the eye finds it, then clears it.
+    var isCleanupRevealPending = false
     /// Which visualization the center pane shows (treemap or sunburst).
     /// Preference mirroring happens where the toolbar switcher binds.
     /// The diff stays armed across the switch: sunburst has no Δ column to
@@ -463,6 +467,7 @@ final class NeodiskViewModel {
                 self?.syncTextScale()
                 self?.syncFileCategories()
                 self?.syncCleanupPreference()
+                self?.syncSidebarSections()
             }
         freeSpace.update()
         syncVizPalette()
@@ -474,11 +479,56 @@ final class NeodiskViewModel {
         syncTextScale()
         syncFileCategories()
         syncCleanupPreference()
+        syncSidebarSections()
     }
 
     private func syncCleanupPreference() {
         guard let preferences else { return }
         cleanup.setEnabled(preferences.allowsMovingToTrash)
+    }
+
+    // MARK: Sidebar sections
+
+    private func syncSidebarSections() {
+        guard let preferences, sidebarSections != preferences.sidebarSections else { return }
+        sidebarSections = preferences.sidebarSections
+    }
+
+    func isSidebarSectionShown(_ section: SidebarSection) -> Bool {
+        sidebarSections.isShown(section, cleanupEnabled: cleanup.isEnabled)
+    }
+
+    /// Showing or hiding Cleanup turns moving to the Trash on or off, as in Settings.
+    func setSidebarSection(_ section: SidebarSection, shown: Bool) {
+        if section == .cleanup {
+            preferences?.allowsMovingToTrash = shown
+            cleanup.setEnabled(shown)
+            return
+        }
+        updateSidebarSections { $0.setShown(section, shown) }
+    }
+
+    func setSidebarSection(_ section: SidebarSection, expanded: Bool) {
+        updateSidebarSections { $0.setExpanded(section, expanded) }
+    }
+
+    /// The toolbar's Cleanup button: the sidebar opens and Cleanup expands.
+    func revealCleanup() {
+        if sidebarVisibility == .detailOnly {
+            withAnimation { sidebarVisibility = .all }
+        }
+        withAnimation(.easeInOut(duration: 0.2)) {
+            updateSidebarSections { $0.reveal(.cleanup) }
+        }
+        isCleanupRevealPending = true
+    }
+
+    private func updateSidebarSections(_ change: (inout SidebarSectionState) -> Void) {
+        var sections = sidebarSections
+        change(&sections)
+        guard sections != sidebarSections else { return }
+        sidebarSections = sections
+        preferences?.sidebarSections = sections
     }
 
     /// Before items leave the tree: a selection or drill root inside one moves to the folder that held it, so

@@ -89,6 +89,9 @@ final class AppPreferences: ObservableObject {
     /// The statistics tabs' and the bottom table's columns' order and visibility, as ItemLayout strings.
     @AppStorage("analysisTabs") var analysisTabsRaw = ""
     @AppStorage("outlineColumns") var outlineColumnsRaw = ""
+    /// The sidebar's hidden and collapsed sections, as SidebarSectionState lists.
+    @AppStorage("sidebarHiddenSections") var sidebarHiddenSectionsRaw = ""
+    @AppStorage("sidebarCollapsedSections") var sidebarCollapsedSectionsRaw = ""
     /// Decodes the previous snapshot whenever a complete tree lands, so Changes opens instantly. The key
     /// predates the restore trigger.
     @AppStorage("prepareChangesAfterScan") var prepareChangesAfterScan = true
@@ -164,6 +167,8 @@ final class AppPreferences: ObservableObject {
         _fileCategoriesJSON = AppStorage(wrappedValue: "", "fileCategories", store: defaults)
         _analysisTabsRaw = AppStorage(wrappedValue: "", "analysisTabs", store: defaults)
         _outlineColumnsRaw = AppStorage(wrappedValue: "", "outlineColumns", store: defaults)
+        _sidebarHiddenSectionsRaw = AppStorage(wrappedValue: "", "sidebarHiddenSections", store: defaults)
+        _sidebarCollapsedSectionsRaw = AppStorage(wrappedValue: "", "sidebarCollapsedSections", store: defaults)
     }
 
     /// The workspace text scale, always one of TextScale's steps.
@@ -258,6 +263,14 @@ final class AppPreferences: ObservableObject {
         set { outlineColumnsRaw = newValue.stored }
     }
 
+    var sidebarSections: SidebarSectionState {
+        get { SidebarSectionState(hidden: sidebarHiddenSectionsRaw, collapsed: sidebarCollapsedSectionsRaw) }
+        set {
+            sidebarHiddenSectionsRaw = newValue.storedHidden
+            sidebarCollapsedSectionsRaw = newValue.storedCollapsed
+        }
+    }
+
     /// Patterns parsed from the exclusions text, empty when disabled.
     var activeExclusionPatterns: [String] {
         guard useScanExclusions else { return [] }
@@ -304,5 +317,7 @@ final class AppPreferences: ObservableObject {
         fileCategoriesJSON = ""
         analysisTabsRaw = ""
         outlineColumnsRaw = ""
+        sidebarHiddenSectionsRaw = ""
+        sidebarCollapsedSectionsRaw = ""
     }
 }

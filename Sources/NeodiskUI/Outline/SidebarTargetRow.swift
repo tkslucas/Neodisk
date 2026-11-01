@@ -1,10 +1,5 @@
-//
-//  SidebarTargetRow.swift
-//  Neodisk
-//
-//  One sidebar row: icon, name, subtitle, an optional relative scan-date
-//  line, and an optional capacity bar. Shared by every sidebar section.
-//
+// One sidebar row: icon, the name with its size trailing, when it was scanned, and an optional bar. The full path
+// is the tooltip. Shared by every sidebar section.
 
 import SwiftUI
 import NeodiskKit
@@ -14,28 +9,23 @@ struct SidebarTargetRow: View {
     @Environment(\.neoTextScale) private var textScale
 
     let target: ScanTarget
-    let subtitle: String
-    /// When a persisted snapshot exists for this location, its scan date
-    /// gets its own line ("Scanned yesterday") — sharing the capacity line
-    /// middle-truncated both.
+    /// A volume's free space or a folder's scanned size; nil before a folder's first scan.
+    var size: String?
     var lastScanned: Date?
-    /// Reference date for the relative scan label, from the enclosing
-    /// TimelineView.
+    /// Reference date for the relative scan label, from the enclosing TimelineView.
     var now: Date
-    /// Volume rows: the kind-colored capacity bar (empty track before any
-    /// scan). Scanned cloud locations and folders: the on-this-Mac /
-    /// cloud-only proportion bar.
+    var tooltip: String
+    /// Volumes: the kind-colored capacity bar (an empty track before any scan). Scanned cloud locations and
+    /// folders: the on-this-Mac / cloud-only or kinds bar.
     var bar: VolumeBarData?
-    /// A background scan running for this location: its progress supersedes
-    /// the capacity bar with a striped progress bar in the same slot.
+    /// A background scan running for this location: its striped progress bar takes the bar's slot.
     var scanProgress: ScanProgressState?
     /// Lifts the scan tooltip into SidebarPane's overlay, above List cells.
     var onScanBarFrameChange: (String, CGRect?) -> Void = { _, _ in }
     var onScanBarHover: (String, Bool) -> Void = { _, _ in }
 
     var body: some View {
-        // The icon slot and the gap after it follow the glyph, or a larger
-        // text size crowds the name right up against the icon.
+        // The icon slot and the gap after it follow the glyph, or a larger text size crowds the name.
         HStack(spacing: (8 * textScale).rounded()) {
             Image(systemName: iconName)
                 .neoFont(15)
@@ -43,15 +33,23 @@ struct SidebarTargetRow: View {
                 .frame(width: (22 * textScale).rounded())
 
             VStack(alignment: .leading, spacing: (1 * textScale).rounded()) {
-                Text(target.displayName)
-                    .neoFont(13, weight: .medium)
-                Text(subtitle)
-                    .neoFont(10.5)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                if let lastScanned {
-                    Text("Scanned \(DisplayFormatters.relativeDate(lastScanned, relativeTo: now))")
+                HStack(alignment: .firstTextBaseline, spacing: (6 * textScale).rounded()) {
+                    Text(target.displayName)
+                        .neoFont(13, weight: .medium)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    if let size {
+                        Text(size)
+                            .neoFont(10.5)
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .fixedSize()
+                            .padding(.trailing, (2 * textScale).rounded())
+                    }
+                }
+                if let scanned = SidebarRowText.scanned(lastScanned, now: now) {
+                    Text(scanned)
                         .neoFont(10.5)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -63,9 +61,9 @@ struct SidebarTargetRow: View {
                         onFrameChange: onScanBarFrameChange,
                         onHover: onScanBarHover
                     )
-                        .padding(.top, 3)
-                        .padding(.bottom, 1)
-                        .padding(.trailing, 2)
+                    .padding(.top, 3)
+                    .padding(.bottom, 1)
+                    .padding(.trailing, 2)
                 } else if let bar {
                     VolumeCapacityBar(data: bar)
                         .padding(.top, 3)
@@ -73,9 +71,9 @@ struct SidebarTargetRow: View {
                         .padding(.trailing, 2)
                 }
             }
-            Spacer(minLength: 0)
         }
         .padding(.vertical, 1)
+        .help(tooltip)
     }
 
     private var iconName: String {

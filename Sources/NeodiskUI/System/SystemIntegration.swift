@@ -107,38 +107,6 @@ enum SystemIntegration {
         deduplicate(CloudLocationDetector.detectedTargets(fileManager: fileManager))
     }
 
-    nonisolated static func targetCapacityDescriptions() -> [String: String] {
-        let fileManager = FileManager.default
-        let mountedVolumes = fileManager.mountedVolumeURLs(
-            includingResourceValuesForKeys: [
-                .volumeTotalCapacityKey,
-                .volumeAvailableCapacityKey,
-                .volumeAvailableCapacityForImportantUsageKey
-            ],
-            options: [.skipHiddenVolumes]
-        ) ?? [URL(filePath: "/", directoryHint: .isDirectory)]
-
-        return targetCapacityDescriptions(
-            mountedVolumes: mountedVolumes,
-            capacityDescriptionForURL: capacityDescription(for:)
-        )
-    }
-
-    nonisolated static func targetCapacityDescriptions(
-        mountedVolumes: [URL],
-        capacityDescriptionForURL: (URL) -> String?
-    ) -> [String: String] {
-        var descriptions: [String: String] = [:]
-        descriptions.reserveCapacity(mountedVolumes.count)
-
-        for volumeURL in mountedVolumes {
-            guard let description = capacityDescriptionForURL(volumeURL) else { continue }
-            descriptions[volumeURL.standardizedFileURL.path] = description
-        }
-
-        return descriptions
-    }
-
     static func reveal(_ url: URL, workspace: SystemWorkspace = NSWorkspace.shared) {
         reveal([url], workspace: workspace)
     }
@@ -364,19 +332,6 @@ enum SystemIntegration {
         return targets.filter { target in
             seen.insert(target.id).inserted
         }
-    }
-
-    private nonisolated static func capacityDescription(for url: URL) -> String? {
-        guard let info = VolumeSpaceInfo.load(for: url) else { return nil }
-        return capacityDescription(info: info)
-    }
-
-    /// "X free of Y" with the Finder-style available figure: free plus
-    /// purgeable, matching what Finder and Disk Utility call available.
-    nonisolated static func capacityDescription(info: VolumeSpaceInfo) -> String? {
-        let totalText = NeodiskFormatters.size(info.totalCapacity)
-        let availableText = NeodiskFormatters.size(info.availableCapacity)
-        return "\(availableText) free of \(totalText)"
     }
 }
 

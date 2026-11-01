@@ -460,8 +460,11 @@
 "and %lld more" = "ほか %lld 項目";
 "Cleanup" = "クリーンアップ";
 "Drag files and folders here, or press ⌘⌫, to collect them. Nothing moves until you confirm." = "ファイルやフォルダをここにドラッグするか⌘⌫を押して集めます。確認するまで何も移動しません。";
-"Drag items here to review before trashing" = "項目をここにドラッグして、ゴミ箱に入れる前に確認";
-"Drop here to collect" = "ここにドロップして集める";
+"Drag items here" = "ここに項目をドラッグ";
+"Collapse Cleanup" = "クリーンアップを折りたたむ";
+"Expand Cleanup" = "クリーンアップを展開";
+"Sidebar Sections" = "サイドバーのセクション";
+"Show Cleanup in the sidebar. Drop items here to collect them." = "サイドバーにクリーンアップを表示します。ここに項目をドロップすると集められます。";
 "It changed since the scan. Rescan to move it." = "スキャン後に変更されました。移動するには再スキャンしてください。";
 "Move “%@” to the Trash?" = "「%@」をゴミ箱に入れますか？";
 "Move %lld items (%@) to the Trash?" = "%lld 項目（%@）をゴミ箱に入れますか？";
@@ -475,7 +478,6 @@
 "Moving to the Trash…" = "ゴミ箱に入れています…";
 "Neodisk asks before each move and never deletes anything itself. System folders and your home folder are off limits. Turn this off to only look." = "Neodiskは移動のたびに確認し、自分で何かを削除することはありません。システムフォルダとホームフォルダには触れません。見るだけにするにはオフにしてください。";
 "Open Trash" = "ゴミ箱を開く";
-"Release to collect" = "離して集める";
 "Remove from Cleanup" = "クリーンアップから外す";
 "Some of this is in a cloud drive: moving it to the Trash also removes it from the cloud and your other devices." = "一部はクラウドドライブにあります。ゴミ箱に入れると、クラウドとほかのデバイスからも削除されます。";
 "Some of this shares storage with other files (hard links or clones), so less space may come back." = "一部はほかのファイルと記憶領域を共有しているため（ハードリンクまたはクローン）、空く容量が少なくなる場合があります。";

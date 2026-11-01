@@ -239,6 +239,11 @@ public struct ContentView: View {
             .help("Scan \(model.coordinator.selectedTarget?.displayName ?? "this location") again")
         }
 
+        // Removed, not disabled, while moving to the Trash is off.
+        if model.cleanup.isEnabled {
+            CleanupToolbarButton(model: model)
+        }
+
         Button {
             model.showKindStats.toggle()
         } label: {

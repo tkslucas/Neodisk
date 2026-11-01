@@ -1,5 +1,5 @@
 // Cleanup, the sidebar's last section: a drop target for items dragged from any view, the collected items with
-// their total, and the way to move them to the Trash. A hairline sets it apart; nothing moves until confirmed.
+// their total, and the way to move them to the Trash. It collapses from its header like the list's sections.
 
 import AppKit
 import SwiftUI
@@ -10,9 +10,13 @@ struct CleanupPanel: View {
     let model: NeodiskViewModel
 
     @State private var isTargeted = false
+    @State private var isHeaderHovered = false
+    @State private var isFlashing = false
     @Environment(\.neoTextScale) private var textScale
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var cleanup: CleanupModel { model.cleanup }
+    private var isExpanded: Bool { model.sidebarSections.isExpanded(.cleanup) }
 
     /// One line of a row; rows with a failure under the name grow past it.
     private var rowHeight: CGFloat { (22 * textScale).rounded() }
@@ -25,11 +29,16 @@ struct CleanupPanel: View {
             Divider()
             VStack(alignment: .leading, spacing: 6) {
                 header
-                if cleanup.isEmpty && !cleanup.isMoving {
-                    hint
-                } else {
-                    list
-                    actions
+                if isExpanded {
+                    Group {
+                        if cleanup.isEmpty && !cleanup.isMoving {
+                            dropArea
+                        } else {
+                            list
+                            actions
+                        }
+                    }
+                    .transition(.opacity)
                 }
                 if let notice = cleanup.notice {
                     CleanupNoticeView(notice: notice, model: model)
@@ -38,9 +47,9 @@ struct CleanupPanel: View {
             }
             .padding(.horizontal, 10)
             .padding(.top, 8)
-            .padding(.bottom, 10)
+            .padding(.bottom, isExpanded ? 10 : 6)
         }
-        .background(Color.accentColor.opacity(isTargeted ? 0.14 : isInviting ? 0.06 : 0))
+        .background(Color.accentColor.opacity(isTargeted ? 0.14 : isInviting || isFlashing ? 0.07 : 0))
         .overlay(CleanupDropTarget(model: model, isTargeted: $isTargeted))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text("Cleanup"))
@@ -48,53 +57,85 @@ struct CleanupPanel: View {
         .animation(.easeOut(duration: 0.15), value: cleanup.itemIDs)
         .animation(.easeOut(duration: 0.12), value: isTargeted)
         .animation(.easeOut(duration: 0.12), value: isInviting)
+        .animation(.easeInOut(duration: 0.3), value: isFlashing)
+        .task(id: model.isCleanupRevealPending) {
+            guard model.isCleanupRevealPending else { return }
+            model.isCleanupRevealPending = false
+            guard !reduceMotion else { return }
+            isFlashing = true
+            try? await Task.sleep(for: .milliseconds(600))
+            isFlashing = false
+        }
     }
 
-    /// Styled like the list's section headers above it.
+    /// Styled like the list's section headers above it, the disclosure chevron showing on hover.
     private var header: some View {
         HStack(spacing: 6) {
             Text("Cleanup")
-                .neoFont(11, weight: .semibold)
+                .neoFont(11, weight: .bold)
                 .foregroundStyle(.secondary)
                 .accessibilityAddTraits(.isHeader)
             Spacer(minLength: 4)
-            if !cleanup.isEmpty {
-                Text(NeodiskFormatters.size(cleanup.totalSize))
+            if let summary = CleanupText.summary(count: cleanup.itemIDs.count, totalSize: cleanup.totalSize) {
+                Text(summary)
                     .neoFont(11, weight: .medium)
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
                     .contentTransition(.numericText())
             }
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    model.setSidebarSection(.cleanup, expanded: !isExpanded)
+                }
+            } label: {
+                Image(systemName: "chevron.right")
+                    .neoFont(10, weight: .semibold)
+                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                    .foregroundStyle(.secondary)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .opacity(isHeaderHovered ? 1 : 0)
+            .focusable(isHeaderHovered)
+            .accessibilityLabel(Text(isExpanded ? "Collapse Cleanup" : "Expand Cleanup"))
         }
         .padding(.horizontal, 4)
+        .contentShape(Rectangle())
+        .onHover { isHeaderHovered = $0 }
+        .contextMenu { SidebarSectionsMenuItems(model: model) }
     }
 
-    /// How to collect, or why nothing can be collected now.
-    private var hint: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
+    /// Where to drop, or why nothing can be collected now.
+    private var dropArea: some View {
+        let highlighted = isTargeted || isInviting
+        let tint: Color = highlighted ? .accentColor : .secondary
+        return VStack(spacing: (4 * textScale).rounded()) {
             Image(systemName: isTargeted ? "trash.fill" : "trash")
-                .foregroundStyle(isTargeted || isInviting ? Color.accentColor : .secondary)
-                .frame(width: (16 * textScale).rounded())
+                .neoFont(17)
             Group {
                 if let reason = cleanup.unavailableReason {
                     Text(reason)
                 } else {
-                    Text(LocalizedStringKey(hintText))
+                    Text("Drag items here")
                 }
             }
-            .foregroundStyle(.secondary)
+            .neoFont(11)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
         }
-        .neoFont(11)
-        .padding(.horizontal, 4)
+        .foregroundStyle(tint)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, (8 * textScale).rounded())
+        .padding(.vertical, (12 * textScale).rounded())
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(tint.opacity(highlighted ? 0.8 : 0.4), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+        )
         .help(cleanup.unavailableReason == nil ? NSLocalizedString(
             "Drag files and folders here, or press ⌘⌫, to collect them. Nothing moves until you confirm.",
             comment: "Cleanup panel tooltip"
         ) : "")
-    }
-
-    private var hintText: String {
-        if isTargeted { return "Release to collect" }
-        return isInviting ? "Drop here to collect" : "Drag items here to review before trashing"
     }
 
     /// Grows with the items up to six and a half rows, then scrolls: the half row says there's more.
@@ -163,6 +204,44 @@ struct CleanupPanel: View {
             Text("Move to Trash…").frame(maxWidth: .infinity)
         }
         .disabled(!cleanup.canMoveToTrash)
+    }
+}
+
+/// The toolbar's way to Cleanup: a drop target with the item count, and a click shows the section.
+struct CleanupToolbarButton: View {
+    let model: NeodiskViewModel
+
+    @State private var isTargeted = false
+
+    var body: some View {
+        let count = model.cleanup.itemIDs.count
+        Button {
+            model.revealCleanup()
+        } label: {
+            Label {
+                Text("Cleanup")
+            } icon: {
+                Image(systemName: isTargeted ? "trash.fill" : "trash")
+                    .overlay(alignment: .topTrailing) {
+                        if count > 0 {
+                            Text(verbatim: count > 99 ? "99+" : count.formatted())
+                                .font(.system(size: 9, weight: .bold))
+                                .monospacedDigit()
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 4)
+                                .frame(minWidth: 15, minHeight: 15)
+                                .background(Capsule().fill(Color.accentColor))
+                                .offset(x: 9, y: -7)
+                        }
+                    }
+            }
+        }
+        .overlay(CleanupDropTarget(model: model, isTargeted: $isTargeted))
+        .disabled(model.coordinator.snapshot == nil)
+        .help("Show Cleanup in the sidebar. Drop items here to collect them.")
+        .accessibilityValue(count > 0
+            ? Text(AppStrings.plural(count, one: "%@ item", other: "%@ items", count.formatted()))
+            : Text(verbatim: ""))
     }
 }
 
@@ -342,9 +421,9 @@ private struct CleanupItemRow: View {
 
 // MARK: - Drop target
 
-/// AppKit drop view over the panel: a private pasteboard type needs no declared UTType, and only payloads from
-/// the tree on screen are accepted.
-private struct CleanupDropTarget: NSViewRepresentable {
+/// AppKit drop view over the panel and the toolbar button. A private pasteboard type needs no declared UTType;
+/// only payloads from the tree on screen are accepted.
+struct CleanupDropTarget: NSViewRepresentable {
     let model: NeodiskViewModel
     @Binding var isTargeted: Bool
 

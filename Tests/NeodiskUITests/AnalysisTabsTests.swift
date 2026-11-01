@@ -1,3 +1,4 @@
+import AppKit
 import Testing
 @testable import NeodiskUI
 
@@ -26,5 +27,27 @@ struct AnalysisTabsTests {
         #expect(model.analysisTabs.visible == [.changes, .largest, .kinds, .duplicates])
         model.setAnalysisTab(.age, shown: true)
         #expect(model.analysisTabs.visible.contains(.age))
+    }
+
+    @Test func arrowKeysSwitchToTheNeighboringTab() throws {
+        let control = TabSegmentedControl()
+        control.segmentCount = 3
+        control.trackingMode = .selectOne
+        control.selectedSegment = 0
+        var picked: [Int] = []
+        control.onPick = { picked.append($0) }
+        func key(_ code: UInt16, _ scalar: Int) throws -> NSEvent {
+            let chars = String(try #require(UnicodeScalar(scalar)))
+            return try #require(NSEvent.keyEvent(
+                with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil,
+                characters: chars, charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code
+            ))
+        }
+        control.keyDown(with: try key(124, NSRightArrowFunctionKey))
+        control.keyDown(with: try key(124, NSRightArrowFunctionKey))
+        control.keyDown(with: try key(124, NSRightArrowFunctionKey))
+        control.keyDown(with: try key(123, NSLeftArrowFunctionKey))
+        #expect(picked == [1, 2, 1])
+        #expect(control.selectedSegment == 1)
     }
 }

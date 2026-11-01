@@ -245,6 +245,23 @@ final class TabSegmentedControl: NSSegmentedControl {
         isDragging = false
     }
 
+    /// ← and → switch to the neighboring tab, as tab bars do, rather than only moving the focus ring between
+    /// segments; AppKit still moves the ring, so it stays on the selected tab. Space picks the selected segment
+    /// even where the action doesn't arrive.
+    override func keyDown(with event: NSEvent) {
+        let step = switch event.keyCode {
+        case 123: -1
+        case 124: 1
+        default: 0
+        }
+        super.keyDown(with: event)
+        if event.keyCode == 49, selectedSegment >= 0 { onPick?(selectedSegment) }
+        let index = selectedSegment + step
+        guard step != 0, selectedSegment >= 0, index >= 0, index < segmentCount else { return }
+        selectedSegment = index
+        onPick?(index)
+    }
+
     override func menu(for event: NSEvent) -> NSMenu? {
         menuSegment = segment(at: convert(event.locationInWindow, from: nil).x)
         return super.menu(for: event)

@@ -12,6 +12,8 @@ app per platform (SwiftUI/AppKit on macOS, GTK 4/libadwaita on Linux). Layout an
 
 - Swift 6, macOS 14.0+. **Command Line Tools only, no Xcode**: `swift build`, `swift test`, `swift run`;
   never `xcodebuild`.
+- Agents and worktrees build with `--scratch-path <main checkout>/.build-<agent>.noindex`: one incremental folder per
+  agent, reused across worktrees; `.noindex` keeps Spotlight from indexing it.
 - `swift test` works on CLT only because `Package.swift` declares swift-testing and the
   `lib_TestingInterop` linker flags. Don't remove either.
 - Run the app: `swift run -c release Neodisk`. `-Xswiftc -DNEODISK_NIGHTLY` builds Neodisk Nightly, which

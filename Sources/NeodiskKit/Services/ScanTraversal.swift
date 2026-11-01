@@ -811,8 +811,8 @@ nonisolated final class ScanTraversal {
 
         // Check if this directory should be summarized as atomic (many small files)
         let minDepth = options.tuning.autoSummarizeMinDepthForSummarization ?? AtomicDirectoryThresholds.minDepthForSummarization
-        let isNodeDependencyLayout = AtomicDirectorySummarizer.isNodeDependencyLayoutDirectory(at: item.url)
-        let isKnownGeneratedDirectory = AtomicDirectorySummarizer.isKnownGeneratedDirectory(at: item.url)
+        let isNodeDependencyLayout = AtomicDirectorySummarizer.isNodeDependencyLayoutDirectory(atPath: item.path)
+        let isKnownGeneratedDirectory = AtomicDirectorySummarizer.isKnownGeneratedDirectory(atPath: item.path)
         let canProbeForAutoSummary =
             item.depth >= minDepth ||
             (item.depth >= 1 && isNodeDependencyLayout) ||

@@ -74,15 +74,13 @@ private struct ChangeResultsView: View {
 
             // Own centered row: beside the header it starved the "since"
             // text into truncation at everyday panel widths.
-            Picker("", selection: $changes.filter) {
-                ForEach(ScanChangeList.Filter.allCases) { filter in
-                    Text(LocalizedStringKey(filter.title)).tag(filter)
-                }
-            }
-            .pickerStyle(.segmented)
-            .neoControlSize(base: .small)
-            .labelsHidden()
-            .fixedSize()
+            NeoSegmentedPicker(
+                options: ScanChangeList.Filter.allCases.map {
+                    (NSLocalizedString($0.title, comment: "Changes filter"), $0)
+                },
+                selection: $changes.filter,
+                accessibilityLabel: NSLocalizedString("Changes", comment: "Changes filter")
+            )
             .frame(maxWidth: .infinity)
             .padding(.horizontal, StatsListMetrics.inset)
             .padding(.vertical, 4)

@@ -36,10 +36,9 @@ public struct ContentView: View {
             detailContent
                 .addLocationDropTarget(model: model)
         }
-        // The one place the workspace text scale enters the view tree; other scenes keep the system size.
-        .environment(\.neoTextScale, textScale)
-        // For views that never name a font. macOS's default is 13pt, so 100% renders as before.
-        .font(.system(size: 13 * textScale))
+        // The workspace text scale enters here and in the welcome sheet; other scenes (Settings, About) and the
+        // window's chrome keep the system size.
+        .neoWorkspaceText(scale: textScale)
         .frame(
             minWidth: minimumSize.width,
             minHeight: minimumSize.height
@@ -47,6 +46,7 @@ public struct ContentView: View {
         .background(SnapshotWindowHider())
         .sheet(isPresented: $model.showWelcomeSheet) {
             WelcomeSheet(model: model)
+                .neoWorkspaceText(scale: textScale)
         }
         .onAppear {
             // This window can host the unobtrusive update indicator; while
@@ -483,8 +483,10 @@ private struct ScanIssuesStrip: View {
                 ScanIssuesPopover(model: model)
             }
             if model.warnings.suggestFullDiskAccess {
-                Button("Grant Full Disk Access…") {
+                Button {
                     _ = SystemIntegration.prepareAndOpenFullDiskAccessSettings()
+                } label: {
+                    Text("Grant Full Disk Access…").neoFont(11)
                 }
                 .neoControlSize(base: .small)
             }
@@ -621,10 +623,10 @@ private struct LiveScanStrip: View {
             .opacity(isStopped ? 0.5 : 1)
 
             if isStopped {
-                Button("Restart", action: { onResume?() })
+                Button { onResume?() } label: { Text("Restart").neoFont(11) }
                     .neoControlSize(base: .small)
             } else if let onStop {
-                Button("Stop", action: onStop)
+                Button(action: onStop) { Text("Stop").neoFont(11) }
                     .neoControlSize(base: .small)
             }
         }

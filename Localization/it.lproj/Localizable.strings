@@ -502,7 +502,13 @@
 "Reset Tabs" = "Ripristina schede";
 "Percentage" = "Percentuale";
 "More tabs" = "Altre schede";
-"This is part of an app or plug-in, which needs it to work. Move the whole app or plug-in instead." = "Fa parte di un’app o di un plug-in che ne ha bisogno per funzionare. Sposta invece l’intera app o il plug-in.";
 "It's locked. Unlock it in Get Info to move it." = "È bloccato. Sbloccalo in Ottieni informazioni per spostarlo.";
 "Moved 1 item to the Trash." = "1 elemento spostato nel Cestino.";
 "Moved %lld items to the Trash." = "%lld elementi spostati nel Cestino.";
+
+/* Cleanup: partly refused additions, packages */
+"Added 1 item." = "1 elemento aggiunto.";
+"Added %lld items." = "%lld elementi aggiunti.";
+"1 item can't go to the Trash. %@" = "1 elemento non può andare nel Cestino. %@";
+"%lld items can't go to the Trash. %@" = "%lld elementi non possono andare nel Cestino. %@";
+"This is inside a package, which Finder shows as one file (an app, a plug-in, a library). Move the whole package instead." = "Si trova all’interno di un pacchetto, che il Finder mostra come un unico file (un’app, un plug-in, una libreria). Sposta invece l’intero pacchetto.";

@@ -14,8 +14,8 @@ public enum TrashRefusal: Sendable, Equatable {
     case unreadableFolder
     /// A name the scan couldn't decode (not UTF-8 on Linux), so its path doesn't lead back to it.
     case undecodableName
-    /// Part of an app or plug-in (macOS): without it the bundle breaks, and its signature with it.
-    case insideAppBundle
+    /// Inside a package (macOS): an app, plug-in or document Finder shows as one file, which breaks without it.
+    case insidePackage
 }
 
 /// The locations Neodisk never moves to the Trash. Only these exact folders and the folders that hold them are
@@ -24,16 +24,26 @@ public struct TrashSafetyPolicy: Sendable {
     /// Standardized paths, compared case-insensitively: APFS is case-insensitive by default, so `/applications`
     /// is `/Applications`. On a case-sensitive volume that only refuses a few more look-alike folders.
     private let protectedPaths: Set<String>
+    /// Every folder above a protected path, so "holds a protected location" is one lookup.
+    private let protectedHolders: Set<String>
     /// The protected folders' device and inode, so a path spelled another way (a firmlink twin, a symlink) is
     /// still recognized.
     private let protectedIdentities: Set<FileIdentity>
 
     public init(protectedPaths: [String], protectedIdentities: Set<FileIdentity> = []) {
         var paths = Set<String>()
+        var holders = Set<String>()
         for path in protectedPaths where !path.isEmpty {
-            paths.insert(Self.key(path))
+            let key = Self.key(path)
+            paths.insert(key)
+            var holder = key
+            while let slash = holder.lastIndex(of: "/"), holder != "/" {
+                holder = slash == holder.startIndex ? "/" : String(holder[..<slash])
+                holders.insert(holder)
+            }
         }
         self.protectedPaths = paths
+        self.protectedHolders = holders
         self.protectedIdentities = protectedIdentities
     }
 
@@ -87,35 +97,126 @@ public struct TrashSafetyPolicy: Sendable {
         return TrashSafetyPolicy(protectedPaths: paths, protectedIdentities: identities)
     }
 
-    /// Nil when the node may go to the Trash. `scanRootID` is the root of the scan on screen.
-    public func refusal(for node: FileNodeRecord, scanRootID: String) -> TrashRefusal? {
+    /// Nil when the node may go to the Trash. `scanRootID` is the root of the scan on screen; `store`, when given,
+    /// adds the packages the scan recognized above the node (Finder's bundle bit, not only known extensions).
+    public func refusal(for node: FileNodeRecord, scanRootID: String, in store: FileTreeStore? = nil) -> TrashRefusal? {
+        refusal(for: node, scanRootID: scanRootID, in: store, folder: Self.lookUpFolder)
+    }
+
+    /// `refusal(for:scanRootID:in:)` for a large selection: each folder is looked at once, not once per item.
+    public func refusals(
+        for nodes: [FileNodeRecord],
+        scanRootID: String,
+        in store: FileTreeStore? = nil
+    ) -> [TrashRefusal?] {
+        var folders: [String: FolderLookup] = [:]
+        return nodes.map { node in
+            refusal(for: node, scanRootID: scanRootID, in: store) { path in
+                if let known = folders[path] { return known }
+                let lookup = Self.lookUpFolder(path)
+                folders[path] = lookup
+                return lookup
+            }
+        }
+    }
+
+    private func refusal(
+        for node: FileNodeRecord,
+        scanRootID: String,
+        in store: FileTreeStore?,
+        folder: (String) -> FolderLookup
+    ) -> TrashRefusal? {
         if node.isSynthetic { return .notAFile }
         if node.id == scanRootID { return .scanRoot }
         if node.path.contains("\u{FFFD}") { return .undecodableName }
         if node.isDirectory, !node.isSelfAccessible { return .unreadableFolder }
-        return refusal(forPath: node.path, identity: node.isDirectory ? node.fileIdentity : nil)
+        let identity = node.isDirectory ? node.fileIdentity : nil
+        if let refusal = refusal(forPath: node.path, identity: identity, folder: folder) {
+            return refusal
+        }
+        var ancestor = store?.parent(of: node.id)
+        while let holder = ancestor {
+            if holder.isPackage { return .insidePackage }
+            ancestor = store?.parent(of: holder.id)
+        }
+        return nil
     }
 
     /// The path-only part of `refusal(for:scanRootID:)`, also run right before each move.
     public func refusal(forPath rawPath: String, identity: FileIdentity?) -> TrashRefusal? {
-        let path = Self.standardized(rawPath)
-        if let refusal = lexicalRefusal(path, identity: identity) { return refusal }
-        // A scan reached through a symlink (/tmp, a linked folder) spells paths unlike the mount table: check the
-        // item again under its parent's real path, or a folder holding a mounted volume would pass.
-        guard let resolved = Self.resolvingParent(of: path), resolved != path else { return nil }
-        return lexicalRefusal(resolved, identity: nil)
+        refusal(forPath: rawPath, identity: identity, folder: Self.lookUpFolder)
     }
 
-    private func lexicalRefusal(_ path: String, identity: FileIdentity?) -> TrashRefusal? {
-        if Self.isInsideTrash(path) { return .alreadyInTrash }
-        if Self.isInsideAppBundle(path) { return .insideAppBundle }
-        let key = Self.key(path)
+    private func refusal(
+        forPath rawPath: String,
+        identity: FileIdentity?,
+        folder lookUp: (String) -> FolderLookup
+    ) -> TrashRefusal? {
+        let path = Self.standardized(rawPath)
+        guard path != "/", let slash = path.lastIndex(of: "/") else {
+            return protectedRefusal(key: "/", identity: identity)
+        }
+        let name = String(path[path.index(after: slash)...])
+        let folder = lookUp(slash == path.startIndex ? "/" : String(path[..<slash]))
+        if let refusal = refusal(name: name, in: folder.spelled, identity: identity) { return refusal }
+        // A scan reached through a symlink (/tmp, a linked folder) spells paths unlike the mount table: check the
+        // item again under its folder's real path, or a folder holding a mounted volume would pass.
+        return folder.real.flatMap { refusal(name: name, in: $0, identity: nil) }
+    }
+
+    private func refusal(name: String, in folder: Folder, identity: FileIdentity?) -> TrashRefusal? {
+        if folder.isInsideTrash || Self.isTrashName(name[...], inLocalShare: folder.isLocalShare) {
+            return .alreadyInTrash
+        }
+        if folder.isInsidePackage { return .insidePackage }
+        let key = (folder.key == "/" ? "" : folder.key) + "/" + name.lowercased()
+        return protectedRefusal(key: key, identity: identity)
+    }
+
+    private func protectedRefusal(key: String, identity: FileIdentity?) -> TrashRefusal? {
         if protectedPaths.contains(key) { return .protectedLocation }
         if let identity, protectedIdentities.contains(identity) { return .protectedLocation }
         // A folder that holds a protected location takes it along.
-        let prefix = key == "/" ? "/" : key + "/"
-        if protectedPaths.contains(where: { $0.hasPrefix(prefix) }) { return .protectedLocation }
+        if protectedHolders.contains(key) { return .protectedLocation }
         return nil
+    }
+
+    // MARK: - Folders
+
+    /// What the checks know about the folder holding an item, the same for all its items.
+    struct Folder {
+        /// Standardized and lowercased.
+        let key: String
+        /// The folder is a Trash or inside one.
+        let isInsideTrash: Bool
+        /// The folder is a package or inside one: what's inside goes with the whole package or not at all.
+        let isInsidePackage: Bool
+        /// `~/.local/share`, where `Trash` is the Trash.
+        let isLocalShare: Bool
+
+        init(standardizedPath path: String) {
+            let components = path.split(separator: "/")
+            var isInsideTrash = false
+            var isInsidePackage = false
+            for (index, component) in components.enumerated() {
+                let inLocalShare = index >= 2 && components[index - 1] == "share" && components[index - 2] == ".local"
+                isInsideTrash = isInsideTrash || TrashSafetyPolicy.isTrashName(component, inLocalShare: inLocalShare)
+                isInsidePackage = isInsidePackage || TrashSafetyPolicy.isPackageName(component)
+            }
+            let count = components.count
+            key = path.lowercased()
+            self.isInsideTrash = isInsideTrash
+            self.isInsidePackage = isInsidePackage
+            isLocalShare = count >= 2 && components[count - 1] == "share" && components[count - 2] == ".local"
+        }
+    }
+
+    /// The folder as spelled, and under its real path when a symlink makes that differ.
+    typealias FolderLookup = (spelled: Folder, real: Folder?)
+
+    static func lookUpFolder(_ path: String) -> FolderLookup {
+        let real = realPath(path).map(standardized).flatMap { $0 == path ? nil : Folder(standardizedPath: $0) }
+        return (Folder(standardizedPath: path), real)
     }
 
     // MARK: - Lists
@@ -164,31 +265,22 @@ public struct TrashSafetyPolicy: Sendable {
         }
     }
 
-    static func isInsideTrash(_ path: String) -> Bool {
-        let components = path.split(separator: "/", omittingEmptySubsequences: true)
-        for (index, component) in components.enumerated() {
-            if component == ".Trash" || component == ".Trashes" || component.hasPrefix(".Trash-") {
-                return true
-            }
-            if component == "Trash", index >= 2,
-               components[index - 1] == "share", components[index - 2] == ".local" {
-                return true
-            }
-        }
-        return false
+    static func isTrashName(_ component: Substring, inLocalShare: Bool) -> Bool {
+        component == ".Trash" || component == ".Trashes" || component.hasPrefix(".Trash-")
+            || (component == "Trash" && inLocalShare)
     }
 
-    /// Code bundles: what's inside one goes with the whole bundle or not at all.
-    static let appBundleExtensions: Set<String> = [
+    /// Code bundles, refused even where the system doesn't register their extension as a package.
+    static let codeBundleExtensions: Set<String> = [
         "app", "appex", "bundle", "component", "framework", "kext", "plugin", "systemextension", "xpc",
     ]
 
-    static func isInsideAppBundle(_ path: String) -> Bool {
+    /// A folder name the system calls a package (the scanner's verdict by extension), or a code bundle's.
+    static func isPackageName(_ component: Substring) -> Bool {
         #if os(macOS)
-        return path.split(separator: "/").dropLast().contains { component in
-            guard let dot = component.lastIndex(of: "."), dot != component.startIndex else { return false }
-            return appBundleExtensions.contains(component[component.index(after: dot)...].lowercased())
-        }
+        guard let dot = component.lastIndex(of: "."), dot != component.startIndex else { return false }
+        return codeBundleExtensions.contains(component[component.index(after: dot)...].lowercased())
+            || PackageExtensionCatalog.shared.isPackageName(String(component))
         #else
         return false
         #endif
@@ -236,14 +328,6 @@ public struct TrashSafetyPolicy: Sendable {
             }
         }
         return "/" + components.joined(separator: "/")
-    }
-
-    /// The item under its parent's real path; the item itself stays unresolved, since a symlink goes as itself.
-    static func resolvingParent(of path: String) -> String? {
-        guard path != "/" else { return nil }
-        let name = (path as NSString).lastPathComponent
-        guard let parent = realPath((path as NSString).deletingLastPathComponent) else { return nil }
-        return standardized((parent as NSString).appendingPathComponent(name))
     }
 
     private static func realPath(_ path: String) -> String? {

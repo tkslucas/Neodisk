@@ -502,7 +502,13 @@
 "Reset Tabs" = "Réinitialiser les onglets";
 "Percentage" = "Pourcentage";
 "More tabs" = "Autres onglets";
-"This is part of an app or plug-in, which needs it to work. Move the whole app or plug-in instead." = "Cet élément fait partie d’une app ou d’un module qui en a besoin pour fonctionner. Déplacez plutôt l’app ou le module en entier.";
 "It's locked. Unlock it in Get Info to move it." = "Il est verrouillé. Déverrouillez-le dans Lire les informations pour le déplacer.";
 "Moved 1 item to the Trash." = "1 élément placé dans la Corbeille.";
 "Moved %lld items to the Trash." = "%lld éléments placés dans la Corbeille.";
+
+/* Cleanup: partly refused additions, packages */
+"Added 1 item." = "1 élément ajouté.";
+"Added %lld items." = "%lld éléments ajoutés.";
+"1 item can't go to the Trash. %@" = "1 élément ne peut pas aller dans la Corbeille. %@";
+"%lld items can't go to the Trash. %@" = "%lld éléments ne peuvent pas aller dans la Corbeille. %@";
+"This is inside a package, which Finder shows as one file (an app, a plug-in, a library). Move the whole package instead." = "Cet élément se trouve dans un paquet, que le Finder affiche comme un seul fichier (une app, un module, une bibliothèque). Déplacez plutôt le paquet en entier.";

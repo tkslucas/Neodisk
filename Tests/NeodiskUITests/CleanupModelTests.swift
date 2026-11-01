@@ -1,7 +1,7 @@
 import AppKit
 import Foundation
 import Testing
-import NeodiskKit
+@testable import NeodiskKit
 import NeodiskAppModel
 @testable import NeodiskUI
 
@@ -125,6 +125,12 @@ import NeodiskAppModel
         #expect(model.cleanup.mark(for: environment.path("keep.txt")) == .none)
         #expect(model.cleanup.mark(for: old.id).hoverText != nil)
         #expect(CleanupModel.Mark.none.hoverText == nil)
+        // Already in with its folder: nothing to add, and ⌘⌫ says why instead of doing nothing.
+        let inside = try #require(store.node(id: environment.path("Old/Deep/b.bin")))
+        #expect(!model.canToggleCleanup(for: inside))
+        model.cleanup.toggle(inside)
+        #expect(model.cleanup.itemIDs == [old.id])
+        #expect(model.cleanup.notice?.kind == .refused)
 
         // A drag carries the node and its file URL, for the tree on screen only.
         let item = try #require(NodeDragSource.pasteboardItem(forNodeID: environment.path("keep.txt"), model: model))
@@ -153,6 +159,38 @@ import NeodiskAppModel
         // What's inside a protected folder can go.
         model.cleanup.add([try #require(store.node(id: environment.path("System Stuff/x.bin")))])
         #expect(model.cleanup.itemIDs == [environment.path("System Stuff/x.bin")])
+    }
+
+    @Test func aPartlyRefusedSelectionSaysWhatDidntJoin() async throws {
+        let environment = try Environment()
+        defer { environment.tearDown() }
+        for name in ["a.bin", "b.bin", "c.bin", "Keep1/x.bin", "Keep2/y.bin", "Notes.rtfd/TXT.rtf"] {
+            try environment.write(name, bytes: 10)
+        }
+        let model = environment.makeModel(protecting: [environment.path("Keep1"), environment.path("Keep2")])
+        // Packages opened as folders (the Settings option), so what's inside one is in the tree.
+        var options = ScanOptions()
+        options.treatPackagesAsDirectories = true
+        var finished: ScanSnapshot?
+        for try await event in ScanEngine().scan(target: ScanTarget(url: environment.root), options: options) {
+            if case .finished(let snapshot) = event { finished = snapshot }
+        }
+        model.coordinator.replaceCurrentSnapshot(try #require(finished))
+        let store = try #require(model.store)
+        let nodes = try ["a.bin", "Keep1", "b.bin", "Keep2", "c.bin"].map { try #require(store.node(id: environment.path($0))) }
+
+        model.cleanup.add(nodes)
+        #expect(model.cleanup.itemIDs.count == 3)
+        let reason = TrashRefusal.protectedLocation.localizedReason
+        #expect(model.cleanup.notice?.kind == .refused)
+        #expect(model.cleanup.notice?.text == "Added 3 items. 2 items can't go to the Trash. " + reason)
+
+        // Inside a package is refused, with that reason alone; the package itself can go.
+        let inside = try #require(store.node(id: environment.path("Notes.rtfd/TXT.rtf")))
+        model.cleanup.add([inside])
+        #expect(model.cleanup.notice?.text == TrashRefusal.insidePackage.localizedReason)
+        model.cleanup.add([try #require(store.node(id: environment.path("Notes.rtfd")))])
+        #expect(model.cleanup.itemIDs.count == 4)
     }
 
     @Test func cancellingTheConfirmationMovesNothing() async throws {
@@ -215,6 +253,22 @@ import NeodiskAppModel
         #expect(!model.canToggleCleanup(for: node))
     }
 
+    @Test func aStoppedScanAsksForARescanNotForPatience() async throws {
+        let environment = try Environment()
+        defer { environment.tearDown() }
+        try environment.write("a.bin", bytes: 10)
+        let model = environment.makeModel()
+        let full = try await environment.scan()
+        let stopped = ScanSnapshot(
+            target: full.target, treeStore: full.treeStore, startedAt: full.startedAt, finishedAt: nil,
+            scanWarnings: [], aggregateStats: full.aggregateStats, isComplete: false
+        )
+        model.coordinator.replaceCurrentSnapshot(stopped)
+        #expect(!model.coordinator.isScanning)
+        let reason = try #require(model.cleanup.unavailableReason)
+        #expect(reason.contains("Rescan"))
+    }
+
     @Test func aRemovalPersistsWithoutReplacingThePreviousScan() async throws {
         let environment = try Environment()
         defer { environment.tearDown() }
@@ -235,6 +289,68 @@ import NeodiskAppModel
         #expect(saved.treeStore.node(id: environment.path("b.bin")) != nil)
         // The scan saved before stays the latest's baseline: nothing rotated into the previous slot.
         #expect(await environment.cache.loadPreviousSnapshot(for: snapshot.target) == nil)
+    }
+
+    @Test func theChangesListCatchesUpWithAMove() async throws {
+        let environment = try Environment()
+        defer { environment.tearDown() }
+        try environment.write("a.bin", bytes: 10)
+        try environment.write("b.bin", bytes: 10)
+        try await environment.cache.save(try await environment.scan())
+        try environment.write("c.bin", bytes: 20)
+        let snapshot = try await environment.scan()
+        try await environment.cache.save(snapshot)
+        // The diff of these two scans is on disk, as after any scan.
+        _ = await environment.cache.comparison(for: snapshot, entryLimit: ChangesModel.entryLimit)
+        SidebarFolderStore(defaults: environment.defaults).add(snapshot.target)
+        let model = environment.makeModel()
+        try await waitUntil("previous scan indexed") {
+            model.session.cachedScanInfo[snapshot.target.id]?.hasPreviousSnapshot == true
+        }
+        model.coordinator.replaceCurrentSnapshot(snapshot)
+        let moved = try #require(model.store?.node(id: environment.path("a.bin")))
+        model.cleanup.add([moved])
+
+        // The pane reloads the moment the cut tree lands, before its save is written.
+        let (release, releaser) = AsyncStream<Void>.makeStream()
+        await environment.cache.setEncodeGateForTesting { for await _ in release {} }
+        await awaitSnapshotPersist(on: model, of: snapshot.target) {
+            model.cleanup.moveAllToTrash()
+            Task { @MainActor in
+                try await waitUntil("cut on screen") { model.store?.node(id: moved.id) == nil }
+                model.changes.loadIfNeeded()
+                try await waitUntil("list loaded") { model.changes.list != nil }
+                releaser.finish()
+            }
+        }
+        model.changes.loadIfNeeded()
+        try await waitUntil("the move shows as a deletion") {
+            model.changes.list?.deletedEntries.map(\.path).contains(moved.path) == true
+        }
+    }
+
+    @Test func duplicateResultsDropWhatWasMovedInsteadOfResetting() async throws {
+        let environment = try Environment()
+        defer { environment.tearDown() }
+        for name in ["one.bin", "two.bin", "three.bin"] {
+            try Data(repeating: 9, count: 1_100_000).write(to: environment.root.appending(path: name))
+        }
+        let model = environment.makeModel()
+        let snapshot = try await environment.scan()
+        model.coordinator.replaceCurrentSnapshot(snapshot)
+        model.duplicates.startScan()
+        try await waitUntil("duplicates found") { model.duplicates.results?.groups.count == 1 }
+        let moved = try #require(model.store?.node(id: environment.path("three.bin")))
+        model.cleanup.add([moved])
+
+        await awaitSnapshotPersist(on: model, of: snapshot.target) {
+            model.cleanup.moveAllToTrash()
+        }
+        // What the tab does when a new tree lands.
+        model.duplicates.loadIfNeeded()
+        try await waitUntil("the group lost the moved copy") {
+            model.duplicates.results?.groups.first?.nodeIDs == [environment.path("one.bin"), environment.path("two.bin")]
+        }
     }
 
     @Test func aSystemErrorMidBatchKeepsThatItemAndMovesTheRest() async throws {
@@ -263,6 +379,39 @@ import NeodiskAppModel
         #expect(FileManager.default.fileExists(atPath: lockedPath))
         #expect(model.cleanup.itemIDs == [lockedPath])
         #expect(model.cleanup.failures[lockedPath] != nil)
+    }
+
+    @Test func aFailureReasonSurvivesVisitingAnotherLocation() async throws {
+        let environment = try Environment()
+        defer { environment.tearDown() }
+        try environment.write("A/stuck.bin", bytes: 100)
+        try environment.write("B/other.bin", bytes: 100)
+        let model = environment.makeModel()
+        model.cleanup.trashItem = { _ in throw CocoaError(.fileWriteNoPermission) }
+        func scan(_ folder: String) async throws -> ScanSnapshot {
+            var finished: ScanSnapshot?
+            let target = ScanTarget(url: environment.root.appending(path: folder, directoryHint: .isDirectory))
+            for try await event in ScanEngine().scan(target: target, options: ScanOptions()) {
+                if case .finished(let snapshot) = event { finished = snapshot }
+            }
+            return try #require(finished)
+        }
+        let a = try await scan("A")
+        let b = try await scan("B")
+        let stuck = environment.path("A/stuck.bin")
+
+        model.coordinator.replaceCurrentSnapshot(a)
+        model.cleanup.add([try #require(a.treeStore.node(id: stuck))])
+        model.cleanup.moveAllToTrash()
+        try await waitUntil("move failed") { model.cleanup.failures[stuck] != nil && !model.cleanup.isMoving }
+        model.coordinator.replaceCurrentSnapshot(b)
+        model.cleanup.add([try #require(b.treeStore.node(id: environment.path("B/other.bin")))])
+        // Any tree change of B (an expansion, a move) reconciles its pile.
+        model.coordinator.replaceCurrentSnapshot(b)
+        model.coordinator.replaceCurrentSnapshot(a)
+
+        #expect(model.cleanup.itemIDs == [stuck])
+        #expect(model.cleanup.failures[stuck] != nil)
     }
 
     @Test func aRescanThatReplacesACollectedItemDropsIt() async throws {

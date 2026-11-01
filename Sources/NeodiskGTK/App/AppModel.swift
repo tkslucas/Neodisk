@@ -683,19 +683,11 @@ extension AppModel {
     /// land somewhere that still exists (`display` keeps them when they do).
     private func moveOffRemoved(_ nodeID: String, in store: FileTreeStore) {
         let removed: Set<String> = [nodeID]
-        func survivor(of id: String) -> String? {
-            var cursor = store.node(id: id)
-            while let node = cursor, store.isNodeOrDescendant(node.id, of: removed) {
-                cursor = store.parent(of: node.id)
-            }
-            return cursor?.id
+        if let focusID, let kept = store.survivor(of: focusID, removing: removed), kept != focusID {
+            self.focusID = kept == store.rootID ? nil : kept
         }
-        if let focusID, store.isNodeOrDescendant(focusID, of: removed) {
-            let fallback = survivor(of: focusID)
-            self.focusID = fallback == store.rootID ? nil : fallback
-        }
-        if let selectedNodeID, store.isNodeOrDescendant(selectedNodeID, of: removed) {
-            self.selectedNodeID = survivor(of: selectedNodeID)
+        if let selectedNodeID, let kept = store.survivor(of: selectedNodeID, removing: removed), kept != selectedNodeID {
+            self.selectedNodeID = kept
         }
         if let hoveredNodeID, store.isNodeOrDescendant(hoveredNodeID, of: removed) {
             self.hoveredNodeID = nil

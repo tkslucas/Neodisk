@@ -679,8 +679,9 @@ final class ScanSessionModel {
               }).value else { return }
         // The location may have come back on screen while the cut ran; the on-screen path owns it then.
         guard coordinator.snapshot?.target.id != target.id else {
-            await coordinator.removeNodes(ids: ids, fromTargetID: target.id)
-            persistSplicedSnapshot(rotatesPrevious: false)
+            if await coordinator.removeNodes(ids: ids, fromTargetID: target.id) {
+                persistSplicedSnapshot(rotatesPrevious: false)
+            }
             return
         }
         if coordinator.recentSnapshot(forTargetID: target.id) != nil {
@@ -716,6 +717,8 @@ final class ScanSessionModel {
                 } else {
                     // Content-identical rescan: the previous slot still describes the right generation.
                     self?.diff.snapshotWasRestored(for: snapshot.target)
+                    // A removal rewrote the latest in place: a list loaded before the write is the old diff.
+                    if !rotatesPrevious { self?.changes.snapshotWasRotated(for: snapshot.target) }
                 }
                 // Kind stats ride along so the next restore of this
                 // snapshot starts with a colored map.

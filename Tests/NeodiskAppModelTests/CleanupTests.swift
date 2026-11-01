@@ -70,4 +70,62 @@ import NeodiskKit
         #expect(changed == 2)
         #expect(pile.itemIDs == ["/data/c"])
     }
+
+    @Test func viewsOnARemovedItemLandOnTheFolderAboveTheOutermostCut() {
+        func folder(_ path: String, _ children: [FileNodeRecord]) -> FileNodeRecord {
+            FileNodeRecord.directory(
+                id: path, url: URL(filePath: path, directoryHint: .isDirectory),
+                name: (path as NSString).lastPathComponent, children: children, lastModified: nil,
+                fileIdentity: nil, linkCount: 1, isPackage: false, isAccessible: true
+            )
+        }
+        let leaf = file("x/y/leaf", size: 1)
+        let y = folder("/data/x/y", [leaf])
+        let x = folder("/data/x", [y])
+        let root = folder("/data", [x])
+        let store = FileTreeStore(root: root, childrenByID: [root.id: [x], x.id: [y], y.id: [leaf]])
+
+        #expect(store.survivor(of: leaf.id, removing: [y.id]) == x.id)
+        #expect(store.survivor(of: leaf.id, removing: [y.id, x.id]) == root.id)
+        #expect(store.survivor(of: y.id, removing: [leaf.id]) == y.id)
+        #expect(store.survivor(of: "/elsewhere", removing: [y.id]) == nil)
+    }
+
+    /// A large selection (⌘A on a big list) adds in one top-level pass, not a walk of the pile per item.
+    @Test func fiftyThousandIDsAddWithinABudget() {
+        var folders: [FileNodeRecord] = []
+        var childrenByID: [String: [FileNodeRecord]] = [:]
+        for f in 0..<100 {
+            let files = (0..<500).map { file("d\(f)/f\($0)", size: 1) }
+            let folder = FileNodeRecord.directory(
+                id: "/data/d\(f)", url: URL(filePath: "/data/d\(f)", directoryHint: .isDirectory), name: "d\(f)",
+                children: files, lastModified: nil, fileIdentity: nil, linkCount: 1, isPackage: false,
+                isAccessible: true
+            )
+            folders.append(folder)
+            childrenByID[folder.id] = files
+        }
+        let root = FileNodeRecord.directory(
+            id: "/data", url: URL(filePath: "/data", directoryHint: .isDirectory), name: "data", children: folders,
+            lastModified: nil, fileIdentity: nil, linkCount: 1, isPackage: false, isAccessible: true
+        )
+        childrenByID[root.id] = folders
+        let store = FileTreeStore(root: root, childrenByID: childrenByID)
+        let fileIDs = childrenByID.filter { $0.key != root.id }.values.flatMap { $0.map(\.id) }
+        #expect(fileIDs.count == 50_000)
+
+        var pile = CleanupPile()
+        let clock = ContinuousClock()
+        let elapsed = clock.measure {
+            pile.add(fileIDs, in: store)
+            // Re-adding is a no-op; a folder then absorbs its 500 files.
+            pile.add(fileIDs, in: store)
+            pile.add(["/data/d0"], in: store)
+            _ = pile.reconcile(with: store)
+            for id in fileIDs { _ = pile.collectedItem(containing: id, in: store) }
+        }
+        #expect(pile.itemIDs.count == 49_501)
+        #expect(pile.collectedItem(containing: "/data/d0/f7", in: store) == "/data/d0")
+        #expect(elapsed < .seconds(2), "\(elapsed)")
+    }
 }

@@ -35,7 +35,6 @@ final class CleanupModel {
     @ObservationIgnored private var cachedPolicy: TrashSafetyPolicy?
     @ObservationIgnored private var mountObserver: AnyCancellable?
     @ObservationIgnored private var noticeTask: Task<Void, Never>?
-    @ObservationIgnored private var moveTask: Task<Void, Never>?
     /// Test seams.
     @ObservationIgnored var trashItem: TrashMover.TrashItem = TrashMover.systemTrash
     @ObservationIgnored var makePolicy: @Sendable () -> TrashSafetyPolicy = { TrashSafetyPolicy.live() }
@@ -139,8 +138,11 @@ final class CleanupModel {
         if !snapshot.source.isPersistable {
             return NSLocalizedString("This scan was opened from a file, so its items can't be moved.", comment: "Cleanup unavailable")
         }
-        if coordinator.isScanning || !snapshot.isComplete {
+        if coordinator.isScanning {
             return NSLocalizedString("Wait for the scan to finish.", comment: "Cleanup unavailable")
+        }
+        if !snapshot.isComplete {
+            return NSLocalizedString("This scan was stopped early. Rescan to move items to the Trash.", comment: "Cleanup unavailable")
         }
         return nil
     }
@@ -149,11 +151,12 @@ final class CleanupModel {
     func refusalReason(for node: FileNodeRecord) -> String? {
         if let unavailableReason { return unavailableReason }
         guard let snapshot = coordinator.snapshot else { return nil }
-        return policy.refusal(for: node, scanRootID: snapshot.root.id)?.localizedReason
+        return policy.refusal(for: node, scanRootID: snapshot.root.id, in: snapshot.treeStore)?.localizedReason
     }
 
+    /// False for what's already in, alone or with its folder.
     func canCollect(_ node: FileNodeRecord) -> Bool {
-        refusalReason(for: node) == nil && !isMoving
+        refusalReason(for: node) == nil && !isMoving && !isInsideCollected(node.id)
     }
 
     // MARK: - Editing
@@ -168,32 +171,50 @@ final class CleanupModel {
     func toggle(_ node: FileNodeRecord) {
         if isCollected(node.id) {
             remove([node.id])
+        } else if isInsideCollected(node.id), let text = Mark.inside.hoverText {
+            NSSound.beep()
+            show(Notice(kind: .refused, text: text))
         } else {
             add([node])
         }
     }
 
-    /// Adds what may be collected; a refusal shows its reason under the panel instead.
+    /// Adds what may be collected. What can't go is counted under the panel with the first reason, so a large
+    /// selection never drops items silently.
     func add(_ nodes: [FileNodeRecord]) {
         guard let store, !isMoving else { return }
-        var refused: String?
-        let allowed = nodes.filter { node in
-            if let reason = refusalReason(for: node) {
-                refused = reason
-                return false
-            }
-            return true
+        if let unavailableReason {
+            NSSound.beep()
+            show(Notice(kind: .refused, text: unavailableReason))
+            return
         }
+        let refusals = policy.refusals(for: nodes, scanRootID: store.rootID, in: store)
+        let allowed = zip(nodes, refusals).compactMap { $1 == nil ? $0 : nil }
+        let refusedCount = nodes.count - allowed.count
+        let firstRefusal = refusals.lazy.compactMap { $0 }.first
         var updated = pile
         let added = updated.add(allowed.map(\.id), in: store)
         pile = updated
         for id in added { failures[id] = nil }
-        if let refused, added.isEmpty {
-            NSSound.beep()
-            show(Notice(kind: .refused, text: refused))
-        } else if !added.isEmpty {
-            notice = nil
+        guard let reason = firstRefusal?.localizedReason else {
+            if !added.isEmpty { notice = nil }
+            return
         }
+        NSSound.beep()
+        guard !added.isEmpty || refusedCount > 1 else {
+            show(Notice(kind: .refused, text: reason))
+            return
+        }
+        var parts: [String] = []
+        if !added.isEmpty {
+            parts.append(added.count == 1
+                ? NSLocalizedString("Added 1 item.", comment: "Cleanup notice, some items refused")
+                : String(format: NSLocalizedString("Added %lld items.", comment: "Cleanup notice, some items refused"), added.count))
+        }
+        parts.append(refusedCount == 1
+            ? String(format: NSLocalizedString("1 item can't go to the Trash. %@", comment: "Cleanup notice; the first reason follows"), reason)
+            : String(format: NSLocalizedString("%lld items can't go to the Trash. %@", comment: "Cleanup notice; the first reason follows"), refusedCount, reason))
+        show(Notice(kind: .refused, text: parts.joined(separator: " ")))
     }
 
     func remove(_ ids: [String]) {
@@ -216,7 +237,8 @@ final class CleanupModel {
         guard let snapshot, snapshot.isComplete, var current = piles[snapshot.target.id] else { return }
         let changed = current.reconcile(with: snapshot.treeStore)
         piles[snapshot.target.id] = current.isEmpty ? nil : current
-        failures = failures.filter { snapshot.treeStore.node(id: $0.key) != nil }
+        // Kept while the item is in a pile, this location's or another's.
+        failures = failures.filter { id, _ in piles.values.contains { $0.contains(id) } }
         if changed > 0 {
             show(Notice(kind: .info, text: changed == 1
                 ? NSLocalizedString("1 item changed since you collected it and left Cleanup.", comment: "Cleanup notice")
@@ -262,7 +284,7 @@ final class CleanupModel {
         guard !nodes.isEmpty else { return }
         let confirmation = TrashConfirmation(nodes: nodes, scannedAt: snapshot.finishedAt)
         isConfirming = true
-        moveTask = Task { [weak self] in
+        Task { [weak self] in
             guard let self else { return }
             let confirmed = await self.confirm(confirmation)
             self.isConfirming = false
@@ -318,12 +340,15 @@ final class CleanupModel {
 
         if !gone.isEmpty {
             let goneIDs = gone.map(\.id)
+            // Found duplicates re-run from the hash cache, without reading files, rather than reset with the tree.
+            let rehashesDuplicates = model?.duplicates.results != nil
             if coordinator.snapshot?.target.id == targetID {
                 model?.prepareForRemoval(of: goneIDs, in: snapshot.treeStore)
             }
             if await coordinator.removeNodes(ids: goneIDs, fromTargetID: targetID) {
                 model?.session.persistSplicedSnapshot(rotatesPrevious: false)
-            } else {
+                if rehashesDuplicates { model?.duplicates.startScan() }
+            } else if coordinator.snapshot?.target.id != targetID {
                 // Another location is on screen now: its saved scan still gets the cut.
                 await model?.session.removeNodesFromStoredScan(of: snapshot.target, ids: goneIDs)
             }

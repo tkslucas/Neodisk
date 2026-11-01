@@ -14,6 +14,10 @@ import Testing
         ["link"],
         ["naïve\nline é.txt", "c/clone.bin"],
         ["a/medium.bin", "b", "c"],
+        ["a/medium.bin"],
+        ["b/source.bin"],
+        ["c"],
+        ["a/deep/x/note.md", "a/big.bin", "c/big-link.bin"],
     ]
 
     @Test(arguments: cases.indices)

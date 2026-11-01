@@ -81,6 +81,9 @@ The most used ones; the rest live in `Sources/NeodiskUI/Dev/`.
   not a dot name.
 - Tests that need POSIX behavior get `#if !os(Windows)` with a one-line reason; Windows-only cases live in
   `WindowsPlatformTests`. Symbolic link tests need an elevated shell or Developer Mode.
+- `NEODISK_SCAN_ENGINE=walk|mft|auto` (`diskscan --engine`) forces how directories are read: `mft` reads the NTFS
+  file table for any folder, not only a whole volume (elevated shell). Records the engines disagree on are files
+  being written, whose directory entries lag the file table; compare with `--dump-records`.
 
 ## Product constraints
 

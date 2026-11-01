@@ -144,6 +144,7 @@
 "Reveal in Finder" = "Mostrar en el Finder";
 "Open" = "Abrir";
 "Copy Path" = "Copiar ruta";
+"Path" = "Ruta";
 "Expand Contents" = "Expandir contenido";
 "Show Package Contents" = "Mostrar contenido del paquete";
 "No matches" = "Sin coincidencias";
@@ -322,7 +323,6 @@
 "View" = "Vista";
 "Treemap" = "Mapa de árbol";
 "Sunburst" = "Sunburst";
-"Switch views. Right-click to choose which ones show." = "Cambia de vista. Haz clic derecho para elegir cuáles se muestran.";
 "Cushion Treemap" = "Mapa de árbol acolchado";
 "Flat Treemap" = "Mapa de árbol plano";
 "Smaller Items" = "Elementos más pequeños";
@@ -434,6 +434,7 @@
 "Top %lld of %@ matches" = "Las %lld mejores de %@ coincidencias";
 "Visualization" = "Visualización";
 "%@ free of %@" = "%@ libres de %@";
+"%@ of %@ used" = "%@ de %@ usados";
 "%@ in %@ files" = "%@ en %@ archivos";
 "%@ in %@ file" = "%@ en %@ archivo";
 
@@ -526,3 +527,4 @@
 "Move Right" = "Mover a la derecha";
 "Statistics Tabs" = "Pestañas de estadísticas";
 "Top %@ of %@ files" = "Los %@ primeros de %@ archivos";
+"No files to show" = "No hay archivos que mostrar";

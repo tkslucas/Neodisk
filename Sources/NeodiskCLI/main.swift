@@ -27,7 +27,8 @@ func printUsage(to handle: FileHandle) {
                     [--bench-rescan [--bench-touch <file>]]
 
     Scans a directory tree and reports allocated sizes (hard links counted
-    once, like du). Progress goes to stderr, results to stdout.
+    once, like du; on Windows once per link, like File Explorer). Progress
+    goes to stderr, results to stdout.
 
       --json       machine-readable summary + tree on stdout
       --dump-records  every node with every field, one per line in display
@@ -109,7 +110,11 @@ func parseOptions(_ arguments: [String]) -> CLIOptions? {
 // MARK: - Progress reporting (stderr)
 
 struct ProgressReporter {
+    #if os(Windows)
+    private let isTTY = _isatty(2) != 0
+    #else
     private let isTTY = isatty(STDERR_FILENO) != 0
+    #endif
     private var lastPrintedWidth = 0
     private var lastPrint = ContinuousClock.now
     private var hasPrinted = false

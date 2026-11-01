@@ -68,11 +68,13 @@ struct BottomOutlineTable: NSViewRepresentable {
         let coordinator = context.coordinator
 
         let tableView = OutlineNSTableView()
+        tableView.copyRequested = { [model] in model.copySelection() }
+        tableView.canCopy = { [model] in model.selectionSupportsFileActions }
         tableView.quickLookRequested = { [weak coordinator] in
             coordinator?.toggleQuickLook() ?? false
         }
-        tableView.hierarchyNavigationRequested = { [weak coordinator] direction in
-            coordinator?.navigateHierarchy(direction)
+        tableView.hierarchyNavigationRequested = { [weak coordinator] direction, recursively in
+            coordinator?.navigateHierarchy(direction, recursively: recursively)
         }
         tableView.clickTrackingEnded = { [weak coordinator] in
             coordinator?.resyncSelectionAfterClick()
@@ -97,8 +99,8 @@ struct BottomOutlineTable: NSViewRepresentable {
             column.title = spec.title
             // Numeric columns must not clip, so they scale; Name autoresizes and middle-truncates, so scaling
             // it too would push the numbers off-screen.
-            column.width = spec.identifier == "name" ? spec.width : spec.width * textScale
-            column.minWidth = spec.minWidth * textScale
+            column.width = Self.scaled(spec.width, column: spec.identifier, by: textScale)
+            column.minWidth = Self.scaled(spec.minWidth, column: spec.identifier, by: textScale)
             column.resizingMask = spec.identifier == "name"
                 ? [.autoresizingMask, .userResizingMask]
                 : .userResizingMask
@@ -130,6 +132,7 @@ struct BottomOutlineTable: NSViewRepresentable {
         headerMenu.autoenablesItems = false
         headerMenu.delegate = coordinator
         tableView.headerView?.menu = headerMenu
+        coordinator.scaleHeader(of: tableView, to: textScale)
         coordinator.headerMenu = headerMenu
 
         let scrollView = NSScrollView()
@@ -162,6 +165,19 @@ struct BottomOutlineTable: NSViewRepresentable {
         coordinator.applyColumns(columns)
         coordinator.applySortIndicator(sort)
         coordinator.syncSelection(to: selection)
+    }
+
+    /// The percentage label's width at 100%; its bar doesn't need to grow with the text.
+    static let percentLabelWidth: CGFloat = 36
+
+    /// A column's width at a text scale: numbers grow with the text; the percentage column only by its label;
+    /// Name not at all (it autoresizes into what's left).
+    static func scaled(_ width: CGFloat, column: String, by scale: CGFloat) -> CGFloat {
+        switch column {
+        case "name": width
+        case "percent": width + percentLabelWidth * (scale - 1)
+        default: width * scale
+        }
     }
 
     /// Per-column 100% minimum widths, keyed by identifier — the coordinator
@@ -249,22 +265,25 @@ struct BottomOutlineTable: NSViewRepresentable {
         /// The inset style's margins either side of the columns.
         private static let insetPadding: CGFloat = 20
 
-        /// Shows the layout's columns that fit whole, dropping from the trailing end (Name always stays), so a
-        /// narrow pane never cuts a column mid-value. Not persisted: they come back as room does.
+        /// Which columns a narrow pane keeps longest: Name, then Size, then the rest.
+        private static let fitPriority: [OutlineColumn] = [.name, .size, .percent, .files, .modified]
+
+        /// Shows the layout's columns that fit whole, by `fitPriority` (Name always stays), so a narrow pane
+        /// never cuts a column mid-value. Not persisted: they come back as room does.
         func fitColumns() {
             guard let tableView else { return }
             let spacing = tableView.intercellSpacing.width
             // Before the first layout there's no width to fit: every layout column shows.
             let width = scrollView?.contentView.bounds.width ?? 0
             var room = width > 0 ? width - Self.insetPadding : .greatestFiniteMagnitude
-            var isFull = false
-            for column in tableView.tableColumns {
-                guard let id = OutlineColumn(rawValue: column.identifier.rawValue) else { continue }
+            for id in Self.fitPriority {
+                let index = tableView.column(withIdentifier: .init(id.rawValue))
+                guard index >= 0 else { continue }
+                let column = tableView.tableColumns[index]
                 var shows = !appliedColumns.isHidden(id)
                 if shows {
                     let needed = (id == .name ? column.minWidth : column.width) + spacing
-                    if id != .name, isFull || room < needed {
-                        isFull = true
+                    if id != .name, room < needed {
                         shows = false
                     } else {
                         room -= needed
@@ -273,6 +292,27 @@ struct BottomOutlineTable: NSViewRepresentable {
                 if column.isHidden == shows { column.isHidden = !shows }
             }
             tableView.sizeToFit()
+        }
+
+        /// Header titles grow with the rows, the header's height with them (AppKit's header is a fixed small size).
+        func scaleHeader(of tableView: NSTableView, to scale: CGFloat) {
+            let font = NSFont.systemFont(ofSize: (NSFont.smallSystemFontSize * scale).rounded(), weight: .medium)
+            for column in tableView.tableColumns {
+                // The header draws its attributed title; a plain font change doesn't reach it.
+                let paragraph = NSMutableParagraphStyle()
+                paragraph.alignment = column.headerCell.alignment
+                paragraph.lineBreakMode = .byTruncatingTail
+                column.headerCell.attributedStringValue = NSAttributedString(
+                    string: column.title,
+                    attributes: [.font: font, .foregroundColor: NSColor.headerTextColor, .paragraphStyle: paragraph]
+                )
+            }
+            guard let header = tableView.headerView else { return }
+            let height = max(28, (font.boundingRectForFont.height + 12).rounded())
+            if header.frame.height != height {
+                header.frame.size.height = height
+                tableView.enclosingScrollView?.tile()
+            }
         }
 
         /// Scales current widths rather than the spec, so a column the user widened stays proportionally wide.
@@ -284,14 +324,20 @@ struct BottomOutlineTable: NSViewRepresentable {
             }
             guard scale != appliedTextScale else { return }
             let ratio = scale / appliedTextScale
+            let appliedScaleBefore = appliedTextScale
             appliedTextScale = scale
+            scaleHeader(of: tableView, to: scale)
             for column in tableView.tableColumns {
-                let minimum = (columnMinimums[column.identifier.rawValue] ?? 60) * scale
+                let id = column.identifier.rawValue
+                let minimum = BottomOutlineTable.scaled(columnMinimums[id] ?? 60, column: id, by: scale)
                 column.minWidth = minimum
-                // Name autoresizes into the leftover width; only its floor
-                // moves. See the makeNSView note.
-                let target = column.identifier.rawValue == "name"
-                    ? column.width : column.width * ratio
+                // Name autoresizes into the leftover width; only its floor moves. The percentage column grows by
+                // its label alone. See the makeNSView note.
+                let target = switch id {
+                case "name": column.width
+                case "percent": column.width + BottomOutlineTable.percentLabelWidth * (scale - appliedScaleBefore)
+                default: column.width * ratio
+                }
                 column.width = max(target, minimum)
             }
             fitColumns()
@@ -312,8 +358,41 @@ struct BottomOutlineTable: NSViewRepresentable {
                 && zip(rows, snapshot.rows).allSatisfy { $0.id == $1.id }
             rows = snapshot.rows
             rowIndexByID = snapshot.rowIndexByID
+            maxDepth = rows.lazy.map(\.depth).max() ?? 0
+            updateIndent()
             structuralApplyCount += 1
             selectionSync.whileApplying { tableView?.reloadRows(keepingRowViews: sameRows) }
+        }
+
+        private var maxDepth = 0
+        /// The indentation per level the name cells use.
+        private(set) var indentPerDepth = OutlineRowMetrics.indentPerDepth
+
+        /// A deep tree may indent across at most 40% of the Name column: past that every level indents less
+        /// (down to 4pt, so the hierarchy still reads) and names keep their room. True when it changed.
+        @discardableResult
+        private func updateIndent() -> Bool {
+            let standard = OutlineRowMetrics.indentPerDepth
+            var indent = standard
+            if maxDepth > 0, let tableView,
+               case let index = tableView.column(withIdentifier: .init(OutlineColumn.name.rawValue)), index >= 0 {
+                let budget = tableView.tableColumns[index].width * 0.4
+                indent = max(4, min(standard, (budget / CGFloat(maxDepth)).rounded(.down)))
+            }
+            guard indent != indentPerDepth else { return false }
+            indentPerDepth = indent
+            return true
+        }
+
+        func tableViewColumnDidResize(_ notification: Notification) {
+            guard let tableView, updateIndent() else { return }
+            let nameIndex = tableView.column(withIdentifier: .init(OutlineColumn.name.rawValue))
+            let visible = tableView.rows(in: tableView.visibleRect)
+            guard nameIndex >= 0, visible.length > 0 else { return }
+            tableView.reloadData(
+                forRowIndexes: IndexSet(integersIn: visible.location..<visible.location + visible.length),
+                columnIndexes: [nameIndex]
+            )
         }
 
         /// Reflect the persisted sort into the header arrows. Guarded by
@@ -360,6 +439,12 @@ struct BottomOutlineTable: NSViewRepresentable {
             rows.count
         }
 
+        /// Typing a name selects the next row that starts with it, as in Finder's lists.
+        func tableView(_ tableView: NSTableView, typeSelectStringFor tableColumn: NSTableColumn?, row: Int) -> String? {
+            guard row < rows.count, tableColumn?.identifier.rawValue == "name" else { return nil }
+            return rows[row].node.name
+        }
+
         func tableView(
             _ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int
         ) -> NSView? {
@@ -369,7 +454,8 @@ struct BottomOutlineTable: NSViewRepresentable {
             case "name":
                 return hostedCell(tableView, reuse: "name") { state in
                     OutlineNameSection(
-                        model: model, row: outlineRow, state: state, truncatesName: true, leadingInset: 0
+                        model: model, row: outlineRow, state: state, leadingInset: 0,
+                        indentPerDepth: indentPerDepth
                     )
                 }
             case "percent":
@@ -476,7 +562,7 @@ struct BottomOutlineTable: NSViewRepresentable {
             _ tableView: NSTableView, draggingSession session: NSDraggingSession,
             willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet
         ) {
-            NodeDragSource.sessionDidBegin(model: model)
+            NodeDragSource.tableSessionDidBegin(session, in: tableView, at: screenPoint, model: model)
         }
 
         func tableView(
@@ -492,9 +578,8 @@ struct BottomOutlineTable: NSViewRepresentable {
             guard let tableView,
                   case let row = tableView.clickedRow, row >= 0, row < rows.count else { return }
             let node = rows[row].node
-            guard model.supportsFileActions(node) else { return }
             model.select(node.id)
-            model.reveal(node)
+            model.activate(node)
         }
 
         // MARK: Columns
@@ -577,10 +662,10 @@ struct BottomOutlineTable: NSViewRepresentable {
             return true
         }
 
-        func navigateHierarchy(_ direction: OutlineHierarchyDirection) {
+        func navigateHierarchy(_ direction: OutlineHierarchyDirection, recursively: Bool = false) {
             guard let tableView else { return }
             let performed = OutlineKeyboardNavigation.perform(
-                direction, in: tableView, rows: rows, model: model
+                direction, recursively: recursively, in: tableView, rows: rows, model: model
             )
             if case .selectRow(let row) = performed {
                 scrollToRowVerticalOnly(row)
@@ -630,7 +715,7 @@ private struct SubtreePercentCell: View {
                     : AnyShapeStyle(.secondary))
                 // "100%" at the row font; grows with it so the number
                 // never truncates against the bar.
-                .frame(width: (36 * textScale).rounded(), alignment: .trailing)
+                .frame(width: (BottomOutlineTable.percentLabelWidth * textScale).rounded(), alignment: .trailing)
         }
         .padding(.horizontal, BottomOutlineMetrics.cellPadding)
         .frame(maxHeight: .infinity)

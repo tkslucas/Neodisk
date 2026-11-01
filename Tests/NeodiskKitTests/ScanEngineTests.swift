@@ -27,6 +27,40 @@ import Foundation
         #expect(packageNode.logicalSize >= Int64("binary".utf8.count))
         #expect(snapshot.aggregateStats.fileCount >= 1)
     }
+
+    /// Scans of /Applications raised "prevented from modifying apps": CoreFoundation's package and readable
+    /// keys probe write access. The scan must leave bundles untouched and never ask for write access.
+    @Test func testScanLeavesAppBundlesUntouched() async throws {
+        let forbidden: Set<URLResourceKey> = [.isReadableKey, .isPackageKey]
+        let keySets = [ScanMetadataLoader.scanResourceKeys, ScanMetadataLoader.rootResourceKeys,
+                       ScanMetadataLoader.atomicSummaryResourceKeySet, ScanMetadataLoader.atomicProbeResourceKeySet]
+        #expect(keySets.allSatisfy { $0.isDisjoint(with: forbidden) })
+
+        let rootURL = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+        let packageURL = rootURL.appending(path: "Sample.app", directoryHint: .isDirectory)
+        let binaryURL = packageURL.appending(path: "Contents/MacOS/Binary")
+        try FileManager.default.createDirectory(at: binaryURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("binary".utf8).write(to: binaryURL)
+        let tracked = [packageURL, packageURL.appending(path: "Contents"), binaryURL.deletingLastPathComponent(), binaryURL]
+        func fingerprint() -> [String] {
+            tracked.map { url in
+                var info = stat()
+                _ = lstat(url.path, &info)
+                let xattrs = listxattr(url.path, nil, 0, XATTR_NOFOLLOW)
+                return "\(info.st_ctimespec.tv_sec).\(info.st_ctimespec.tv_nsec) \(info.st_mtimespec.tv_nsec) \(xattrs)"
+            }
+        }
+        let before = fingerprint()
+
+        let parentScan = try await finishedSnapshot(target: ScanTarget(url: rootURL), options: ScanOptions())
+        let packageNode = try #require(rootChildren(in: parentScan).first(where: { $0.name == "Sample.app" }))
+        #expect(packageNode.isPackage && packageNode.isAccessible)
+        let rootScan = try await finishedSnapshot(target: ScanTarget(url: packageURL), options: ScanOptions())
+        #expect(rootScan.root.isPackage && rootScan.root.isSelfAccessible)
+
+        #expect(fingerprint() == before)
+    }
     #endif
 
     @Test func testPackageLeafNodesIncludeNestedPackageContents() async throws {
@@ -351,6 +385,7 @@ import Foundation
         try FileManager.default.createDirectory(at: hiddenFileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data(repeating: 0x1, count: 128).write(to: visibleFileURL)
         try Data(repeating: 0x2, count: 256).write(to: hiddenFileURL)
+        markHiddenOnWindows(hiddenFileURL)
 
         let snapshot = try await finishedSnapshot(
             target: ScanTarget(url: rootURL),
@@ -1121,6 +1156,8 @@ import Foundation
         #expect(snapshot.aggregateStats.fileCount == 1)
     }
 
+    // The Windows walk counts each hard link: directory info has no link count (see WindowsFileInfo).
+    #if !os(Windows)
     @Test func testHardLinkedFilesOnlyCountAllocatedStorageOnce() async throws {
         let rootURL = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -1147,7 +1184,10 @@ import Foundation
         #expect(children.filter { $0.allocatedSize == 0 }.map(\.unduplicatedAllocatedSize).count == 1)
         #expect(children.allSatisfy { $0.unduplicatedAllocatedSize > 0 })
     }
+    #endif
 
+    // The Windows walk counts each hard link: directory info has no link count (see WindowsFileInfo).
+    #if !os(Windows)
     @Test func testParallelTraversalAssignsHardLinkStorageDeterministically() async throws {
         let rootURL = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: rootURL) }
@@ -1205,7 +1245,10 @@ import Foundation
         #expect(snapshot.aggregateStats.totalAllocatedSize == snapshot.root.allocatedSize)
         #expect(snapshot.aggregateStats.fileCount == 2)
     }
+    #endif
 
+    // POSIX root: on Windows `/` is the current drive's root.
+    #if !os(Windows)
     @Test func testScanTargetNormalizesSyntheticRootAliases() {
         let nofollowTarget = ScanTarget(url: URL(filePath: "/.nofollow/Users/example", directoryHint: .isDirectory))
         let resolveTarget = ScanTarget(url: URL(filePath: "/.resolve/System/Volumes/Data", directoryHint: .isDirectory))
@@ -1216,6 +1259,7 @@ import Foundation
         #expect(rootAliasTarget.url.path == "/")
         #expect(rootAliasTarget.kind == .volume)
     }
+    #endif
 
     @Test func testScanTargetResolvesSymlinkRoots() throws {
         let rootURL = try makeTemporaryDirectory()
@@ -2235,6 +2279,7 @@ import Foundation
         for i in 0..<3 {
             let hiddenFileURL = cacheURL.appending(path: ".hidden_\(i).tmp")
             try Data(repeating: 0x7F, count: 32).write(to: hiddenFileURL)
+            markHiddenOnWindows(hiddenFileURL)
         }
 
         var options = ScanOptions(includeHiddenFiles: false)

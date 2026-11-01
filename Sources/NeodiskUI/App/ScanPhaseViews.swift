@@ -144,7 +144,8 @@ private struct ScanProgressContent: View {
             }
 
             if let onStop {
-                Button("Stop Scan", action: onStop)
+                Button(action: onStop) { Text("Stop Scan").neoFont(.body) }
+                    .neoControlSize()
                     .padding(.top, 4)
             }
         }
@@ -201,7 +202,7 @@ struct ScanFailedView: View {
             }
             Button {
                 if let target = model.coordinator.selectedTarget {
-                    model.startScan(target)
+                    model.startScan(target, forcesRescan: true)
                 }
             } label: {
                 Text("Try Again").neoFont(.body)

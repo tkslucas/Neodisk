@@ -76,7 +76,7 @@ struct SunburstPane: View {
                         onNavigateToParent: { model.zoomOut() },
                         onKeyDown: { handleKey($0) },
                         contextMenu: { contextMenu(for: $0) },
-                        emptySpaceMenu: { NSMenu.viewChecklist(model: model) },
+                        emptySpaceMenu: { NSMenu.workspaceLayout(model: model) },
                         cleanup: cleanupInput(rootID: rootID, in: store),
                         cleanupHoverText: { model.cleanup.mark(for: $0).hoverText },
                         dragItems: { segment, location in dragItems(for: segment, at: location, rootID: rootID) },
@@ -547,9 +547,11 @@ struct SunburstPane: View {
 
     /// An item's actions; free and hidden space aren't items, so they get the views checklist like empty space.
     private func contextMenu(for segment: SunburstSegment) -> NSMenu? {
-        if segment.isFreeSpace || segment.isHiddenSpace { return NSMenu.viewChecklist(model: model) }
+        if segment.isFreeSpace || segment.isHiddenSpace { return NSMenu.workspaceLayout(model: model) }
         guard let nodeID = segment.nodeID,
               let node = model.store?.node(id: nodeID) else { return nil }
-        return NSMenu.fileNodeActions(for: node, model: model)
+        let menu = NSMenu.fileNodeActions(for: node, model: model)
+        menu?.addRestoreItems(model: model)
+        return menu
     }
 }

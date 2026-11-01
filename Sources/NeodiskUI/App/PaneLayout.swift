@@ -31,7 +31,8 @@ enum PaneLayout {
     /// ranges shrink before its width goes below this.
     static let mapMinWidth = 300.0
 
-    /// When docking would leave less, the pane floats over the map's trailing edge instead of squeezing it.
+    /// The map's width beside the docked statistics panel at the window's minimum size: room to read it, not
+    /// just to keep it.
     static let mapMinWidthBesideAnalysis = 560.0
 
     /// Minimum height for the map column above a bottom-docked outline:
@@ -47,9 +48,9 @@ enum PaneLayout {
     static func sidebarIdealWidth(scale: Double = 1) -> Double { 250 * scale }
     static func sidebarMaxWidth(scale: Double = 1) -> Double { 320 * scale }
 
-    /// The smallest window still docks the statistics panel beside the map and bottom file list (sidebar shown
-    /// at any width), so the panel never floats over them, up to 1_350pt, what a laptop display shows: past
-    /// that (large text) the panel floats over the map's trailing edge instead.
+    /// The smallest window docks the statistics panel beside a comfortable map and bottom file list (sidebar
+    /// shown at any width), up to 1_350pt, what a laptop display shows: past that (large text) the side panes
+    /// narrow below their text-size minimums instead (see WorkspacePaneMetrics).
     static func windowMinWidth(scale: Double = 1) -> Double {
         // +10: the split view adds its divider and a few points to the sidebar column.
         let docks = sidebarMaxWidth(scale: scale) + 10 + mapMinWidthBesideAnalysis + splitterThickness
@@ -57,6 +58,17 @@ enum PaneLayout {
         return max(900 * damped(scale), min(docks.rounded(.up), 1_350))
     }
     static func windowMinHeight(scale: Double = 1) -> Double { 560 * damped(scale) }
+
+    /// The content minimum, never larger than the screen shows (its visible frame less the title bar and
+    /// toolbar): at large text on a small display the panes squeeze rather than the window running off-screen.
+    static func windowMinSize(scale: Double = 1, screen: CGSize?) -> CGSize {
+        let minimum = CGSize(width: windowMinWidth(scale: scale), height: windowMinHeight(scale: scale))
+        guard let screen else { return minimum }
+        return CGSize(
+            width: min(minimum.width, screen.width - 40),
+            height: min(minimum.height, screen.height - 100)
+        )
+    }
 
     /// A first window takes most of the screen, within bounds where every pane reads well; later launches
     /// restore the user's own size.
@@ -71,15 +83,15 @@ enum PaneLayout {
     private static func damped(_ scale: Double) -> Double { 1 + (scale - 1) * 0.5 }
 }
 
-/// Persisted sizes are clamped on read, never written back, so they return when room does. The analysis
-/// pane concedes first, then the outline; too narrow even for a minimum analysis pane, it floats over the map.
+/// Persisted sizes are clamped on read, never written back, so they return when room does. Side panes always
+/// dock (a pane over the map hid it, and its edge couldn't be dragged): the analysis pane concedes first, then
+/// the outline; where even their minimums leave the map less than `mapMinWidth` (large text in a laptop-sized
+/// window), those minimums shrink together toward their 100% sizes, text truncating before the map goes.
 struct WorkspacePaneMetrics: Equatable {
     var outlineWidth: Double
     var outlineRange: ClosedRange<Double>
     var analysisWidth: Double
     var analysisRange: ClosedRange<Double>
-    /// The analysis pane overlays the map rather than taking room from it.
-    var analysisFloats: Bool
     var bottomOutlineHeight: Double
     var bottomOutlineRange: ClosedRange<Double>
 
@@ -93,25 +105,23 @@ struct WorkspacePaneMetrics: Equatable {
         textScale: Double = 1
     ) {
         let splitter = PaneLayout.splitterThickness
+        let minimums = Self.minimums(
+            available: available.width,
+            showsLeadingOutline: showsLeadingOutline,
+            showsAnalysis: showsAnalysis,
+            textScale: textScale
+        )
 
         // Analysis resolves against the outline's stored (statically clamped)
         // width, then the outline against the analysis's resolved width.
         let outlineFootprint = showsLeadingOutline
             ? storedOutlineWidth.clamped(
-                to: PaneLayout.outlineMinWidth(scale: textScale) ...
-                    PaneLayout.outlineMaxWidth(scale: textScale)
+                to: minimums.outline ... max(minimums.outline, PaneLayout.outlineMaxWidth(scale: textScale))
             ) + splitter
             : 0
 
-        let analysisMin = PaneLayout.analysisMinWidth(scale: textScale)
-        analysisFloats = available.width - outlineFootprint - analysisMin - splitter
-            < PaneLayout.mapMinWidthBesideAnalysis
-
-        // Docked, the pane gives way to the map; floating, only to the
-        // window's own edge.
-        let analysisCap = analysisFloats
-            ? available.width - splitter
-            : available.width - PaneLayout.mapMinWidth - outlineFootprint - splitter
+        let analysisMin = minimums.analysis
+        let analysisCap = available.width - PaneLayout.mapMinWidth - outlineFootprint - splitter
         analysisRange = Self.range(
             min: analysisMin,
             max: PaneLayout.analysisMaxWidth(scale: textScale),
@@ -119,10 +129,10 @@ struct WorkspacePaneMetrics: Equatable {
         )
         analysisWidth = storedAnalysisWidth.clamped(to: analysisRange)
 
-        let analysisFootprint = showsAnalysis && !analysisFloats ? analysisWidth + splitter : 0
+        let analysisFootprint = showsAnalysis ? analysisWidth + splitter : 0
         let outlineCap = available.width - PaneLayout.mapMinWidth - analysisFootprint - splitter
         outlineRange = Self.range(
-            min: PaneLayout.outlineMinWidth(scale: textScale),
+            min: minimums.outline,
             max: PaneLayout.outlineMaxWidth(scale: textScale),
             cap: outlineCap
         )
@@ -135,6 +145,26 @@ struct WorkspacePaneMetrics: Equatable {
             cap: bottomCap
         )
         bottomOutlineHeight = storedBottomOutlineHeight.clamped(to: bottomOutlineRange)
+    }
+
+    /// The side panes' minimums: their text-size ones while those leave the map `mapMinWidth`, else scaled down
+    /// together to fit, but never below their 100% sizes (a smaller text size keeps its own, smaller ones).
+    static func minimums(
+        available: Double,
+        showsLeadingOutline: Bool,
+        showsAnalysis: Bool,
+        textScale: Double
+    ) -> (outline: Double, analysis: Double) {
+        let outline = PaneLayout.outlineMinWidth(scale: textScale)
+        let analysis = PaneLayout.analysisMinWidth(scale: textScale)
+        let outlineFloor = min(outline, PaneLayout.outlineMinWidth())
+        let analysisFloor = min(analysis, PaneLayout.analysisMinWidth())
+        let splitters = Double((showsLeadingOutline ? 1 : 0) + (showsAnalysis ? 1 : 0)) * PaneLayout.splitterThickness
+        let room = available - PaneLayout.mapMinWidth - splitters
+        let wanted = (showsLeadingOutline ? outline : 0) + (showsAnalysis ? analysis : 0)
+        guard wanted > room, wanted > 0 else { return (outline, analysis) }
+        let fit = max(0, room) / wanted
+        return (max(outlineFloor, outline * fit), max(analysisFloor, analysis * fit))
     }
 
     /// At pathological sizes the cap can fall below the minimum; the minimum wins so the range stays valid.

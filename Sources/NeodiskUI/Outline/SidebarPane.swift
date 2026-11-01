@@ -22,6 +22,8 @@ struct SidebarPane: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.neoTextScale) private var textScale
+    /// The window's: removing folders from the sidebar is undoable.
+    @Environment(\.undoManager) private var undoManager
 
     /// Sidebar folders, minus any that duplicate a built-in location.
     private var visibleFolders: [ScanTarget] {
@@ -39,6 +41,8 @@ struct SidebarPane: View {
             if model.isSidebarSectionShown(.cleanup), model.coordinator.snapshot != nil {
                 CleanupPanel(model: model)
                     .layoutPriority(1)
+                    // Its empty drop area answers a right-click like the list's empty space.
+                    .contextMenu { SidebarSectionsMenuItems(model: model) }
             }
         }
     }
@@ -110,9 +114,7 @@ struct SidebarPane: View {
                 progressFor: backgroundScanProgress(forTargetID:)
             )
         }
-        .dropDestination(for: URL.self) { urls, _ in
-            model.addDroppedFolders(urls)
-        }
+        .addLocationDropTarget(model: model)
         .onDeleteCommand {
             removeSelectedFolders()
         }
@@ -225,7 +227,7 @@ struct SidebarPane: View {
             lastScanned: info?.lastScanDate,
             now: now,
             isSelected: selection.contains(target.id),
-            tooltip: SidebarRowText.tooltip(path: target.id, space: space),
+            usage: SidebarRowText.usage(space: space),
             bar: bar,
             scanProgress: backgroundScanProgress(for: target),
             onScanBarFrameChange: updateScanBarFrame,
@@ -273,7 +275,7 @@ struct SidebarPane: View {
             // Refuse removal while a scan is in flight — dropping the cache mid-scan would orphan the session (the
             // model guard backs this). A bulk remove stays live as long as one selected folder is idle.
             Button(ids.count > 1 ? "Remove \(ids.count) Folders from Sidebar" : "Remove from Sidebar") {
-                model.removeSidebarFolders(ids: ids)
+                model.removeSidebarFolders(ids: ids, undoManager: undoManager)
                 selection.subtract(ids)
             }
             .disabled(ids.allSatisfy { isScanning($0) })
@@ -283,7 +285,7 @@ struct SidebarPane: View {
     private func removeSelectedFolders() {
         let ids = selectedFolderIDs
         guard !ids.isEmpty else { return }
-        model.removeSidebarFolders(ids: ids)
+        model.removeSidebarFolders(ids: ids, undoManager: undoManager)
         selection.subtract(ids)
     }
 
@@ -360,8 +362,15 @@ struct SidebarSectionsMenuItems: View {
     let model: NeodiskViewModel
 
     var body: some View {
-        // Local Cloud Files only where there are some.
-        let sections = SidebarSection.allCases.filter { $0 != .cloudFiles || !model.cloudLocations.isEmpty }
+        // A section is offered only where it can show: Local Cloud Files where there are some, Cleanup with a scan
+        // on screen and moving to the Trash allowed.
+        let sections = SidebarSection.allCases.filter { section in
+            switch section {
+            case .cloudFiles: !model.cloudLocations.isEmpty
+            case .cleanup: model.cleanup.isEnabled && model.coordinator.snapshot != nil
+            default: true
+            }
+        }
         ForEach(sections, id: \.self) { section in
             Toggle(LocalizedStringKey(section.titleKey), isOn: Binding(
                 get: { model.isSidebarSectionShown(section) },

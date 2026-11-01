@@ -578,7 +578,7 @@ nonisolated final class ScanTraversal {
         var batch = DirectoryLeafBatch()
         batch.nodes.reserveCapacity(entries.count)
         batch.pendingChildWorkItems.reserveCapacity(min(entries.count, 64))
-        var seenNodeIDs = Set<String>()
+        var seenNodeIDs = Set<String>(minimumCapacity: entries.count)
 
         for (offset, entry) in entries.reversed().enumerated() {
             if offset.isMultiple(of: 256) {
@@ -811,8 +811,8 @@ nonisolated final class ScanTraversal {
 
         // Check if this directory should be summarized as atomic (many small files)
         let minDepth = options.tuning.autoSummarizeMinDepthForSummarization ?? AtomicDirectoryThresholds.minDepthForSummarization
-        let isNodeDependencyLayout = AtomicDirectorySummarizer.isNodeDependencyLayoutDirectory(at: item.url)
-        let isKnownGeneratedDirectory = AtomicDirectorySummarizer.isKnownGeneratedDirectory(at: item.url)
+        let isNodeDependencyLayout = AtomicDirectorySummarizer.isNodeDependencyLayoutDirectory(atPath: item.path)
+        let isKnownGeneratedDirectory = AtomicDirectorySummarizer.isKnownGeneratedDirectory(atPath: item.path)
         let canProbeForAutoSummary =
             item.depth >= minDepth ||
             (item.depth >= 1 && isNodeDependencyLayout) ||

@@ -71,6 +71,15 @@ nonisolated struct PayloadReader: LittleEndianByteReading {
         )
     }
 
+    mutating func readStringBytes(appendingTo bytes: inout [UInt8]) throws {
+        let count = Int(try readUInt32())
+        guard remainingByteCount >= count else {
+            throw ScanSnapshotCacheError.corruptData("unexpected end of data")
+        }
+        defer { offset += count }
+        bytes.append(contentsOf: UnsafeRawBufferPointer(rebasing: buffer[offset..<(offset + count)]))
+    }
+
     mutating func readBytes(count: Int) throws -> Data {
         guard count >= 0, remainingByteCount >= count else {
             throw ScanSnapshotCacheError.corruptData("unexpected end of data")

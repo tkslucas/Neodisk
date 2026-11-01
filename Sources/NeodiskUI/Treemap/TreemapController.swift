@@ -575,9 +575,11 @@ final class TreemapController {
     func contextMenu(at point: CGPoint) -> NSMenu? {
         guard let model, model.store != nil else { return nil }
         guard let cell = cell(at: point), let node = model.store?.node(id: cell.nodeID) else {
-            return NSMenu.viewChecklist(model: model)
+            return NSMenu.workspaceLayout(model: model)
         }
-        return NSMenu.fileNodeActions(for: node, model: model, includeCleanup: cell.aggregate == nil)
+        let menu = NSMenu.fileNodeActions(for: node, model: model, includeCleanup: cell.aggregate == nil)
+        menu?.addRestoreItems(model: model)
+        return menu
     }
 
     /// Spacebar Quick Look for the treemap: previews the selected node, so

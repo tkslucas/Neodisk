@@ -121,7 +121,7 @@ import Foundation
                 group.addTask {
                     try await executor.run { _, _ in
                         gauge.enter()
-                        usleep(2_000)
+                        Thread.sleep(forTimeInterval: 0.002)
                         gauge.leave()
                     }
                 }

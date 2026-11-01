@@ -62,8 +62,6 @@
 "Purgeable space, local snapshots, and files the scan could not see." = "Bereinigbarer Speicher, lokale Schnappschüsse und Dateien, die der Scan nicht sehen konnte.";
 "%@ smaller items in %@" = "%@ kleinere Elemente in %@";
 "Hover the treemap or select a row to inspect an item." = "Bewege den Zeiger über die Treemap oder wähle eine Zeile, um ein Element zu untersuchen.";
-"Show Status Bar" = "Statusleiste einblenden";
-"Hide Status Bar" = "Statusleiste ausblenden";
 
 /* MARK: - Settings: sections & controls */
 "General" = "Allgemein";

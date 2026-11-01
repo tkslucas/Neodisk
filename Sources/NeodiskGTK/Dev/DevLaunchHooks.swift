@@ -37,7 +37,7 @@ enum DevLaunchHooks {
             })
         }
 
-        // NEODISK_POPUP=primary|sections|status: that menu opens once the scan is on screen.
+        // NEODISK_POPUP=primary|sections|status|views: that menu opens once the scan is on screen.
         if let menu = environment["NEODISK_POPUP"] {
             var opened = false
             tokens.append(track {

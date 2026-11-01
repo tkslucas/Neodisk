@@ -62,8 +62,6 @@
 "Purgeable space, local snapshots, and files the scan could not see." = "消去可能な領域、ローカルスナップショット、スキャンで確認できなかったファイルです。";
 "%@ smaller items in %@" = "%2$@内の小さい項目 %1$@個";
 "Hover the treemap or select a row to inspect an item." = "ツリーマップにポインタを合わせるか、行を選択して項目を確認できます。";
-"Show Status Bar" = "ステータスバーを表示";
-"Hide Status Bar" = "ステータスバーを非表示";
 
 /* MARK: - Settings: sections & controls */
 "General" = "一般";

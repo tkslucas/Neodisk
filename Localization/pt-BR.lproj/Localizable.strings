@@ -63,8 +63,6 @@
 "Purgeable space, local snapshots, and files the scan could not see." = "Espaço descartável, snapshots locais e arquivos que a análise não pôde ver.";
 "%@ smaller items in %@" = "%@ itens menores em %@";
 "Hover the treemap or select a row to inspect an item." = "Passe o cursor sobre o treemap ou selecione uma linha para inspecionar um item.";
-"Show Status Bar" = "Mostrar Barra de Status";
-"Hide Status Bar" = "Ocultar Barra de Status";
 
 /* MARK: - Settings: sections & controls */
 "General" = "Geral";

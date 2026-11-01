@@ -57,7 +57,7 @@ The most used ones; the rest live in `Sources/NeodiskUI/Dev/`.
   `NEODISK_VIZ_MODE`, `NEODISK_TREEMAP_STYLE`, `NEODISK_ANALYSIS_TAB`, `NEODISK_SELECT=<path>[:<path>…]`, `NEODISK_SCAN_TIMING`,
   `NEODISK_AUTOTRASH=<path>[:<path>…]` (moves them as if confirmed, reported as the window would; really trashes:
   temp dirs only; with `NEODISK_UI_SNAPSHOT`, the capture waits for the moves and shows the toast),
-  `NEODISK_POPUP=primary|sections|status` (opens that menu; popovers miss the window capture, so grab the X screen).
+  `NEODISK_POPUP=primary|sections|status|views` (opens that menu; popovers miss the window capture, so grab the X screen).
   `XDG_CONFIG_HOME` isolates settings. Example:
   `NEODISK_AUTOSCAN=/usr NEODISK_UI_SNAPSHOT=/tmp/shot.png xvfb-run -a -s "-screen 0 1600x1000x24" .build/debug/neodisk`
 

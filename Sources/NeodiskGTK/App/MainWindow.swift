@@ -22,9 +22,11 @@ final class MainWindow {
     private let vizPaned: GPtr
     private let scanButton: GPtr
     private let stopButton: GPtr
-    private let cushionToggle: GPtr
-    private let flatToggle: GPtr
-    private let sunburstToggle: GPtr
+    private let viewToggles: [VizView: GPtr]
+    private let vizSwitcher: GPtr
+    /// "views.<view>" checkboxes: which toggles the header shows.
+    private let viewActions = GObjectRef(adopting: raw(g_simple_action_group_new())!)
+    private var viewMenu: GPtr?
     private let menuButton: GPtr
 
     private let sidebar: SidebarView
@@ -73,15 +75,17 @@ final class MainWindow {
         menuButton = raw(gtk_menu_button_new())!
         gtk_menu_button_set_icon_name(ptr(menuButton), "open-menu-symbolic")
         gtk_widget_set_tooltip_text(ptr(menuButton), L("Main Menu"))
+        // The views stay here as the way back: picking a hidden one shows its toggle again.
         let primaryMenu = Widgets.menu([
             [(L("Choose Folder…"), "win.open-folder")],
+            VizView.allCases.map { ($0.title, "win.show-\($0.rawValue)") },
             [(L("Show Status Bar"), "win.show-status-bar")],
             [(L("Preferences"), "app.preferences"), (L("Keyboard Shortcuts"), "win.show-help-overlay"), (L("About %@", AppChannel.current.appName), "app.about")],
             [(L("Quit"), "app.quit")],
         ])
-        if let viewSection = g_menu_model_get_item_link(ptr(primaryMenu.pointer), 1, "section") {
-            g_menu_prepend_submenu(ptr(raw(viewSection)), L("Sidebar Sections"), ptr(sidebar.sectionsMenu.pointer))
-            g_object_unref(raw(viewSection))
+        if let section = g_menu_model_get_item_link(ptr(primaryMenu.pointer), 2, "section") {
+            g_menu_prepend_submenu(ptr(raw(section)), L("Sidebar Sections"), ptr(sidebar.sectionsMenu.pointer))
+            g_object_unref(raw(section))
         }
         gtk_menu_button_set_menu_model(ptr(menuButton), ptr(primaryMenu.pointer))
         gtk_menu_button_set_primary(ptr(menuButton), gbool(true))
@@ -106,12 +110,16 @@ final class MainWindow {
         Widgets.setMargins(titleBox, start: 6)
         adw_header_bar_pack_start(ptr(header), ptr(titleBox))
 
-        cushionToggle = Self.viewToggle("neodisk-treemap-symbolic", tooltip: L("Cushion Treemap"))
-        flatToggle = Self.viewToggle("neodisk-treemap-flat-symbolic", tooltip: L("Flat Treemap"))
-        sunburstToggle = Self.viewToggle("neodisk-sunburst-symbolic", tooltip: L("Sunburst"))
-        gtk_toggle_button_set_group(ptr(flatToggle), ptr(cushionToggle))
-        gtk_toggle_button_set_group(ptr(sunburstToggle), ptr(cushionToggle))
-        let vizSwitcher = Widgets.box(GTK_ORIENTATION_HORIZONTAL, classes: ["linked"], [cushionToggle, flatToggle, sunburstToggle])
+        var viewToggles: [VizView: GPtr] = [:]
+        for view in VizView.allCases {
+            let toggle = raw(gtk_toggle_button_new())!
+            gtk_button_set_icon_name(ptr(toggle), view.iconName)
+            gtk_widget_set_tooltip_text(ptr(toggle), view.title)
+            gtk_toggle_button_set_group(ptr(toggle), ptr(viewToggles[.cushion]))
+            viewToggles[view] = toggle
+        }
+        self.viewToggles = viewToggles
+        vizSwitcher = Widgets.box(GTK_ORIENTATION_HORIZONTAL, classes: ["linked"], VizView.allCases.compactMap { viewToggles[$0] })
         adw_header_bar_set_title_widget(ptr(header), ptr(vizSwitcher))
 
         scanButton = Widgets.iconButton("view-refresh-symbolic", tooltip: L("Rescan"), action: "win.rescan")
@@ -206,6 +214,7 @@ final class MainWindow {
 
         attach(self, to: window, key: Self.attachmentKey)
         gtk_widget_insert_action_group(ptr(window), "sidebar", ptr(sidebar.actions.pointer))
+        gtk_widget_insert_action_group(ptr(window), "views", ptr(viewActions.pointer))
         installActions()
         bindModel()
 
@@ -221,15 +230,16 @@ final class MainWindow {
         }
         gtk_widget_add_controller(ptr(window), ptr(keys))
 
-        connect(cushionToggle, "toggled") { [unowned self] in
-            if gtk_toggle_button_get_active(ptr(self.cushionToggle)) != 0 { self.showView(.cushion) }
+        for (view, toggle) in viewToggles {
+            connect(toggle, "toggled") { [unowned self] in
+                if gtk_toggle_button_get_active(ptr(toggle)) != 0 { self.model.preferences.workspaceLayout.pick(view) }
+            }
         }
-        connect(flatToggle, "toggled") { [unowned self] in
-            if gtk_toggle_button_get_active(ptr(self.flatToggle)) != 0 { self.showView(.flat) }
-        }
-        connect(sunburstToggle, "toggled") { [unowned self] in
-            if gtk_toggle_button_get_active(ptr(self.sunburstToggle)) != 0 { self.showView(.sunburst) }
-        }
+        // Right-click: the checklist of views shown; the last one shown stays.
+        let click = raw(gtk_gesture_click_new())!
+        gtk_gesture_single_set_button(ptr(click), 3)
+        connectPress(click, "pressed") { [unowned self] _, x, y in self.showViewMenu(at: CGPoint(x: x, y: y)) }
+        gtk_widget_add_controller(ptr(vizSwitcher), ptr(click))
         g_object_bind_property(
             statisticsSplit, "show-sidebar", statisticsToggle, "active",
             GBindingFlags(rawValue: 1 | 2)  // G_BINDING_BIDIRECTIONAL | G_BINDING_SYNC_CREATE
@@ -259,30 +269,8 @@ final class MainWindow {
         adw_application_window_add_breakpoint(ptr(window), breakpoint)
     }
 
-    private static func viewToggle(_ iconName: String, tooltip: String) -> GPtr {
-        let toggle = raw(gtk_toggle_button_new())!
-        gtk_button_set_icon_name(ptr(toggle), iconName)
-        gtk_widget_set_tooltip_text(ptr(toggle), tooltip)
-        return toggle
-    }
-
-    /// Sunburst leaves the treemap style alone, so switching back restores it.
-    private enum ViewChoice {
-        case cushion, flat, sunburst
-    }
-
-    private func showView(_ choice: ViewChoice) {
-        let preferences = model.preferences
-        switch choice {
-        case .cushion:
-            preferences.vizMode = .treemap
-            preferences.treemapStyle = .cushion
-        case .flat:
-            preferences.vizMode = .treemap
-            preferences.treemapStyle = .flat
-        case .sunburst:
-            preferences.vizMode = .sunburst
-        }
+    private func showViewMenu(at point: CGPoint) {
+        Widgets.popupMenu(&viewMenu, sections: [VizView.allCases.map { ($0.title, "views.\($0.rawValue)") }], on: vizSwitcher, at: point)
     }
 
     /// NEODISK_POPUP: opens a menu for a screen grab (popovers aren't in the window's capture).
@@ -291,6 +279,7 @@ final class MainWindow {
         case "primary": gtk_menu_button_popup(ptr(menuButton))
         case "sections": sidebar.showSectionsMenu(from: .volumes, at: CGPoint(x: 40, y: 8))
         case "status": statusBar.showMenu(at: CGPoint(x: 40, y: 8))
+        case "views": showViewMenu(at: CGPoint(x: 20, y: 20))
         default: break
         }
     }
@@ -354,11 +343,14 @@ final class MainWindow {
             self.setTrashActionInstalled(self.model.preferences.allowsMovingToTrash)
         })
         tokens.append(track { [unowned self] in
-            let mode = self.model.preferences.vizMode
-            let style = self.model.preferences.treemapStyle
-            gtk_stack_set_visible_child_name(ptr(self.vizStack), mode == .sunburst ? "sunburst" : "treemap")
-            let toggle = mode == .sunburst ? self.sunburstToggle : style == .flat ? self.flatToggle : self.cushionToggle
-            gtk_toggle_button_set_active(ptr(toggle), gbool(true))
+            let layout = self.model.preferences.workspaceLayout
+            gtk_stack_set_visible_child_name(ptr(self.vizStack), layout.mode == .sunburst ? "sunburst" : "treemap")
+            for (view, toggle) in self.viewToggles {
+                Widgets.setVisible(toggle, !layout.views.isHidden(view))
+                setActionState(self.actions["views.\(view.rawValue)"], !layout.views.isHidden(view))
+                setActionEnabled(self.actions["views.\(view.rawValue)"], layout.views.isHidden(view) || layout.views.canHide(view))
+            }
+            gtk_toggle_button_set_active(ptr(self.viewToggles[layout.view]), gbool(true))
         })
         tokens.append(track { [unowned self] in
             setActionState(self.actions["show-status-bar"], self.model.preferences.showsStatusBar)
@@ -446,14 +438,15 @@ final class MainWindow {
         addAction(to: window, "hide-status-bar") { [unowned self] _ in
             self.model.preferences.showsStatusBar = false
         }
-        actions["show-cushion"] = addAction(to: window, "show-cushion") { [unowned self] _ in
-            self.showView(.cushion)
-        }
-        actions["show-flat"] = addAction(to: window, "show-flat") { [unowned self] _ in
-            self.showView(.flat)
-        }
-        actions["show-sunburst"] = addAction(to: window, "show-sunburst") { [unowned self] _ in
-            self.showView(.sunburst)
+        for view in VizView.allCases {
+            addAction(to: window, "show-\(view.rawValue)") { [unowned self] _ in
+                self.model.preferences.workspaceLayout.pick(view)
+            }
+            actions["views.\(view.rawValue)"] = addToggleAction(to: viewActions.pointer, view.rawValue) { [unowned self] shown in
+                var views = self.model.preferences.workspaceLayout.views
+                views.setHidden(view, !shown)
+                self.model.preferences.workspaceLayout.setViews(views)
+            }
         }
         actions["open-item"] = addAction(to: window, "open-item") { [unowned self] _ in
             for node in self.model.selectedNodes { FileActions.open(node.path, from: self.window) }
@@ -671,5 +664,23 @@ final class MainWindow {
             }
         }, context)
         g_object_unref(raw(dialog))
+    }
+}
+
+private extension VizView {
+    var title: String {
+        switch self {
+        case .cushion: L("Cushion Treemap")
+        case .flat: L("Flat Treemap")
+        case .sunburst: L("Sunburst")
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .cushion: "neodisk-treemap-symbolic"
+        case .flat: "neodisk-treemap-flat-symbolic"
+        case .sunburst: "neodisk-sunburst-symbolic"
+        }
     }
 }

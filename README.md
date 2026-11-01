@@ -83,7 +83,7 @@ macOS app is SwiftUI and AppKit, the Linux app is GTK 4 and libadwaita. See
 - Free and hidden space for volume scans
 - Sidebar volumes show a kind-colored usage bar
 - Sidebar sections collapse from their header; right-click one to choose the sections shown
-- Hide what you don't use where it is: right-click the view picker, the file list's header or the status bar; the View menu brings it back (macOS)
+- Hide what you don't use where it is: right-click the view picker, the status bar or, on macOS, the file list's header; the View menu (the main menu on Linux) brings it back
 - Auto-updates via Sparkle (macOS)
 - Multilingual: UI follows the system language: English, Spanish, French, German, Italian, Brazilian Portuguese, Japanese, and Simplified Chinese
 

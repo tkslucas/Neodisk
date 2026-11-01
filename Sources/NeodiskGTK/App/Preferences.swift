@@ -29,6 +29,8 @@ final class Preferences {
     var treemapStyle: TreemapStyle = .cushion {
         didSet { if !isOverriding, treemapStyle != oldValue { savedTreemapStyle = nil }; scheduleSave() }
     }
+    /// The header's view toggles, as an ItemLayout string.
+    var vizViews = "" { didSet { scheduleSave() } }
     var kindMode: FileKindDisplayMode = .categories { didSet { scheduleSave() } }
     /// The user's changes to the Categories grouping. Change it through
     /// `AppModel.updateFileCategories`, which reclassifies.
@@ -54,6 +56,16 @@ final class Preferences {
         set {
             if newValue.storedHidden != sidebarHiddenSections { sidebarHiddenSections = newValue.storedHidden }
             if newValue.storedCollapsed != sidebarCollapsedSections { sidebarCollapsedSections = newValue.storedCollapsed }
+        }
+    }
+
+    /// The view and the header's view toggles; WorkspaceLayout holds the rules. No file list placement here.
+    var workspaceLayout: WorkspaceLayout {
+        get { WorkspaceLayout(mode: vizMode, treemapStyle: treemapStyle, views: ItemLayout(stored: vizViews)) }
+        set {
+            if newValue.mode != vizMode { vizMode = newValue.mode }
+            if newValue.treemapStyle != treemapStyle { treemapStyle = newValue.treemapStyle }
+            if newValue.views != ItemLayout(stored: vizViews) { vizViews = newValue.views.stored }
         }
     }
 
@@ -117,6 +129,7 @@ final class Preferences {
         var paletteID: String?
         var vizMode: String?
         var treemapStyle: String?
+        var vizViews: String?
         var kindMode: String?
         var fileCategories: String?
         var showsStatistics: Bool?
@@ -143,6 +156,8 @@ final class Preferences {
         if let value = stored.paletteID { paletteID = value }
         if let value = stored.vizMode.flatMap(VizViewMode.init(rawValue:)) { vizMode = value }
         if let value = stored.treemapStyle.flatMap(TreemapStyle.init(rawValue:)) { treemapStyle = value }
+        if let value = stored.vizViews { vizViews = value }
+        workspaceLayout.openAtLaunch(nil)
         if let value = stored.kindMode.flatMap(FileKindDisplayMode.init(rawValue:)) { kindMode = value }
         if let value = stored.fileCategories { fileCategories = FileCategoryCustomization(json: value) }
         if let value = stored.showsStatistics { showsStatistics = value }
@@ -176,6 +191,7 @@ final class Preferences {
             paletteID: paletteID,
             vizMode: (savedVizMode ?? vizMode).rawValue,
             treemapStyle: (savedTreemapStyle ?? treemapStyle).rawValue,
+            vizViews: vizViews.isEmpty ? nil : vizViews,
             kindMode: kindMode.rawValue,
             fileCategories: fileCategories.isEmpty ? nil : fileCategories.json,
             showsStatistics: showsStatistics,

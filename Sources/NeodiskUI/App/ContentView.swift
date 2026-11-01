@@ -36,10 +36,9 @@ public struct ContentView: View {
             detailContent
                 .addLocationDropTarget(model: model)
         }
-        // The one place the workspace text scale enters the view tree; other scenes keep the system size.
-        .environment(\.neoTextScale, textScale)
-        // For views that never name a font. macOS's default is 13pt, so 100% renders as before.
-        .font(.system(size: 13 * textScale))
+        // The workspace text scale enters here and in the welcome sheet; other scenes (Settings, About) and the
+        // window's chrome keep the system size.
+        .neoWorkspaceText(scale: textScale)
         .frame(
             minWidth: minimumSize.width,
             minHeight: minimumSize.height
@@ -47,6 +46,7 @@ public struct ContentView: View {
         .background(SnapshotWindowHider())
         .sheet(isPresented: $model.showWelcomeSheet) {
             WelcomeSheet(model: model)
+                .neoWorkspaceText(scale: textScale)
         }
         .onAppear {
             // This window can host the unobtrusive update indicator; while
@@ -399,20 +399,15 @@ private struct WorkspaceView: View {
                                 transientBottomOutlinePaneHeight = nil
                             }
                         )
-                        // An AppKit view draws above SwiftUI overlays: under a floating statistics pane its line
-                        // would cross the pane's lists (and its hit area would take their clicks).
-                        .padding(.trailing, model.showKindStats && metrics.analysisFloats ? metrics.analysisWidth : 0)
                         BottomOutlinePane(model: model)
                             .frame(height: metrics.bottomOutlineHeight)
-                            // A floating statistics panel may cover the map, never the list: the list ends where
-                            // the panel begins, and its columns fit that width.
-                            .padding(.trailing, model.showKindStats && metrics.analysisFloats ? metrics.analysisWidth : 0)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .layoutPriority(1)
 
-                if model.showKindStats, !metrics.analysisFloats {
+                // Always docked, beside the map and never over it, so its edge is a divider like the others.
+                if model.showKindStats {
                     PaneSplitter(
                         size: kindStatsPaneSize,
                         range: metrics.analysisRange,
@@ -425,18 +420,6 @@ private struct WorkspaceView: View {
                     )
                     AnalysisPane(model: model)
                         .frame(width: metrics.analysisWidth)
-                }
-            }
-            // A window too narrow to dock the analysis pane beside the map
-            // floats it over the map's trailing edge instead.
-            .overlay(alignment: .trailing) {
-                if model.showKindStats, metrics.analysisFloats {
-                    AnalysisPane(model: model)
-                        .frame(width: metrics.analysisWidth)
-                        .frame(maxHeight: .infinity)
-                        .background(.background)
-                        .overlay(alignment: .leading) { Divider() }
-                        .shadow(color: .black.opacity(0.18), radius: 10, x: -2)
                 }
             }
             // The statistics panel shows and hides at once, unanimated: a sliding panel resized the map and the
@@ -483,8 +466,10 @@ private struct ScanIssuesStrip: View {
                 ScanIssuesPopover(model: model)
             }
             if model.warnings.suggestFullDiskAccess {
-                Button("Grant Full Disk Access…") {
+                Button {
                     _ = SystemIntegration.prepareAndOpenFullDiskAccessSettings()
+                } label: {
+                    Text("Grant Full Disk Access…").neoFont(11)
                 }
                 .neoControlSize(base: .small)
             }
@@ -621,10 +606,10 @@ private struct LiveScanStrip: View {
             .opacity(isStopped ? 0.5 : 1)
 
             if isStopped {
-                Button("Restart", action: { onResume?() })
+                Button { onResume?() } label: { Text("Restart").neoFont(11) }
                     .neoControlSize(base: .small)
             } else if let onStop {
-                Button("Stop", action: onStop)
+                Button(action: onStop) { Text("Stop").neoFont(11) }
                     .neoControlSize(base: .small)
             }
         }

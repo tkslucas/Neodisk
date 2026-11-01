@@ -144,7 +144,8 @@ private struct ScanProgressContent: View {
             }
 
             if let onStop {
-                Button("Stop Scan", action: onStop)
+                Button(action: onStop) { Text("Stop Scan").neoFont(.body) }
+                    .neoControlSize()
                     .padding(.top, 4)
             }
         }

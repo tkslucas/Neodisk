@@ -42,8 +42,10 @@ struct DuplicatesPane: View {
             title: Text("Find files with identical content"),
             message: Text(explainerText)
         ) {
-            Button("Find Duplicates") {
+            Button {
                 model.duplicates.startScan()
+            } label: {
+                Text("Find Duplicates").neoFont(11)
             }
             .neoControlSize(base: .small)
             .buttonStyle(.borderedProminent)
@@ -77,8 +79,10 @@ struct DuplicatesPane: View {
                         .lineLimit(1)
                 }
                 Spacer()
-                Button("Cancel") {
+                Button {
                     model.duplicates.cancelScan()
+                } label: {
+                    Text("Cancel").neoFont(11)
                 }
                 .neoControlSize(base: .small)
             }
@@ -124,8 +128,10 @@ struct DuplicatesPane: View {
             symbolSize: 24,
             message: Text(message)
         ) {
-            Button("Try Again") {
+            Button {
                 model.duplicates.startScan()
+            } label: {
+                Text("Try Again").neoFont(11)
             }
             .neoControlSize(base: .small)
         }

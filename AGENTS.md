@@ -130,7 +130,10 @@ The most used ones; the rest live in `Sources/NeodiskUI/Dev/`.
 
 - Workspace text scales (`TextScale`): write `.neoFont(…)`, never `.font(.system(size:))`; sizes around text read `neoTextScale`.
 - AppKit surfaces scale through `OutlineRowMetrics.scale` and `TreemapScene.labelScale`; window chrome stays system size.
-- A push button sizes from `controlSize`, not its label: pair `.neoFont(.body)` with `.neoControlSize(base:)`.
+- A push button sizes from `controlSize`, not its label: pair `.neoFont(.body)` with `.neoControlSize(base:)`. The font
+  goes on the label's `Text` (`Button { } label: { Text("…").neoFont(11) }`): SwiftUI controls ignore a `.font` around them,
+  and segmented and pop-up pickers ignore it entirely, so those are `NeoSegmentedPicker` / `NeoPopUpPicker`.
+- Sheets don't inherit the root's scale: present them with `.neoWorkspaceText(scale:)`.
 - Inline bars beside text (capacity, percentage, scan progress) scale with the text too.
 - Treemap gestures mutate the `CALayer` transform in `TreemapNSView`, never SwiftUI state (that version twitched).
 - On macOS 14+ `NSView.clipsToBounds` defaults to false and overrides `.clipped()`; set it explicitly.

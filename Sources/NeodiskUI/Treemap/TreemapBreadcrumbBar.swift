@@ -3,14 +3,12 @@
 
 import SwiftUI
 import NeodiskKit
+import NeodiskAppModel
 
 struct TreemapBreadcrumbBar: View {
     @Environment(\.neoTextScale) private var textScale
 
     let model: NeodiskViewModel
-    /// The sunburst's simplified layout leans on the bar for navigation, so
-    /// it renders larger there; both treemap styles keep the compact strip.
-    var isProminent = false
 
     /// Falls back to the drill root: deselecting must not collapse the bar while the map stays drilled in.
     private var crumbs: [FileNodeRecord] {
@@ -30,16 +28,17 @@ struct TreemapBreadcrumbBar: View {
     private var bar: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 1) {
+                HStack(spacing: 0) {
                     ForEach(Array(crumbs.enumerated()), id: \.element.id) { index, node in
                         if index > 0 {
-                            Image(systemName: "chevron.compact.right")
-                                .neoFont(isProminent ? .caption : .caption2)
+                            Image(systemName: "chevron.right")
+                                .neoFont(8, weight: .semibold)
                                 .foregroundStyle(.tertiary)
+                                .padding(.horizontal, 1)
                         }
                         Crumb(
                             node: node,
-                            isProminent: isProminent,
+                            palette: model.vizPalette,
                             isLast: index == crumbs.count - 1,
                             // Underline the crumb the treemap is rooted at, so
                             // the drill depth is legible (only when drilled in).
@@ -53,8 +52,7 @@ struct TreemapBreadcrumbBar: View {
                         .id(node.id)
                     }
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 3)
+                .padding(.horizontal, 8)
             }
             .onChange(of: model.selectedNodeID) {
                 // Keep the deepest crumb in view as the selection moves.
@@ -64,17 +62,17 @@ struct TreemapBreadcrumbBar: View {
                 }
             }
         }
-        .frame(height: ((isProminent ? 34 : 26) * textScale).rounded())
+        .frame(height: (28 * textScale).rounded())
         .background(.bar)
         .overlay(alignment: .bottom) { Divider() }
     }
 }
 
-/// A single path segment. Ancestors are secondary and clickable; the trailing
-/// segment (the selection itself) is emphasized.
+/// A single path segment, icon then name like a path control. Ancestors are secondary and clickable; the
+/// trailing segment (the selection itself) is emphasized.
 private struct Crumb: View {
     let node: FileNodeRecord
-    let isProminent: Bool
+    let palette: VizPalette
     let isLast: Bool
     let isDrillRoot: Bool
     let action: () -> Void
@@ -83,14 +81,17 @@ private struct Crumb: View {
 
     var body: some View {
         Button(action: action) {
-            Text(node.name.isEmpty ? "/" : node.name)
-                .neoFont(isProminent ? .body : .caption)
-                .fontWeight(isLast ? .semibold : .regular)
-                .underline(isDrillRoot)
-                .lineLimit(1)
-                .foregroundStyle(isLast ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
-                .padding(.horizontal, isProminent ? 7 : 5)
-                .padding(.vertical, isProminent ? 4 : 2)
+            HStack(spacing: 3) {
+                FileCategoryIcon(node: node, palette: palette)
+                Text(node.name.isEmpty ? "/" : node.name)
+                    .neoFont(11, weight: isLast ? .medium : .regular)
+                    .underline(isDrillRoot)
+                    .lineLimit(1)
+                    .foregroundStyle(isLast ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+            }
+            .padding(.leading, 2)
+            .padding(.trailing, 5)
+            .padding(.vertical, 3)
                 .background(
                     RoundedRectangle(cornerRadius: 4)
                         .fill(hovering ? Color.primary.opacity(0.08) : Color.clear)

@@ -52,6 +52,13 @@ enum DevLaunchHooks {
             model.syncWorkspaceLayout()
         }
 
+        // NEODISK_SNAPSHOT_TEXT_SCALE=<0.85…2> scales the workspace text for this run without persisting it, so
+        // window captures check text scaling as the pane snapshots do.
+        if let scale = environment["NEODISK_SNAPSHOT_TEXT_SCALE"].flatMap(Double.init).map(TextScale.snapped) {
+            model.textScale = scale
+            OutlineRowMetrics.scale = CGFloat(scale)
+        }
+
         // NEODISK_UPDATE_STATE=<checking|available|downloading|readyToInstall|
         // upToDate|failed> forces the update pill into a non-idle state at
         // launch (with inert closures), so headless snapshots can capture the

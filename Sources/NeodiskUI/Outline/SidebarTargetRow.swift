@@ -23,9 +23,10 @@ struct SidebarTargetRow: View {
     var bar: VolumeBarData?
     /// A background scan running for this location: its striped progress bar takes the bar's slot.
     var scanProgress: ScanProgressState?
-    /// Lifts the scan tooltip into SidebarPane's overlay, above List cells.
+    /// Lift the bars' bubbles into SidebarPane's overlay, above List cells.
     var onScanBarFrameChange: (String, CGRect?) -> Void = { _, _ in }
     var onScanBarHover: (String, Bool) -> Void = { _, _ in }
+    var onCapacityBubble: (VolumeBarBubble) -> Void = { _ in }
 
     var body: some View {
         // The icon slot and the gap after it follow the glyph, or a larger text size crowds the name.
@@ -70,7 +71,7 @@ struct SidebarTargetRow: View {
                     .padding(.bottom, 1)
                     .padding(.trailing, 2)
                 } else if let bar {
-                    VolumeCapacityBar(data: bar)
+                    VolumeCapacityBar(data: bar, ownerID: target.id, onBubble: onCapacityBubble)
                         .padding(.top, 3)
                         .padding(.bottom, 1)
                         .padding(.trailing, 2)

@@ -409,7 +409,7 @@ final class MainWindow: Win32Window {
         case (VK_RETURN, false, false) where inSearch:
             onSearchSubmit?()
         case (VK_DOWN, false, false) where inSearch:
-            SetFocus(outline.hwnd)
+            outline.enterFromAbove()
         default:
             return false
         }

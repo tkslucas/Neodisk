@@ -164,6 +164,8 @@ final class OutlineView {
         rowCount = count
         let flags = keepScroll ? LPARAM(LVSICF_NOSCROLL | LVSICF_NOINVALIDATEALL) : 0
         SendMessageW(hwnd, LV.setItemCount, WPARAM(count), flags)
+        // New rows (search results, another folder) start keyboard focus at the top, not at the old index.
+        if !keepScroll { setFocusedRow(count > 0 ? 0 : nil) }
         // The vertical scroll bar may have come or gone with the rows.
         fitNameColumn()
         InvalidateRect(hwnd, nil, false)
@@ -199,6 +201,41 @@ final class OutlineView {
             }
             SendMessageW(hwnd, LV.ensureVisible, WPARAM(focused), 0)
         }
+    }
+
+    private func setFocusedRow(_ row: Int?) {
+        let current = focusedRow
+        guard current != row else { return }
+        isSyncing = true
+        defer { isSyncing = false }
+        var item = LVITEMW()
+        item.stateMask = UINT(LVIS_FOCUSED)
+        item.state = 0
+        if let current {
+            _ = withUnsafeMutablePointer(to: &item) {
+                SendMessageW(hwnd, LV.setItemState, WPARAM(current), LPARAM(Int(bitPattern: $0)))
+            }
+        }
+        guard let row else { return }
+        item.state = UINT(LVIS_FOCUSED)
+        _ = withUnsafeMutablePointer(to: &item) {
+            SendMessageW(hwnd, LV.setItemState, WPARAM(row), LPARAM(Int(bitPattern: $0)))
+        }
+    }
+
+    /// Keyboard entry from the search field above: selects the focused row (the first after new rows) unless a
+    /// row is selected already, so Down from the search lands on the best match.
+    func enterFromAbove() {
+        SetFocus(hwnd)
+        guard rowCount > 0, selectedRows.isEmpty else { return }
+        let row = focusedRow ?? 0
+        var item = LVITEMW()
+        item.stateMask = UINT(LVIS_SELECTED | LVIS_FOCUSED)
+        item.state = UINT(LVIS_SELECTED | LVIS_FOCUSED)
+        _ = withUnsafeMutablePointer(to: &item) {
+            SendMessageW(hwnd, LV.setItemState, WPARAM(row), LPARAM(Int(bitPattern: $0)))
+        }
+        SendMessageW(hwnd, LV.ensureVisible, WPARAM(row), 0)
     }
 
     var selectedRows: [Int] {

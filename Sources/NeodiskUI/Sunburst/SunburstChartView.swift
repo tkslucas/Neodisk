@@ -239,18 +239,21 @@ struct SunburstChartView: View {
                         .allowsHitTesting(false)
                         .transition(.opacity)
                 } else {
+                    // A long name shrinks a little, then truncates, rather than shrinking past legibility; the
+                    // size may shrink further, in a very small hole.
                     VStack(spacing: 1) {
                         Text(verbatim: centerTitle)
                             .neoFont(.headline)
                             .truncationMode(.middle)
+                            .minimumScaleFactor(0.8)
                         Text(verbatim: centerSizeText)
                             .neoFont(.callout)
                             .monospacedDigit()
                             .foregroundStyle(.secondary)
+                            .minimumScaleFactor(0.6)
                     }
                     .lineLimit(1)
-                    .minimumScaleFactor(0.6)
-                    .frame(width: centerAffordanceSize(in: chartFrame) * 0.8)
+                    .frame(width: centerAffordanceSize(in: chartFrame) * 0.9)
                         .position(x: chartFrame.midX, y: chartFrame.midY)
                         .allowsHitTesting(false)
                         .transition(.opacity)

@@ -82,6 +82,21 @@ enum DevLaunchHooks {
             }
         }
 
+        // NEODISK_AUTODRILL=<path> roots the map at that folder once the scan finishes, as a drill would: headless
+        // snapshots show the drilled path bar, center and legend.
+        if let drillPath = environment["NEODISK_AUTODRILL"] {
+            Task { @MainActor in
+                for _ in 0..<120 {
+                    try? await Task.sleep(for: .milliseconds(500))
+                    guard !model.coordinator.isScanning, model.coordinator.snapshot?.isComplete == true else {
+                        continue
+                    }
+                    if let node = findNode(at: drillPath, in: model) { _ = model.drillIn(to: node.id) }
+                    break
+                }
+            }
+        }
+
         // NEODISK_AUTOSELECT=<path>[:<path>...] selects those items once the scan finishes, the last one primary,
         // as ⌘-clicks would: headless snapshots show a multi-selection in every view.
         if let rawPaths = environment["NEODISK_AUTOSELECT"] {

@@ -103,37 +103,33 @@ enum Snapshot {
     }
 }
 
-/// A GdkTexture over premultiplied RGBA8 pixels (TreemapKit's raster
-/// format), uploaded once and drawn by the GPU renderer every frame.
-@MainActor
-func makeTexture(rgba pixels: [UInt8], width: Int, height: Int) -> GObjectRef? {
-    guard width > 0, height > 0, pixels.count >= width * height * 4 else { return nil }
-    let bytes = pixels.withUnsafeBytes { buffer in
-        g_bytes_new(buffer.baseAddress, gsize(buffer.count))
-    }
-    defer { g_bytes_unref(bytes) }
-    guard let texture = gdk_memory_texture_new(
-        Int32(width), Int32(height), GDK_MEMORY_R8G8B8A8_PREMULTIPLIED, bytes, gsize(width * 4)
-    ) else { return nil }
-    return GObjectRef(adopting: raw(texture)!)
+/// A GdkTexture, immutable once made; GDK lets any thread create one, so render tasks build it off the
+/// main actor and hand it over.
+struct Texture: @unchecked Sendable {
+    let ref: GObjectRef
 }
 
-/// A GdkTexture over a cairo ARGB32 image surface's pixels (premultiplied
-/// B,G,R,A bytes on little-endian machines).
-@MainActor
-func makeTexture(cairoSurface surface: OpaquePointer?) -> GObjectRef? {
-    guard let surface else { return nil }
-    cairo_surface_flush(surface)
-    let width = Int(cairo_image_surface_get_width(surface))
-    let height = Int(cairo_image_surface_get_height(surface))
-    let stride = Int(cairo_image_surface_get_stride(surface))
-    guard width > 0, height > 0, let data = cairo_image_surface_get_data(surface) else { return nil }
-    let bytes = g_bytes_new(data, gsize(stride * height))
+/// Keeps a raster alive for as long as GDK holds its bytes.
+private final class PixelOwner {
+    let pixels: [UInt8]
+    init(_ pixels: [UInt8]) { self.pixels = pixels }
+}
+
+/// Wraps premultiplied 8-bit pixels without copying them: the GBytes borrows the array's storage and
+/// releases it when the texture dies.
+func makeTexture(pixels: [UInt8], width: Int, height: Int, stride: Int, format: GdkMemoryFormat) -> Texture? {
+    guard width > 0, height > 0, stride >= width * 4, pixels.count >= stride * height else { return nil }
+    let owner = Unmanaged.passRetained(PixelOwner(pixels))
+    // The owner's array is a `let` that is never mutated, so its storage stays put while retained.
+    let base = owner.takeUnretainedValue().pixels.withUnsafeBytes { $0.baseAddress }
+    let bytes = g_bytes_new_with_free_func(base, gsize(stride * height), { owner in
+        owner.map { Unmanaged<PixelOwner>.fromOpaque($0).release() }
+    }, owner.toOpaque())
     defer { g_bytes_unref(bytes) }
-    guard let texture = gdk_memory_texture_new(
-        Int32(width), Int32(height), GDK_MEMORY_B8G8R8A8_PREMULTIPLIED, bytes, gsize(stride)
-    ) else { return nil }
-    return GObjectRef(adopting: raw(texture)!)
+    guard let texture = gdk_memory_texture_new(Int32(width), Int32(height), format, bytes, gsize(stride)) else {
+        return nil
+    }
+    return Texture(ref: GObjectRef(adopting: raw(texture)!))
 }
 
 // MARK: - Text

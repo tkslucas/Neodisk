@@ -63,6 +63,8 @@ nonisolated final class ScanTraversal {
     // builds stay under ~10% of scan time.
     private var lastPartialEmission = ContinuousClock.now - .milliseconds(300)
     private var partialEmissionInterval: Duration = .milliseconds(300)
+    /// A partial build runs as a group task so it never stalls dispatch; at most one at a time.
+    private var partialBuildInFlight = false
     /// Scan start reference for the time-to-first-partial timing; nilled
     /// after the first partial goes out.
     private var firstPartialReference: ContinuousClock.Instant? =
@@ -509,7 +511,10 @@ nonisolated final class ScanTraversal {
                     }
                 }
 
-                guard activeDirectoryTasks + activeProtectedDirectoryTasks + activeSummaryTasks > 0 else { break }
+                maybeStartPartialTree(in: &group)
+                let activePartialTasks = partialBuildInFlight ? 1 : 0
+                guard activeDirectoryTasks + activeProtectedDirectoryTasks + activeSummaryTasks + activePartialTasks > 0
+                else { break }
                 ScanProfile.end(.coordinatorBusy, since: busySince)
                 let waitSince = ScanProfile.now()
                 guard let outcome = try await group.next() else { break }
@@ -539,9 +544,9 @@ nonisolated final class ScanTraversal {
                 case .atomicDirectory(let atomicOutcome):
                     activeSummaryTasks -= 1
                     try completeAtomicDirectory(atomicOutcome)
+                case .partialTree(let partialStore, let buildDuration):
+                    finishPartialTree(partialStore, buildDuration: buildDuration)
                 }
-
-                maybeEmitPartialTree()
             }
         }
     }
@@ -1037,15 +1042,32 @@ nonisolated final class ScanTraversal {
         }
     }
 
-    private func maybeEmitPartialTree() {
-        guard ContinuousClock.now - lastPartialEmission >= partialEmissionInterval else { return }
-        let buildStart = ContinuousClock.now
-        if let partialStore = ScanEngine.assemblePartialTree(
-            completedByKey: completedByKey,
-            childrenKeysByKey: childrenKeysByKey,
-            nextKey: nextKey,
-            runningTotals: partialTotals
-        ) {
+    /// Builds from copies of the key arrays, so the coordinator keeps dispatching while it runs; the store is
+    /// yielded from the coordinator, so every partial still precedes the final tree.
+    private func maybeStartPartialTree(in group: inout ThrowingTaskGroup<ScanTaskOutcome, Error>) {
+        // Nothing to show until the root's listing is in.
+        guard !partialBuildInFlight, completedByKey.first.map({ $0 != nil }) == true,
+              ContinuousClock.now - lastPartialEmission >= partialEmissionInterval else { return }
+        partialBuildInFlight = true
+        let completedByKey = completedByKey
+        let childrenKeysByKey = childrenKeysByKey
+        let nextKey = nextKey
+        let partialTotals = partialTotals
+        group.addTask {
+            let buildStart = ContinuousClock.now
+            let partialStore = ScanEngine.assemblePartialTree(
+                completedByKey: completedByKey,
+                childrenKeysByKey: childrenKeysByKey,
+                nextKey: nextKey,
+                runningTotals: partialTotals
+            )
+            return .partialTree(partialStore, ContinuousClock.now - buildStart)
+        }
+    }
+
+    private func finishPartialTree(_ partialStore: FileTreeStore?, buildDuration: Duration) {
+        partialBuildInFlight = false
+        if let partialStore {
             if let scanStart = firstPartialReference {
                 firstPartialReference = nil
                 ScanTiming.record("scan.firstPartial", scanStart.duration(to: .now))
@@ -1053,7 +1075,6 @@ nonisolated final class ScanTraversal {
             continuation.yield(.partial(partialStore))
         }
         lastPartialEmission = ContinuousClock.now
-        let buildDuration = lastPartialEmission - buildStart
         ScanProfile.add(.partialBuild, nanoseconds: UInt64(buildDuration.components.attoseconds / 1_000_000_000)
             + UInt64(buildDuration.components.seconds) * 1_000_000_000)
         partialEmissionInterval = max(.milliseconds(300), buildDuration * 10)

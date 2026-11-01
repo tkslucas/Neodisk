@@ -189,6 +189,8 @@ extension ScanTraversal {
         case directory(DirectoryTraversalResult)
         case package(PackageSummaryOutcome)
         case atomicDirectory(AtomicDirectoryOutcome)
+        /// A live partial tree built off the coordinator, and how long the build took.
+        case partialTree(FileTreeStore?, Duration)
     }
 
     /// Thresholds for automatically summarizing directories with many small files.

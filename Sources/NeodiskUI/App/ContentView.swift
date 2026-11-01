@@ -379,6 +379,9 @@ private struct WorkspaceView: View {
                                 transientBottomOutlinePaneHeight = nil
                             }
                         )
+                        // An AppKit view draws above SwiftUI overlays: under a floating statistics pane its line
+                        // would cross the pane's lists (and its hit area would take their clicks).
+                        .padding(.trailing, model.showKindStats && metrics.analysisFloats ? metrics.analysisWidth : 0)
                         BottomOutlinePane(model: model)
                             .frame(height: metrics.bottomOutlineHeight)
                     }

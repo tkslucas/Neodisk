@@ -261,6 +261,8 @@ final class AppModel {
                     metrics = progress
                 case .warning(let warning):
                     warnings.append(warning)
+                case .waitingForPermission:
+                    break
                 case .partial(let partialStore):
                     guard !behindDisplayedSnapshot else { continue }
                     store = partialStore

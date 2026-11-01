@@ -92,6 +92,12 @@
 "Full Disk Access is not enabled." = "フルディスクアクセスが有効になっていません。";
 "Checking…" = "確認中…";
 "Open Full Disk Access Settings" = "フルディスクアクセスの設定を開く";
+"Neodisk Works Best with Full Disk Access" = "Neodiskはフルディスクアクセスで最もよく動作します";
+"Without it, macOS stops the scan to ask about each protected folder, like Documents, Downloads and Photos, and some locations are skipped." = "許可しない場合、macOSは書類、ダウンロード、写真などの保護されたフォルダごとにスキャンを止めて確認を求めます。また、一部の場所はスキップされます。";
+"Scan Anyway" = "このままスキャン";
+"Waiting for permission to read %@" = "%@の読み取り許可を待っています";
+"other apps' data" = "他のアプリのデータ";
+"iCloud Drive" = "iCloud Drive";
 "Recheck" = "再確認";
 "Note: running unbundled (swift run), Neodisk inherits its permissions from the terminal that launched it — grant Full Disk Access to that terminal app." = "注意: バンドルされていない状態（swift run）で実行する場合、Neodiskは起動元のターミナルの権限を継承します — そのターミナルアプリにフルディスクアクセスを許可してください。";
 "Moving to the Trash" = "ゴミ箱への移動";

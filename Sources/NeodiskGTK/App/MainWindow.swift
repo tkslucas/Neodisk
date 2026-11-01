@@ -207,9 +207,8 @@ final class MainWindow {
         adw_toast_overlay_set_child(ptr(toastOverlay), ptr(splitView))
         adw_application_window_set_content(ptr(window), ptr(toastOverlay))
 
-        // Narrow windows: statistics float over the map and secondary outline columns give way to names; narrower
-        // still, the sidebar becomes an overlay too. Only the last matching breakpoint applies, so the narrower one
-        // comes last and repeats the wider one's changes.
+        // Narrow: statistics float and secondary columns give way; narrower, the sidebar floats too. Only the last
+        // matching breakpoint applies, so the narrower one repeats the wider one's changes.
         addBreakpoint("max-width: 900sp", collapsing: [statisticsSplit])
         addBreakpoint("max-width: 760sp", collapsing: [statisticsSplit, splitView])
 
@@ -637,9 +636,8 @@ final class MainWindow {
         adw_alert_dialog_set_default_response(ptr(dialog), "close")
         adw_alert_dialog_set_close_response(ptr(dialog), "close")
         adw_dialog_present(ptr(dialog), ptr(window))
-        // libadwaita 1.5 focuses the default response only when another response would take focus first, so a
-        // lone OK starts on the scrollable message instead and Return does nothing. The buttons exist once the
-        // dialog is presented, and it focuses this one as it opens.
+        // libadwaita 1.5 starts a lone OK's dialog on the message, where Return does nothing; once presented,
+        // the button exists and takes the focus as the dialog opens.
         if let button = Widgets.firstDescendant(of: dialog, ofType: gtk_button_get_type()) {
             adw_dialog_set_focus(ptr(dialog), ptr(button))
         }

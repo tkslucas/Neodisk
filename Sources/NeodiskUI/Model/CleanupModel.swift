@@ -32,12 +32,15 @@ final class CleanupModel {
 
     @ObservationIgnored private let coordinator: ScanCoordinator
     @ObservationIgnored weak var model: NeodiskViewModel?
-    @ObservationIgnored private var cachedPolicy: TrashSafetyPolicy?
+    @ObservationIgnored private let policies = TrashPolicyCache()
     @ObservationIgnored private var mountObserver: AnyCancellable?
     @ObservationIgnored private var noticeTask: Task<Void, Never>?
     /// Test seams.
     @ObservationIgnored var trashItem: TrashMover.TrashItem = TrashMover.systemTrash
-    @ObservationIgnored var makePolicy: @Sendable () -> TrashSafetyPolicy = { TrashSafetyPolicy.live() }
+    var makePolicy: @Sendable () -> TrashSafetyPolicy {
+        get { policies.make }
+        set { policies.make = newValue }
+    }
     @ObservationIgnored private var isConfirming = false
     @ObservationIgnored var confirm: @MainActor (TrashConfirmation) async -> Bool = CleanupModel.presentConfirmation
 
@@ -48,15 +51,18 @@ final class CleanupModel {
             .merge(with: notifications.publisher(for: NSWorkspace.didUnmountNotification))
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
-                MainActor.assumeIsolated { self?.cachedPolicy = nil }
+                MainActor.assumeIsolated {
+                    self?.policies.invalidate()
+                    self?.warmPolicy()
+                }
             }
     }
 
-    private var policy: TrashSafetyPolicy {
-        if let cachedPolicy { return cachedPolicy }
-        let built = makePolicy()
-        cachedPolicy = built
-        return built
+    private var policy: TrashSafetyPolicy { policies.current }
+
+    /// Ahead of the first menu, which would otherwise build it on the main thread.
+    private func warmPolicy() {
+        if isEnabled, coordinator.snapshot != nil { policies.warm() }
     }
 
     // MARK: - State
@@ -252,6 +258,7 @@ final class CleanupModel {
     /// Drops gone items after any tree change; a new tree of the same location keeps its pile, except items
     /// whose path now holds something else.
     func snapshotDidChange(_ snapshot: ScanSnapshot?) {
+        warmPolicy()
         guard let snapshot, snapshot.isComplete, var current = piles[snapshot.target.id] else { return }
         let changed = current.reconcile(with: snapshot.treeStore)
         piles[snapshot.target.id] = current.isEmpty ? nil : current
@@ -268,6 +275,7 @@ final class CleanupModel {
     func setEnabled(_ enabled: Bool) {
         guard isEnabled != enabled else { return }
         isEnabled = enabled
+        warmPolicy()
     }
 
     func dismissNotice() {
@@ -324,9 +332,7 @@ final class CleanupModel {
         notice = nil
         movingIDs = Set(nodes.map(\.id))
         // Built fresh, off the main thread: mounts can appear without a notification.
-        let makePolicy = makePolicy
-        let freshPolicy = await Task.detached(priority: .userInitiated) { makePolicy() }.value
-        cachedPolicy = freshPolicy
+        let freshPolicy = await policies.rebuild()
         let mover = TrashMover(policy: freshPolicy, trashItem: trashItem)
         let rootID = snapshot.root.id
         var gone: [FileNodeRecord] = []

@@ -52,6 +52,28 @@ import NeodiskKit
         #expect(!preferences.scansWithoutFullDiskAccess)
     }
 
+    /// The offer covers the scan on screen, so Rescan can't reach past it to the previous location (F51).
+    @Test func testRescanWaitsWhileAccessIsOffered() async throws {
+        let (model, service, _, cleanup) = try await makeModel(access: .notGranted)
+        defer { cleanup() }
+        let applications = makeTestTarget("/Applications")
+        model.startScan(applications)
+        let file = makeTestFileNode(id: "/Applications/file.txt", name: "file.txt", size: 20)
+        let root = makeTestDirectoryNode(id: applications.id, name: applications.displayName, children: [file])
+        let store = FileTreeStore(root: root, childrenByID: [root.id: [file]])
+        service.yield(.finished(makeTestSnapshot(target: applications, root: root, store: store)), scanIndex: 0)
+        service.finish(scanIndex: 0)
+        try await waitUntil("first scan shown") { model.coordinator.snapshot != nil && !model.coordinator.isScanning }
+        #expect(model.canRescan)
+
+        model.startChosenScan(disk)
+        #expect(model.fullDiskAccessGate?.id == disk.id)
+        #expect(!model.canRescan)
+        model.rescan()
+        #expect(service.scanCount == 1)
+        #expect(model.fullDiskAccessGate?.id == disk.id)
+    }
+
     /// Waits for the snapshot index: until it loads, a location may have a scan the model can't see yet.
     private func makeModel(
         access: FullDiskAccessStatus

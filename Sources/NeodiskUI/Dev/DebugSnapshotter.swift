@@ -69,6 +69,11 @@ final class DebugSnapshotter {
                 view.controller.magnify(by: zoom, anchor: center)
                 _ = view.controller.scroll(by: CGSize(width: -view.bounds.width, height: 0))
             }
+            // NEODISK_SNAPSHOT_HOVER=<fx>,<fy> hovers that point (fractions of the map) to capture the tooltip.
+            if let hover = ProcessInfo.processInfo.environment["NEODISK_SNAPSHOT_HOVER"]?
+                .split(separator: ",").compactMap({ Double($0) }), hover.count == 2 {
+                view.controller.hover(at: CGPoint(x: view.bounds.width * hover[0], y: view.bounds.height * hover[1]))
+            }
             try? await Task.sleep(for: .seconds(2))
             Self.writeWindowSnapshot(of: view, to: path)
         }

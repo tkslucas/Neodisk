@@ -381,6 +381,9 @@ private struct WorkspaceView: View {
                         )
                         BottomOutlinePane(model: model)
                             .frame(height: metrics.bottomOutlineHeight)
+                            // A floating statistics panel may cover the map, never the list: the list ends where
+                            // the panel begins, and its columns fit that width.
+                            .padding(.trailing, model.showKindStats && metrics.analysisFloats ? metrics.analysisWidth : 0)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

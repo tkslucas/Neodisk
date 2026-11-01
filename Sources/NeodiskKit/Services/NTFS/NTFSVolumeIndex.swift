@@ -36,6 +36,11 @@ nonisolated final class NTFSVolumeIndex: @unchecked Sendable {
     static let firstUserRecord: UInt32 = 16
     static let wofReparseTag: UInt32 = 0x8000_0017
 
+    /// Symbolic links, junctions and mount points: never followed. A tag that couldn't be read counts as one.
+    static func isNameSurrogate(_ tag: UInt32) -> Bool {
+        tag & 0x2000_0000 != 0
+    }
+
     /// The attributes and tag a directory listing shows for what `$STANDARD_INFORMATION` stores, as measured
     /// against FileIdExtdDirectoryInfo on Windows 11: the directory bit comes from the record header, bit 0x40000
     /// is never listed, a file with none reads as FILE_ATTRIBUTE_NORMAL, and the system-compression filter hides
@@ -168,12 +173,12 @@ nonisolated final class NTFSVolumeIndex: @unchecked Sendable {
     }
 
     /// Exact names first, then a case-insensitive match the way Windows resolves a typed path. Nil when a
-    /// component is missing, or names a reparse point or a file before the last component.
+    /// component is missing, or names a link (a name-surrogate reparse point) or a file before the last one.
     func resolve(components: [String]) -> UInt32? {
         var current = Self.rootRecord
         guard isInUseDirectory(current) else { return nil }
         for component in components where !component.isEmpty {
-            guard isInUseDirectory(current), reparseTags[Int(current)] == 0 else { return nil }
+            guard isInUseDirectory(current), !Self.isNameSurrogate(reparseTags[Int(current)]) else { return nil }
             if let exact = child(of: current, named: component) {
                 current = exact
                 continue

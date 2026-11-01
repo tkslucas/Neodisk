@@ -212,10 +212,10 @@ nonisolated final class NTFSVolumeReader: @unchecked Sendable {
         var linkSeconds = 0.0
     }
 
-    /// Reads the whole file table in `chunkSize` pieces on a reader thread while workers parse the previous
-    /// piece. `progress` gets bytes done and the total, on the calling thread.
+    /// Reads the whole file table in `chunkSize` pieces on reader threads while workers parse the pieces
+    /// already read. `progress` gets bytes done and the total, on the calling thread.
     func readIndex(
-        chunkSize requestedChunkSize: Int = 8 << 20,
+        chunkSize requestedChunkSize: Int = 16 << 20,
         workerCount: Int = ProcessInfo.processInfo.activeProcessorCount,
         progress: (Int64, Int64) -> Void = { _, _ in },
         cancellationCheck: () throws -> Void = {}
@@ -236,28 +236,37 @@ nonisolated final class NTFSVolumeReader: @unchecked Sendable {
         let fragments = (0..<workers).map { _ in builder.makeFragment() }
         var statistics = Statistics()
 
-        let pipeline = ChunkPipeline(bufferCount: 3, bufferSize: chunkSize)
+        // Two reads in flight keep the disk busy while one finishes; chunks may complete in any order since
+        // each record lands at its own number.
+        let readerCount = 2
+        let pipeline = ChunkPipeline(bufferCount: readerCount + 2, bufferSize: chunkSize, chunkCount: chunkCount)
         defer { pipeline.deallocate() }
         let readStart = ContinuousClock.now
-        let readerDone = DispatchSemaphore(value: 0)
-        let reader = Thread { [self] in
-            defer { readerDone.signal() }
-            for chunk in 0..<chunkCount {
-                guard let buffer = pipeline.takeEmpty() else { return }
-                let start = Int64(chunk) * Int64(chunkSize)
-                let length = Int(min(Int64(chunkSize), totalBytes - start))
-                do {
-                    try readFileTableRange(start: start, length: length, runs: runs, into: buffer)
-                    pipeline.putFilled(.init(buffer: buffer, start: start, length: length))
-                } catch {
-                    pipeline.fail(error)
-                    return
+        let readersDone = DispatchGroup()
+        for reader in 0..<readerCount {
+            readersDone.enter()
+            let thread = Thread { [self] in
+                defer { readersDone.leave() }
+                while let buffer = pipeline.takeEmpty() {
+                    guard let chunk = pipeline.claimChunk() else {
+                        pipeline.putEmpty(buffer)
+                        return
+                    }
+                    let start = Int64(chunk) * Int64(chunkSize)
+                    let length = Int(min(Int64(chunkSize), totalBytes - start))
+                    do {
+                        try readFileTableRange(start: start, length: length, runs: runs, into: buffer)
+                        pipeline.putFilled(.init(buffer: buffer, start: start, length: length))
+                    } catch {
+                        pipeline.fail(error)
+                        return
+                    }
                 }
             }
+            thread.qualityOfService = .userInitiated
+            thread.name = "com.neodisk.mft-reader-\(reader)"
+            thread.start()
         }
-        reader.qualityOfService = .userInitiated
-        reader.name = "com.neodisk.mft-reader"
-        reader.start()
 
         var parseSeconds = 0.0
         var done: Int64 = 0
@@ -288,10 +297,11 @@ nonisolated final class NTFSVolumeReader: @unchecked Sendable {
             }
         } catch {
             pipeline.cancel()
-            readerDone.wait()
+            readersDone.wait()
             throw error
         }
-        readerDone.wait()
+        pipeline.cancel()
+        readersDone.wait()
         statistics.readSeconds = (ContinuousClock.now - readStart).seconds
         statistics.bytesRead = totalBytes
         statistics.parseSeconds = parseSeconds
@@ -371,11 +381,22 @@ private nonisolated final class ChunkPipeline: @unchecked Sendable {
     private var filled: [Filled] = []
     private var failure: Error?
     private var isCancelled = false
+    private var nextChunk = 0
+    private let chunkCount: Int
     private let all: [UnsafeMutableRawPointer]
 
-    init(bufferCount: Int, bufferSize: Int) {
+    init(bufferCount: Int, bufferSize: Int, chunkCount: Int) {
         all = (0..<bufferCount).map { _ in UnsafeMutableRawPointer.allocate(byteCount: bufferSize, alignment: 4096) }
         empty = all
+        self.chunkCount = chunkCount
+    }
+
+    func claimChunk() -> Int? {
+        condition.lock()
+        defer { condition.unlock() }
+        guard nextChunk < chunkCount, !isCancelled else { return nil }
+        nextChunk += 1
+        return nextChunk - 1
     }
 
     func deallocate() {
@@ -417,7 +438,6 @@ private nonisolated final class ChunkPipeline: @unchecked Sendable {
         condition.unlock()
     }
 
-    /// Chunks arrive in order: there is one reader.
     func takeFilled() throws -> Filled {
         condition.lock()
         defer { condition.unlock() }

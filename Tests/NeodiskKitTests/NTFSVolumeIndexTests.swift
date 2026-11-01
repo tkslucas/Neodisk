@@ -181,6 +181,7 @@ import Testing
         #expect(junction.reparseTag == 0xA000_0003 && junction.isDirectory)
         #expect(index.resolve(components: ["Documents and Settings"]) == 37)
         #expect(index.resolve(components: ["Documents and Settings", "anything"]) == nil)
+        #expect(!NTFSVolumeIndex.isNameSurrogate(0x9000_601A) && NTFSVolumeIndex.isNameSurrogate(0xA000_000C))
     }
 
     @Test func resolvesPathsExactlyThenIgnoringCase() throws {
@@ -235,5 +236,20 @@ import Testing
         #expect(directory.attributes == 0x16)
         let junction = NTFSVolumeIndex.listedAttributes(stored: 0x416, reparseTag: 0xA000_0003, isDirectory: true)
         #expect(junction.attributes == 0x416 && junction.reparseTag == 0xA000_0003)
+    }
+
+    @Test func theRegistryServesDirectoriesUnderARegisteredVolumeOnly() throws {
+        let index = try Self.build(Self.image(Self.volume())).finish()
+        let id = NTFSIndexRegistry.register(index, rootPath: "Q:/")
+        defer { NTFSIndexRegistry.unregister(id) }
+        #expect(NTFSIndexRegistry.directory(atPath: "Q:/")?.record == NTFSVolumeIndex.rootRecord)
+        #expect(NTFSIndexRegistry.directory(atPath: "Q:/Users")?.record == 30)
+        #expect(NTFSIndexRegistry.directory(atPath: "q:/users/")?.record == 30)
+        // A file, a missing folder and another volume all go to the disk reader.
+        #expect(NTFSIndexRegistry.directory(atPath: "Q:/Users/long name.txt") == nil)
+        #expect(NTFSIndexRegistry.directory(atPath: "Q:/Users/missing") == nil)
+        #expect(NTFSIndexRegistry.directory(atPath: "R:/Users") == nil)
+        NTFSIndexRegistry.unregister(id)
+        #expect(NTFSIndexRegistry.directory(atPath: "Q:/Users") == nil)
     }
 }

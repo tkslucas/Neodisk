@@ -70,11 +70,9 @@
 "Theme" = "主题";
 "Scanning" = "扫描";
 "Show hidden files while scanning" = "扫描时显示隐藏文件";
-"Mounted volume scans always include hidden files automatically." = "扫描已装载的宗卷时始终自动包含隐藏文件。";
 "Automatically summarize folders with many small files" = "自动汇总包含大量小文件的文件夹";
 "Scan local cloud files" = "扫描本地云文件";
 "When off, scans skip locally synced cloud folders: ~/Library/CloudStorage (Google Drive, Dropbox, OneDrive) and iCloud Drive." = "关闭后，扫描将跳过本地同步的云文件夹：~/Library/CloudStorage（Google Drive、Dropbox、OneDrive）和 iCloud Drive。";
-"Changes apply to the next scan." = "更改将在下次扫描时生效。";
 "When opening a scanned location" = "打开已扫描的位置时";
 "Rescan automatically always refreshes behind the saved results; Smart skips the refresh when the last scan took a while; Show snapshot only always waits for Rescan Now." = "“自动重新扫描”始终在已保存结果的后台刷新；“智能”会在上次扫描耗时较长时跳过刷新；“仅显示快照”则始终等待点按“立即重新扫描”。";
 "When Results Appear" = "显示结果时";

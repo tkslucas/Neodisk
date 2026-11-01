@@ -34,12 +34,10 @@ enum PreferencesDialog {
                   isOn: preferences.showFreeSpace) { preferences.showFreeSpace = $0 }
         adw_preferences_page_add(ptr(viewPage), ptr(treemap))
 
-        let categories = group(
-            L("File Categories"),
-            description: L("To move a file type to another category or a new one, group the Kinds tab by Types and right-click the type. Right-click a category you made to rename or delete it.")
-        )
+        let categories = group(L("File Categories"))
         let resetRow = raw(adw_action_row_new())!
         adw_preferences_row_set_title(ptr(resetRow), L("Reset Categories"))
+        gtk_widget_set_tooltip_text(ptr(resetRow), L("To move a file type to another category or a new one, group the Kinds tab by Types and right-click the type. Right-click a category you made to rename or delete it."))
         let resetButton = raw(gtk_button_new_with_label(L("Reset")))!
         gtk_widget_set_valign(ptr(resetButton), GTK_ALIGN_CENTER)
         gtk_widget_set_sensitive(ptr(resetButton), gbool(!preferences.fileCategories.isEmpty))
@@ -54,11 +52,11 @@ enum PreferencesDialog {
 
         // Scanning.
         let scanPage = page(L("Scanning"), icon: "drive-harddisk-symbolic")
-        let scanning = group(L("Scans"), description: L("Changes apply to the next scan."))
+        let scanning = group(L("Scans"))
         addSwitch(to: scanning, title: L("Include Hidden Files"),
                   isOn: preferences.includeHiddenFiles) { preferences.includeHiddenFiles = $0 }
         addSwitch(to: scanning, title: L("Summarize Huge Folders"),
-                  subtitle: L("Count folders with very many small files as one item, for faster scans"),
+                  tooltip: L("Count folders with very many small files as one item, for faster scans"),
                   isOn: preferences.autoSummarizeDirectories) { preferences.autoSummarizeDirectories = $0 }
         adw_preferences_page_add(ptr(scanPage), ptr(scanning))
 
@@ -118,14 +116,14 @@ enum PreferencesDialog {
     private static func addSwitch(
         to group: GPtr,
         title: String,
-        subtitle: String? = nil,
+        tooltip: String? = nil,
         isOn: Bool,
         _ changed: @escaping @MainActor (Bool) -> Void
     ) {
         let row = raw(adw_switch_row_new())!
         adw_preferences_row_set_title(ptr(row), title)
-        if let subtitle {
-            adw_action_row_set_subtitle(ptr(row), subtitle)
+        if let tooltip {
+            gtk_widget_set_tooltip_text(ptr(row), tooltip)
         }
         adw_switch_row_set_active(ptr(row), gbool(isOn))
         connectNotify(row, "active") {

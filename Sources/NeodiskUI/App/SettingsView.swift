@@ -123,9 +123,7 @@ private struct ViewSettingsTab: View {
                 }
 
                 Toggle("Show free space in treemap", isOn: $preferences.showFreeSpace)
-                Text("Adds hidden space too: capacity the scan could not see, such as purgeable space and local snapshots.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .help("Adds hidden space too: capacity the scan could not see, such as purgeable space and local snapshots.")
 
                 Picker("Color palette", selection: $preferences.vizPaletteID) {
                     ForEach(VizPalette.all) { palette in
@@ -135,12 +133,10 @@ private struct ViewSettingsTab: View {
             }
 
             Section("File Categories") {
-                Text("To move a file type to another category or a new one, group the Kinds tab by Types and right-click the type. Right-click a category you made to rename or delete it.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
                 Button("Reset Categories") {
                     preferences.fileCategoriesJSON = ""
                 }
+                .help("To move a file type to another category or a new one, group the Kinds tab by Types and right-click the type. Right-click a category you made to rename or delete it.")
                 .disabled(preferences.fileCategoriesJSON.isEmpty)
             }
         }
@@ -157,20 +153,12 @@ private struct AdvancedSettingsTab: View {
         Form {
             Section("Scanning") {
                 Toggle("Show hidden files while scanning", isOn: $preferences.includeHiddenFiles)
-                Text("Mounted volume scans always include hidden files automatically.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
                 Toggle(
                     "Automatically summarize folders with many small files",
                     isOn: $preferences.autoSummarizeDirectories
                 )
                 Toggle("Scan local cloud files", isOn: $preferences.includeCloudStorage)
-                Text("When off, scans skip locally synced cloud folders: ~/Library/CloudStorage (Google Drive, Dropbox, OneDrive) and iCloud Drive.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                Text("Changes apply to the next scan.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .help("When off, scans skip locally synced cloud folders: ~/Library/CloudStorage (Google Drive, Dropbox, OneDrive) and iCloud Drive.")
                 Picker("When opening a scanned location", selection: Binding(
                     get: { preferences.autoRescanPolicy },
                     set: { preferences.autoRescanPolicy = $0 }
@@ -179,9 +167,7 @@ private struct AdvancedSettingsTab: View {
                         Text(LocalizedStringKey(policy.title)).tag(policy)
                     }
                 }
-                Text("Rescan automatically always refreshes behind the saved results; Smart skips the refresh when the last scan took a while; Show snapshot only always waits for Rescan Now.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                .help("Rescan automatically always refreshes behind the saved results; Smart skips the refresh when the last scan took a while; Show snapshot only always waits for Rescan Now.")
             }
 
             Section("When Results Appear") {
@@ -190,9 +176,7 @@ private struct AdvancedSettingsTab: View {
                     isOn: $preferences.prepareChangesAfterScan
                 )
                 Toggle("Find duplicate files automatically", isOn: $preferences.autoScanDuplicates)
-                Text("Reading file contents can take time and energy on large locations.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .help("Reading file contents can take time and energy on large locations.")
             }
 
             Section("Exclusions") {

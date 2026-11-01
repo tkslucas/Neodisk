@@ -70,11 +70,9 @@
 "Theme" = "Theme";
 "Scanning" = "Scanning";
 "Show hidden files while scanning" = "Show hidden files while scanning";
-"Mounted volume scans always include hidden files automatically." = "Mounted volume scans always include hidden files automatically.";
 "Automatically summarize folders with many small files" = "Automatically summarize folders with many small files";
 "Scan local cloud files" = "Scan local cloud files";
 "When off, scans skip locally synced cloud folders: ~/Library/CloudStorage (Google Drive, Dropbox, OneDrive) and iCloud Drive." = "When off, scans skip locally synced cloud folders: ~/Library/CloudStorage (Google Drive, Dropbox, OneDrive) and iCloud Drive.";
-"Changes apply to the next scan." = "Changes apply to the next scan.";
 "When opening a scanned location" = "When opening a scanned location";
 "Rescan automatically always refreshes behind the saved results; Smart skips the refresh when the last scan took a while; Show snapshot only always waits for Rescan Now." = "Rescan automatically always refreshes behind the saved results; Smart skips the refresh when the last scan took a while; Show snapshot only always waits for Rescan Now.";
 "When Results Appear" = "When Results Appear";

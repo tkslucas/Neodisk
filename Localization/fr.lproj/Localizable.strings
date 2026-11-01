@@ -70,11 +70,9 @@
 "Theme" = "Thème";
 "Scanning" = "Analyse";
 "Show hidden files while scanning" = "Afficher les fichiers cachés pendant l'analyse";
-"Mounted volume scans always include hidden files automatically." = "Les analyses de volumes montés incluent toujours automatiquement les fichiers cachés.";
 "Automatically summarize folders with many small files" = "Résumer automatiquement les dossiers contenant de nombreux petits fichiers";
 "Scan local cloud files" = "Analyser les fichiers cloud locaux";
 "When off, scans skip locally synced cloud folders: ~/Library/CloudStorage (Google Drive, Dropbox, OneDrive) and iCloud Drive." = "Lorsque cette option est désactivée, l'analyse ignore les dossiers cloud synchronisés localement : ~/Library/CloudStorage (Google Drive, Dropbox, OneDrive) et iCloud Drive.";
-"Changes apply to the next scan." = "Les changements s'appliquent à la prochaine analyse.";
 "When opening a scanned location" = "À l'ouverture d'un emplacement analysé";
 "Rescan automatically always refreshes behind the saved results; Smart skips the refresh when the last scan took a while; Show snapshot only always waits for Rescan Now." = "« Réanalyser automatiquement » actualise toujours en arrière-plan derrière les résultats enregistrés ; « Intelligent » ignore l'actualisation quand la dernière analyse a pris du temps ; « Afficher seulement l'instantané » attend toujours un clic sur Réanalyser maintenant.";
 "When Results Appear" = "Quand des résultats s’affichent";

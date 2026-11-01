@@ -70,11 +70,9 @@
 "Theme" = "テーマ";
 "Scanning" = "スキャン";
 "Show hidden files while scanning" = "スキャン中に隠しファイルを表示";
-"Mounted volume scans always include hidden files automatically." = "マウントされたボリュームのスキャンでは、常に隠しファイルが自動的に含まれます。";
 "Automatically summarize folders with many small files" = "小さいファイルが多いフォルダを自動的にまとめる";
 "Scan local cloud files" = "ローカルクラウドファイルをスキャン";
 "When off, scans skip locally synced cloud folders: ~/Library/CloudStorage (Google Drive, Dropbox, OneDrive) and iCloud Drive." = "オフにすると、ローカルに同期されたクラウドフォルダ（~/Library/CloudStorage の Google Drive、Dropbox、OneDrive、および iCloud Drive）はスキャンでスキップされます。";
-"Changes apply to the next scan." = "変更は次回のスキャンから適用されます。";
 "When opening a scanned location" = "スキャン済みの場所を開くとき";
 "Rescan automatically always refreshes behind the saved results; Smart skips the refresh when the last scan took a while; Show snapshot only always waits for Rescan Now." = "「自動的に再スキャン」は保存済みの結果の裏で常に更新します。「スマート」は前回のスキャンに時間がかかった場合は更新をスキップします。「スナップショットのみ表示」は常に「今すぐ再スキャン」を待ちます。";
 "When Results Appear" = "結果の表示時";

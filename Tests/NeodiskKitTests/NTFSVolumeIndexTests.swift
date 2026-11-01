@@ -249,6 +249,7 @@ import Testing
         #expect(NTFSIndexRegistry.directory(atPath: "Q:/Users/long name.txt") == nil)
         #expect(NTFSIndexRegistry.directory(atPath: "Q:/Users/missing") == nil)
         #expect(NTFSIndexRegistry.directory(atPath: "R:/Users") == nil)
+        #expect(NTFSIndexRegistry.covers("q:/anything") && !NTFSIndexRegistry.covers("R:/Users"))
         NTFSIndexRegistry.unregister(id)
         #expect(NTFSIndexRegistry.directory(atPath: "Q:/Users") == nil)
     }

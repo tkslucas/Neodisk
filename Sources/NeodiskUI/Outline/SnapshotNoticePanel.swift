@@ -37,8 +37,10 @@ struct SnapshotNoticePanel: View {
                     .help("Keep the snapshot and dismiss")
                 }
 
-                Button("Rescan Now") {
+                Button {
                     model.rescan()
+                } label: {
+                    Text("Rescan Now").neoFont(11)
                 }
                 .neoControlSize(base: .small)
             }

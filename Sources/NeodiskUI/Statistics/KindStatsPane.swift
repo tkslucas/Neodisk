@@ -34,14 +34,12 @@ struct KindStatsPane: View {
         @Bindable var kinds = model.kinds
         return VStack(alignment: .leading, spacing: 0) {
             // The two choices say what they group by; a "Group by" caption beside them wrapped in a narrow pane.
-            Picker("Group by", selection: $kinds.displayMode) {
-                ForEach(FileKindDisplayMode.allCases) { mode in
-                    Text(LocalizedStringKey(mode.title)).tag(mode)
-                }
-            }
-            .pickerStyle(.segmented)
-            .neoControlSize(base: .small)
-            .labelsHidden()
+            NeoSegmentedPicker(
+                options: FileKindDisplayMode.allCases.map { (NSLocalizedString($0.title, comment: "Kinds grouping"), $0) },
+                selection: $kinds.displayMode,
+                accessibilityLabel: NSLocalizedString("Group by", comment: "Kinds grouping")
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, StatsListMetrics.inset)
             .padding(.vertical, 4)
 

@@ -78,9 +78,18 @@ struct StatusBar: View {
                     .monospacedDigit()
                     .lineLimit(1)
                     .fixedSize()
+            } else if let root = model.store?.root {
+                // At rest, the whole scan: what's in it and what it weighs.
+                Text(AppStrings.plural(
+                    root.descendantFileCount, one: "%@ item", other: "%@ items", root.descendantFileCount.formatted()
+                ))
+                .foregroundStyle(.secondary)
+                Spacer(minLength: 12)
+                Text(Self.sizeText(for: root))
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .fixedSize()
             } else {
-                Text("Hover the treemap or select a row to inspect an item.")
-                    .foregroundStyle(.secondary)
                 Spacer()
             }
         }

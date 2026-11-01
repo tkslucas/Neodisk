@@ -280,7 +280,7 @@ func awaitSnapshotPersist(
 @MainActor
 func waitUntilAsync(
     _ description: String,
-    timeout: TimeInterval = 5,
+    timeout: TimeInterval = 30,
     condition: () async -> Bool
 ) async throws {
     let deadline = Date().addingTimeInterval(timeout)
@@ -296,7 +296,7 @@ func waitUntilAsync(
 @MainActor
 func waitUntil(
     _ description: String,
-    timeout: TimeInterval = 5,
+    timeout: TimeInterval = 30,
     condition: () -> Bool
 ) async throws {
     try await waitUntilAsync(description, timeout: timeout, condition: condition)

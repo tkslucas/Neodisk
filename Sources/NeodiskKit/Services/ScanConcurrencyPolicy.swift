@@ -6,6 +6,8 @@ import Foundation
 import Darwin
 #elseif canImport(Glibc)
 import Glibc
+#elseif os(Windows)
+import WinSDK
 #endif
 
 public nonisolated enum ScanSourceProfile: Sendable {
@@ -98,6 +100,28 @@ public nonisolated enum ScanSourceProfile: Sendable {
             return nil
         }
         return flag("queue/rotational") == true || flag("removable") == true
+    }
+    #elseif os(Windows)
+    /// The drive type and the disk's seek penalty: network shares fan out poorly, removable drives, spinning
+    /// disks and FAT/exFAT stay moderate. The device is the volume serial, as in file identities.
+    static func probe(for url: URL) -> (profile: ScanSourceProfile, deviceID: UInt64?) {
+        guard let root = WindowsVolume.root(for: url.path),
+              let volume = WindowsVolume.information(root: root) else {
+            return (.unsupported, nil)
+        }
+        switch Int32(WindowsVolume.driveType(root: root)) {
+        case DRIVE_REMOTE:
+            return (.network, volume.serial)
+        case DRIVE_RAMDISK:
+            return (.localParallel, volume.serial)
+        case DRIVE_FIXED where volume.fileSystemName == "ntfs" || volume.fileSystemName == "refs":
+            let rotational = WindowsVolume.incursSeekPenalty(root: root) == true
+            return (rotational ? .localConservative : .localParallel, volume.serial)
+        case DRIVE_FIXED, DRIVE_REMOVABLE, DRIVE_CDROM:
+            return (.localConservative, volume.serial)
+        default:
+            return (.unsupported, volume.serial)
+        }
     }
     #else
     static func probe(for url: URL) -> (profile: ScanSourceProfile, deviceID: UInt64?) {
@@ -286,6 +310,18 @@ nonisolated enum ScanConcurrencyPolicy {
         if bulkEnumeration {
             switch sourceProfile {
             case .localParallel:
+                #if os(Windows)
+                // Unlike getattrlistbulk, directory-info reads don't contend with each other, and more readers
+                // overlap I/O and the per-file reads of compressed system files. 4 cores: a raw walk of all of C:
+                // cold took 5.6 s with 4 readers and 2.6 s with 16; diskscan C:\Windows warm 4.2-4.5 s at 4, 3.6-3.8
+                // s at 8.
+                return hardwareAwareWorkerLimit(
+                    minimum: 8,
+                    processorMultiplier: 2,
+                    maximum: 16,
+                    conditions: conditions
+                )
+                #else
                 // getattrlistbulk self-contends in the kernel past ~8 readers (on `~`, 59-65s at 20 workers vs
                 // 36-44s at 8), so cap at physical cores but no more than that.
                 return hardwareAwareWorkerLimit(
@@ -294,6 +330,7 @@ nonisolated enum ScanConcurrencyPolicy {
                     maximum: 8,
                     conditions: conditions
                 )
+                #endif
             case .localConservative:
                 return hardwareAwareWorkerLimit(minimum: 4, processorDivisor: 1, maximum: 8, conditions: conditions)
             case .network, .unsupported:

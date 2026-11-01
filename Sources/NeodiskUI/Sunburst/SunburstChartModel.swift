@@ -87,10 +87,6 @@ final class SunburstChartModel: ObservableObject {
         renderState.version
     }
 
-    var legendPresentationBuildCount: Int {
-        legendPresentationCache.buildCount
-    }
-
     func legendPresentation(
         displayedFolder: FileNodeRecord,
         chartRootID: String,

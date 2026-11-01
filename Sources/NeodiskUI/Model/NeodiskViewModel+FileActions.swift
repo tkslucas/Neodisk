@@ -74,6 +74,17 @@ extension NeodiskViewModel {
     }
 
     /// Inspect > Copy Path for the selection, with the same beep backstop.
+    /// Edit > Copy (⌘C) in a list: the selected items as files, as Finder copies them (pasting in Finder
+    /// copies them; nothing here moves). False when nothing selected can be copied.
+    @discardableResult
+    func copySelection() -> Bool {
+        let nodes = actionableSelection
+        guard !nodes.isEmpty else { return false }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        return pasteboard.writeObjects(nodes.map { $0.url as NSURL })
+    }
+
     func copyPathOfSelection() {
         perform(on: actionableSelection, copyPaths)
     }

@@ -1,4 +1,4 @@
-// Node-payload codec: LZFSE on Apple platforms, zstd on Linux. Snapshots are a machine-local cache, so a
+// Node-payload codec: LZFSE on Apple platforms, zstd on Linux, XPRESS (Huffman) on Windows. Snapshots are a machine-local cache, so a
 // foreign payload just fails as corrupt, which the cache treats as a miss.
 
 import Foundation
@@ -68,6 +68,11 @@ extension ScanSnapshotCodec {
                 if remaining == 0 { return }
             }
         }
+    }
+
+    #elseif os(Windows)
+    static func appendCompressedPayload(_ payload: Data, to output: inout Data) throws {
+        try WindowsPayloadCodec.appendCompressed(payload, to: &output)
     }
 
     #endif

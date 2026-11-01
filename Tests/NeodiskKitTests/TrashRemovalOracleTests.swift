@@ -12,13 +12,20 @@ import Testing
         ["a/deep", "a/deep/x"],
         ["a/deep/x/y/leaf.txt", "e"],
         ["link"],
-        ["naïve\nline é.txt", "c/clone.bin"],
+        [unusualName, "c/clone.bin"],
         ["a/medium.bin", "b", "c"],
         ["a/medium.bin"],
         ["b/source.bin"],
         ["c"],
         ["a/deep/x/note.md", "a/big.bin", "c/big-link.bin"],
     ]
+
+    /// Non-ASCII and a newline, which Windows doesn't allow in a name.
+    #if os(Windows)
+    private static let unusualName = "naïve line é.txt"
+    #else
+    private static let unusualName = "naïve\nline é.txt"
+    #endif
 
     @Test(arguments: cases.indices)
     func aSplicedRemovalMatchesARescan(caseIndex: Int) async throws {
@@ -78,7 +85,7 @@ import Testing
         // copyItem clones on APFS; elsewhere it's a plain copy, which the comparison handles the same way.
         try manager.copyItem(at: root.appending(path: "a/medium.bin"), to: root.appending(path: "c/clone.bin"))
         try manager.createSymbolicLink(at: root.appending(path: "link"), withDestinationURL: root.appending(path: "a"))
-        try Data(count: 123).write(to: root.appending(path: "naïve\nline é.txt"))
+        try Data(count: 123).write(to: root.appending(path: Self.unusualName))
     }
 
     private func scan(_ root: URL) async throws -> ScanSnapshot {

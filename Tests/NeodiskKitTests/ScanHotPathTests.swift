@@ -17,6 +17,29 @@ import Foundation
         }
     }
 
+    @Test func pathFolderChecksMatchTheirURLForms() {
+        let paths = [
+            "/", "/a", "/node_modules", "/a/node_modules", "/a/node_modules/", "/a/.pnpm", "/a/node_modules/@scope",
+            "/a/.pnpm/@x", "/a/b/@scope", "/a/node_modules/react", "/@x", "/a/node_modules_x",
+            "/Users/me/Library/Developer/CoreSimulator", "/Users/me/Library/Developer/CoreSimulator/",
+            "/Users/me/Library/Developer/CoreSimulator/Devices", "/x/Library/Developer/CoreSimulator/.",
+            "/x/Library/Developer/CoreSimulator/..", "/CoreSimulator", "/Developer/CoreSimulator",
+        ]
+        for path in paths {
+            let url = URL(filePath: path, directoryHint: .isDirectory)
+            #expect(
+                AtomicDirectorySummarizer.isNodeDependencyLayoutDirectory(atPath: path)
+                    == AtomicDirectorySummarizer.isNodeDependencyLayoutDirectory(at: url),
+                "\(path)"
+            )
+            #expect(
+                AtomicDirectorySummarizer.isKnownGeneratedDirectory(atPath: path)
+                    == AtomicDirectorySummarizer.isKnownGeneratedDirectory(at: url),
+                "\(path)"
+            )
+        }
+    }
+
     @Test func scanPathMatchesStandardizedPath() {
         let matcher = ScanExclusionMatcher(patterns: [], rootPath: "/Users/me", includeCloudStorage: false)
         for path in ["/Users/me/a", "/Users/me/a/../b", "/Users/me/./c", "/Users/me/d/"] {
@@ -60,22 +83,25 @@ import Foundation
     }
 
     @Test func slowDirectoryReadDoesNotHoldQueuedReads() async throws {
-        // The slow read holds its thread until every queued read is done; if
-        // queued reads waited behind it, it would time out instead.
+        // Once the slow read holds its thread, it waits for every queued read to run on the other one; if
+        // they waited behind it, it would give up instead (the bound only keeps a regression from hanging).
         let executor = DirectoryIOExecutor(workerCount: 2)
-        let fastReadsDone = DispatchSemaphore(value: 0)
+        let slowStarted = AsyncStream<Void>.makeStream()
+        let fastReads = DispatchSemaphore(value: 0)
         let slow = Task {
             try await executor.run { _, _ in
-                fastReadsDone.wait(timeout: .now() + 10) == .success
+                slowStarted.continuation.yield()
+                let deadline = DispatchTime.now() + 60
+                return (0..<20).allSatisfy { _ in fastReads.wait(timeout: deadline) == .success }
             }
         }
+        for await _ in slowStarted.stream { break }
         try await withThrowingTaskGroup(of: Void.self) { group in
             for _ in 0..<20 {
-                group.addTask { _ = try await executor.run { _, _ in 1 } }
+                group.addTask { _ = try await executor.run { _, _ in fastReads.signal() } }
             }
             try await group.waitForAll()
         }
-        fastReadsDone.signal()
         #expect(try await slow.value)
     }
 

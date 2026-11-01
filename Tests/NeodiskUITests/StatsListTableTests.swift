@@ -70,7 +70,18 @@ struct StatsListTableTests {
 
         #expect(table.selectedRow == -1)
         #expect(coordinator.tableView(table, shouldSelectRow: 0) == false)
-        #expect(table.menu == nil)
+    }
+
+    /// Below the rows (no clicked row), the menu offers the statistics tabs, so hidden ones can come back.
+    @Test func spaceBelowTheRowsListsTheTabs() throws {
+        let coordinator = StatsListCoordinator(model: NeodiskViewModel(snapshotCache: makeIsolatedCache()))
+        let table = makeTable(coordinator)
+        coordinator.apply(update(["kind.mov"], click: .opens { _ in }, selectedID: nil))
+
+        let menu = try #require(table.menu)
+        coordinator.menuNeedsUpdate(menu)
+        #expect(menu.items.map(\.title).prefix(AnalysisTab.allCases.count) == AnalysisTab.allCases.map(\.localizedTitle)[...])
+        #expect(menu.items.last?.title == "Reset Tabs")
     }
 
     /// 37pt at 100% is what the SwiftUI List gave these two-line rows;

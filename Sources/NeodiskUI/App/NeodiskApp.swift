@@ -1,8 +1,3 @@
-//
-//  NeodiskApp.swift
-//  Neodisk
-//
-
 import AppKit
 import SwiftUI
 import NeodiskKit
@@ -23,9 +18,8 @@ public struct NeodiskApp: App {
             coordinator: ScanCoordinator(scanService: IncrementalScanService()),
             snapshotCache: snapshotCache
         )
-        // Bound before the first frame, so the workspace opens at the saved
-        // text size. Binding on appear drew one frame at 100% first, and a
-        // control that took focus there kept its 100% focus ring on macOS 26.
+        // Bound before the first frame: binding on appear drew one frame at 100% text size, and a control focused
+        // there kept its 100% focus ring on macOS 26.
         let preferences = AppPreferences()
         model.preferences = preferences
         _model = State(initialValue: model)
@@ -36,13 +30,8 @@ public struct NeodiskApp: App {
         // useless "Show Tab Bar"/"Show All Tabs" items.
         NSWindow.allowsAutomaticWindowTabbing = false
 
-        // Running via `swift run` there is no app bundle, so opt into being a
-        // regular foreground app with a menu bar and key window — unless a
-        // headless run is requested (NEODISK_UI_SNAPSHOT capture or a
-        // NEODISK_HEADLESS bench run), in which case stay an accessory app and
-        // never activate, so the window does not appear on screen or steal
-        // focus (it is also moved offscreen and kept transparent; see
-        // SnapshotWindowHider and HeadlessMode).
+        // `swift run` has no bundle: become a regular app with a menu bar, unless headless (a capture or bench run),
+        // which stays an accessory that never activates or shows on screen (see HeadlessMode).
         let app = NSApplication.shared
         if HeadlessMode.isOffscreen {
             if app.activationPolicy() != .accessory {
@@ -58,14 +47,21 @@ public struct NeodiskApp: App {
         }
     }
 
+    static let mainWindowID = "main"
+
     public var body: some Scene {
-        WindowGroup {
+        // One main window, not a group: once closed, the Window menu lists it and, like the Dock icon, brings it
+        // back where it was. Its commands disable while it's closed (NeodiskCommands).
+        Window(AppChannel.current.appName, id: Self.mainWindowID) {
             ContentView(model: model, preferences: preferences, updates: updates)
                 .onAppear {
                     preferences.applyTheme()
                     quitDelegate.snapshotCache = snapshotCache
+                    model.isWindowOpen = true
                 }
+                .onDisappear { model.isWindowOpen = false }
         }
+        .defaultSize(PaneLayout.defaultWindowSize(screen: NSScreen.main?.visibleFrame.size))
         .commands {
             NeodiskCommands(model: model, updates: updates)
         }
@@ -90,6 +86,12 @@ public struct NeodiskApp: App {
 @MainActor
 final class QuitDelegate: NSObject, NSApplicationDelegate {
     var snapshotCache: ScanSnapshotCache?
+
+    /// A single window as the primary scene would quit the app when it closes; Neodisk stays running, its scan
+    /// in memory, until the Dock icon or the Window menu brings the window back.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
+    }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let snapshotCache else { return .terminateNow }

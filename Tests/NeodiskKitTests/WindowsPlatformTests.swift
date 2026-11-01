@@ -83,6 +83,9 @@ import WinSDK
         for child in children.values.prefix(400) {
             let metadata = try #require(child.metadata)
             guard let info = handleInfo(root.appending(path: child.name).path) else { continue }
+            // System32 is live: a file the system wrote between the listing and this open (a log, a GUID-named
+            // temp file) has moved on, so only an unchanged file can be compared.
+            guard metadata.lastModified == WindowsFileInfo.date(fromFileTime: info.lastWriteTime) else { continue }
             compared += 1
             let isDirectory = info.attributes & UInt32(FILE_ATTRIBUTE_DIRECTORY) != 0
             #expect(child.deviceID == info.volumeSerial, "\(child.name)")

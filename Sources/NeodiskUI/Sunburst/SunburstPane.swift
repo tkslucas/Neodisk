@@ -66,6 +66,7 @@ struct SunburstPane: View {
                         hiddenSpaceBytes: hiddenSpaceBytes,
                         expandedAggregateIDs: model.expandedAggregateIDs,
                         includeCloudOnly: model.showsCloudOnlyFiles,
+                        centerTitle: displayedFolder.name.isEmpty ? "/" : displayedFolder.name,
                         centerSizeText: NeodiskFormatters.size(
                             displayedFolder.displayWeight(includingCloudOnly: model.showsCloudOnlyFiles)
                         ),

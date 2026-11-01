@@ -488,6 +488,7 @@
 "1 item changed since you collected it and left Cleanup." = "1 Objekt hat sich seit dem Sammeln geändert und wurde aus „Aufräumen“ entfernt.";
 "%lld items changed since you collected them and left Cleanup." = "%lld Objekte haben sich seit dem Sammeln geändert und wurden aus „Aufräumen“ entfernt.";
 "Reset Tabs" = "Tabs zurücksetzen";
+"More tabs" = "Weitere Tabs";
 "Percentage" = "Prozent";
 "It's locked. Unlock it in Get Info to move it." = "Es ist geschützt. Hebe den Schutz unter „Informationen“ auf, um es zu verschieben.";
 "Moved 1 item to the Trash." = "1 Objekt in den Papierkorb gelegt.";

@@ -488,6 +488,7 @@
 "1 item changed since you collected it and left Cleanup." = "1 項目が集めた後に変更されたため、クリーンアップから外しました。";
 "%lld items changed since you collected them and left Cleanup." = "%lld 項目が集めた後に変更されたため、クリーンアップから外しました。";
 "Reset Tabs" = "タブをリセット";
+"More tabs" = "その他のタブ";
 "Percentage" = "割合";
 "It's locked. Unlock it in Get Info to move it." = "ロックされています。「情報を見る」でロックを解除してから移動してください。";
 "Moved 1 item to the Trash." = "1 項目をゴミ箱に入れました。";

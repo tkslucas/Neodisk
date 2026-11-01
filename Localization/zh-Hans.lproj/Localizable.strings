@@ -143,6 +143,7 @@
 "Reveal in Finder" = "在访达中显示";
 "Open" = "打开";
 "Copy Path" = "拷贝路径";
+"Path" = "路径";
 "Expand Contents" = "展开内容";
 "Show Package Contents" = "显示包内容";
 "No matches" = "无匹配项";

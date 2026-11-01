@@ -144,6 +144,7 @@
 "Reveal in Finder" = "Mostrar en el Finder";
 "Open" = "Abrir";
 "Copy Path" = "Copiar ruta";
+"Path" = "Ruta";
 "Expand Contents" = "Expandir contenido";
 "Show Package Contents" = "Mostrar contenido del paquete";
 "No matches" = "Sin coincidencias";

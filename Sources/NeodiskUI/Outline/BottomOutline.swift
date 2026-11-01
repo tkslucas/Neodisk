@@ -99,8 +99,8 @@ struct BottomOutlineTable: NSViewRepresentable {
             column.title = spec.title
             // Numeric columns must not clip, so they scale; Name autoresizes and middle-truncates, so scaling
             // it too would push the numbers off-screen.
-            column.width = spec.identifier == "name" ? spec.width : spec.width * textScale
-            column.minWidth = spec.minWidth * textScale
+            column.width = Self.scaled(spec.width, column: spec.identifier, by: textScale)
+            column.minWidth = Self.scaled(spec.minWidth, column: spec.identifier, by: textScale)
             column.resizingMask = spec.identifier == "name"
                 ? [.autoresizingMask, .userResizingMask]
                 : .userResizingMask
@@ -165,6 +165,19 @@ struct BottomOutlineTable: NSViewRepresentable {
         coordinator.applyColumns(columns)
         coordinator.applySortIndicator(sort)
         coordinator.syncSelection(to: selection)
+    }
+
+    /// The percentage label's width at 100%; its bar doesn't need to grow with the text.
+    static let percentLabelWidth: CGFloat = 36
+
+    /// A column's width at a text scale: numbers grow with the text; the percentage column only by its label;
+    /// Name not at all (it autoresizes into what's left).
+    static func scaled(_ width: CGFloat, column: String, by scale: CGFloat) -> CGFloat {
+        switch column {
+        case "name": width
+        case "percent": width + percentLabelWidth * (scale - 1)
+        default: width * scale
+        }
     }
 
     /// Per-column 100% minimum widths, keyed by identifier — the coordinator
@@ -252,22 +265,25 @@ struct BottomOutlineTable: NSViewRepresentable {
         /// The inset style's margins either side of the columns.
         private static let insetPadding: CGFloat = 20
 
-        /// Shows the layout's columns that fit whole, dropping from the trailing end (Name always stays), so a
-        /// narrow pane never cuts a column mid-value. Not persisted: they come back as room does.
+        /// Which columns a narrow pane keeps longest: Name, then Size, then the rest.
+        private static let fitPriority: [OutlineColumn] = [.name, .size, .percent, .files, .modified]
+
+        /// Shows the layout's columns that fit whole, by `fitPriority` (Name always stays), so a narrow pane
+        /// never cuts a column mid-value. Not persisted: they come back as room does.
         func fitColumns() {
             guard let tableView else { return }
             let spacing = tableView.intercellSpacing.width
             // Before the first layout there's no width to fit: every layout column shows.
             let width = scrollView?.contentView.bounds.width ?? 0
             var room = width > 0 ? width - Self.insetPadding : .greatestFiniteMagnitude
-            var isFull = false
-            for column in tableView.tableColumns {
-                guard let id = OutlineColumn(rawValue: column.identifier.rawValue) else { continue }
+            for id in Self.fitPriority {
+                let index = tableView.column(withIdentifier: .init(id.rawValue))
+                guard index >= 0 else { continue }
+                let column = tableView.tableColumns[index]
                 var shows = !appliedColumns.isHidden(id)
                 if shows {
                     let needed = (id == .name ? column.minWidth : column.width) + spacing
-                    if id != .name, isFull || room < needed {
-                        isFull = true
+                    if id != .name, room < needed {
                         shows = false
                     } else {
                         room -= needed
@@ -308,15 +324,20 @@ struct BottomOutlineTable: NSViewRepresentable {
             }
             guard scale != appliedTextScale else { return }
             let ratio = scale / appliedTextScale
+            let appliedScaleBefore = appliedTextScale
             appliedTextScale = scale
             scaleHeader(of: tableView, to: scale)
             for column in tableView.tableColumns {
-                let minimum = (columnMinimums[column.identifier.rawValue] ?? 60) * scale
+                let id = column.identifier.rawValue
+                let minimum = BottomOutlineTable.scaled(columnMinimums[id] ?? 60, column: id, by: scale)
                 column.minWidth = minimum
-                // Name autoresizes into the leftover width; only its floor
-                // moves. See the makeNSView note.
-                let target = column.identifier.rawValue == "name"
-                    ? column.width : column.width * ratio
+                // Name autoresizes into the leftover width; only its floor moves. The percentage column grows by
+                // its label alone. See the makeNSView note.
+                let target = switch id {
+                case "name": column.width
+                case "percent": column.width + BottomOutlineTable.percentLabelWidth * (scale - appliedScaleBefore)
+                default: column.width * ratio
+                }
                 column.width = max(target, minimum)
             }
             fitColumns()
@@ -689,7 +710,7 @@ private struct SubtreePercentCell: View {
                     : AnyShapeStyle(.secondary))
                 // "100%" at the row font; grows with it so the number
                 // never truncates against the bar.
-                .frame(width: (36 * textScale).rounded(), alignment: .trailing)
+                .frame(width: (BottomOutlineTable.percentLabelWidth * textScale).rounded(), alignment: .trailing)
         }
         .padding(.horizontal, BottomOutlineMetrics.cellPadding)
         .frame(maxHeight: .infinity)

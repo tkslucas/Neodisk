@@ -58,17 +58,38 @@ struct VizViewPicker: NSViewRepresentable {
         func menuNeedsUpdate(_ menu: NSMenu) {
             menu.removeAllItems()
             guard let picker else { return }
-            let views = picker.views
-            for view in VizView.allCases {
-                let item = ClosureMenuItem(title: view.menuTitle) {
-                    picker.update { $0.setHidden(view, !$0.views.isHidden(view)) }
-                }
-                item.state = views.isHidden(view) ? .off : .on
-                // The last view shown stays.
-                item.isEnabled = views.isHidden(view) || views.canHide(view)
-                menu.addItem(item)
-            }
+            for item in NSMenu.viewChecklistItems(views: picker.views, update: picker.update) { menu.addItem(item) }
         }
+    }
+}
+
+extension NSMenu {
+    /// Which views the toolbar picker shows, checked: its own right-click menu and the map's empty space share it,
+    /// so a hidden view can come back from where it went.
+    static func viewChecklistItems(
+        views: ItemLayout<VizView>,
+        update: @escaping ((inout WorkspaceLayout) -> Void) -> Void
+    ) -> [NSMenuItem] {
+        VizView.allCases.map { view in
+            let item = ClosureMenuItem(title: view.menuTitle) {
+                update { $0.setHidden(view, !$0.views.isHidden(view)) }
+            }
+            item.state = views.isHidden(view) ? .off : .on
+            // The last view shown stays.
+            item.isEnabled = views.isHidden(view) || views.canHide(view)
+            return item
+        }
+    }
+
+    /// Right-clicking the map where there's no item (sunburst background, free or hidden space).
+    @MainActor
+    static func viewChecklist(model: NeodiskViewModel) -> NSMenu {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        for item in viewChecklistItems(views: model.layout.views, update: { model.updateLayout($0) }) {
+            menu.addItem(item)
+        }
+        return menu
     }
 }
 

@@ -571,9 +571,12 @@ final class TreemapController {
         }
     }
 
+    /// An item's actions, or where there's no item (free or hidden space) the views checklist.
     func contextMenu(at point: CGPoint) -> NSMenu? {
-        guard let model, let cell = cell(at: point),
-              let node = model.store?.node(id: cell.nodeID) else { return nil }
+        guard let model, model.store != nil else { return nil }
+        guard let cell = cell(at: point), let node = model.store?.node(id: cell.nodeID) else {
+            return NSMenu.viewChecklist(model: model)
+        }
         return NSMenu.fileNodeActions(for: node, model: model, includeCleanup: cell.aggregate == nil)
     }
 

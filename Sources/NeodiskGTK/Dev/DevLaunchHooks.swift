@@ -1,5 +1,6 @@
 // Dev env hooks, named like the macOS app's: NEODISK_AUTOSCAN, NEODISK_UI_SNAPSHOT (works under Xvfb),
-// NEODISK_SNAPSHOT_DELAY, NEODISK_VIZ_MODE, NEODISK_TREEMAP_STYLE, NEODISK_ANALYSIS_TAB, NEODISK_SELECT.
+// NEODISK_SNAPSHOT_DELAY, NEODISK_VIZ_MODE, NEODISK_TREEMAP_STYLE, NEODISK_ANALYSIS_TAB, NEODISK_SELECT,
+// NEODISK_AUTOTRASH.
 
 import CGtk
 import Foundation
@@ -29,6 +30,35 @@ enum DevLaunchHooks {
                 guard model.phase == .displaying, model.store?.node(id: selection) != nil,
                       model.selectedNodeID == nil else { return }
                 model.select(selection)
+            })
+        }
+
+        // NEODISK_AUTOTRASH=<path>[:<path>...] moves those items as if each was confirmed, once the scan is on
+        // screen: every safety check still runs. One line per item on stderr.
+        if let rawPaths = environment["NEODISK_AUTOTRASH"] {
+            var started = false
+            tokens.append(track {
+                guard !started, model.phase == .displaying, model.snapshot?.isComplete == true else { return }
+                started = true
+                Task { @MainActor in
+                    for path in rawPaths.split(separator: ":").map(String.init) {
+                        guard let node = model.store?.node(id: path) else {
+                            FileHandle.standardError.write(Data("NEODISK_AUTOTRASH: \(path): not in the scan\n".utf8))
+                            continue
+                        }
+                        let outcome = await model.moveToTrash(node)
+                        let line = switch outcome {
+                        case .moved(let bytes): "moved \(bytes) bytes"
+                        case .alreadyGone: "already gone"
+                        case .failed(let reason): "refused: \(reason)"
+                        case nil: "busy"
+                        }
+                        FileHandle.standardError.write(Data("NEODISK_AUTOTRASH: \(path): \(line)\n".utf8))
+                    }
+                    FileHandle.standardError.write(Data(
+                        "NEODISK_AUTOTRASH: done; root \(model.snapshot?.root.allocatedSize ?? -1) bytes\n".utf8
+                    ))
+                }
             })
         }
 

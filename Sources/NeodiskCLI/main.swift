@@ -19,6 +19,8 @@ struct CLIOptions {
     var benchRescan = false
     /// Only with --bench-rescan; the one deliberate write diskscan can make.
     var benchTouch: String?
+    /// Prototype: what absolute-path node IDs cost against parent index + name.
+    var benchIDs = false
 }
 
 func printUsage(to handle: FileHandle) {
@@ -76,6 +78,8 @@ func parseOptions(_ arguments: [String]) -> CLIOptions? {
             options.top = value
         case "--no-hidden":
             options.includeHidden = false
+        case "--bench-ids":
+            options.benchIDs = true
         case "--bench-rescan":
             options.benchRescan = true
         case "--bench-touch":
@@ -474,6 +478,10 @@ if !snapshot.scanWarnings.isEmpty {
     FileHandle.standardError.write(
         Data("note: \(snapshot.scanWarnings.count) warning(s); some items were inaccessible\n".utf8)
     )
+}
+
+if cliOptions.benchIDs {
+    FileHandle.standardError.write(Data((PathIDFootprint.report(snapshot.treeStore) + "\n").utf8))
 }
 
 if cliOptions.dumpRecords {

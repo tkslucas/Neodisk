@@ -96,6 +96,12 @@ struct SidebarPane: View {
             }
         }
         .listStyle(.sidebar)
+        // Right-clicking empty space offers the sections, so a hidden one can always come back. Rows keep their own menus.
+        .contextMenu(forSelectionType: String.self) { ids in
+            if ids.isEmpty {
+                SidebarSectionsMenuItems(model: model)
+            }
+        }
         .overlay {
             SidebarScanTooltipLayer(
                 store: scanTooltips,

@@ -578,7 +578,7 @@ nonisolated final class ScanTraversal {
         var batch = DirectoryLeafBatch()
         batch.nodes.reserveCapacity(entries.count)
         batch.pendingChildWorkItems.reserveCapacity(min(entries.count, 64))
-        var seenNodeIDs = Set<String>()
+        var seenNodeIDs = Set<String>(minimumCapacity: entries.count)
 
         for (offset, entry) in entries.reversed().enumerated() {
             if offset.isMultiple(of: 256) {

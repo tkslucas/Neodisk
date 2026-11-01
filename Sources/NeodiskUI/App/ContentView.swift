@@ -74,6 +74,9 @@ public struct ContentView: View {
         ) { _ in
             Task { await model.warnings.refreshFullDiskAccessStatus() }
         }
+        .onChange(of: model.warnings.fullDiskAccessStatus) { _, status in
+            if status == .granted { model.passFullDiskAccessGate(remembering: false) }
+        }
         .toolbar { toolbarContent }
         .navigationTitle(windowTitle)
         .navigationSubtitle(windowSubtitle)
@@ -92,6 +95,15 @@ public struct ContentView: View {
 
     @ViewBuilder
     private var detailContent: some View {
+        if model.fullDiskAccessGate != nil {
+            FullDiskAccessGateView(model: model)
+        } else {
+            phaseContent
+        }
+    }
+
+    @ViewBuilder
+    private var phaseContent: some View {
         switch model.coordinator.phase {
         case .idle:
             WelcomeView(model: model)
@@ -115,11 +127,12 @@ public struct ContentView: View {
 
     /// The location in the title, its size in the subtitle beneath it.
     private var windowTitle: String {
-        model.coordinator.selectedTarget?.displayName ?? AppChannel.current.appName
+        (model.fullDiskAccessGate ?? model.coordinator.selectedTarget)?.displayName ?? AppChannel.current.appName
     }
 
     private var windowSubtitle: String {
-        Self.windowSubtitle(
+        guard model.fullDiskAccessGate == nil else { return "" }
+        return Self.windowSubtitle(
             targetKind: model.coordinator.selectedTarget?.kind,
             finderUsedBytes: model.freeSpace.finderUsedBytes,
             freeBytes: model.freeSpace.freeSpaceBytes,
@@ -624,6 +637,10 @@ private struct LiveScanStrip: View {
             return cachedScanDate != nil
                 ? NSLocalizedString("Stopped — showing last scan", comment: "Live strip, stopped with a cached scan")
                 : NSLocalizedString("Stopped — showing partial results", comment: "Live strip, stopped mid-scan")
+        }
+        // The one wait only the user can end comes first.
+        if let permissionWaitText = progress.permissionWaitText {
+            return permissionWaitText
         }
         // Activity phases outrank the cached-scan caption: the refresh path
         // is exactly where these silent phases used to look like a hang.

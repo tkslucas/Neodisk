@@ -92,6 +92,12 @@
 "Full Disk Access is not enabled." = "尚未启用完全磁盘访问权限。";
 "Checking…" = "正在检查…";
 "Open Full Disk Access Settings" = "打开完全磁盘访问权限设置";
+"Neodisk Works Best with Full Disk Access" = "Neodisk 在拥有完全磁盘访问权限时效果最佳";
+"Without it, macOS stops the scan to ask about each protected folder, like Documents, Downloads and Photos, and some locations are skipped." = "如果没有该权限，macOS 会为每个受保护的文件夹（如“文稿”、“下载”和“照片”）暂停扫描并询问，并且某些位置会被跳过。";
+"Scan Anyway" = "仍然扫描";
+"Waiting for permission to read %@" = "正在等待读取 %@ 的权限";
+"other apps' data" = "其他 App 的数据";
+"iCloud Drive" = "iCloud 云盘";
 "Recheck" = "重新检查";
 "Note: running unbundled (swift run), Neodisk inherits its permissions from the terminal that launched it — grant Full Disk Access to that terminal app." = "注意：以非打包方式运行（swift run）时，Neodisk 会继承启动它的终端应用的权限，请为该终端应用授予完全磁盘访问权限。";
 "Moving to the Trash" = "移到废纸篓";

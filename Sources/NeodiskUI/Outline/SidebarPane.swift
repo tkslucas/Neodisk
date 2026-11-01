@@ -141,11 +141,11 @@ struct SidebarPane: View {
                   let targetID = newSelection.first,
                   !modifiers.contains(.command),
                   !modifiers.contains(.shift),
-                  targetID != model.coordinator.selectedTarget?.id,
+                  targetID != model.coordinator.selectedTarget?.id || model.fullDiskAccessGate != nil,
                   let target = allTargets.first(where: { $0.id == targetID }) else {
                 return
             }
-            model.startScan(target)
+            model.startChosenScan(target)
         }
         .onChange(of: model.coordinator.selectedTarget, initial: true) { _, target in
             // Keep the highlighted row in sync with what is being scanned

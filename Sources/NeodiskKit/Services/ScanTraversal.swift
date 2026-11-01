@@ -44,6 +44,7 @@ nonisolated final class ScanTraversal {
     private var minimumAllocatedSizeByNodeID: [String: Int64] = [:]
     private var concurrency: AdaptiveScanConcurrency
     private let directoryIOExecutor: DirectoryIOExecutor
+    private let permissionWatch: PermissionPromptWatch?
     private var ownedDeviceIDs: Set<UInt64> = []
     private var workStack: [ScanWorkItem] = []
     /// Directories inside other apps' containers, read at most
@@ -83,6 +84,7 @@ nonisolated final class ScanTraversal {
         volumeFileSystemTypeProvider: @escaping ScanEngine.VolumeFileSystemTypeProvider,
         diagnostics: ScanDiagnosticsContext?,
         bulkEnumerationEnabled: Bool,
+        permissionPrompts: PermissionPromptWatch.Configuration? = nil,
         baseDepth: Int = 0,
         metrics: ScanMetrics,
         warnings: [ScanWarning],
@@ -113,6 +115,12 @@ nonisolated final class ScanTraversal {
         self.directoryIOExecutor = DirectoryIOExecutor(
             workerCount: concurrency.undegradedTraversalWorkerLimit + ProtectedContainers.concurrentReadLimit
         )
+        // Whole scans only: an incremental subtree sits under folders the first scan already listed.
+        self.permissionWatch = options.watchesPermissionPrompts == true && baseDepth == 0
+            ? PermissionPromptWatch(scanRoot: target.url.path, configuration: permissionPrompts) {
+                continuation.yield(.waitingForPermission($0))
+            }
+            : nil
         self.metrics = metrics
         self.warnings = warnings
         self.emissionState = emissionState
@@ -123,6 +131,7 @@ nonisolated final class ScanTraversal {
     /// Scans the target's directory iteratively (no recursion) and returns a
     /// fully assembled flat tree.
     func run() async throws -> FileTreeStore {
+        defer { permissionWatch?.stop() }
         // One shared pool owns every package/atomic summary, so a giant bundle fans across all workers instead
         // of stalling the loop. Torn down on both success and error paths.
         let pool = AtomicDirectorySummaryPool(
@@ -270,6 +279,7 @@ nonisolated final class ScanTraversal {
         let directoryResourceKeys = ScanMetadataLoader.scanResourceKeys
         let usesBulkEnumeration = bulkEnumerationEnabled
         let directoryIOExecutor = self.directoryIOExecutor
+        let permissionWatch = self.permissionWatch
         let listings = summaryPool?.listings
         let continuation = self.continuation
         // Set once in `run()` before the group starts, so workers can resolve mount-boundary flags off the
@@ -370,6 +380,8 @@ nonisolated final class ScanTraversal {
                             #if DEBUG
                             let traversalStart = DispatchTime.now().uptimeNanoseconds
                             #endif
+                            let permissionToken = permissionWatch?.begin(taskItem.path)
+                            defer { permissionWatch?.end(permissionToken) }
                             do {
                                 let contents = try await ScanEngine.directoryEntries(
                                     of: taskItem.url,
@@ -458,6 +470,10 @@ nonisolated final class ScanTraversal {
                     group.addTask {
                         let profileToken = ScanProfile.started(.packageTask, taskItem.path)
                         defer { ScanProfile.finish(profileToken) }
+                        if let permissionToken = permissionWatch?.begin(taskItem.path) {
+                            try? await directoryIOExecutor.run { _, _ in PermissionPromptWatch.touch(taskItem.path) }
+                            permissionWatch?.end(permissionToken)
+                        }
                         var localMetrics = taskMetrics
                         var localEmissionState = taskEmissionState
                         let leaf = try await summarizer.makeLeafNode(

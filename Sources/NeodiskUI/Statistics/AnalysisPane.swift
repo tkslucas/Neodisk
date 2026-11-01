@@ -62,7 +62,7 @@ struct AnalysisPane: View {
 /// Text tabs, not a segmented picker: bezel padding truncates localized titles. Tabs that don't fit go in a »
 /// menu instead of truncating; right-click shows or hides them. Dragging a tab moves the tab itself (no drag
 /// image): its neighbors slide aside as it crosses their middles, and it settles into its slot on release.
-private struct AnalysisTabBar: View {
+struct AnalysisTabBar: View {
     let model: NeodiskViewModel
 
     @Namespace private var underlineNamespace
@@ -83,8 +83,8 @@ private struct AnalysisTabBar: View {
     }
 
     var body: some View {
-        let (shown, overflow) = fitting()
-        let slots = slots(for: shown)
+        let strip = strip
+        let (shown, overflow) = fitting(strip)
         HStack(spacing: Self.spacing) {
             ForEach(shown) { tab in
                 AnalysisTabButton(
@@ -94,10 +94,10 @@ private struct AnalysisTabBar: View {
                 ) {
                     select(tab)
                 }
-                .offset(x: offset(of: tab, slots: slots))
+                .offset(x: offset(of: tab, in: shown, strip: strip))
                 .zIndex(drag?.tab == tab ? 1 : 0)
                 .transaction { if drag?.tab == tab { $0.animation = nil } }
-                .simultaneousGesture(reorderGesture(for: tab, shown: shown, slots: slots))
+                .simultaneousGesture(reorderGesture(for: tab))
             }
             Spacer(minLength: 0)
             if !overflow.isEmpty {
@@ -108,11 +108,15 @@ private struct AnalysisTabBar: View {
                 } label: {
                     Image(systemName: "chevron.right.2")
                         .neoFont(10, weight: .semibold)
+                        .foregroundStyle(.secondary)
+                        .frame(height: 20 * textScale)
+                        .contentShape(Rectangle())
                 }
-                .menuStyle(.borderlessButton)
+                // A plain button, so the chevron draws in the inactive tabs' gray and scales with them.
+                .menuStyle(.button)
+                .buttonStyle(.plain)
                 .menuIndicator(.hidden)
                 .fixedSize()
-                .foregroundStyle(.secondary)
                 .help(Text("More tabs"))
             }
         }
@@ -161,91 +165,57 @@ private struct AnalysisTabBar: View {
 
     // MARK: Dragging
 
-    private func offset(of tab: AnalysisTab, slots: [AnalysisTab: (x: CGFloat, width: CGFloat)]) -> CGFloat {
-        guard let drag, drag.tab == tab, let slot = slots[tab] else { return 0 }
-        return drag.left - slot.x
+    private func offset(of tab: AnalysisTab, in shown: [AnalysisTab], strip: TabStrip<AnalysisTab>) -> CGFloat {
+        guard let drag, drag.tab == tab, let slot = strip.slots(shown)[tab] else { return 0 }
+        return drag.left - slot
     }
 
-    private func reorderGesture(
-        for tab: AnalysisTab,
-        shown: [AnalysisTab],
-        slots: [AnalysisTab: (x: CGFloat, width: CGFloat)]
-    ) -> some Gesture {
+    /// Reads the bar afresh on every update rather than capturing it: each swap changes the slots.
+    private func reorderGesture(for tab: AnalysisTab) -> some Gesture {
         DragGesture(minimumDistance: 3, coordinateSpace: .named(Self.space))
             .onChanged { value in
-                guard let slot = slots[tab] else { return }
-                var current = drag ?? TabDrag(tab: tab, grab: value.startLocation.x - slot.x, left: slot.x)
-                if drag == nil, model.analysisTab != tab { select(tab) }
-                let first = slots[shown.first ?? tab]?.x ?? Self.padding
-                let last = shown.last.flatMap { slots[$0] }.map { $0.x + $0.width } ?? width
-                current.left = min(max(value.location.x - current.grab, first), last - slot.width)
+                let strip = strip
+                let (shown, overflow) = fitting(strip)
+                guard let slot = strip.slots(shown)[tab] else { return }
+                // A drag of another tab that never ended (its tab left the bar mid-drag) doesn't carry over.
+                var current = TabDrag(tab: tab, grab: value.startLocation.x - slot, left: slot)
+                if let drag, drag.tab == tab {
+                    current = drag
+                } else if model.analysisTab != tab {
+                    select(tab)
+                }
+                current.left = strip.clampedLeft(value.location.x - current.grab, of: tab, in: shown)
                 drag = current
-                reorderIfCrossed(current, shown: shown, slots: slots)
+                let order = strip.reordered(shown, dragging: tab, left: current.left)
+                guard order != shown else { return }
+                // The » menu's tabs follow the shown ones, so a tab shown out of order stays where it was dropped.
+                var layout = model.analysisTabs
+                layout.setVisibleOrder(order + overflow)
+                withAnimation(settle) { model.setAnalysisTabs(layout) }
             }
             .onEnded { _ in
                 withAnimation(settle) { drag = nil }
             }
     }
 
-    /// Swaps the dragged tab with a neighbor once its middle passes the neighbor's.
-    private func reorderIfCrossed(
-        _ drag: TabDrag,
-        shown: [AnalysisTab],
-        slots: [AnalysisTab: (x: CGFloat, width: CGFloat)]
-    ) {
-        guard let index = shown.firstIndex(of: drag.tab), let slot = slots[drag.tab] else { return }
-        let middle = drag.left + slot.width / 2
-        var target: AnalysisTab?
-        if index + 1 < shown.count, let next = slots[shown[index + 1]], middle > next.x + next.width / 2 {
-            target = shown[index + 1]
-        } else if index > 0, let previous = slots[shown[index - 1]], middle < previous.x + previous.width / 2 {
-            target = shown[index - 1]
-        }
-        guard let target else { return }
-        var layout = model.analysisTabs
-        layout.move(drag.tab, onto: target)
-        withAnimation(settle) { model.setAnalysisTabs(layout) }
-    }
-
     // MARK: Fitting
 
-    private func labelWidths(_ tabs: [AnalysisTab]) -> [CGFloat] {
-        let font = NSFont.systemFont(ofSize: (11 * textScale).rounded(), weight: .medium)
-        return tabs.map { tab in
-            (NSLocalizedString(tab.title, comment: "Statistics tab") as NSString)
-                .size(withAttributes: [.font: font]).width.rounded(.up)
-        }
-    }
-
-    /// Each shown tab's leading edge and width in the bar, as the HStack lays them out.
-    private func slots(for shown: [AnalysisTab]) -> [AnalysisTab: (x: CGFloat, width: CGFloat)] {
-        var x = Self.padding
-        var result: [AnalysisTab: (x: CGFloat, width: CGFloat)] = [:]
-        for (tab, tabWidth) in zip(shown, labelWidths(shown)) {
-            result[tab] = (x, tabWidth)
-            x += tabWidth + Self.spacing
-        }
-        return result
+    /// Measured in the font the tabs draw with, so the slots match the laid-out tabs.
+    private var strip: TabStrip<AnalysisTab> {
+        let font = NSFont.systemFont(ofSize: 11 * textScale, weight: .medium)
+        let widths = Dictionary(uniqueKeysWithValues: AnalysisTab.allCases.map { tab in
+            (tab, (NSLocalizedString(tab.title, comment: "Statistics tab") as NSString)
+                .size(withAttributes: [.font: font]).width)
+        })
+        return TabStrip(padding: Self.padding, spacing: Self.spacing, widths: widths)
     }
 
     /// The shown tabs that fit the bar's width, always including the active one, and the rest.
-    private func fitting() -> (shown: [AnalysisTab], overflow: [AnalysisTab]) {
-        let visible = model.analysisTabs.visible
-        let available = width - 2 * Self.padding
-        guard width > 0 else { return (visible, []) }
-        let widths = labelWidths(visible)
-        func total(_ count: Int) -> CGFloat {
-            widths.prefix(count).reduce(0, +) + Self.spacing * CGFloat(max(count - 1, 0))
-        }
-        if total(visible.count) <= available { return (visible, []) }
-        let room = available - (16 * textScale).rounded() - Self.spacing
-        var count = visible.count - 1
-        while count > 1, total(count) > room { count -= 1 }
-        var shown = Array(visible.prefix(count))
-        if let active = visible.firstIndex(of: model.analysisTab), active >= count {
-            shown[shown.count - 1] = visible[active]
-        }
-        return (shown, visible.filter { !shown.contains($0) })
+    private func fitting(_ strip: TabStrip<AnalysisTab>) -> (shown: [AnalysisTab], overflow: [AnalysisTab]) {
+        strip.fit(
+            model.analysisTabs.visible, barWidth: width,
+            menuWidth: (16 * textScale).rounded(), active: model.analysisTab
+        )
     }
 }
 

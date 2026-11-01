@@ -12,6 +12,8 @@ import CZstd
 /// (PayloadReader) or a stream (StreamingPayloadReader).
 nonisolated protocol PayloadReading: LittleEndianByteReading {
     mutating func readString() throws -> String
+    /// A length-prefixed string's bytes, appended to `bytes` without making a String.
+    mutating func readStringBytes(appendingTo bytes: inout [UInt8]) throws
 }
 
 extension PayloadReader: PayloadReading {}
@@ -46,6 +48,8 @@ nonisolated final class PayloadDecompressor: PayloadByteSource {
     #elseif canImport(CZstd)
     private let context: OpaquePointer
     private var inputPosition = 0
+    #elseif os(Windows)
+    private let decoder: WindowsPayloadCodec.Decoder
     #endif
 
     /// LZFSE doesn't record the decompressed size; payloads compress about
@@ -84,6 +88,13 @@ nonisolated final class PayloadDecompressor: PayloadByteSource {
             self.maximumBytes = maximumBytes
             expectedSizeBound = maximumBytes
         }
+        #elseif os(Windows)
+        decoder = try WindowsPayloadCodec.Decoder(compressed: compressed, maximumBytes: maximumBytes)
+        declaredSize = decoder.declaredSize
+        self.maximumBytes = decoder.declaredSize
+        expectedSizeBound = decoder.declaredSize
+        #else
+        throw ScanSnapshotCacheError.corruptData("payload compression unavailable")
         #endif
     }
 
@@ -157,6 +168,14 @@ nonisolated final class PayloadDecompressor: PayloadByteSource {
             producedCount += output.pos
             return output.pos
         }
+        #elseif os(Windows)
+        let produced = try decoder.read(into: destination, count: count)
+        guard produced <= maximumBytes - producedCount else {
+            throw ScanSnapshotCacheError.corruptData("invalid or oversized compressed payload")
+        }
+        producedCount += produced
+        isFinished = decoder.isFinished
+        return produced
         #else
         throw ScanSnapshotCacheError.corruptData("payload compression unavailable")
         #endif
@@ -259,6 +278,11 @@ nonisolated final class StreamingPayloadReader: PayloadReading {
 
     func readBytes(count: Int) throws -> Data {
         Data(bytes: try take(count), count: count)
+    }
+
+    func readStringBytes(appendingTo bytes: inout [UInt8]) throws {
+        let count = Int(UInt32(littleEndian: try load(UInt32.self)))
+        bytes.append(contentsOf: UnsafeRawBufferPointer(start: try take(count), count: count))
     }
 
     func load<T>(_ type: T.Type) throws -> T {

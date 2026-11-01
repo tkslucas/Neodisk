@@ -92,12 +92,21 @@
 "Full Disk Access is not enabled." = "Accesso completo al disco non abilitato.";
 "Checking…" = "Verifica…";
 "Open Full Disk Access Settings" = "Apri Impostazioni di Accesso completo al disco";
+"Neodisk Works Best with Full Disk Access" = "Neodisk funziona al meglio con Accesso completo al disco";
+"Without it, macOS stops the scan to ask about each protected folder, like Documents, Downloads and Photos, and some locations are skipped." = "Senza, macOS interrompe la scansione per chiedere il permesso per ogni cartella protetta, come Documenti, Download e Foto, e alcune posizioni vengono saltate.";
+"Scan Anyway" = "Scansiona comunque";
+"Waiting for permission to read %@" = "In attesa del permesso per leggere %@";
+"other apps' data" = "i dati di altre app";
+"iCloud Drive" = "iCloud Drive";
 "Recheck" = "Verifica di nuovo";
 "Note: running unbundled (swift run), Neodisk inherits its permissions from the terminal that launched it — grant Full Disk Access to that terminal app." = "Nota: se eseguito non pacchettizzato (swift run), Neodisk eredita i permessi dal terminale che lo ha avviato — concedi Accesso completo al disco a quell'app terminale.";
 "Moving to the Trash" = "Spostamento nel Cestino";
 "Allow moving items to the Trash" = "Consenti di spostare elementi nel Cestino";
 "Sidebar Folders" = "Cartelle nella barra laterale";
 "Clear Added Folders" = "Rimuovi cartelle aggiunte";
+"Restore Default Folders" = "Ripristina cartelle predefinite";
+"Remove the folders you added from the sidebar?" = "Rimuovere dalla barra laterale le cartelle che hai aggiunto?";
+"Their scan snapshots are removed too." = "Vengono rimosse anche le loro istantanee delle scansioni.";
 "Scan Snapshots" = "Istantanee delle scansioni";
 "Size on disk" = "Dimensione su disco";
 "Calculating…" = "Calcolo…";
@@ -134,6 +143,7 @@
 "Reveal in Finder" = "Mostra nel Finder";
 "Open" = "Apri";
 "Copy Path" = "Copia percorso";
+"Path" = "Percorso";
 "Expand Contents" = "Espandi contenuto";
 "Show Package Contents" = "Mostra contenuto pacchetto";
 "No matches" = "Nessun risultato";
@@ -146,12 +156,10 @@
 "Filter by name" = "Filtra per nome";
 "%@ files" = "%@ file";
 "%@ file" = "%@ file";
-"Largest %@ of %@ — search to narrow" = "I %@ più grandi di %@ — cerca per restringere";
 
 /* MARK: - Statistics panel tabs & age buckets */
 "Kinds" = "Tipi";
 "Largest" = "Più grandi";
-"Largest Files" = "File più grandi";
 "Age" = "Età";
 "Group by" = "Raggruppa per";
 "Last Modified" = "Ultima modifica";
@@ -314,7 +322,6 @@
 "View" = "Vista";
 "Treemap" = "Treemap";
 "Sunburst" = "Sunburst";
-"Switch views. Right-click to choose which ones show." = "Cambia vista. Fai clic destro per scegliere quali mostrare.";
 "Cushion Treemap" = "Treemap a cuscino";
 "Flat Treemap" = "Treemap piatta";
 "Smaller Items" = "Elementi più piccoli";
@@ -426,6 +433,7 @@
 "Top %lld of %@ matches" = "I primi %lld di %@ risultati";
 "Visualization" = "Visualizzazione";
 "%@ free of %@" = "%@ liberi su %@";
+"%@ of %@ used" = "%@ usati su %@";
 "%@ in %@ files" = "%@ in %@ file";
 "%@ in %@ file" = "%@ in %@ file";
 
@@ -440,6 +448,7 @@
 "Collapse Cleanup" = "Comprimi Pulizia";
 "Expand Cleanup" = "Espandi Pulizia";
 "Sidebar Sections" = "Sezioni della barra laterale";
+"File List Columns" = "Colonne dell'elenco file";
 "Show Cleanup in the sidebar. Drop items here to collect them." = "Mostra Pulizia nella barra laterale. Rilascia qui gli elementi per raccoglierli.";
 "It changed since the scan. Rescan to move it." = "È cambiato dopo la scansione. Ripeti la scansione per spostarlo.";
 "Move “%@” to the Trash?" = "Spostare “%@” nel Cestino?";
@@ -512,3 +521,9 @@
 "For protected macOS locations such as Mail, Safari, Messages, and Library content, grant Full Disk Access in System Settings." = "Per le posizioni protette di macOS come Mail, Safari, Messages e i contenuti di Library, concedi Accesso completo al disco in Impostazioni di Sistema.";
 "Neodisk never deletes anything itself, and won't touch system folders or your home folder." = "Neodisk non elimina mai nulla da sé e non tocca le cartelle di sistema né la tua cartella Inizio.";
 "Snapshots contain file names, paths, and sizes; they are stored only in Neodisk's local cache and never leave this Mac." = "Le istantanee contengono nomi dei file, percorsi e dimensioni; sono memorizzate solo nella cache locale di Neodisk e non lasciano mai questo Mac.";
+"%@ of %@ used · %@ free" = "%@ di %@ usati · %@ liberi";
+"Move Left" = "Sposta a sinistra";
+"Move Right" = "Sposta a destra";
+"Statistics Tabs" = "Schede delle statistiche";
+"Top %@ of %@ files" = "Primi %@ di %@ file";
+"No files to show" = "Nessun file da mostrare";

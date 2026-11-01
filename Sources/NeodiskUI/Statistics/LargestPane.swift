@@ -10,7 +10,7 @@ struct LargestPane: View {
         @Bindable var largest = model.largest
         StatsFileListView(
             model: model,
-            title: "Largest Files",
+            title: nil,
             swatch: nil,
             isLoading: model.largest.isLoading,
             visibleIDs: model.largest.visibleIDs,

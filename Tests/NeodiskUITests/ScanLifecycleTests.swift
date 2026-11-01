@@ -199,8 +199,8 @@ extension ScanTimingSuites {
         }
     }
 
-    /// A content-identical rescan skips rotation, so the first rescan leaves no diffable predecessor.
-    @Test func testUnchangedRescanLeavesHasPreviousSnapshotFalse() async throws {
+    /// A first unchanged rescan becomes the baseline (Changes reads "no changes"); later unchanged ones keep it.
+    @Test func testUnchangedRescanBecomesTheFirstBaseline() async throws {
         let environment = try TestEnvironment()
         defer { environment.tearDown() }
         let target = makeTestTarget("/scan-life/rotation")
@@ -217,8 +217,7 @@ extension ScanTimingSuites {
         }
         #expect(model.session.cachedScanInfo[target.id]?.hasPreviousSnapshot == false)
 
-        // Second scan: identical content. The save keeps the (absent) previous
-        // baseline instead of rotating, so hasPreviousSnapshot stays false.
+        // Second scan: identical content, but no baseline yet, so the first scan rotates into the previous slot.
         model.startScan(target)
         gen = model.session.kindStatsSidecarGeneration
         environment.scanService.yield(.finished(makeSnapshot(target: target, fileSize: 10)), scanIndex: 1)
@@ -226,10 +225,9 @@ extension ScanTimingSuites {
         try await waitUntilAsync("unchanged rescan persisted") {
             model.session.kindStatsSidecarGeneration > gen
         }
-        #expect(model.session.cachedScanInfo[target.id]?.hasPreviousSnapshot == false)
+        #expect(model.session.cachedScanInfo[target.id]?.hasPreviousSnapshot == true)
 
-        // Third scan: different content. Now the prior latest rotates into the
-        // previous slot and a diffable predecessor exists.
+        // Third scan: different content; the prior latest rotates and the predecessor stays diffable.
         model.startScan(target)
         gen = model.session.kindStatsSidecarGeneration
         environment.scanService.yield(.finished(makeSnapshot(target: target, fileSize: 25)), scanIndex: 2)

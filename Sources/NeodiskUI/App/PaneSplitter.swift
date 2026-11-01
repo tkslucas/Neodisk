@@ -219,6 +219,12 @@ final class SplitterNSView: NSView {
         }
     }
 
+    /// In the Tab loop only with keyboard navigation on (System Settings > Keyboard), as AppKit's own controls are:
+    /// otherwise Tab goes from the map to the list without stopping on the divider between them.
+    override var canBecomeKeyView: Bool {
+        NSApp.isFullKeyboardAccessEnabled && super.canBecomeKeyView
+    }
+
     override var focusRingMaskBounds: NSRect { bounds }
 
     override func drawFocusRingMask() {

@@ -424,9 +424,9 @@ final class TreemapController {
         _ = setHoveredCell(cell(at: hoverPoint))
     }
 
-    /// What a press would drag: the selection when the press lands on a selected item or inside one (cushion draws
-    /// folders only as files), else the cell's item alone. `carriesSelection` defers the click to mouse-up, so the
-    /// drag keeps the whole selection.
+    /// What a press would drag: the selection when it lands on or inside a selected item (cushion draws folders only
+    /// as files), else the cell's item.
+    /// `carriesSelection` defers the click to mouse-up, so the drag keeps the whole selection.
     func dragCandidate(at point: CGPoint) -> (nodeIDs: [String], carriesSelection: Bool)? {
         guard let model, !model.coordinator.isScanning, let store, let scene, let cell = cell(at: point),
               !cell.isFreeSpace, !cell.isHiddenSpace else { return nil }
@@ -571,10 +571,15 @@ final class TreemapController {
         }
     }
 
+    /// An item's actions, or where there's no item (free or hidden space) the views checklist.
     func contextMenu(at point: CGPoint) -> NSMenu? {
-        guard let model, let cell = cell(at: point),
-              let node = model.store?.node(id: cell.nodeID) else { return nil }
-        return NSMenu.fileNodeActions(for: node, model: model, includeCleanup: cell.aggregate == nil)
+        guard let model, model.store != nil else { return nil }
+        guard let cell = cell(at: point), let node = model.store?.node(id: cell.nodeID) else {
+            return NSMenu.workspaceLayout(model: model)
+        }
+        let menu = NSMenu.fileNodeActions(for: node, model: model, includeCleanup: cell.aggregate == nil)
+        menu?.addRestoreItems(model: model)
+        return menu
     }
 
     /// Spacebar Quick Look for the treemap: previews the selected node, so

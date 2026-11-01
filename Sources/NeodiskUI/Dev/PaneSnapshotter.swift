@@ -1,9 +1,10 @@
 // Panes rendered alone once the scan settles, for states the window capture can't show (the split view's sidebar
 // material takes its content with it). Inert unless their variable is set:
-// - NEODISK_SIDEBAR_SNAPSHOT=<out.png>: the sidebar (NEODISK_SIDEBAR_SNAPSHOT_WIDTH, default 260).
+// - NEODISK_SIDEBAR_SNAPSHOT=<out.png>: the sidebar (NEODISK_SIDEBAR_SNAPSHOT_WIDTH, default 260 × text scale).
 // - NEODISK_TABBAR_SNAPSHOT=<out.png>: the statistics tab bar at several widths, stacked.
 // - NEODISK_STATS_SNAPSHOT=<out.png>: the statistics pane on its NEODISK_ANALYSIS_TAB (NEODISK_STATS_SNAPSHOT_WIDTH,
 //   default 230, the pane's default; the window capture uses the stored width instead).
+// - NEODISK_WELCOME_SNAPSHOT=<out.png>: the welcome sheet at its own width.
 // All read NEODISK_SNAPSHOT_APPEARANCE=light and NEODISK_SNAPSHOT_TEXT_SCALE=<0.85…2>.
 
 import AppKit
@@ -16,7 +17,8 @@ enum PaneSnapshotter {
         let sidebarPath = environment["NEODISK_SIDEBAR_SNAPSHOT"]
         let tabBarPath = environment["NEODISK_TABBAR_SNAPSHOT"]
         let statsPath = environment["NEODISK_STATS_SNAPSHOT"]
-        guard sidebarPath != nil || tabBarPath != nil || statsPath != nil else { return }
+        let welcomePath = environment["NEODISK_WELCOME_SNAPSHOT"]
+        guard sidebarPath != nil || tabBarPath != nil || statsPath != nil || welcomePath != nil else { return }
         let scale = environment["NEODISK_SNAPSHOT_TEXT_SCALE"].flatMap(Double.init).map(TextScale.snapped) ?? 1
         let dark = environment["NEODISK_SNAPSHOT_APPEARANCE"] != "light"
         Task { @MainActor in
@@ -26,7 +28,8 @@ enum PaneSnapshotter {
             }
             try? await Task.sleep(for: .seconds(3))
             if let sidebarPath {
-                let width = environment["NEODISK_SIDEBAR_SNAPSHOT_WIDTH"].flatMap(Double.init) ?? 260
+                // The real column's width scales with the text.
+                let width = environment["NEODISK_SIDEBAR_SNAPSHOT_WIDTH"].flatMap(Double.init) ?? 260 * scale
                 await render(
                     SidebarPane(model: model), size: CGSize(width: width, height: 760),
                     scale: scale, dark: dark, to: sidebarPath
@@ -37,6 +40,13 @@ enum PaneSnapshotter {
                 await render(
                     AnalysisPane(model: model), size: CGSize(width: width * scale, height: 640 * scale),
                     scale: scale, dark: dark, to: statsPath
+                )
+            }
+            if let welcomePath {
+                // Taller than the sheet; it sits at the top, so a cut line shows as one.
+                await render(
+                    WelcomeSheet(model: model), size: CGSize(width: 460 * scale, height: 820 * scale),
+                    scale: scale, dark: dark, to: welcomePath
                 )
             }
             if let tabBarPath {
@@ -65,7 +75,7 @@ enum PaneSnapshotter {
         window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         window.alphaValue = 0
         let host = NSHostingView(rootView: view
-            .environment(\.neoTextScale, scale)
+            .neoWorkspaceText(scale: scale)
             .frame(width: size.width, height: size.height, alignment: .topLeading)
             .background(Color(nsColor: .windowBackgroundColor)))
         host.frame = CGRect(origin: .zero, size: size)

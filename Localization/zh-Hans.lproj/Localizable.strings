@@ -92,12 +92,21 @@
 "Full Disk Access is not enabled." = "尚未启用完全磁盘访问权限。";
 "Checking…" = "正在检查…";
 "Open Full Disk Access Settings" = "打开完全磁盘访问权限设置";
+"Neodisk Works Best with Full Disk Access" = "Neodisk 在拥有完全磁盘访问权限时效果最佳";
+"Without it, macOS stops the scan to ask about each protected folder, like Documents, Downloads and Photos, and some locations are skipped." = "如果没有该权限，macOS 会为每个受保护的文件夹（如“文稿”、“下载”和“照片”）暂停扫描并询问，并且某些位置会被跳过。";
+"Scan Anyway" = "仍然扫描";
+"Waiting for permission to read %@" = "正在等待读取 %@ 的权限";
+"other apps' data" = "其他 App 的数据";
+"iCloud Drive" = "iCloud 云盘";
 "Recheck" = "重新检查";
 "Note: running unbundled (swift run), Neodisk inherits its permissions from the terminal that launched it — grant Full Disk Access to that terminal app." = "注意：以非打包方式运行（swift run）时，Neodisk 会继承启动它的终端应用的权限，请为该终端应用授予完全磁盘访问权限。";
 "Moving to the Trash" = "移到废纸篓";
 "Allow moving items to the Trash" = "允许将项目移到废纸篓";
 "Sidebar Folders" = "边栏文件夹";
 "Clear Added Folders" = "清除已添加的文件夹";
+"Restore Default Folders" = "恢复默认文件夹";
+"Remove the folders you added from the sidebar?" = "要从边栏中移除你添加的文件夹吗？";
+"Their scan snapshots are removed too." = "它们的扫描快照也会一并移除。";
 "Scan Snapshots" = "扫描快照";
 "Size on disk" = "占用磁盘空间";
 "Calculating…" = "正在计算…";
@@ -134,6 +143,7 @@
 "Reveal in Finder" = "在访达中显示";
 "Open" = "打开";
 "Copy Path" = "拷贝路径";
+"Path" = "路径";
 "Expand Contents" = "展开内容";
 "Show Package Contents" = "显示包内容";
 "No matches" = "无匹配项";
@@ -146,12 +156,10 @@
 "Filter by name" = "按名称过滤";
 "%@ files" = "%@ 个文件";
 "%@ file" = "%@ 个文件";
-"Largest %@ of %@ — search to narrow" = "%2$@ 个文件中最大的 %1$@ 个，可搜索以缩小范围";
 
 /* MARK: - Statistics panel tabs & age buckets */
 "Kinds" = "类型";
 "Largest" = "最大";
-"Largest Files" = "最大文件";
 "Age" = "修改时间";
 "Group by" = "分组方式";
 "Last Modified" = "最后修改";
@@ -314,7 +322,6 @@
 "View" = "视图";
 "Treemap" = "矩形树图";
 "Sunburst" = "旭日图";
-"Switch views. Right-click to choose which ones show." = "切换视图。右键点按可选择显示哪些视图。";
 "Cushion Treemap" = "衬垫矩形树图";
 "Flat Treemap" = "扁平矩形树图";
 "Smaller Items" = "较小的项目";
@@ -426,6 +433,7 @@
 "Top %lld of %@ matches" = "%2$@ 个匹配项中的前 %1$lld 个";
 "Visualization" = "可视化";
 "%@ free of %@" = "%2$@ 中可用 %1$@";
+"%@ of %@ used" = "%2$@ 中已用 %1$@";
 "%@ in %@ files" = "%2$@ 个文件，共 %1$@";
 "%@ in %@ file" = "%2$@ 个文件，共 %1$@";
 
@@ -440,6 +448,7 @@
 "Collapse Cleanup" = "折叠清理";
 "Expand Cleanup" = "展开清理";
 "Sidebar Sections" = "边栏部分";
+"File List Columns" = "文件列表栏";
 "Show Cleanup in the sidebar. Drop items here to collect them." = "在边栏中显示清理。将项目拖放到这里以收集它们。";
 "It changed since the scan. Rescan to move it." = "自扫描以来它已更改。请重新扫描后再移动。";
 "Move “%@” to the Trash?" = "要将“%@”移到废纸篓吗？";
@@ -512,3 +521,9 @@
 "For protected macOS locations such as Mail, Safari, Messages, and Library content, grant Full Disk Access in System Settings." = "若要扫描 Mail、Safari、Messages 等受保护的 macOS 位置及 Library 内容，请在系统设置中授予完全磁盘访问权限。";
 "Neodisk never deletes anything itself, and won't touch system folders or your home folder." = "Neodisk 自身绝不会删除任何内容，也不会触及系统文件夹或你的个人文件夹。";
 "Snapshots contain file names, paths, and sizes; they are stored only in Neodisk's local cache and never leave this Mac." = "快照包含文件名、路径和大小，仅存储在 Neodisk 的本地缓存中，绝不会离开本 Mac。";
+"%@ of %@ used · %@ free" = "已用 %1$@（共 %2$@）· 可用 %3$@";
+"Move Left" = "左移";
+"Move Right" = "右移";
+"Statistics Tabs" = "统计标签页";
+"Top %@ of %@ files" = "已显示 %2$@ 个文件中的前 %1$@ 个";
+"No files to show" = "没有可显示的文件";

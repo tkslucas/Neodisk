@@ -22,11 +22,13 @@ struct OutlineTreeTable: NSViewRepresentable {
         let coordinator = context.coordinator
 
         let tableView = OutlineNSTableView()
+        tableView.copyRequested = { [model] in model.copySelection() }
+        tableView.canCopy = { [model] in model.selectionSupportsFileActions }
         tableView.quickLookRequested = { [weak coordinator] in
             coordinator?.toggleQuickLook() ?? false
         }
-        tableView.hierarchyNavigationRequested = { [weak coordinator] direction in
-            coordinator?.navigateHierarchy(direction)
+        tableView.hierarchyNavigationRequested = { [weak coordinator] direction, recursively in
+            coordinator?.navigateHierarchy(direction, recursively: recursively)
         }
         tableView.clickTrackingEnded = { [weak coordinator] in
             coordinator?.resyncSelectionAfterClick()
@@ -237,6 +239,12 @@ struct OutlineTreeTable: NSViewRepresentable {
             rows.count
         }
 
+        /// Typing a name selects the next row that starts with it, as in Finder's lists.
+        func tableView(_ tableView: NSTableView, typeSelectStringFor tableColumn: NSTableColumn?, row: Int) -> String? {
+            guard row < rows.count else { return nil }
+            return rows[row].node.name
+        }
+
         func tableView(
             _ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int
         ) -> NSView? {
@@ -278,7 +286,7 @@ struct OutlineTreeTable: NSViewRepresentable {
             _ tableView: NSTableView, draggingSession session: NSDraggingSession,
             willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet
         ) {
-            NodeDragSource.sessionDidBegin(model: model)
+            NodeDragSource.tableSessionDidBegin(session, in: tableView, at: screenPoint, model: model)
         }
 
         func tableView(
@@ -294,9 +302,8 @@ struct OutlineTreeTable: NSViewRepresentable {
             guard let tableView,
                   case let row = tableView.clickedRow, row >= 0, row < rows.count else { return }
             let node = rows[row].node
-            guard model.supportsFileActions(node) else { return }
             model.select(node.id)
-            model.reveal(node)
+            model.activate(node)
         }
 
         func menuNeedsUpdate(_ menu: NSMenu) {
@@ -318,10 +325,10 @@ struct OutlineTreeTable: NSViewRepresentable {
             return true
         }
 
-        func navigateHierarchy(_ direction: OutlineHierarchyDirection) {
+        func navigateHierarchy(_ direction: OutlineHierarchyDirection, recursively: Bool = false) {
             guard let tableView else { return }
             let performed = OutlineKeyboardNavigation.perform(
-                direction, in: tableView, rows: rows, model: model
+                direction, recursively: recursively, in: tableView, rows: rows, model: model
             )
             if case .selectRow(let row) = performed {
                 scrollToRowVerticalOnly(row)
@@ -426,7 +433,7 @@ private final class OutlineCellView: NSView, SelectionStateReceiving {
         nameHost.sizingOptions = []
         clusterHost.sizingOptions = .intrinsicContentSize
 
-        // The name host keeps full content width so SwiftUI never center-shifts an overflowing name.
+        // The name ends at the clip, against the trailing cluster, so a long one truncates there.
         nameClipView.clipsToBounds = true
         addSubview(nameClipView)
         nameClipView.addSubview(nameHost)
@@ -446,7 +453,7 @@ private final class OutlineCellView: NSView, SelectionStateReceiving {
             nameClipView.topAnchor.constraint(equalTo: topAnchor),
             nameClipView.bottomAnchor.constraint(equalTo: bottomAnchor),
             nameLeading,
-            nameHost.trailingAnchor.constraint(equalTo: trailingAnchor),
+            nameHost.trailingAnchor.constraint(equalTo: nameClipView.trailingAnchor),
             nameHost.topAnchor.constraint(equalTo: topAnchor),
             nameHost.bottomAnchor.constraint(equalTo: bottomAnchor),
             clusterTrailing,
@@ -512,13 +519,33 @@ final class OutlineRowSelectionState {
 /// unaffected.
 final class OutlineNSTableView: NSTableView {
     var quickLookRequested: () -> Bool = { false }
-    var hierarchyNavigationRequested: (OutlineHierarchyDirection) -> Void = { _ in }
+    /// Edit > Copy: the selected items, as Finder copies them. Enabled when `canCopy`.
+    var copyRequested: () -> Bool = { false }
+    var canCopy: () -> Bool = { false }
+
+    @objc func copy(_ sender: Any?) {
+        if !copyRequested() { NSSound.beep() }
+    }
+
+    override func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
+        item.action == #selector(copy(_:)) ? canCopy() : super.validateUserInterfaceItem(item)
+    }
+
+    /// Left/right arrows; with ⌥ alone, recursively.
+    var hierarchyNavigationRequested: (OutlineHierarchyDirection, Bool) -> Void = { _, _ in }
     /// The table applies a click's selection at mouseDown but fires the delegate when tracking ends, so
     /// programmatic sync must not "correct" the selection mid-click.
     private(set) var isTrackingClick = false
     var clickTrackingEnded: () -> Void = {}
     /// Select All picks exactly this list's rows, as in Finder, though ⌘A arrives as a ⌘ key.
     private(set) var isSelectingAll = false
+
+    /// Esc: true when the list handled it (a statistics drill-in goes back).
+    var cancelRequested: () -> Bool = { false }
+
+    override func cancelOperation(_ sender: Any?) {
+        if !cancelRequested() { super.cancelOperation(sender) }
+    }
 
     override func selectAll(_ sender: Any?) {
         isSelectingAll = true
@@ -533,13 +560,19 @@ final class OutlineNSTableView: NSTableView {
         let hierarchyModifiers = event.modifierFlags.intersection([
             .command, .control, .option, .shift,
         ])
-        if hierarchyModifiers.isEmpty {
+        // ⌘↑ / ⌘↓ belong to the Go menu: reaching here they're disabled (at the scan root, say), so nothing moves.
+        if hierarchyModifiers == .command, event.specialKey == .upArrow || event.specialKey == .downArrow {
+            NSSound.beep()
+            return
+        }
+        if hierarchyModifiers.isEmpty || hierarchyModifiers == .option {
+            let recursively = hierarchyModifiers == .option
             switch event.specialKey {
             case .leftArrow:
-                hierarchyNavigationRequested(.left)
+                hierarchyNavigationRequested(.left, recursively)
                 return
             case .rightArrow:
-                hierarchyNavigationRequested(.right)
+                hierarchyNavigationRequested(.right, recursively)
                 return
             default:
                 break

@@ -59,7 +59,7 @@ final class VizCanvas: CanvasHost {
         hwnd = window
         mailbox.attach(window)
         if let window {
-            dpi = max(GetDpiForWindow(window), 96)
+            dpi = Self.effectiveDPI(window)
         }
     }
 
@@ -89,6 +89,11 @@ final class VizCanvas: CanvasHost {
     }
 
     var scale: Double { Double(dpi) / 96 }
+
+    /// The window's DPI, times NEODISK_SCALE like the rest of the window, so the dev hook scales the maps too.
+    private static func effectiveDPI(_ window: HWND) -> UINT {
+        UINT((Float(max(GetDpiForWindow(window), 96)) * WindowMetrics.scaleOverride).rounded())
+    }
 
     func isShowing(_ presenter: AnyObject) -> Bool {
         guard let hwnd, IsWindowVisible(hwnd) else { return false }
@@ -292,7 +297,7 @@ final class VizCanvas: CanvasHost {
             resize(width: Int(lParam & 0xFFFF), height: Int((lParam >> 16) & 0xFFFF))
             return 0
         case WM_DPICHANGED_AFTERPARENT:
-            dpi = max(GetDpiForWindow(hwnd), 96)
+            dpi = Self.effectiveDPI(hwnd)
             var rect = RECT()
             _ = GetClientRect(hwnd, &rect)
             pixelWidth = 0

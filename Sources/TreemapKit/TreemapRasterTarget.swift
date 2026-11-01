@@ -1,11 +1,14 @@
-// Shared RGBA8 buffer plumbing for the rasterizers. CGImage assembly and `memset_pattern4` are gated
-// so the core builds off-platform (a WebAssembly demo).
+// Shared RGBA8 buffer plumbing for the rasterizers. CGImage assembly and Dispatch are gated so the core
+// builds off-platform (a WebAssembly demo).
 
 #if canImport(CoreGraphics)
 import CoreGraphics
 #endif
 #if canImport(Foundation)
 import Foundation
+#endif
+#if canImport(Dispatch)
+import Dispatch
 #endif
 
 public enum TreemapRasterTarget {
@@ -42,11 +45,12 @@ public enum TreemapRasterTarget {
 
         let bytesPerRow = width * 4
         let byteCount = bytesPerRow * height
-        var pixels = [UInt8](repeating: 0, count: byteCount)
-        pixels.withUnsafeMutableBytes { raw in
-            guard let base = raw.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return }
-            fillBackground(base, byteCount: byteCount, pattern: background)
+        // Uninitialized: the background fill writes every byte, so zeroing first would touch it all twice.
+        let pixels = [UInt8](unsafeUninitializedCapacity: byteCount) { buffer, initializedCount in
+            guard let base = buffer.baseAddress else { return }
+            fillBackground(base, width: width, height: height, pattern: background)
             draw(base, width, height, bytesPerRow)
+            initializedCount = byteCount
         }
         return (pixels, width, height)
     }
@@ -69,7 +73,7 @@ public enum TreemapRasterTarget {
         CFDataSetLength(pixelData, byteCount)
         guard let rawBase = CFDataGetMutableBytePtr(pixelData) else { return nil }
 
-        fillBackground(rawBase, byteCount: byteCount, pattern: background)
+        fillBackground(rawBase, width: width, height: height, pattern: background)
         draw(rawBase, width, height, bytesPerRow)
 
         // The pixels are sRGB; an untagged or device-RGB image skips color matching on wide-gamut displays
@@ -92,29 +96,36 @@ public enum TreemapRasterTarget {
     }
     #endif
 
-    /// Prefills the buffer with the background pattern. `memset_pattern4` is
-    /// a Darwin libc primitive; elsewhere a 4-byte stride loop does the same.
+    /// Prefills the buffer with the background pattern, a band of rows per task: a 4K canvas is 64 MB, more
+    /// than one core's store bandwidth.
     static func fillBackground(
         _ base: UnsafeMutablePointer<UInt8>,
-        byteCount: Int,
+        width: Int,
+        height: Int,
         pattern: [UInt8] = backgroundPattern
     ) {
-        #if canImport(Darwin)
-        var pattern = pattern
-        memset_pattern4(base, &pattern, byteCount)
-        #else
-        let (b0, b1, b2, b3) = (
-            pattern[0], pattern[1],
-            pattern[2], pattern[3]
-        )
-        var offset = 0
-        while offset < byteCount {
-            base[offset] = b0
-            base[offset + 1] = b1
-            base[offset + 2] = b2
-            base[offset + 3] = b3
-            offset += 4
+        let word = UInt32(pattern[0]) | UInt32(pattern[1]) << 8 | UInt32(pattern[2]) << 16 | UInt32(pattern[3]) << 24
+        nonisolated(unsafe) let base = base
+        forEachRowBand(height: height) { rows in
+            let start = base + rows.lowerBound * width * 4
+            let count = rows.count * width
+            start.withMemoryRebound(to: UInt32.self, capacity: count) {
+                $0.initialize(repeating: word, count: count)
+            }
         }
+    }
+
+    /// Runs `body` over disjoint row bands, concurrently where Dispatch exists. Each band draws every cell
+    /// clipped to its rows, so draw order holds within a band and bands never share a pixel.
+    static func forEachRowBand(height: Int, _ body: @Sendable (Range<Int>) -> Void) {
+        #if canImport(Dispatch)
+        // Several bands per core: a band crossing one big cell costs more than one full of slivers.
+        let bandCount = max(1, min(height, ProcessInfo.processInfo.activeProcessorCount * 4))
+        DispatchQueue.concurrentPerform(iterations: bandCount) { band in
+            body((height * band / bandCount)..<(height * (band + 1) / bandCount))
+        }
+        #else
+        body(0..<height)
         #endif
     }
 }

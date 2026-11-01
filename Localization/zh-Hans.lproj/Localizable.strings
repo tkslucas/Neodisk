@@ -255,6 +255,7 @@
 "Add Folder…" = "添加文件夹…";
 "Scan any folder or volume and keep it in the sidebar" = "扫描任意文件夹或宗卷，并将其保留在边栏中";
 "Scanned %@" = "已扫描 %@";
+"Couldn't be read" = "无法读取";
 "Remove from Sidebar" = "从边栏中移除";
 "Remove %lld Folders from Sidebar" = "从边栏中移除 %lld 个文件夹";
 
@@ -358,7 +359,6 @@
 "Support Neodisk…" = "支持 Neodisk…";
 "Support" = "支持";
 "License" = "许可证";
-"Privacy" = "隐私";
 "Version %@" = "版本 %@";
 
 /* MARK: - Cloud-only files */
@@ -528,3 +528,15 @@
 "Statistics Tabs" = "统计标签页";
 "Top %@ of %@ files" = "已显示 %2$@ 个文件中的前 %1$@ 个";
 "No files to show" = "没有可显示的文件";
+
+/* Windows app */
+"Commands" = "命令";
+"Location" = "位置";
+"Locations" = "位置";
+"Status" = "状态";
+"Local Disk" = "本地磁盘";
+"Drive" = "驱动器";
+"Show in File Explorer" = "在文件资源管理器中显示";
+"More" = "更多";
+"Scan progress" = "扫描进度";
+"Couldn't Scan" = "无法扫描";

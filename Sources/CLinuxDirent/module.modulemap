@@ -1,0 +1,4 @@
+module CLinuxDirent [system] {
+    header "shim.h"
+    export *
+}

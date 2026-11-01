@@ -255,6 +255,7 @@
 "Add Folder…" = "Ajouter un dossier…";
 "Scan any folder or volume and keep it in the sidebar" = "Analysez n'importe quel dossier ou volume et conservez-le dans la barre latérale";
 "Scanned %@" = "Analysé %@";
+"Couldn't be read" = "Illisible";
 "Remove from Sidebar" = "Retirer de la barre latérale";
 "Remove %lld Folders from Sidebar" = "Retirer %lld dossiers de la barre latérale";
 
@@ -358,7 +359,6 @@
 "Support Neodisk…" = "Soutenir Neodisk…";
 "Support" = "Soutenir";
 "License" = "Licence";
-"Privacy" = "Confidentialité";
 "Version %@" = "Version %@";
 
 /* MARK: - Cloud-only files */
@@ -528,3 +528,15 @@
 "Statistics Tabs" = "Onglets des statistiques";
 "Top %@ of %@ files" = "%@ premiers fichiers sur %@";
 "No files to show" = "Aucun fichier à afficher";
+
+/* Windows app */
+"Commands" = "Commandes";
+"Location" = "Emplacement";
+"Locations" = "Emplacements";
+"Status" = "État";
+"Local Disk" = "Disque local";
+"Drive" = "Lecteur";
+"Show in File Explorer" = "Afficher dans l'Explorateur de fichiers";
+"More" = "Plus";
+"Scan progress" = "Progression de l'analyse";
+"Couldn't Scan" = "Analyse impossible";

@@ -518,7 +518,7 @@ final class AppModel {
 
     /// An arrow key in a map, from the primary item: only the target stays selected, or Shift adds it. False
     /// (caller beeps) when there is nowhere to go.
-    func moveSelectionInMap(_ move: TreeKeyboardNav.Move, extending: Bool, isRendered: (String) -> Bool) -> Bool {
+    func moveSelectionInMap(_ move: TreeKeyboardNav.Move, extending: Bool, isRendered: ((String) -> Bool)?) -> Bool {
         guard let store, let rootID = focusedRootID else { return false }
         switch TreeKeyboardNav.target(
             from: selectedNodeID, move: move, rootID: rootID, store: store, isRendered: isRendered

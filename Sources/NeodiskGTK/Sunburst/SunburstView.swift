@@ -527,9 +527,11 @@ final class SunburstView: CanvasDelegate {
             model.focusOut()
         default:
             guard let move = TreemapView.treeMove(for: keyval) else { return false }
-            let rendered = frame.renderedIDs
+            // Until the layout for the current root lands, every item counts.
+            let ids = frame.renderedIDs
+            let rendered: ((String) -> Bool)? = frame.inputs.rootID == model.focusedRootID ? { ids.contains($0) } : nil
             let extending = state & GDK_SHIFT_MASK.rawValue != 0
-            if !model.moveSelectionInMap(move, extending: extending, isRendered: rendered.contains) {
+            if !model.moveSelectionInMap(move, extending: extending, isRendered: rendered) {
                 gtk_widget_error_bell(ptr(canvas.widget))
             }
         }

@@ -649,10 +649,15 @@ final class TreemapView: CanvasDelegate {
             setViewport(.identity)
         default:
             guard let move = Self.treeMove(for: keyval) else { return false }
-            let rendered = renderedIDs ?? TreeKeyboardNav.renderedIDs(in: frame.scene.cells, store: store)
-            renderedIDs = rendered
+            // Right after a drill the frame still shows the old root: then every item counts.
+            var isRendered: ((String) -> Bool)?
+            if frame.scene.rootID == model.focusedRootID {
+                let rendered = renderedIDs ?? TreeKeyboardNav.renderedIDs(in: frame.scene.cells, store: store)
+                renderedIDs = rendered
+                isRendered = rendered.contains
+            }
             let extending = state & GDK_SHIFT_MASK.rawValue != 0
-            if !model.moveSelectionInMap(move, extending: extending, isRendered: rendered.contains) {
+            if !model.moveSelectionInMap(move, extending: extending, isRendered: isRendered) {
                 gtk_widget_error_bell(ptr(canvas.widget))
             }
         }

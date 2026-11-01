@@ -443,6 +443,10 @@ struct SunburstPane: View {
     }
 
     private func moveSelection(_ move: TreeKeyboardNav.Move, extending: Bool) {
+        // Until the layout for the current root lands, every item counts.
+        guard chartModel.drawnRootID == model.effectiveRootID else {
+            return model.moveSelectionInMap(move, extending: extending, isRendered: nil)
+        }
         model.moveSelectionInMap(move, extending: extending) { chartModel.segment(forNodeID: $0) != nil }
     }
 

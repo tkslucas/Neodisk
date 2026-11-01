@@ -595,9 +595,17 @@ final class TreemapController {
         let extending = event.modifierFlags.contains(.shift)
         switch key {
         case .upArrow:
-            if command { beepUnless(model?.drillOut() == true) } else { moveSelection(.previous, extending: extending) }
+            if command {
+                beepUnless(model?.drillOut() == true)
+            } else {
+                moveSelection(.previous, extending: extending)
+            }
         case .downArrow:
-            if command { beepUnless(model?.drillIntoSelection() == true) } else { moveSelection(.next, extending: extending) }
+            if command {
+                beepUnless(model?.drillIntoSelection() == true)
+            } else {
+                moveSelection(.next, extending: extending)
+            }
         case .leftArrow:
             moveSelection(.parent, extending: extending)
         case .rightArrow:
@@ -612,9 +620,15 @@ final class TreemapController {
 
     private func moveSelection(_ move: TreeKeyboardNav.Move, extending: Bool) {
         guard let model, let scene, let store else { return }
+        // Right after a drill the scene still shows the old root: then every item counts.
+        guard scene.rootID == model.effectiveRootID else {
+            return model.moveSelectionInMap(move, extending: extending, isRendered: nil)
+        }
         let rendered = sceneQueries.renderedIDs ?? TreeKeyboardNav.renderedIDs(in: scene.cells, store: store)
         sceneQueries.renderedIDs = rendered
-        model.moveSelectionInMap(move, extending: extending, isRendered: rendered.contains)
+        model.moveSelectionInMap(
+            move, extending: extending, includingCloudOnly: scene.includingCloudOnly, isRendered: rendered.contains
+        )
     }
 
     /// Maps back into rendered-scene coordinates so hit-testing holds while the display transform is active.

@@ -9,7 +9,8 @@ import NeodiskKit
 
 /// → deeper, ← shallower, ↑↓ siblings in display order; only drawn items are reachable.
 struct TreeKeyboardNavTests {
-    /// root: docs 110 (big.pdf 100, mid.pdf 10, small.pdf 5), media 60 (movie.mp4 60), notes 20, tiny.txt 1.
+    /// root: docs (big.pdf 100, mid.pdf 10, small.pdf 5), media (movie.mp4 60, clips/clip.mov 30), notes 20,
+    /// tiny.txt 1.
     private struct Fixture {
         let store: FileTreeStore
         var rendered: Set<String>
@@ -20,23 +21,26 @@ struct TreeKeyboardNavTests {
             let small = makeTestFileNode(id: "/root/docs/small.pdf", name: "small.pdf", size: 5)
             let docs = makeTestDirectoryNode(id: "/root/docs", name: "docs", children: [big, mid, small])
             let movie = makeTestFileNode(id: "/root/media/movie.mp4", name: "movie.mp4", size: 60)
-            let media = makeTestDirectoryNode(id: "/root/media", name: "media", children: [movie])
+            let clip = makeTestFileNode(id: "/root/media/clips/clip.mov", name: "clip.mov", size: 30)
+            let clips = makeTestDirectoryNode(id: "/root/media/clips", name: "clips", children: [clip])
+            let media = makeTestDirectoryNode(id: "/root/media", name: "media", children: [movie, clips])
             let notes = makeTestFileNode(id: "/root/notes", name: "notes", size: 20)
             let tiny = makeTestFileNode(id: "/root/tiny.txt", name: "tiny.txt", size: 1)
             let root = makeTestDirectoryNode(id: "/root", name: "root", children: [docs, media, notes, tiny])
             store = FileTreeStore(root: root, childrenByID: [
-                root.id: [docs, media, notes, tiny], docs.id: [big, mid, small], media.id: [movie],
+                root.id: [docs, media, notes, tiny], docs.id: [big, mid, small], media.id: [movie, clips],
+                clips.id: [clip],
             ])
-            // tiny.txt and small.pdf pooled into "smaller items".
+            // tiny.txt, small.pdf and clips pooled into "smaller items".
             rendered = ["/root", "/root/docs", "/root/docs/big.pdf", "/root/docs/mid.pdf",
                         "/root/media", "/root/media/movie.mp4", "/root/notes"]
         }
 
         func target(
-            _ from: String?, _ move: TreeKeyboardNav.Move, root: String = "/root"
+            _ from: String?, _ move: TreeKeyboardNav.Move, root: String = "/root", drawn: Bool = true
         ) -> TreeKeyboardNav.Target? {
             TreeKeyboardNav.target(
-                from: from, move: move, rootID: root, store: store, isRendered: rendered.contains
+                from: from, move: move, rootID: root, store: store, isRendered: drawn ? { rendered.contains($0) } : nil
             )
         }
     }
@@ -54,13 +58,62 @@ struct TreeKeyboardNavTests {
         }
     }
 
-    @Test func undrawnSelectionComesBackToItsDrawnAncestor() {
+    @Test func beyondDepthSelectionComesBackToItsDrawnAncestor() {
         let fixture = Fixture()
         for move in moves {
-            #expect(fixture.target("/root/docs/small.pdf", move) == .select("/root/docs"))
-            // Pooled at the top level: nothing drawn between it and the root.
-            #expect(fixture.target("/root/tiny.txt", move) == .select("/root/docs"))
+            #expect(fixture.target("/root/media/clips/clip.mov", move) == .select("/root/media"))
         }
+    }
+
+    /// A pooled item (say the folder ← just drilled out of) moves from where it sits among its drawn siblings.
+    @Test func pooledSelectionMovesAmongItsDrawnSiblings() {
+        let fixture = Fixture()
+        #expect(fixture.target("/root/docs/small.pdf", .previous) == .select("/root/docs/mid.pdf"))
+        #expect(fixture.target("/root/docs/small.pdf", .next) == nil)
+        #expect(fixture.target("/root/docs/small.pdf", .parent) == .select("/root/docs"))
+        #expect(fixture.target("/root/tiny.txt", .previous) == .select("/root/notes"))
+        #expect(fixture.target("/root/tiny.txt", .next) == nil)
+        #expect(fixture.target("/root/tiny.txt", .child) == nil)
+        #expect(fixture.target("/root/media/clips", .previous) == .select("/root/media/movie.mp4"))
+        #expect(fixture.target("/root/media/clips", .child) == nil)
+    }
+
+    /// Right after a drill the view still shows the old root: nothing filters until the new one is drawn.
+    @Test func undrawnRootLetsEveryItemCount() {
+        let fixture = Fixture()
+        #expect(fixture.target("/root/notes", .next, drawn: false) == .select("/root/tiny.txt"))
+        #expect(fixture.target("/root/media/clips", .child, drawn: false) == .select("/root/media/clips/clip.mov"))
+        // Holding ← keeps drilling out.
+        #expect(fixture.target("/root/media/clips/clip.mov", .parent, root: "/root/media/clips", drawn: false)
+            == .drillOut(selecting: "/root/media/clips"))
+        #expect(fixture.target("/root/media/clips", .parent, root: "/root/media", drawn: false)
+            == .drillOut(selecting: "/root/media"))
+    }
+
+    /// With cloud-only files shown, the treemap orders by the cloud-inclusive weight, and so do the arrows.
+    @Test func cloudOnlyOrderFollowsTheTreemap() {
+        let url = URL(filePath: "/c", directoryHint: .isDirectory)
+        let remote = FileNodeRecord(
+            id: "/c/remote.mov", url: url.appending(path: "remote.mov"), name: "remote.mov",
+            isDirectory: false, isSymbolicLink: false, allocatedSize: 0, logicalSize: 5_000,
+            descendantFileCount: 0, lastModified: nil, isPackage: false, isAccessible: true,
+            isSelfAccessible: true, isSynthetic: false, isAutoSummarized: false, isDataless: true
+        )
+        let local = makeTestFileNode(id: "/c/local.bin", name: "local.bin", size: 1_000)
+        let small = makeTestFileNode(id: "/c/small.bin", name: "small.bin", size: 500)
+        let children = FileTreeStore.sortedChildren([remote, local, small])
+        let root = makeTestDirectoryNode(id: "/c", name: "c", children: children)
+        let store = FileTreeStore(root: root, childrenByID: ["/c": children])
+        func target(_ from: String?, _ move: TreeKeyboardNav.Move, cloud: Bool) -> TreeKeyboardNav.Target? {
+            TreeKeyboardNav.target(
+                from: from, move: move, rootID: "/c", store: store, includingCloudOnly: cloud, isRendered: { _ in true }
+            )
+        }
+        #expect(target(nil, .next, cloud: true) == .select("/c/remote.mov"))
+        #expect(target("/c/remote.mov", .next, cloud: true) == .select("/c/local.bin"))
+        #expect(target("/c/local.bin", .previous, cloud: true) == .select("/c/remote.mov"))
+        #expect(target("/c/local.bin", .previous, cloud: false) == nil)
+        #expect(target(nil, .next, cloud: false) == .select("/c/local.bin"))
     }
 
     @Test func rightSelectsTheLargestDrawnChild() {
@@ -69,7 +122,7 @@ struct TreeKeyboardNavTests {
         #expect(fixture.target("/root/media", .child) == .select("/root/media/movie.mp4"))
         #expect(fixture.target("/root/docs/big.pdf", .child) == nil)
         // A folder drawn whole (beyond depth) has no reachable children.
-        fixture.rendered.subtract(["/root/media/movie.mp4"])
+        fixture.rendered.remove("/root/media/movie.mp4")
         #expect(fixture.target("/root/media", .child) == nil)
         fixture.rendered.remove("/root/docs/big.pdf")
         #expect(fixture.target("/root/docs", .child) == .select("/root/docs/mid.pdf"))
@@ -123,7 +176,9 @@ struct TreeKeyboardNavTests {
         let children = FileTreeStore.sortedChildren([big] + slivers)
         let root = makeTestDirectoryNode(id: "/r", name: "r", children: children)
         let store = FileTreeStore(root: root, childrenByID: [root.id: children])
-        let scene = TreemapScene.build(store: store, rootID: "/r", size: CGSize(width: 200, height: 150), catalog: .empty)
+        let scene = TreemapScene.build(
+            store: store, rootID: "/r", size: CGSize(width: 200, height: 150), catalog: .empty
+        )
         #expect(scene.cells.contains { $0.aggregate != nil })
         let rendered = TreeKeyboardNav.renderedIDs(in: scene.cells, store: store)
         #expect(rendered.contains("/r/big"))

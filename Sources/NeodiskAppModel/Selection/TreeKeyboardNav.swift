@@ -13,35 +13,20 @@ package enum TreeKeyboardNav {
         case drillOut(selecting: String)
     }
 
-    /// Nil means nowhere to go (the caller beeps). With no selection, or one outside the map's root, any arrow
-    /// picks the largest top-level item; an undrawn selection comes back to its nearest drawn ancestor.
+    /// Nil means nowhere to go (the caller beeps). `isRendered` is nil while the view hasn't drawn this root yet
+    /// (every item counts). `includingCloudOnly` orders siblings by the treemap's cloud-inclusive weight.
     package static func target(
         from selectedID: String?,
         move: Move,
         rootID: String,
         store: FileTreeStore,
-        isRendered: (String) -> Bool
+        includingCloudOnly: Bool = false,
+        isRendered: ((String) -> Bool)?
     ) -> Target? {
-        guard let selectedID, selectedID != rootID,
-              let anchor = renderedAncestorOrSelf(selectedID, rootID: rootID, store: store, isRendered: isRendered)
-        else {
-            return largestChild(of: rootID, store: store, isRendered: isRendered).map(Target.select)
-        }
-        if anchor != selectedID { return .select(anchor) }
-        guard let parentID = store.parent(of: anchor)?.id else { return nil }
-
-        switch move {
-        case .child:
-            return largestChild(of: anchor, store: store, isRendered: isRendered).map(Target.select)
-        case .parent:
-            if parentID != rootID { return .select(parentID) }
-            return rootID == store.rootID ? nil : .drillOut(selecting: rootID)
-        case .previous, .next:
-            let siblings = store.children(of: parentID).filter { isRendered($0.id) }
-            guard let index = siblings.firstIndex(where: { $0.id == anchor }) else { return nil }
-            let next = move == .next ? index + 1 : index - 1
-            return siblings.indices.contains(next) ? .select(siblings[next].id) : nil
-        }
+        Walk(
+            rootID: rootID, store: store, includingCloudOnly: includingCloudOnly,
+            isRendered: isRendered ?? { _ in true }
+        ).target(from: selectedID, move: move)
     }
 
     /// What a treemap scene drew: every cell's node (a "smaller items" cell stands for its folder) and their
@@ -54,24 +39,60 @@ package enum TreeKeyboardNav {
         }
         return rendered
     }
+}
 
-    /// Nil when the item isn't under the root (or nothing between them is drawn).
-    private static func renderedAncestorOrSelf(
-        _ id: String, rootID: String, store: FileTreeStore, isRendered: (String) -> Bool
-    ) -> String? {
-        var current = id
-        var found: String?
-        while current != rootID {
-            if found == nil, isRendered(current) { found = current }
-            guard let parent = store.parent(of: current) else { return nil }
-            current = parent.id
+private struct Walk {
+    let rootID: String
+    let store: FileTreeStore
+    let includingCloudOnly: Bool
+    let isRendered: (String) -> Bool
+
+    /// No selection, or one outside the root: the largest top-level item. A pooled selection moves among its
+    /// drawn siblings; one beyond depth comes back to its nearest drawn ancestor.
+    func target(from selectedID: String?, move: TreeKeyboardNav.Move) -> TreeKeyboardNav.Target? {
+        guard let selectedID, selectedID != rootID, let ancestors = ancestorsBelowRoot(of: selectedID) else {
+            return largestChild(of: rootID).map { .select($0) }
         }
-        return found
+        let parentID = ancestors.first ?? rootID
+        if !isRendered(selectedID), parentID != rootID, !isRendered(parentID) {
+            return (ancestors.first(where: isRendered) ?? largestChild(of: rootID)).map { .select($0) }
+        }
+
+        switch move {
+        case .child:
+            return largestChild(of: selectedID).map { .select($0) }
+        case .parent:
+            if parentID != rootID { return .select(parentID) }
+            return rootID == store.rootID ? nil : .drillOut(selecting: rootID)
+        case .previous, .next:
+            let siblings = orderedChildren(of: parentID)
+            guard let index = siblings.firstIndex(of: selectedID) else { return nil }
+            let target = move == .next
+                ? siblings[(index + 1)...].first(where: isRendered)
+                : siblings[..<index].last(where: isRendered)
+            return target.map { .select($0) }
+        }
     }
 
-    private static func largestChild(
-        of id: String, store: FileTreeStore, isRendered: (String) -> Bool
-    ) -> String? {
-        store.children(of: id).first { isRendered($0.id) }?.id
+    /// Nearest first; nil when the item isn't under the root.
+    private func ancestorsBelowRoot(of id: String) -> [String]? {
+        var ancestors: [String] = []
+        var current = id
+        while let parent = store.parent(of: current)?.id {
+            if parent == rootID { return ancestors }
+            ancestors.append(parent)
+            current = parent
+        }
+        return nil
+    }
+
+    private func orderedChildren(of id: String) -> [String] {
+        TreemapScene.layoutSiblings(store.children(of: id), synthetic: [], includingCloudOnly: includingCloudOnly)
+            .filter { $0.displayWeight(includingCloudOnly: includingCloudOnly) > 0 }
+            .map(\.id)
+    }
+
+    private func largestChild(of id: String) -> String? {
+        orderedChildren(of: id).first(where: isRendered)
     }
 }

@@ -43,10 +43,14 @@ extension NeodiskViewModel {
     }
 
     /// An arrow key in a map, from the primary item: only the target stays selected, or ⇧ adds it.
-    func moveSelectionInMap(_ move: TreeKeyboardNav.Move, extending: Bool, isRendered: (String) -> Bool) {
+    func moveSelectionInMap(
+        _ move: TreeKeyboardNav.Move, extending: Bool, includingCloudOnly: Bool = false,
+        isRendered: ((String) -> Bool)?
+    ) {
         guard let store, let rootID = effectiveRootID else { return }
         switch TreeKeyboardNav.target(
-            from: selectedNodeID, move: move, rootID: rootID, store: store, isRendered: isRendered
+            from: selectedNodeID, move: move, rootID: rootID, store: store,
+            includingCloudOnly: includingCloudOnly, isRendered: isRendered
         ) {
         case .select(let id)?:
             if extending { extendSelection(to: id) } else { select(id) }
@@ -234,7 +238,7 @@ extension NeodiskViewModel {
 
     /// So arrow keys keep working inside; shared by ⌘↓ and breadcrumb drill-in.
     private func selectLargestChild(of folderID: String, in store: FileTreeStore) {
-        // Children come largest first, ties by name: the item → would pick.
+        // Largest on disk first, ties by name: the list's and sunburst's order.
         if let largest = store.children(of: folderID).first(where: { $0.allocatedSize > 0 }) {
             select(largest.id)
         }

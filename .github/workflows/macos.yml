@@ -9,6 +9,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   group: macos-${{ github.ref }}
   cancel-in-progress: true
@@ -16,6 +19,7 @@ concurrency:
 jobs:
   build-and-test:
     runs-on: macos-26
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 

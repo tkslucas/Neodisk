@@ -956,7 +956,7 @@ import Foundation
         #expect(cacheNode.logicalSize == 10 * 32)
     }
 
-    @Test(.timeLimit(.minutes(1))) func testCancellingScanStopsPackageLeafSummaryWork() async throws {
+    @Test(.timeLimit(.minutes(1))) func testCancellingScanDuringPackageSummaryLeavesTheEngineReady() async throws {
         let rootURL = try makeTemporaryDirectory()
         let followUpURL = try makeTemporaryDirectory()
         defer {
@@ -969,8 +969,8 @@ import Foundation
             .appending(path: "Contents/Resources", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: packageContentsURL, withIntermediateDirectories: true)
 
-        // 800 files over 100 folders, summarized by one worker below, so the summary is often still walking
-        // when the cancel lands. Small enough to build fast on a loaded machine: the held sibling makes it land.
+        // A package summarized by one worker while the scan is cancelled; the next scan must still finish.
+        // Whether the summary walk itself stops isn't observable here (it has no hook).
         for folder in 0..<100 {
             let folderURL = packageContentsURL.appending(path: "f\(folder)", directoryHint: .isDirectory)
             try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: false)

@@ -476,7 +476,7 @@ struct BottomOutlineTable: NSViewRepresentable {
             _ tableView: NSTableView, draggingSession session: NSDraggingSession,
             willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet
         ) {
-            NodeDragSource.sessionDidBegin(model: model)
+            NodeDragSource.tableSessionDidBegin(session, in: tableView, at: screenPoint, model: model)
         }
 
         func tableView(

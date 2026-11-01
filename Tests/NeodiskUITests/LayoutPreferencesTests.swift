@@ -151,3 +151,28 @@ private final class DefaultsWrites: NSObject {
         values.append(change?[.newKey] as? String ?? "")
     }
 }
+
+/// Right-clicking the map where there's no item offers the views checklist the toolbar picker has.
+@MainActor
+@Suite(.serialized) struct MapViewChecklistTests {
+    @Test func checklistHidesAndRestoresViewsAndKeepsTheLastOne() throws {
+        let (model, _, defaults, suite) = try makePreferencesModel()
+        defer { removeTestDefaultsSuite(defaults, named: suite) }
+        func items() -> [NSMenuItem] { NSMenu.viewChecklist(model: model).items }
+        #expect(items().map(\.state) == [.on, .on, .on])
+
+        let sunburst = try #require(items().last)
+        _ = sunburst.target?.perform(sunburst.action, with: sunburst)
+        #expect(model.layout.views.isHidden(.sunburst))
+        #expect(items().last?.state == .off)
+
+        // Hide Flat too: Cushion is the last view shown, so it can't be unchecked; hidden ones can come back.
+        let flat = items()[1]
+        _ = flat.target?.perform(flat.action, with: flat)
+        #expect(items().map(\.isEnabled) == [false, true, true])
+
+        let restore = try #require(items().last)
+        _ = restore.target?.perform(restore.action, with: restore)
+        #expect(!model.layout.views.isHidden(.sunburst))
+    }
+}

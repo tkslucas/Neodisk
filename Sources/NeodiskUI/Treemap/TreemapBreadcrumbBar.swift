@@ -65,6 +65,17 @@ struct TreemapBreadcrumbBar: View {
         .frame(height: (28 * textScale).rounded())
         .background(.bar)
         .overlay(alignment: .bottom) { Divider() }
+        // The map's own customize options, as on its empty space: which views the toolbar shows.
+        .contextMenu {
+            ForEach(VizView.allCases, id: \.self) { view in
+                let views = model.layout.views
+                Toggle(view.menuTitle, isOn: Binding(
+                    get: { !views.isHidden(view) },
+                    set: { _ in model.updateLayout { $0.setHidden(view, !$0.views.isHidden(view)) } }
+                ))
+                .disabled(!views.isHidden(view) && !views.canHide(view))
+            }
+        }
     }
 }
 

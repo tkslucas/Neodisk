@@ -179,6 +179,14 @@ private final class ChecklistSegmentedControl: NSSegmentedControl {
         if let monitor { NSEvent.removeMonitor(monitor) }
         monitor = nil
         guard window != nil else { return }
+        // Icon and Text mode labels the toolbar item hosting the picker, as Finder's view switcher reads "View".
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let items = window?.toolbar?.items else { return }
+            for item in items where item.view.map({ isDescendant(of: $0) }) == true {
+                item.label = NSLocalizedString("View", comment: "Toolbar view picker")
+                item.paletteLabel = item.label
+            }
+        }
         monitor = NSEvent.addLocalMonitorForEvents(matching: .rightMouseDown) { [weak self] event in
             guard let self, let menu, isEnabled, event.window === window,
                   bounds.contains(convert(event.locationInWindow, from: nil)) else { return event }

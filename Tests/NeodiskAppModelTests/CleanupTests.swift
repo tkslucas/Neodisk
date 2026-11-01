@@ -137,8 +137,7 @@ import NeodiskKit
         #expect(fileIDs.count == 50_000)
 
         var pile = CleanupPile()
-        let clock = ContinuousClock()
-        let elapsed = clock.measure {
+        let elapsed = threadCPUTime {
             pile.add(fileIDs, in: store)
             // Re-adding is a no-op; a folder then absorbs its 500 files.
             pile.add(fileIDs, in: store)
@@ -150,4 +149,16 @@ import NeodiskKit
         #expect(pile.collectedItem(containing: "/data/d0/f7", in: store) == "/data/d0")
         #expect(elapsed < .seconds(10), "\(elapsed)")
     }
+}
+
+/// CPU time `body` spends on this thread: a budget on work, not on how busy the machine is.
+private func threadCPUTime(_ body: () -> Void) -> Duration {
+    func now() -> Duration {
+        var spec = timespec()
+        clock_gettime(CLOCK_THREAD_CPUTIME_ID, &spec)
+        return .seconds(spec.tv_sec) + .nanoseconds(spec.tv_nsec)
+    }
+    let start = now()
+    body()
+    return now() - start
 }

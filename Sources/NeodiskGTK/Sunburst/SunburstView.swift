@@ -397,7 +397,7 @@ final class SunburstView: CanvasDelegate {
             return
         }
         let previousRootID = frame.inputs.rootID
-        if let focus = frame.segments.first(where: { $0.nodeID == rootID && !$0.isAggregate }) {
+        if let focus = frame.layout.segment(forNodeID: rootID) {
             zoom = .zoomIn(layout: frame.layout, focus: focus, depthLimit: Self.depthLimit)
         } else if store.isAncestor(rootID, of: previousRootID) {
             zoom = .zoomOut(previous: frame.layout, previousRootID: previousRootID)
@@ -431,7 +431,7 @@ final class SunburstView: CanvasDelegate {
             transition.incomingLayoutLanded(frame.layout)
         case .zoomOut:
             guard let previousRootID = transition.previousRootID,
-                  let focus = frame.segments.first(where: { $0.nodeID == previousRootID && !$0.isAggregate }) else {
+                  let focus = frame.layout.segment(forNodeID: previousRootID) else {
                 endZoom()
                 return
             }

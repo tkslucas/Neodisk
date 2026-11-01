@@ -382,7 +382,7 @@ struct SunburstChartView: View {
             return
         }
 
-        if let focus = chartModel.segment(forNodeID: nextRootID) {
+        if let focus = outgoing.segment(forNodeID: nextRootID) {
             zoomTransition = .zoomIn(layout: outgoing, focus: focus, depthLimit: depthLimit)
         } else if treeStore.isAncestor(nextRootID, of: previousRootID) {
             zoomTransition = .zoomOut(previous: outgoing, previousRootID: previousRootID)
@@ -404,7 +404,7 @@ struct SunburstChartView: View {
             transition.incomingLayoutLanded(chartModel.renderedLayout)
         case .zoomOut:
             guard let previousRootID = transition.previousRootID,
-                  let focus = chartModel.segment(forNodeID: previousRootID),
+                  let focus = chartModel.renderedLayout.segment(forNodeID: previousRootID),
                   !chartModel.renderedSegments.isEmpty else {
                 zoomTransition = nil
                 return

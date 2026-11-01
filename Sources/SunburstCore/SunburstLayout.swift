@@ -552,4 +552,10 @@ public struct SunburstChartLayout: Sendable, Equatable {
     public var metrics: SunburstRingMetrics {
         SunburstRingMetrics(depthLimit: ringCount)
     }
+
+    /// A node's arc, shown or deep: a drill to or from a folder past the fit still zooms from where it sits.
+    public func segment(forNodeID nodeID: String) -> SunburstSegment? {
+        segments.first { $0.nodeID == nodeID && !$0.isAggregate }
+            ?? deepSegments.first { $0.nodeID == nodeID && !$0.isAggregate }
+    }
 }

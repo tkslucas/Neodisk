@@ -402,7 +402,6 @@ private struct WorkspaceView: View {
                     )
                     AnalysisPane(model: model)
                         .frame(width: metrics.analysisWidth)
-                        .transition(.move(edge: .trailing))
                 }
             }
             // A window too narrow to dock the analysis pane beside the map
@@ -415,10 +414,11 @@ private struct WorkspaceView: View {
                         .background(.background)
                         .overlay(alignment: .leading) { Divider() }
                         .shadow(color: .black.opacity(0.18), radius: 10, x: -2)
-                        .transition(.move(edge: .trailing))
                 }
             }
-            .animation(.easeInOut(duration: 0.22), value: model.showKindStats)
+            // The statistics panel shows and hides at once, unanimated: a sliding panel resized the map and the
+            // file list on every frame, redrawing the sunburst and the tables each time (200-300 ms stalls, and a
+            // 1.7 s freeze on a big scan).
             .clipped()
 
             SnapshotNoticePanel(model: model)

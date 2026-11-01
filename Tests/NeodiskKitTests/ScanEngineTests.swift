@@ -239,7 +239,8 @@ import Foundation
     #endif
 
     #if canImport(Darwin)
-    @Test func testAtomicPackageAccessFailuresProduceWarnings() async throws {
+    @Test(.enabled(if: geteuid() != 0, "root reads unreadable directories"))
+    func testAtomicPackageAccessFailuresProduceWarnings() async throws {
         let rootURL = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: rootURL) }
 

@@ -126,14 +126,16 @@ public struct TrashSafetyPolicy: Sendable {
         in store: FileTreeStore?,
         folder: (String) -> FolderLookup
     ) -> TrashRefusal? {
+        if let refusal = Self.treeRefusal(for: node, scanRootID: scanRootID, in: store) { return refusal }
+        return refusal(forPath: node.path, identity: node.isDirectory ? node.fileIdentity : nil, folder: folder)
+    }
+
+    /// The part of the checks the scanned tree answers, without touching the disk: cheap enough for menus.
+    public static func treeRefusal(for node: FileNodeRecord, scanRootID: String, in store: FileTreeStore?) -> TrashRefusal? {
         if node.isSynthetic { return .notAFile }
         if node.id == scanRootID { return .scanRoot }
         if node.path.contains("\u{FFFD}") { return .undecodableName }
         if node.isDirectory, !node.isSelfAccessible { return .unreadableFolder }
-        let identity = node.isDirectory ? node.fileIdentity : nil
-        if let refusal = refusal(forPath: node.path, identity: identity, folder: folder) {
-            return refusal
-        }
         var ancestor = store?.parent(of: node.id)
         while let holder = ancestor {
             if holder.isPackage { return .insidePackage }

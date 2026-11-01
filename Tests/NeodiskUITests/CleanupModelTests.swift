@@ -210,21 +210,35 @@ import NeodiskAppModel
             try environment.write(name, bytes: 10)
         }
         let model = environment.makeModel(protecting: [environment.path("Keep")])
+        let policyBuilds = PolicyBuildCounter()
+        let makePolicy = model.cleanup.makePolicy
+        model.cleanup.makePolicy = { policyBuilds.increment(); return makePolicy() }
         model.coordinator.replaceCurrentSnapshot(try await environment.scan())
         let store = try #require(model.store)
         let nodes = try ["a.bin", "Keep", "Keep/b.bin", "Old", "Old/d.bin"]
             .map { try #require(store.node(id: environment.path($0))) }
 
+        // The menu title reads only the tree (Keep's path isn't checked until the add), never the disk.
         #expect(model.cleanupMenuTitle(for: [store.root] + nodes) == "Add 3 Items to Cleanup")
+        #expect(policyBuilds.count == 0)
         model.cleanup.toggle([store.root] + nodes)
         #expect(model.cleanup.itemIDs == ["a.bin", "Keep/b.bin", "Old"].map(environment.path))
         // Old/d.bin goes with Old: only the root and Keep are refused.
         #expect(model.cleanup.notice?.text
             == "Added 3 items. 2 items can't go to the Trash. " + TrashRefusal.scanRoot.localizedReason)
-        // Pressed again, it takes them out: the refused root and Keep don't make it an add.
-        #expect(model.cleanupMenuTitle(for: [store.root] + nodes) == "Remove 3 Items from Cleanup")
-        model.cleanup.toggle([store.root] + nodes)
+        // Pressed again (Select All takes the root row too), it takes them out.
+        let collected = try ["a.bin", "Keep/b.bin", "Old", "Old/d.bin"]
+            .map { try #require(store.node(id: environment.path($0))) }
+        #expect(model.cleanupMenuTitle(for: [store.root] + collected) == "Remove 3 Items from Cleanup")
+        model.cleanup.toggle([store.root] + collected)
         #expect(model.cleanup.isEmpty)
+    }
+
+    private final class PolicyBuildCounter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value = 0
+        var count: Int { lock.withLock { value } }
+        func increment() { lock.withLock { value += 1 } }
     }
 
     @Test func cancellingTheConfirmationMovesNothing() async throws {

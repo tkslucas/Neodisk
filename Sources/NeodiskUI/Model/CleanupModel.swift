@@ -181,7 +181,9 @@ final class CleanupModel {
         guard let store else { return .none }
         let marks = nodes.map { ($0, mark(for: $0.id)) }
         let uncovered = marks.filter { $0.1 == .none }.map(\.0)
-        let addable = uncovered.isEmpty ? [] : split(uncovered, in: store).allowed.map(\.id)
+        // Menus ask on every selection change: only the tree's checks here, add() runs the path ones.
+        let treeRefusals = uncovered.map { TrashSafetyPolicy.treeRefusal(for: $0, scanRootID: store.rootID, in: store) }
+        let addable = store.trashSplit(uncovered, reasons: treeRefusals).allowed.map(\.id)
         let collected = marks.filter { $0.1 == .collected }.map(\.0.id)
         // Only refused items left to add (the root after Select All): a collected one makes it a remove.
         if !addable.isEmpty || (collected.isEmpty && !uncovered.isEmpty) { return .add(addable) }
@@ -212,7 +214,7 @@ final class CleanupModel {
             show(Notice(kind: .refused, text: unavailableReason))
             return
         }
-        let (allowed, refused) = split(nodes, in: store)
+        let (allowed, refused) = store.trashSplit(nodes, reasons: policy.refusals(for: nodes, scanRootID: store.rootID, in: store))
         let refusedCount = refused.count
         let firstRefusal = refused.first
         var updated = pile
@@ -238,10 +240,6 @@ final class CleanupModel {
             ? String(format: NSLocalizedString("1 item can't go to the Trash. %@", comment: "Cleanup notice; the first reason follows"), reason)
             : String(format: NSLocalizedString("%lld items can't go to the Trash. %@", comment: "Cleanup notice; the first reason follows"), refusedCount, reason))
         show(Notice(kind: .refused, text: parts.joined(separator: " ")))
-    }
-
-    private func split(_ nodes: [FileNodeRecord], in store: FileTreeStore) -> (allowed: [FileNodeRecord], refused: [TrashRefusal]) {
-        store.trashSplit(nodes, reasons: policy.refusals(for: nodes, scanRootID: store.rootID, in: store))
     }
 
     func remove(_ ids: [String]) {

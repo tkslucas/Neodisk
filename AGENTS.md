@@ -1,7 +1,8 @@
 # AGENTS.md
 
 Neodisk is a native disk space analyzer for macOS and Linux in Swift: one shared, UI-free core and one native
-app per platform (SwiftUI/AppKit on macOS, GTK 4/libadwaita on Linux). Layout and data flow: ARCHITECTURE.md.
+app per platform (SwiftUI/AppKit on macOS, GTK 4/libadwaita on Linux). The core and `diskscan` also build on
+Windows. Layout and data flow: ARCHITECTURE.md.
 
 ## Commits
 
@@ -65,6 +66,21 @@ The most used ones; the rest live in `Sources/NeodiskUI/Dev/`.
   `NEODISK_POPUP=primary|sections|status|views|preferences` (opens that menu; popovers miss the window capture, so grab the X screen).
   `XDG_CONFIG_HOME` isolates settings. Example:
   `NEODISK_AUTOSCAN=/usr NEODISK_UI_SNAPSHOT=/tmp/shot.png xvfb-run -a -s "-screen 0 1600x1000x24" .build/debug/neodisk`
+
+## Windows
+
+- Swift 6.4.2 with Visual Studio 2022's C++ tools and a Windows SDK. `swift build` builds the core and `diskscan`;
+  `swift test` runs the core suites. CI: `.github/workflows/windows.yml`.
+- Platform code sits next to the Linux code: `#if os(Windows)` arms and `+Windows.swift` files (`WindowsFileInfo`,
+  `WindowsPath`, `WindowsVolume`), with `import WinSDK` only in files that need it: WinSDK's `UUID` and others
+  shadow Foundation's.
+- Paths stay `URL.path` spellings (`C:/Users/x`); Win32 calls go through `WindowsPath.withWidePath`, which adds
+  `\\?\` past `MAX_PATH`. Never follow reparse points (`FILE_FLAG_OPEN_REPARSE_POINT`).
+- Foundation on Windows: `FileManager.linkItem` makes a symbolic link (use `WindowsPath.createHardLink`) and
+  `standardizedFileURL` breaks drive roots (use `WindowsPath.lexicallyStandardized`). Hidden means the attribute,
+  not a dot name.
+- Tests that need POSIX behavior get `#if !os(Windows)` with a one-line reason; Windows-only cases live in
+  `WindowsPlatformTests`. Symbolic link tests need an elevated shell or Developer Mode.
 
 ## Product constraints
 

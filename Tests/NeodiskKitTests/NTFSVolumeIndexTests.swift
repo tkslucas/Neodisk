@@ -252,4 +252,11 @@ import Testing
         NTFSIndexRegistry.unregister(id)
         #expect(NTFSIndexRegistry.directory(atPath: "Q:/Users") == nil)
     }
+
+    @Test func onlyAWholeVolumeChoosesTheFileTableOnItsOwn() {
+        #expect(NTFSScanAccelerator.isVolumeRoot("C:/", mountPoint: "C:\\"))
+        #expect(NTFSScanAccelerator.isVolumeRoot("c:", mountPoint: "C:\\"))
+        #expect(NTFSScanAccelerator.isVolumeRoot("C:/Mounts/Data", mountPoint: "C:\\Mounts\\Data\\"))
+        #expect(!NTFSScanAccelerator.isVolumeRoot("C:/Windows", mountPoint: "C:\\"))
+    }
 }

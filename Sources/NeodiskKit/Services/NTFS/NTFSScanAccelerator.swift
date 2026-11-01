@@ -64,6 +64,13 @@ nonisolated enum NTFSScanAccelerator {
             ScanTiming.note("engine=walk reason=\(error)")
             return nil
         }
+        // Reading the table costs the same whatever the target (about 1.3 s for C:\ on the test VM), and on
+        // C:\Windows, a quarter of that volume, the engines already tie: the automatic choice reads it only for a
+        // whole volume.
+        if ScanEngineChoice.requested == .automatic, !isVolumeRoot(targetPath, mountPoint: reader.mountPoint) {
+            ScanTiming.note("engine=walk reason=not-a-volume-root target=\(targetPath)")
+            return nil
+        }
         do {
             let (index, statistics) = try reader.readIndex(
                 progress: { done, total in progress(total > 0 ? Double(done) / Double(total) : 1) },
@@ -94,5 +101,14 @@ nonisolated enum NTFSScanAccelerator {
         #else
         return nil
         #endif
+    }
+
+    /// `C:/` against `C:\`, case and separators aside.
+    static func isVolumeRoot(_ path: String, mountPoint: String) -> Bool {
+        func normalized(_ value: String) -> String {
+            let slashed = value.replacingOccurrences(of: "\\", with: "/").lowercased()
+            return slashed.hasSuffix("/") ? slashed : slashed + "/"
+        }
+        return normalized(path) == normalized(mountPoint)
     }
 }

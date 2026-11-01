@@ -34,7 +34,11 @@ nonisolated struct HardLinkDeduplicator {
         minimumAllocatedSizeByNodeID: [String: Int64]
     ) {
         let duplicates = duplicateClaimIndices(from: hardLinkClaims)
-        guard !duplicates.isEmpty else { return }
+        guard !duplicates.isEmpty else {
+            // Still detached: the clone pass after this one writes `nodes` too.
+            indexByID.detachNodeKeys()
+            return
+        }
 
         // Owner lookups are read-only so they fan out; charges total in a flat per-node array, not a dictionary.
         let owners = ownerIndices(of: duplicates, in: hardLinkClaims, indexByID: indexByID)

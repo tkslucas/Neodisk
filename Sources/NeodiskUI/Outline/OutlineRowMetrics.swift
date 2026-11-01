@@ -33,6 +33,9 @@ enum OutlineRowMetrics {
 
     /// List's leading/trailing content inset inside the pane.
     static let contentInset: CGFloat = 16
+    /// The chevron's slot starts here so its glyph, centered in the slot, lines up with the 16pt inset that the
+    /// search results' icons and the trailing sizes keep.
+    static let nameLeadingInset: CGFloat = 12
     /// List's selection is a rounded rect inset from the pane edges.
     static let selectionInset: CGFloat = 10
     static let selectionRadius: CGFloat = 5
@@ -53,10 +56,10 @@ enum OutlineRowMetrics {
         for rows: [NeodiskViewModel.OutlineRow], baseline: ScanSizeBaseline?,
         includeCloudOnly: Bool
     ) -> CGFloat {
-        let leading = chevronSlotWidth + iconSlotWidth + 4 * rowSpacing
+        let leading = nameLeadingInset + chevronSlotWidth + iconSlotWidth + 3 * rowSpacing
         var maxWidth: CGFloat = 0
         for row in rows {
-            var width = contentInset + CGFloat(row.depth) * indentPerDepth + leading
+            var width = CGFloat(row.depth) * indentPerDepth + leading
             width += cachedWidth(of: row.node.name, font: nameFont, cachePrefix: "n:")
             width += 8 + clusterWidth(for: row, baseline: baseline, includeCloudOnly: includeCloudOnly)
                 + contentInset

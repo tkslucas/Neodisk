@@ -29,7 +29,10 @@ struct OutlineNameSection: View {
             Group {
                 if row.isExpandable {
                     Button {
-                        model.toggleExpansion(row.node.id)
+                        // Option-click opens or closes everything below, as in Finder.
+                        model.toggleExpansion(
+                            row.node.id, recursively: NSApp.currentEvent?.modifierFlags.contains(.option) == true
+                        )
                     } label: {
                         Image(systemName: "chevron.right")
                             .font(.system(

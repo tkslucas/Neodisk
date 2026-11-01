@@ -315,10 +315,37 @@ extension NeodiskViewModel {
         return rows
     }
 
-    func toggleExpansion(_ nodeID: String) {
+    /// Recursively (⌥-click a chevron, ⌥→ / ⌥←), as in Finder: expanding opens every folder below too, collapsing
+    /// closes them all.
+    func toggleExpansion(_ nodeID: String, recursively: Bool = false) {
+        setExpanded(nodeID, !expandedNodeIDs.contains(nodeID), recursively: recursively)
+    }
+
+    /// A recursive expansion stops after this many folders, so ⌥→ on a whole disk can't flood the list.
+    static let recursiveExpansionLimit = 2_000
+
+    func setExpanded(_ nodeID: String, _ isExpanded: Bool, recursively: Bool = false) {
         var expanded = expandedNodeIDs
-        if expanded.remove(nodeID) == nil {
+        if isExpanded {
             expanded.insert(nodeID)
+            if recursively, let store {
+                var queue = [nodeID]
+                var opened = 0
+                while !queue.isEmpty, opened < Self.recursiveExpansionLimit {
+                    let id = queue.removeFirst()
+                    for child in store.children(of: id) where child.isDirectory && store.containsChildren(id: child.id) {
+                        guard opened < Self.recursiveExpansionLimit else { break }
+                        expanded.insert(child.id)
+                        queue.append(child.id)
+                        opened += 1
+                    }
+                }
+            }
+        } else {
+            expanded.remove(nodeID)
+            if recursively, let store {
+                expanded = expanded.filter { !store.isAncestor(nodeID, of: $0) }
+            }
         }
         replaceExpandedOutlineNodes(with: expanded)
     }

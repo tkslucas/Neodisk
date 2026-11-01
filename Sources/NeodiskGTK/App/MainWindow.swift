@@ -74,7 +74,7 @@ final class MainWindow {
         gtk_widget_set_tooltip_text(ptr(menuButton), L("Main Menu"))
         let primaryMenu = Widgets.menu([
             [(L("Choose Folder…"), "win.open-folder")],
-            [(L("Preferences"), "app.preferences"), (L("Keyboard Shortcuts"), "win.show-help-overlay"), (L("About Neodisk"), "app.about")],
+            [(L("Preferences"), "app.preferences"), (L("Keyboard Shortcuts"), "win.show-help-overlay"), (L("About %@", AppChannel.current.appName), "app.about")],
             [(L("Quit"), "app.quit")],
         ])
         gtk_menu_button_set_menu_model(ptr(menuButton), ptr(primaryMenu.pointer))

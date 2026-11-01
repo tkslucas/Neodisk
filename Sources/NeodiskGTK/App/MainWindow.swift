@@ -493,16 +493,14 @@ final class MainWindow {
             showToast(reason)
             return
         }
-        let nodes = model.selection.topLevelIDs(in: store).compactMap { store.node(id: $0) }
-        guard nodes.count > 1 else {
-            if let node = nodes.first { moveToTrash(node) }
+        let selected = model.selection.nodes(in: store)
+        let (allowed, refusals) = store.trashSplit(selected, reasons: selected.map(model.trashRefusalReason))
+        guard allowed.count + refusals.count > 1 else {
+            if let node = allowed.first ?? selected.first { moveToTrash(node) }
             return
         }
-        let reasons = nodes.map { model.trashRefusalReason(for: $0) }
-        let allowed = zip(nodes, reasons).compactMap { $1 == nil ? $0 : nil }
-        let refusals = reasons.compactMap { $0 }
         guard !allowed.isEmpty else {
-            showAlert(heading: L("Can't Move %lld Items to the Trash", Int64(nodes.count)), body: refusals.first ?? "")
+            showAlert(heading: L("Can't Move %lld Items to the Trash", Int64(refusals.count)), body: refusals.first ?? "")
             return
         }
         let confirmation = TrashConfirmation(nodes: allowed, scannedAt: model.snapshot?.finishedAt)

@@ -51,7 +51,8 @@ import NeodiskAppModel
             for try await event in ScanEngine().scan(target: ScanTarget(url: root), options: ScanOptions()) {
                 if case .finished(let snapshot) = event { finished = snapshot }
             }
-            model.coordinator.replaceCurrentSnapshot(try #require(finished))
+            let snapshot: ScanSnapshot = try #require(finished)
+            model.coordinator.replaceCurrentSnapshot(snapshot)
             return model
         }
 

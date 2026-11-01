@@ -1,5 +1,5 @@
 // Without Full Disk Access, the first read of a privacy-protected folder blocks until the user answers a macOS
-// prompt. A read there that outlasts `threshold` is reported, so the window can say what the scan waits on.
+// prompt. Only that first listing is timed; one outlasting `threshold` is reported so the window can say so.
 
 #if canImport(Darwin)
 import Darwin
@@ -22,15 +22,23 @@ package nonisolated final class PermissionPromptWatch: @unchecked Sendable {
         }
     }
 
-    /// Home folders macOS asks about before their first read (Pictures holds the Photos library).
+    /// Home folders macOS asks about before their first read, and the Photos library.
     static let protectedHomeFolders = [
-        "Desktop", "Documents", "Downloads", "Music", "Pictures",
-        "Library/Mobile Documents", "Library/Containers", "Library/Group Containers",
+        "Desktop", "Documents", "Downloads", "Music", "Pictures/Photos Library.photoslibrary", "Library/Mobile Documents",
     ]
+    /// Each app's folder in these asks on its own ("data from other apps").
+    static let containerFolders = ["Library/Containers", "Library/Group Containers"]
 
-    private let roots: [String]
-    /// The home folders the roots sit in: most paths of a volume scan fail this first, cheap test.
-    private let homes: [String]
+    /// A listing that can prompt: the folder itself, or (`perChild`) each direct child of it.
+    private struct Unit {
+        let bytes: [UInt8]
+        let root: String
+        let perChild: Bool
+    }
+
+    private let units: [Unit]
+    /// Every unit starts with one of these, so most paths of a scan fail one byte compare.
+    private let homes: [[UInt8]]
     private let threshold: Duration
     private let report: @Sendable (String?) -> Void
     private let lock = NSLock()
@@ -43,9 +51,10 @@ package nonisolated final class PermissionPromptWatch: @unchecked Sendable {
     /// Nil when no protected folder lies inside the scanned folder or around it.
     init?(scanRoot: String, configuration: Configuration?, report: @escaping @Sendable (String?) -> Void) {
         guard let configuration else { return nil }
-        roots = Self.roots(scanRoot: scanRoot, home: configuration.home)
-        guard !roots.isEmpty else { return nil }
-        homes = Array(Set(roots.map { ($0 as NSString).deletingLastPathComponent }))
+        let (units, homes) = Self.units(scanRoot: scanRoot, home: configuration.home)
+        guard !units.isEmpty else { return nil }
+        self.units = units
+        self.homes = homes.map { Array($0.utf8) }
         threshold = configuration.threshold
         self.report = report
         ticker = Task.detached(priority: .utility) { [weak self, threshold] in
@@ -63,23 +72,32 @@ package nonisolated final class PermissionPromptWatch: @unchecked Sendable {
     /// Whether a scan of `scanRoot` can stop at a macOS permission prompt (macOS only).
     package static func reachesProtectedFolder(_ scanRoot: String) -> Bool {
         guard let home = Configuration.standard?.home else { return false }
-        return !roots(scanRoot: scanRoot, home: home).isEmpty
+        return !units(scanRoot: scanRoot, home: home).units.isEmpty
     }
 
-    private static func roots(scanRoot: String, home: String) -> [String] {
+    private static func units(scanRoot: String, home: String) -> (units: [Unit], homes: [String]) {
         let home = home.hasSuffix("/") ? String(home.dropLast()) : home
         // Volume scans may reach home through the Data volume's own path.
-        let candidates = [home, "/System/Volumes/Data" + home].flatMap { home in
-            protectedHomeFolders.map { home + "/" + $0 }
-        }
+        let homes = [home, "/System/Volumes/Data" + home]
         let scanRoot = scanRoot == "/" ? "" : scanRoot
-        return candidates.filter { path($0, isWithin: scanRoot) || path(scanRoot, isWithin: $0) }
+        var units: [Unit] = []
+        for home in homes {
+            let roots = protectedHomeFolders.map { (home + "/" + $0, false) } + containerFolders.map { (home + "/" + $0, true) }
+            for (root, perChild) in roots {
+                if path(root, isWithin: scanRoot) {
+                    units.append(Unit(bytes: Array((perChild ? root + "/" : root).utf8), root: root, perChild: perChild))
+                } else if path(scanRoot, isWithin: root) {
+                    // Scanning inside a protected folder: the scan's own first listing is the one that prompts.
+                    units.append(Unit(bytes: Array(scanRoot.utf8), root: root, perChild: false))
+                }
+            }
+        }
+        return (units, homes.map { $0 + "/" })
     }
 
-    /// Marks a read of `path` in flight; nil (nothing to watch) outside the protected folders.
+    /// Marks the listing of `path` in flight when it's one that can prompt; nil (nothing to time) otherwise.
     func begin(_ path: String) -> Int? {
-        guard homes.contains(where: { path.hasPrefix($0) }),
-              let root = roots.first(where: { Self.path(path, isWithin: $0) }) else { return nil }
+        guard let root = unitRoot(of: path) else { return nil }
         lock.lock()
         defer { lock.unlock() }
         nextToken += 1
@@ -107,6 +125,24 @@ package nonisolated final class PermissionPromptWatch: @unchecked Sendable {
         }
     }
 
+    /// Byte compares on the path's own storage: this runs for every directory a scan lists.
+    private func unitRoot(of path: String) -> String? {
+        var path = path
+        return path.withUTF8 { bytes -> String? in
+            guard homes.contains(where: { bytes.starts(with: $0) }) else { return nil }
+            for unit in units {
+                if unit.perChild {
+                    guard bytes.count > unit.bytes.count, bytes.starts(with: unit.bytes),
+                          !bytes[unit.bytes.count...].contains(UInt8(ascii: "/")) else { continue }
+                    return unit.root
+                } else if bytes.count == unit.bytes.count, bytes.elementsEqual(unit.bytes) {
+                    return unit.root
+                }
+            }
+            return nil
+        }
+    }
+
     /// Reports under the lock, so a late tick can never land after `stop`'s clear.
     private func check() {
         let now = ContinuousClock.now
@@ -123,8 +159,10 @@ package nonisolated final class PermissionPromptWatch: @unchecked Sendable {
 
     /// Opens a package before it is summarized, so a prompt it raises is timed here, not inside the long summary.
     static func touch(_ path: String) {
+        #if os(macOS)
         let descriptor = open(path, O_RDONLY | O_DIRECTORY)
         if descriptor >= 0 { close(descriptor) }
+        #endif
     }
 
     private static func path(_ path: String, isWithin root: String) -> Bool {

@@ -97,6 +97,7 @@
 "Scan Anyway" = "Analyser quand même";
 "Waiting for permission to read %@" = "En attente de l'autorisation de lire %@";
 "other apps' data" = "les données d'autres apps";
+"iCloud Drive" = "iCloud Drive";
 "Recheck" = "Vérifier à nouveau";
 "Note: running unbundled (swift run), Neodisk inherits its permissions from the terminal that launched it — grant Full Disk Access to that terminal app." = "Remarque : en exécution non empaquetée (swift run), Neodisk hérite des autorisations du terminal qui l'a lancée — accordez l'accès complet au disque à cette application de terminal.";
 "Moving to the Trash" = "Placement dans la Corbeille";

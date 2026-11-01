@@ -348,7 +348,8 @@ final class NeodiskViewModel {
     func startChosenScan(_ target: ScanTarget) {
         guard preferences?.scansWithoutFullDiskAccess == false,
               warnings.fullDiskAccessStatus == .notGranted,
-              session.cachedScanInfo[target.id] == nil,
+              session.hasIndexedSnapshotCache, session.cachedScanInfo[target.id] == nil,
+              coordinator.recentSnapshot(forTargetID: target.id) == nil,
               PermissionPromptWatch.reachesProtectedFolder(target.url.path) else {
             startScan(target)
             return

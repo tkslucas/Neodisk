@@ -115,9 +115,12 @@ nonisolated final class ScanTraversal {
         self.directoryIOExecutor = DirectoryIOExecutor(
             workerCount: concurrency.undegradedTraversalWorkerLimit + ProtectedContainers.concurrentReadLimit
         )
-        self.permissionWatch = PermissionPromptWatch(scanRoot: target.url.path, configuration: permissionPrompts) {
-            continuation.yield(.waitingForPermission($0))
-        }
+        // Whole scans only: an incremental subtree sits under folders the first scan already listed.
+        self.permissionWatch = options.watchesPermissionPrompts == true && baseDepth == 0
+            ? PermissionPromptWatch(scanRoot: target.url.path, configuration: permissionPrompts) {
+                continuation.yield(.waitingForPermission($0))
+            }
+            : nil
         self.metrics = metrics
         self.warnings = warnings
         self.emissionState = emissionState

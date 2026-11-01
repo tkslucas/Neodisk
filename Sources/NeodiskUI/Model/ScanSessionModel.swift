@@ -47,7 +47,7 @@ final class ScanSessionModel {
 
     /// False until the launch prune has filled `cachedScanInfo`; before that,
     /// scans probe the cache optimistically instead of trusting the index.
-    @ObservationIgnored private var hasIndexedSnapshotCache = false
+    @ObservationIgnored private(set) var hasIndexedSnapshotCache = false
 
     /// Settings backing scan options and the auto-rescan policy; assigned by
     /// the view model's bindPreferences.
@@ -242,6 +242,8 @@ final class ScanSessionModel {
         if target.kind == .volume {
             options.includeHiddenFiles = true
         }
+        // With access granted nothing prompts, so the engine skips the watch.
+        options.watchesPermissionPrompts = model?.warnings.fullDiskAccessStatus != .granted
         return options
     }
 

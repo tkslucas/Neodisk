@@ -8,8 +8,8 @@ import NeodiskKit
 @Suite(.serialized) struct FullDiskAccessGateTests {
     private let disk = makeTestTarget("/", kind: .volume)
 
-    @Test func testFirstDiskScanOffersAccessUntilScanAnyway() throws {
-        let (model, service, preferences, cleanup) = try makeModel(access: .notGranted)
+    @Test func testFirstDiskScanOffersAccessUntilScanAnyway() async throws {
+        let (model, service, preferences, cleanup) = try await makeModel(access: .notGranted)
         defer { cleanup() }
 
         model.startChosenScan(disk)
@@ -28,22 +28,22 @@ import NeodiskKit
         #expect(service.scanCount == 2)
     }
 
-    @Test func testScansDirectlyWhenNothingWouldPrompt() throws {
-        let (granted, grantedService, _, cleanupGranted) = try makeModel(access: .granted)
+    @Test func testScansDirectlyWhenNothingWouldPrompt() async throws {
+        let (granted, grantedService, _, cleanupGranted) = try await makeModel(access: .granted)
         defer { cleanupGranted() }
         granted.startChosenScan(disk)
         #expect(granted.fullDiskAccessGate == nil)
         #expect(grantedService.scanCount == 1)
 
-        let (model, service, _, cleanup) = try makeModel(access: .notGranted)
+        let (model, service, _, cleanup) = try await makeModel(access: .notGranted)
         defer { cleanup() }
         model.startChosenScan(makeTestTarget("/Applications"))
         #expect(model.fullDiskAccessGate == nil)
         #expect(service.scanCount == 1)
     }
 
-    @Test func testAccessGrantedWhileOfferedStartsTheScan() throws {
-        let (model, service, preferences, cleanup) = try makeModel(access: .notGranted)
+    @Test func testAccessGrantedWhileOfferedStartsTheScan() async throws {
+        let (model, service, preferences, cleanup) = try await makeModel(access: .notGranted)
         defer { cleanup() }
         model.startChosenScan(disk)
 
@@ -52,9 +52,10 @@ import NeodiskKit
         #expect(!preferences.scansWithoutFullDiskAccess)
     }
 
+    /// Waits for the snapshot index: until it loads, a location may have a scan the model can't see yet.
     private func makeModel(
         access: FullDiskAccessStatus
-    ) throws -> (NeodiskViewModel, ControlledScanService, AppPreferences, () -> Void) {
+    ) async throws -> (NeodiskViewModel, ControlledScanService, AppPreferences, () -> Void) {
         let suite = "NeodiskFDAGateTests-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
         let service = ControlledScanService()
@@ -66,6 +67,7 @@ import NeodiskKit
         let preferences = AppPreferences(defaults: defaults)
         model.preferences = preferences
         model.warnings.fullDiskAccessStatus = access
+        try await waitUntil("snapshot index loaded") { model.session.hasIndexedSnapshotCache }
         return (model, service, preferences, { removeTestDefaultsSuite(defaults, named: suite) })
     }
 }

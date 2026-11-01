@@ -97,6 +97,7 @@
 "Scan Anyway" = "Scan Anyway";
 "Waiting for permission to read %@" = "Waiting for permission to read %@";
 "other apps' data" = "other apps' data";
+"iCloud Drive" = "iCloud Drive";
 "Recheck" = "Recheck";
 "Note: running unbundled (swift run), Neodisk inherits its permissions from the terminal that launched it — grant Full Disk Access to that terminal app." = "Note: running unbundled (swift run), Neodisk inherits its permissions from the terminal that launched it — grant Full Disk Access to that terminal app.";
 "Moving to the Trash" = "Moving to the Trash";

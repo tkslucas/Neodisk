@@ -83,11 +83,12 @@ final class ScanProgressState: ObservableObject {
             return
         }
         if path.hasSuffix("/Library/Mobile Documents") {
-            waitingForPermissionFolder = "iCloud Drive"
+            waitingForPermissionFolder = NSLocalizedString("iCloud Drive", comment: "Scan status: Waiting for permission to read iCloud Drive")
         } else if path.hasSuffix("/Library/Containers") || path.hasSuffix("/Library/Group Containers") {
             waitingForPermissionFolder = NSLocalizedString("other apps' data", comment: "Scan status: Waiting for permission to read other apps' data")
         } else {
-            waitingForPermissionFolder = FileManager.default.displayName(atPath: path)
+            // The Photos library is a package: its name without the extension, as Finder shows it.
+            waitingForPermissionFolder = (FileManager.default.displayName(atPath: path) as NSString).deletingPathExtension
         }
     }
 }

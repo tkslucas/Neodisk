@@ -104,6 +104,14 @@ enum Widgets {
         }
     }
 
+    /// Removes a list box's rows. Not `gtk_list_box_remove_all`: it removes every child, and a row menu's popover
+    /// parented to the list isn't a row, so it would loop on it forever.
+    static func removeAllRows(of list: GPtr) {
+        while let row = gtk_list_box_get_row_at_index(ptr(list), 0) {
+            gtk_list_box_remove(ptr(list), ptr(raw(row)))
+        }
+    }
+
     /// Created into `cache` on first use. The tooltip is off while open, or GTK draws a showing one over the menu.
     static func popupMenu(_ cache: inout GPtr?, sections: [[(String, String)]], on parent: GPtr, at point: CGPoint) {
         let hadTooltip = gtk_widget_get_has_tooltip(ptr(parent)) != 0

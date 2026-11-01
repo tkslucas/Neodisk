@@ -156,7 +156,7 @@ final class StatisticsView {
         let catalog = model.catalog
         let highlighted = model.highlightedKindID
         let total = max(1, catalog.stats.reduce(Int64(0)) { $0 + $1.totalAllocatedSize })
-        gtk_list_box_remove_all(ptr(kindsList))
+        Widgets.removeAllRows(of: kindsList)
         // The grouping just switched and its catalog is still building.
         guard catalog.mode == model.preferences.kindMode || catalog.stats.isEmpty else {
             kindIDs = []
@@ -307,7 +307,7 @@ final class StatisticsView {
         let palette = model.palette
         let highlighted = model.highlightedAgeBucket
         let total = max(1, catalog.stats.reduce(Int64(0)) { $0 + $1.totalAllocatedSize })
-        gtk_list_box_remove_all(ptr(ageList))
+        Widgets.removeAllRows(of: ageList)
         ageBuckets = catalog.stats.map(\.bucket)
         for stat in catalog.stats {
             let row = legendRow(
@@ -355,7 +355,7 @@ final class StatisticsView {
         guard let store = model.store else {
             largestTask?.cancel()
             largestIDs = []
-            gtk_list_box_remove_all(ptr(largestList))
+            Widgets.removeAllRows(of: largestList)
             largestGeneration = -1
             return
         }
@@ -396,7 +396,7 @@ final class StatisticsView {
 
 
     private func showLargest(_ nodes: [FileNodeRecord], rootSize: Int64) {
-        largestActions?.whileRebuilding { gtk_list_box_remove_all(ptr(largestList)) }
+        largestActions?.whileRebuilding { Widgets.removeAllRows(of: largestList) }
         largestIDs = nodes.map(\.id)
         let rootPath = model.store?.root.path ?? ""
         for node in nodes {

@@ -137,7 +137,7 @@ final class OutlineSearch {
 
     private func show(ids: [String], total: Int, query: String) {
         gtk_stack_set_visible_child_name(ptr(stack), query.isEmpty ? "outline" : "results")
-        listActions?.whileRebuilding { gtk_list_box_remove_all(ptr(results)) }
+        listActions?.whileRebuilding { Widgets.removeAllRows(of: results) }
         resultIDs = ids
         if query.isEmpty {
             gtk_label_set_text(ptr(caption), "")

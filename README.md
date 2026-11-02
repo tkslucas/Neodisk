@@ -39,11 +39,12 @@ Requires macOS 14 (Sonoma) or later, on Apple silicon or Intel.
 Nightly builds (macOS):
 
 ```sh
-brew tap tkslucas/neodisk https://github.com/tkslucas/Neodisk.git
-brew install --cask tkslucas/neodisk/neodisk@nightly
-# Update:
-brew upgrade --cask --greedy tkslucas/neodisk/neodisk@nightly
+brew tap tkslucas/neodisk
+brew trust tkslucas/neodisk
+brew install --cask neodisk@nightly
 ```
+
+The nightly updates itself and installs beside the stable app.
 
 ### Linux
 

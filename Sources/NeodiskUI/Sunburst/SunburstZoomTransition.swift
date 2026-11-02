@@ -10,6 +10,8 @@ import NeodiskAppModel
 struct SunburstZoomTransitionCanvas: View {
     let state: SunburstZoomTransitionState
     let presentation: SunburstZoomPresentation
+    /// Matches the layout's radii so the handoff to the real layout is an invisible cut.
+    let metrics: SunburstRingMetrics
 
     var body: some View {
         Canvas { context, size in
@@ -93,10 +95,7 @@ struct SunburstZoomTransitionCanvas: View {
             context.opacity = segmentOpacity
             draw(
                 segment,
-                // Lands on the drilled chart's radii, so the handoff to the real layout is an invisible cut.
-                arc: SunburstZoomGeometry.arc(
-                    for: segment, focus: focus, progress: progress, target: presentation.target
-                ),
+                arc: SunburstZoomGeometry.arc(for: segment, focus: focus, progress: progress, metrics: metrics),
                 effectiveDepth: SunburstZoomGeometry.effectiveDepth(
                     for: segment,
                     focus: focus,

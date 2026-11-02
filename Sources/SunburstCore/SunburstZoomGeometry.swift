@@ -42,14 +42,6 @@ public enum SunburstZoomGeometry {
         focus: SunburstSegment,
         metrics: SunburstRingMetrics
     ) -> SunburstZoomArc {
-        zoomedArc(for: segment, focus: focus, target: SunburstZoomTarget(metrics))
-    }
-
-    public nonisolated static func zoomedArc(
-        for segment: SunburstSegment,
-        focus: SunburstSegment,
-        target: SunburstZoomTarget
-    ) -> SunburstZoomArc {
         if segment.id == focus.id {
             return SunburstZoomArc(
                 startRadians: 0,
@@ -65,15 +57,14 @@ public enum SunburstZoomGeometry {
         }
 
         // Same radii the real re-layout (focus as root) will stamp, so the handoff is an invisible cut.
-        // Ancestors land at negative indices, which metrics extrapolates toward the center; rings past the
-        // drilled chart's rest at its rim.
+        // Ancestors land at negative indices, which metrics extrapolates toward the center.
         let relativeDepth = segment.depth - focus.depth - 1
 
         return SunburstZoomArc(
             startRadians: remappedRadians(segment.startAngle),
             endRadians: remappedRadians(segment.endAngle),
-            innerRadius: target.innerRadius(depth: relativeDepth),
-            outerRadius: target.drawnOuterRadius(depth: relativeDepth)
+            innerRadius: max(0, metrics.innerRadius(depth: relativeDepth)),
+            outerRadius: max(0, metrics.drawnOuterRadius(depth: relativeDepth))
         )
     }
 
@@ -93,20 +84,10 @@ public enum SunburstZoomGeometry {
         progress rawProgress: Double,
         metrics: SunburstRingMetrics
     ) -> SunburstZoomArc {
-        arc(for: segment, focus: focus, progress: rawProgress, target: SunburstZoomTarget(metrics))
-    }
-
-    /// The outgoing chart's arcs start where they're drawn (deep rings at its rim, unseen) and end on `target`.
-    public nonisolated static func arc(
-        for segment: SunburstSegment,
-        focus: SunburstSegment,
-        progress rawProgress: Double,
-        target: SunburstZoomTarget
-    ) -> SunburstZoomArc {
         let progress = timedProgress(for: segment, focus: focus, rawProgress: rawProgress)
         let identity = identityArc(for: segment)
         guard progress > 0 else { return identity }
-        let zoomed = zoomedArc(for: segment, focus: focus, target: target)
+        let zoomed = zoomedArc(for: segment, focus: focus, metrics: metrics)
         guard progress < 1 else { return zoomed }
 
         return SunburstZoomArc(
@@ -183,40 +164,5 @@ public enum SunburstZoomGeometry {
 
     private nonisolated static func lerp(_ from: Double, _ to: Double, _ t: Double) -> Double {
         from + ((to - from) * t)
-    }
-}
-
-/// The drilled-in chart's rings, where the remap lands. While a landed layout corrects the ring count a
-/// drill-in predicted, a blend of the two, so the motion bends toward the real rings instead of jumping.
-public struct SunburstZoomTarget: Sendable, Equatable {
-    public var metrics: SunburstRingMetrics
-    /// The prediction `metrics` replaces, and how far along (0: all prediction, 1: all `metrics`).
-    public var replacing: SunburstRingMetrics?
-    public var blend: Double
-
-    public init(_ metrics: SunburstRingMetrics, replacing: SunburstRingMetrics? = nil, blend: Double = 1) {
-        self.metrics = metrics
-        self.replacing = replacing
-        self.blend = min(max(blend, 0), 1)
-    }
-
-    /// Clamped to the chart: below 0 for the collapsing shell, at the rim, with no thickness, past the last ring.
-    public func innerRadius(depth: Int) -> Double {
-        clamped(blended { $0.innerRadius(depth: depth) })
-    }
-
-    public func drawnOuterRadius(depth: Int) -> Double {
-        clamped(blended { $0.drawnOuterRadius(depth: depth) })
-    }
-
-    private func blended(_ radius: (SunburstRingMetrics) -> Double) -> Double {
-        let landed = radius(metrics)
-        guard let replacing else { return landed }
-        let predicted = radius(replacing)
-        return predicted + ((landed - predicted) * blend)
-    }
-
-    private func clamped(_ radius: Double) -> Double {
-        min(max(radius, 0), SunburstRingMetrics.outerRadius)
     }
 }

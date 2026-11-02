@@ -36,28 +36,14 @@ brew install --cask neodisk
 
 Requires macOS 14 (Sonoma) or later, on Apple silicon or Intel.
 
-### Nightly (macOS)
-
-Install the latest signed and notarized nightly build with Homebrew:
+Nightly builds (macOS):
 
 ```sh
 brew tap tkslucas/neodisk https://github.com/tkslucas/Neodisk.git
 brew install --cask tkslucas/neodisk/neodisk@nightly
-```
-
-This repository doubles as the tap, so the explicit URL is needed. Nightly
-installs as **Neodisk Nightly.app**, alongside the stable app, with its own
-settings and saved scans.
-
-The app can update itself through its nightly update channel. To update
-with Homebrew:
-
-```sh
+# Update:
 brew upgrade --cask --greedy tkslucas/neodisk/neodisk@nightly
 ```
-
-The cask follows the rolling `nightly` download (`version :latest`), so
-Homebrew needs `--greedy` to check for a changed download.
 
 ### Linux
 

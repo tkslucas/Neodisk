@@ -211,6 +211,7 @@ private struct ChangeEntryRow: View {
                     .truncationMode(.head)
             }
             .layoutPriority(1)
+            .neoHelp(helpText)
 
             Spacer(minLength: 0)
 
@@ -224,10 +225,14 @@ private struct ChangeEntryRow: View {
             } else {
                 DeltaLabel(delta: entry.delta)
             }
+
+            CleanupRowButton(
+                node: entry.nodeID.flatMap { model.store?.node(id: $0) }, cleanup: model.cleanup,
+                onAccent: backgroundProminence == .increased
+            )
         }
         .neoFont(12)
         .cleanupDimmed(cleanupMark.isMarked, onAccent: backgroundProminence == .increased)
-        .neoHelp(helpText)
     }
 
     private var kindSymbol: String {

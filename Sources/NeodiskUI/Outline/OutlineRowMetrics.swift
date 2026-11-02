@@ -89,7 +89,8 @@ enum OutlineRowMetrics {
                 cachePrefix: "s:"
             ) + 4
         }
-        return width
+        // The trailing action has its own slot, even after the item joins Cleanup.
+        return width + 4 + CleanupRowButton.sideLength(pointSize: fontSize)
     }
 
     private static func cachedWidth(of text: String, font: NSFont, cachePrefix: String) -> CGFloat {

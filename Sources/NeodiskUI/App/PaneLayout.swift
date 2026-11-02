@@ -20,9 +20,9 @@ enum PaneLayout {
     static func bottomOutlineMinHeight(scale: Double = 1) -> Double { 120 * scale }
     static func bottomOutlineMaxHeight(scale: Double = 1) -> Double { 440 * scale }
 
-    static func sunburstLegendDefaultWidth(scale: Double = 1) -> Double { 280 * scale }
-    static func sunburstLegendMinWidth(scale: Double = 1) -> Double { 220 * scale }
-    static func sunburstLegendMaxWidth(scale: Double = 1) -> Double { 400 * scale }
+    static func sunburstLegendDefaultWidth(scale: Double = 1) -> Double { 340 * scale }
+    static func sunburstLegendMinWidth(scale: Double = 1) -> Double { 260 * scale }
+    static func sunburstLegendMaxWidth(scale: Double = 1) -> Double { 420 * scale }
 
     // The map is graphics: its floors stay put at every text size, so larger text spends width on the text
     // panes.

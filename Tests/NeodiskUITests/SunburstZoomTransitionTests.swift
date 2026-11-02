@@ -208,9 +208,8 @@ import Testing
         let focus = makeSegment(id: "focus", depth: 0, startRadians: 1, endRadians: 2)
         let start = Date(timeIntervalSinceReferenceDate: 0)
         let state = SunburstZoomTransitionState.zoomIn(
-            layout: SunburstChartLayout(segments: [focus]),
+            segments: [focus],
             focus: focus,
-            depthLimit: 6,
             startDate: start
         )
 
@@ -233,9 +232,8 @@ import Testing
         let focus = makeSegment(id: "focus", depth: 0, startRadians: 1, endRadians: 2)
         let start = Date(timeIntervalSinceReferenceDate: 0)
         var state = SunburstZoomTransitionState.zoomIn(
-            layout: SunburstChartLayout(segments: [focus]),
+            segments: [focus],
             focus: focus,
-            depthLimit: 6,
             startDate: start
         )
         state.layoutReadyDate = start.addingTimeInterval(0.05)
@@ -273,7 +271,7 @@ import Testing
         let focus = makeSegment(id: "old-root", depth: 0, startRadians: 1, endRadians: 2)
         let start = Date(timeIntervalSinceReferenceDate: 0)
         var state = SunburstZoomTransitionState.zoomOut(
-            previous: SunburstChartLayout(segments: [focus]),
+            previousSegments: [focus],
             previousRootID: "old-root",
             startDate: start
         )
@@ -319,7 +317,7 @@ import Testing
     @Test func zoomOutTimesOutWhenParentLayoutNeverLands() {
         let start = Date(timeIntervalSinceReferenceDate: 0)
         let state = SunburstZoomTransitionState.zoomOut(
-            previous: .empty,
+            previousSegments: [],
             previousRootID: "old-root",
             startDate: start
         )

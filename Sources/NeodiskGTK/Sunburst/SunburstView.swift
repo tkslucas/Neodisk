@@ -30,9 +30,7 @@ final class SunburstView: CanvasDelegate {
 
     private struct Frame {
         let inputs: Inputs
-        /// The chart drawn, with its deep rings for the drill animation.
-        let layout: SunburstChartLayout
-        var segments: [SunburstSegment] { layout.segments }
+        let segments: [SunburstSegment]
         let hitIndex: SunburstHitTestIndex
         let texture: Texture
         let renderedIDs: Set<String>
@@ -128,8 +126,8 @@ final class SunburstView: CanvasDelegate {
               let store = model.store else { return }
         inFlight = inputs
         renderTask = Task { [weak self] in
-            let rendered = await Task.detached(priority: .userInitiated) { () -> (SunburstChartLayout, Texture?) in
-                let layout = (try? SunburstLayout.layout(
+            let rendered = await Task.detached(priority: .userInitiated) { () -> ([SunburstSegment], Texture?) in
+                let layout = (try? SunburstLayout.segments(
                     in: store,
                     rootID: inputs.rootID,
                     depthLimit: SunburstView.depthLimit,
@@ -139,10 +137,10 @@ final class SunburstView: CanvasDelegate {
                     freeSpaceLabel: L("Free Space"),
                     hiddenSpaceLabel: L("Hidden Space"),
                     cancellationCheck: {}
-                )) ?? .empty
+                )) ?? []
                 let styled = SunburstLayout.styled(layout, style: inputs.style, in: store)
                 let raster = SunburstRaster.render(
-                    styled.segments,
+                    styled,
                     size: inputs.size,
                     scale: inputs.scale,
                     palette: inputs.style.palette,
@@ -158,10 +156,10 @@ final class SunburstView: CanvasDelegate {
             if let texture = rendered.1 {
                 self.frame = Frame(
                     inputs: inputs,
-                    layout: rendered.0,
-                    hitIndex: SunburstHitTestIndex(segments: rendered.0.segments),
+                    segments: rendered.0,
+                    hitIndex: SunburstHitTestIndex(segments: rendered.0),
                     texture: texture,
-                    renderedIDs: Set(rendered.0.segments.compactMap(\.nodeID))
+                    renderedIDs: Set(rendered.0.compactMap(\.nodeID))
                 )
                 self.zoomLayoutDidLand()
                 self.canvas.queueDraw()
@@ -399,10 +397,10 @@ final class SunburstView: CanvasDelegate {
             return
         }
         let previousRootID = frame.inputs.rootID
-        if let focus = frame.layout.segment(forNodeID: rootID) {
-            zoom = .zoomIn(layout: frame.layout, focus: focus, depthLimit: Self.depthLimit)
+        if let focus = frame.segments.first(where: { $0.nodeID == rootID && !$0.isAggregate }) {
+            zoom = .zoomIn(segments: frame.segments, focus: focus)
         } else if store.isAncestor(rootID, of: previousRootID) {
-            zoom = .zoomOut(previous: frame.layout, previousRootID: previousRootID)
+            zoom = .zoomOut(previousSegments: frame.segments, previousRootID: previousRootID)
         } else {
             endZoom()
             return
@@ -426,19 +424,29 @@ final class SunburstView: CanvasDelegate {
               frame.inputs.rootID == model.focusedRootID else { return }
         switch transition.direction {
         case .zoomIn:
-            guard transition.focus != nil else {
+            guard let focus = transition.focus else {
                 endZoom()
                 return
             }
-            transition.incomingLayoutLanded(frame.layout)
+            transition.incomingSegments = frame.segments
+            transition.handoffFadeDepthThreshold = SunburstZoomTransitionState.handoffFadeDepthThreshold(
+                animatedSegments: transition.animatedSegments,
+                focus: focus
+            )
         case .zoomOut:
             guard let previousRootID = transition.previousRootID,
-                  let focus = frame.layout.segment(forNodeID: previousRootID) else {
+                  let focus = frame.segments.first(where: { $0.nodeID == previousRootID && !$0.isAggregate }) else {
                 endZoom()
                 return
             }
-            transition.parentLayoutLanded(frame.layout, focus: focus)
+            transition.animatedSegments = frame.segments
+            transition.focus = focus
+            transition.handoffFadeDepthThreshold = SunburstZoomTransitionState.handoffFadeDepthThreshold(
+                animatedSegments: frame.segments,
+                focus: focus
+            )
         }
+        transition.layoutReadyDate = Date()
         zoom = transition
     }
 
@@ -473,18 +481,18 @@ final class SunburstView: CanvasDelegate {
         inputs: Inputs
     ) {
         let painter = ArcPainter(geometry: SunburstGeometry(size: size), palette: inputs.style.palette, isDark: inputs.isDark)
-        let target = presentation.target
+        let metrics = SunburstRingMetrics(depthLimit: Self.depthLimit)
         switch presentation.phase {
         case .zooming(let progress):
             guard let focus = zoom.focus else { return }
-            painter.drawRemapped(snapshot, zoom.animatedSegments, focus: focus, progress: progress, target: target)
+            painter.drawRemapped(snapshot, zoom.animatedSegments, focus: focus, progress: progress, metrics: metrics)
         case .revealingIncoming(let alpha):
             painter.drawIdentity(snapshot, zoom.incomingSegments, deepRingAlpha: alpha, deeperThan: zoom.handoffFadeDepthThreshold)
         case .holdingPrevious:
             painter.drawIdentity(snapshot, zoom.previousSegments, deepRingAlpha: 1, deeperThan: .max)
         case .fadingOrphans(let alpha):
             if let focus = zoom.focus {
-                painter.drawRemapped(snapshot, zoom.animatedSegments, focus: focus, progress: 1, target: target)
+                painter.drawRemapped(snapshot, zoom.animatedSegments, focus: focus, progress: 1, metrics: metrics)
             }
             // The orphaned rings sit in a band the remap leaves empty.
             painter.drawIdentity(
@@ -719,14 +727,14 @@ private struct ArcPainter {
         _ segments: [SunburstSegment],
         focus: SunburstSegment,
         progress: Double,
-        target: SunburstZoomTarget
+        metrics: SunburstRingMetrics
     ) {
         for segment in segments {
             let opacity = SunburstZoomGeometry.opacity(for: segment, focus: focus, rawProgress: progress)
             guard opacity > 0.001 else { continue }
             draw(
                 snapshot, segment,
-                arc: SunburstZoomGeometry.arc(for: segment, focus: focus, progress: progress, target: target),
+                arc: SunburstZoomGeometry.arc(for: segment, focus: focus, progress: progress, metrics: metrics),
                 depth: SunburstZoomGeometry.effectiveDepth(for: segment, focus: focus, progress: progress),
                 opacity: opacity
             )

@@ -36,6 +36,16 @@ brew install --cask neodisk
 
 Requires macOS 14 (Sonoma) or later, on Apple silicon or Intel.
 
+Nightly builds (macOS):
+
+```sh
+brew tap tkslucas/neodisk
+brew trust tkslucas/neodisk
+brew install --cask neodisk@nightly
+```
+
+The nightly updates itself and installs beside the stable app.
+
 ### Linux
 
 Download the AppImage for

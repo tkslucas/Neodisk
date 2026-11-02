@@ -240,7 +240,7 @@ private struct LegendRowView: View {
     var cleanupMark: CleanupModel.Mark = .none
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 9) {
             // The hairline keeps pale or dark fills (Smaller Items, free space) visible on either background.
             Circle()
                 .fill(row.dotColor)
@@ -279,16 +279,16 @@ private struct LegendRowView: View {
     }
 
     private var dotSize: CGFloat {
-        (10 * textScale).rounded()
+        (isHeader ? 14 : 12) * textScale
     }
 
-    /// The app's list type: body rows under a headline, as the file list and statistics pane read.
+    /// Larger than the app's list type: the legend reads at a glance beside the chart.
     private var labelFont: NeoFont {
-        isHeader ? .headline : .body
+        isHeader ? NeoFont(16, weight: .semibold) : NeoFont(14)
     }
 
     private var sizeFont: NeoFont {
-        isHeader ? .headline : .body
+        isHeader ? NeoFont(14, weight: .semibold) : NeoFont(13)
     }
 
     private var backgroundColor: Color {

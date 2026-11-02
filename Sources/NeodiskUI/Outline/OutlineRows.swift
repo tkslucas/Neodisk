@@ -93,7 +93,7 @@ struct OutlineNameSection: View {
     }
 }
 
-/// Spinner, diff delta, and size — the trailing cluster pinned to the
+/// Spinner, diff delta, size and collection action — the trailing cluster pinned to the
 /// pane's right edge at every horizontal scroll position.
 struct OutlineTrailingSection: View {
     let model: NeodiskViewModel
@@ -102,6 +102,8 @@ struct OutlineTrailingSection: View {
     /// The left pane pins this cluster at its 16pt edge inset; the bottom
     /// table's size column brings its own, much tighter padding.
     var trailingPadding: CGFloat = OutlineRowMetrics.contentInset
+    /// The bottom table gives the action a separate column after all of its data columns.
+    var showsCleanupButton = true
     /// See OutlineNameSection.scale.
     var scale = OutlineRowMetrics.scale
 
@@ -124,6 +126,13 @@ struct OutlineTrailingSection: View {
                 .monospacedDigit()
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
+
+            if showsCleanupButton {
+                CleanupRowButton(
+                    node: row.node, cleanup: model.cleanup,
+                    pointSize: OutlineRowMetrics.fontSize, onAccent: state.showsAccentSelection
+                )
+            }
         }
         .font(.system(size: OutlineRowMetrics.fontSize))
         .cleanupDimmed(model.cleanup.isInsideCollected(row.node.id), onAccent: state.showsAccentSelection)
@@ -133,6 +142,48 @@ struct OutlineTrailingSection: View {
 }
 
 // MARK: - Cleanup marks
+
+/// A fixed trailing action column: adding to Cleanup never shifts the size or filename.
+struct CleanupRowButton: View {
+    let node: FileNodeRecord?
+    let cleanup: CleanupModel
+    /// AppKit outline rows pass their scaled size; the other lists inherit the workspace scale.
+    var pointSize: CGFloat? = nil
+    var onAccent = false
+
+    @Environment(\.neoTextScale) private var textScale
+
+    static func sideLength(pointSize: CGFloat) -> CGFloat { pointSize + 8 }
+
+    var body: some View {
+        let size = pointSize ?? 12 * textScale
+        Group {
+            if let node, cleanup.isEnabled, !cleanup.mark(for: node.id).isItem {
+                let mark = cleanup.mark(for: node.id)
+                let reason = mark.hoverText ?? (cleanup.isMoving
+                    ? CleanupModel.Mark.moving.hoverText : cleanup.refusalReason(for: node))
+                Button {
+                    cleanup.add([node])
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: size * 0.75, weight: .medium))
+                        .frame(width: Self.sideLength(pointSize: size), height: Self.sideLength(pointSize: size))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(onAccent ? AnyShapeStyle(.white) : AnyShapeStyle(.secondary))
+                .disabled(reason != nil || mark.isMarked || cleanup.isMoving)
+                .accessibilityLabel(Text("Add to Cleanup"))
+                .accessibilityValue(Text(verbatim: node.name))
+                .neoHelp(reason ?? NSLocalizedString("Add to Cleanup", comment: "Inline file collection button"))
+            } else {
+                Color.clear.accessibilityHidden(true)
+            }
+        }
+        .frame(width: Self.sideLength(pointSize: size), height: Self.sideLength(pointSize: size))
+        .fixedSize()
+    }
+}
 
 /// The small trash after a collected item's name, in every list.
 struct CleanupRowGlyph: View {

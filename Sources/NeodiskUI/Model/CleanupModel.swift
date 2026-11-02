@@ -1,4 +1,4 @@
-// Cleanup: items collected in the sidebar or from the current selection, moved after one confirmation.
+// Cleanup: items collected from any view for the Trash, reviewed in the sidebar, moved after one confirmation.
 // Each move re-checks the item right before it (TrashMover); moved items leave the tree in place, no rescan.
 
 import AppKit
@@ -41,7 +41,7 @@ final class CleanupModel {
         get { policies.make }
         set { policies.make = newValue }
     }
-    private var isConfirming = false
+    @ObservationIgnored private var isConfirming = false
     @ObservationIgnored var confirm: @MainActor (TrashConfirmation) async -> Bool = CleanupModel.presentConfirmation
 
     init(coordinator: ScanCoordinator) {
@@ -296,39 +296,8 @@ final class CleanupModel {
 
     // MARK: - Moving
 
-    private var canStartMove: Bool {
-        !isMoving && !isConfirming && coordinator.snapshot != nil && unavailableReason == nil
-    }
-
     var canMoveToTrash: Bool {
-        !isEmpty && canStartMove
-    }
-
-    /// Toolbar enablement only reads the tree; the live path checks run when the button is pressed.
-    func canMoveToTrash(_ nodes: [FileNodeRecord]) -> Bool {
-        guard canStartMove, let store, !nodes.isEmpty else { return false }
-        return nodes.allSatisfy {
-            TrashSafetyPolicy.treeRefusal(for: $0, scanRootID: store.rootID, in: store) == nil
-        }
-    }
-
-    /// Collects the selection separately, so neither cancellation nor a queued parent broadens this request.
-    func moveToTrash(_ nodes: [FileNodeRecord]) {
-        guard canMoveToTrash(nodes), let snapshot = coordinator.snapshot else {
-            NSSound.beep()
-            return
-        }
-        let store = snapshot.treeStore
-        let (allowed, refused) = store.trashSplit(nodes, reasons: policy.refusals(for: nodes, scanRootID: store.rootID, in: store))
-        // A direct action is all-or-nothing at collection time: don't silently omit a selected protected item.
-        guard refused.isEmpty else {
-            NSSound.beep()
-            show(Notice(kind: .refused, text: TrashReport.refused(refused.count, firstReason: refused[0].localizedReason)))
-            return
-        }
-        var selection = CleanupPile()
-        selection.add(allowed.map(\.id), in: store)
-        confirmAndMove(selection.nodes(in: store), from: snapshot, requiresCollected: false)
+        !isEmpty && !isMoving && !isConfirming && unavailableReason == nil
     }
 
     /// Asks once, then moves each item in turn. Failures stay in the pile with their reason.
@@ -338,10 +307,6 @@ final class CleanupModel {
             return
         }
         let nodes = pile.nodes(in: snapshot.treeStore)
-        confirmAndMove(nodes, from: snapshot, requiresCollected: true)
-    }
-
-    private func confirmAndMove(_ nodes: [FileNodeRecord], from snapshot: ScanSnapshot, requiresCollected: Bool) {
         guard !nodes.isEmpty else { return }
         let confirmation = TrashConfirmation(nodes: nodes, scannedAt: snapshot.finishedAt)
         isConfirming = true
@@ -350,19 +315,19 @@ final class CleanupModel {
             let confirmed = await self.confirm(confirmation)
             self.isConfirming = false
             guard confirmed else { return }
-            await self.move(nodes, from: snapshot, requiresCollected: requiresCollected)
+            await self.move(nodes, from: snapshot)
         }
     }
 
-    private func move(_ confirmedNodes: [FileNodeRecord], from snapshot: ScanSnapshot, requiresCollected: Bool) async {
-        // A scan could have started behind the sheet. The sidebar action also requires its items to remain
-        // collected; the direct action has its own collection, containing only the confirmed selection.
-        guard canStartMove, coordinator.snapshot?.id == snapshot.id else {
+    private func move(_ confirmedNodes: [FileNodeRecord], from snapshot: ScanSnapshot) async {
+        // The confirmation was modal, but a scan could have started behind it, and only what's still collected
+        // and was asked about goes.
+        guard canMoveToTrash, coordinator.snapshot?.id == snapshot.id else {
             NSSound.beep()
             return
         }
         let stillCollected = Set(pile.itemIDs)
-        let nodes = confirmedNodes.filter { !requiresCollected || stillCollected.contains($0.id) }
+        let nodes = confirmedNodes.filter { stillCollected.contains($0.id) }
         guard !nodes.isEmpty else { return }
         notice = nil
         movingIDs = Set(nodes.map(\.id))
@@ -394,8 +359,6 @@ final class CleanupModel {
         let targetID = snapshot.target.id
         var updated = piles[targetID] ?? CleanupPile()
         updated.remove(Set(gone.map(\.id)))
-        // Direct-action failures join Cleanup for review and retry, just like sidebar-action failures.
-        updated.add(nodes.filter { failed[$0.id] != nil }.map(\.id), in: snapshot.treeStore)
         piles[targetID] = updated.isEmpty ? nil : updated
         failures.merge(failed) { _, new in new }
 

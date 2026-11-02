@@ -65,6 +65,7 @@ struct FileResultRow: View {
             // Ahead of the spacer, or the HStack splits the leftover width between them and names truncate early;
             // the stack's spacing on both sides of it is gap enough.
             .layoutPriority(1)
+            .neoHelp(node.path)
 
             Spacer(minLength: 0)
 
@@ -73,10 +74,13 @@ struct FileResultRow: View {
                 .monospacedDigit()
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
+
+            if let cleanup {
+                CleanupRowButton(node: node, cleanup: cleanup, onAccent: onAccent)
+            }
         }
         .neoFont(12)
         .cleanupDimmed(cleanupMark.isMarked, onAccent: onAccent)
-        .neoHelp(node.path)
     }
 
     private var containingFolder: String {

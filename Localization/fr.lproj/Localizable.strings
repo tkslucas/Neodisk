@@ -456,7 +456,6 @@
 "Move Cleanup to Trash…" = "Placer le Nettoyage dans la Corbeille…";
 "Move to Trash" = "Placer dans la Corbeille";
 "Move to Trash…" = "Placer dans la Corbeille…";
-"Move the selected items to the Trash" = "Placer les éléments sélectionnés dans la corbeille";
 "Moved %lld items (%@) to the Trash." = "%lld éléments (%@) placés dans la Corbeille.";
 "Moved 1 item (%@) to the Trash." = "1 élément (%@) placé dans la Corbeille.";
 "Moving items to the Trash is turned off in Preferences." = "Le placement d'éléments dans la Corbeille est désactivé dans les Préférences.";

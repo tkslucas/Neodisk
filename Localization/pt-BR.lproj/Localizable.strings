@@ -457,7 +457,6 @@
 "Move Cleanup to Trash…" = "Mover Limpeza para a Lixeira…";
 "Move to Trash" = "Mover para a Lixeira";
 "Move to Trash…" = "Mover para a Lixeira…";
-"Move the selected items to the Trash" = "Mover os itens selecionados para o Lixo";
 "Moved %lld items (%@) to the Trash." = "%lld itens (%@) movidos para a Lixeira.";
 "Moved 1 item (%@) to the Trash." = "1 item (%@) movido para a Lixeira.";
 "Moving items to the Trash is turned off in Preferences." = "Mover itens para a Lixeira está desativado nas Preferências.";

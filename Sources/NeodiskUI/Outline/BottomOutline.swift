@@ -113,6 +113,14 @@ struct BottomOutlineTable: NSViewRepresentable {
             }
             tableView.addTableColumn(column)
         }
+        // An action belongs to the row, independent of the data columns' visibility and order.
+        let cleanupColumn = NSTableColumn(identifier: .init(Self.cleanupColumnID))
+        cleanupColumn.title = ""
+        cleanupColumn.resizingMask = []
+        cleanupColumn.minWidth = Self.cleanupColumnWidth
+        cleanupColumn.maxWidth = Self.cleanupColumnWidth
+        cleanupColumn.width = Self.cleanupColumnWidth
+        tableView.addTableColumn(cleanupColumn)
         tableView.sortDescriptors = [
             NSSortDescriptor(key: sort.field.rawValue, ascending: sort.ascending)
         ]
@@ -169,6 +177,11 @@ struct BottomOutlineTable: NSViewRepresentable {
 
     /// The percentage label's width at 100%; its bar doesn't need to grow with the text.
     static let percentLabelWidth: CGFloat = 36
+
+    private static let cleanupColumnID = "cleanup"
+    private static var cleanupColumnWidth: CGFloat {
+        CleanupRowButton.sideLength(pointSize: OutlineRowMetrics.fontSize) + 2 * BottomOutlineMetrics.cellPadding
+    }
 
     /// A column's width at a text scale: numbers grow with the text; the percentage column only by its label;
     /// Name not at all (it autoresizes into what's left).
@@ -279,6 +292,9 @@ struct BottomOutlineTable: NSViewRepresentable {
             // Before the first layout there's no width to fit: every layout column shows.
             let width = scrollView?.contentView.bounds.width ?? 0
             var room = width > 0 ? width - Self.insetPadding : .greatestFiniteMagnitude
+            if let action = tableView.tableColumns.first(where: { $0.identifier.rawValue == BottomOutlineTable.cleanupColumnID }) {
+                room -= action.width + spacing
+            }
             // Past Name and Size, Name keeps room for a readable name at the current text size before any other
             // column shows: Size still shows beside a short Name, % never squeezes Name.
             var nameReserve: CGFloat = 0
@@ -344,6 +360,15 @@ struct BottomOutlineTable: NSViewRepresentable {
             scaleHeader(of: tableView, to: scale)
             for column in tableView.tableColumns {
                 let id = column.identifier.rawValue
+                if id == BottomOutlineTable.cleanupColumnID {
+                    let width = BottomOutlineTable.cleanupColumnWidth
+                    // Let the old width pass through the new bounds when the text scale changes.
+                    column.maxWidth = .greatestFiniteMagnitude
+                    column.minWidth = width
+                    column.width = width
+                    column.maxWidth = width
+                    continue
+                }
                 let minimum = BottomOutlineTable.scaled(columnMinimums[id] ?? 60, column: id, by: scale)
                 column.minWidth = minimum
                 // Name autoresizes into the leftover width; only its floor moves. The percentage column grows by
@@ -484,7 +509,7 @@ struct BottomOutlineTable: NSViewRepresentable {
                 return hostedCell(tableView, reuse: "size") { state in
                     OutlineTrailingSection(
                         model: model, row: outlineRow, state: state,
-                        trailingPadding: BottomOutlineMetrics.cellPadding
+                        trailingPadding: BottomOutlineMetrics.cellPadding, showsCleanupButton: false
                     )
                     .frame(maxWidth: .infinity, alignment: .trailing)
                 }
@@ -506,6 +531,14 @@ struct BottomOutlineTable: NSViewRepresentable {
                         cleanup: model.cleanup, nodeID: outlineRow.node.id, state: state,
                         content: BottomDetailText(text: modified, state: state)
                     )
+                }
+            case BottomOutlineTable.cleanupColumnID:
+                return hostedCell(tableView, reuse: "cleanup") { state in
+                    CleanupRowButton(
+                        node: outlineRow.node, cleanup: model.cleanup,
+                        pointSize: OutlineRowMetrics.fontSize, onAccent: state.showsAccentSelection
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             default:
                 return nil
@@ -616,7 +649,8 @@ struct BottomOutlineTable: NSViewRepresentable {
         }
 
         func tableView(_ tableView: NSTableView, shouldReorderColumn columnIndex: Int, toColumn newColumnIndex: Int) -> Bool {
-            columnIndex != 0 && newColumnIndex != 0
+            let last = tableView.numberOfColumns - 1
+            return columnIndex != 0 && newColumnIndex != 0 && columnIndex != last && newColumnIndex != last
         }
 
         func tableViewColumnDidMove(_ notification: Notification) {

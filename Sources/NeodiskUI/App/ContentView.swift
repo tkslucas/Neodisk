@@ -46,7 +46,6 @@ public struct ContentView: View {
         .background(SnapshotWindowHider())
         .background(ToolbarButtonRefresher(state: [
             model.coordinator.isScanning, model.canRescan, model.coordinator.snapshot != nil, model.cleanup.isEnabled,
-            model.canMoveSelectionToTrash,
         ]))
         .sheet(isPresented: $model.showWelcomeSheet) {
             WelcomeSheet(model: model)
@@ -243,14 +242,6 @@ public struct ContentView: View {
 
         // Removed, not disabled, while moving to the Trash is off.
         if model.cleanup.isEnabled {
-            Button {
-                model.moveSelectionToTrash()
-            } label: {
-                Label("Move to Trash…", systemImage: "trash")
-            }
-            .disabled(!model.canMoveSelectionToTrash)
-            .neoHelp("Move the selected items to the Trash")
-
             CleanupToolbarButton(model: model)
         }
 

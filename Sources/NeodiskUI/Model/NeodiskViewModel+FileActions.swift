@@ -6,19 +6,6 @@ import NeodiskKit
 extension NeodiskViewModel {
     // MARK: - File actions
 
-    var canMoveSelectionToTrash: Bool {
-        cleanup.canMoveToTrash(selectedNodes)
-    }
-
-    func moveSelectionToTrash() {
-        guard canMoveSelectionToTrash else {
-            NSSound.beep()
-            return
-        }
-        revealCleanup()
-        cleanup.moveToTrash(selectedNodes)
-    }
-
     /// Whether the node's file actions (Reveal in Finder / Open / Copy Path) apply.
     func supportsFileActions(_ node: FileNodeRecord) -> Bool {
         node.supportsFileActions

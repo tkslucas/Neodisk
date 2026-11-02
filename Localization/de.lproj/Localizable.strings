@@ -456,6 +456,7 @@
 "Move Cleanup to Trash…" = "„Aufräumen“ in den Papierkorb legen …";
 "Move to Trash" = "In den Papierkorb legen";
 "Move to Trash…" = "In den Papierkorb legen …";
+"Move the selected items to the Trash" = "Die ausgewählten Objekte in den Papierkorb bewegen";
 "Moved %lld items (%@) to the Trash." = "%lld Objekte (%@) in den Papierkorb gelegt.";
 "Moved 1 item (%@) to the Trash." = "1 Objekt (%@) in den Papierkorb gelegt.";
 "Moving items to the Trash is turned off in Preferences." = "Das Verschieben in den Papierkorb ist in den Einstellungen ausgeschaltet.";

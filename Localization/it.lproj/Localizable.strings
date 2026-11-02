@@ -456,6 +456,7 @@
 "Move Cleanup to Trash…" = "Sposta Pulizia nel Cestino…";
 "Move to Trash" = "Sposta nel Cestino";
 "Move to Trash…" = "Sposta nel Cestino…";
+"Move the selected items to the Trash" = "Sposta gli elementi selezionati nel Cestino";
 "Moved %lld items (%@) to the Trash." = "%lld elementi (%@) spostati nel Cestino.";
 "Moved 1 item (%@) to the Trash." = "1 elemento (%@) spostato nel Cestino.";
 "Moving items to the Trash is turned off in Preferences." = "Lo spostamento degli elementi nel Cestino è disattivato nelle Preferenze.";

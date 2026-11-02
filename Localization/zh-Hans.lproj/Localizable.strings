@@ -456,6 +456,7 @@
 "Move Cleanup to Trash…" = "将清理项目移到废纸篓…";
 "Move to Trash" = "移到废纸篓";
 "Move to Trash…" = "移到废纸篓…";
+"Move the selected items to the Trash" = "将选中的项目移到废纸篓";
 "Moved %lld items (%@) to the Trash." = "已将 %lld 个项目（%@）移到废纸篓。";
 "Moved 1 item (%@) to the Trash." = "已将 1 个项目（%@）移到废纸篓。";
 "Moving items to the Trash is turned off in Preferences." = "已在“偏好设置”中关闭将项目移到废纸篓。";

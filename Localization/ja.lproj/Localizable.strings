@@ -456,6 +456,7 @@
 "Move Cleanup to Trash…" = "クリーンアップをゴミ箱に入れる…";
 "Move to Trash" = "ゴミ箱に入れる";
 "Move to Trash…" = "ゴミ箱に入れる…";
+"Move the selected items to the Trash" = "選択した項目をゴミ箱に移動";
 "Moved %lld items (%@) to the Trash." = "%lld 項目（%@）をゴミ箱に入れました。";
 "Moved 1 item (%@) to the Trash." = "1 項目（%@）をゴミ箱に入れました。";
 "Moving items to the Trash is turned off in Preferences." = "項目をゴミ箱に入れる機能は設定でオフになっています。";

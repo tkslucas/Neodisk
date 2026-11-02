@@ -457,6 +457,7 @@
 "Move Cleanup to Trash…" = "Mover Limpieza a la Papelera…";
 "Move to Trash" = "Mover a la Papelera";
 "Move to Trash…" = "Mover a la Papelera…";
+"Move the selected items to the Trash" = "Trasladar los elementos seleccionados a la papelera";
 "Moved %lld items (%@) to the Trash." = "Se movieron %lld elementos (%@) a la Papelera.";
 "Moved 1 item (%@) to the Trash." = "Se movió 1 elemento (%@) a la Papelera.";
 "Moving items to the Trash is turned off in Preferences." = "Mover elementos a la Papelera está desactivado en Preferencias.";

@@ -234,7 +234,7 @@ struct CleanupToolbarButton: View {
             Label {
                 Text("Cleanup")
             } icon: {
-                Image(systemName: isTargeted ? "trash.fill" : "trash")
+                Image(systemName: isTargeted ? "tray.full.fill" : "tray.full")
                     .overlay(alignment: .topTrailing) {
                         if count > 0 {
                             Text(verbatim: count > 99 ? "99+" : count.formatted())

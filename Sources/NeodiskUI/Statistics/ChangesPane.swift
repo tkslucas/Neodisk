@@ -190,45 +190,41 @@ private struct ChangeEntryRow: View {
     var body: some View {
         let cleanupMark = entry.nodeID.map { model.cleanup.mark(for: $0) } ?? .none
         HStack(spacing: 6) {
-            HStack(spacing: 6) {
-                Image(systemName: kindSymbol)
-                    .neoFont(11, weight: .medium)
-                    .foregroundStyle(kindColor)
-                    .frame(width: 16)
+            Image(systemName: kindSymbol)
+                .neoFont(11, weight: .medium)
+                .foregroundStyle(kindColor)
+                .frame(width: 16)
 
-                VStack(alignment: .leading, spacing: 1) {
-                    HStack(spacing: 4) {
-                        Text(entry.name)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                        if cleanupMark.isItem {
-                            CleanupRowGlyph(onAccent: backgroundProminence == .increased)
-                        }
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 4) {
+                    Text(entry.name)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    if cleanupMark.isItem {
+                        CleanupRowGlyph(onAccent: backgroundProminence == .increased)
                     }
-                    Text(subtitleText)
-                        .foregroundStyle(.secondary)
-                        .neoFont(10)
-                        .lineLimit(1)
-                        .truncationMode(.head)
                 }
-                .layoutPriority(1)
-                .neoHelp(helpText)
-
-                Spacer(minLength: 0)
-
-                if entry.delta == 0 {
-                    // An equal-size rename: the size says more than a delta dot.
-                    Text(NeodiskFormatters.size(entry.size))
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
-                } else {
-                    DeltaLabel(delta: entry.delta)
-                }
+                Text(subtitleText)
+                    .foregroundStyle(.secondary)
+                    .neoFont(10)
+                    .lineLimit(1)
+                    .truncationMode(.head)
             }
-            // The action stays at full strength: on a collected row it's the way back.
-            .cleanupDimmed(cleanupMark.isMarked, onAccent: backgroundProminence == .increased)
+            .layoutPriority(1)
+            .neoHelp(helpText)
+
+            Spacer(minLength: 0)
+
+            if entry.delta == 0 {
+                // An equal-size rename: the size says more than a delta dot.
+                Text(NeodiskFormatters.size(entry.size))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+            } else {
+                DeltaLabel(delta: entry.delta)
+            }
 
             CleanupRowButton(
                 node: entry.nodeID.flatMap { model.store?.node(id: $0) }, cleanup: model.cleanup,
@@ -236,6 +232,7 @@ private struct ChangeEntryRow: View {
             )
         }
         .neoFont(12)
+        .cleanupDimmed(cleanupMark.isMarked, onAccent: backgroundProminence == .increased)
     }
 
     private var kindSymbol: String {

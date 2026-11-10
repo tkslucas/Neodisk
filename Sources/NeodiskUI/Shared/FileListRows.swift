@@ -45,45 +45,42 @@ struct FileResultRow: View {
         let cleanupMark = cleanup?.mark(for: node.id) ?? .none
         let onAccent = backgroundProminence == .increased
         HStack(spacing: 6) {
-            HStack(spacing: 6) {
-                FileCategoryIcon(node: node, palette: palette)
+            FileCategoryIcon(node: node, palette: palette)
 
-                VStack(alignment: .leading, spacing: 1) {
-                    HStack(spacing: 4) {
-                        Text(node.name)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                        if cleanupMark.isItem {
-                            CleanupRowGlyph(onAccent: onAccent)
-                        }
-                    }
-                    Text(containingFolder)
-                        .foregroundStyle(.secondary)
-                        .neoFont(10)
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 4) {
+                    Text(node.name)
                         .lineLimit(1)
-                        .truncationMode(.head)
+                        .truncationMode(.middle)
+                    if cleanupMark.isItem {
+                        CleanupRowGlyph(onAccent: onAccent)
+                    }
                 }
-                // Ahead of the spacer, or the HStack splits the leftover width between them and names truncate early;
-                // the stack's spacing on both sides of it is gap enough.
-                .layoutPriority(1)
-                .neoHelp(node.path)
-
-                Spacer(minLength: 0)
-
-                FileSizeLabel(node: node, includeCloudOnly: includeCloudOnly)
+                Text(containingFolder)
                     .foregroundStyle(.secondary)
-                    .monospacedDigit()
+                    .neoFont(10)
                     .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
+                    .truncationMode(.head)
             }
-            // The action stays at full strength: on a collected row it's the way back.
-            .cleanupDimmed(cleanupMark.isMarked, onAccent: onAccent)
+            // Ahead of the spacer, or the HStack splits the leftover width between them and names truncate early;
+            // the stack's spacing on both sides of it is gap enough.
+            .layoutPriority(1)
+            .neoHelp(node.path)
+
+            Spacer(minLength: 0)
+
+            FileSizeLabel(node: node, includeCloudOnly: includeCloudOnly)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
 
             if let cleanup {
                 CleanupRowButton(node: node, cleanup: cleanup, onAccent: onAccent)
             }
         }
         .neoFont(12)
+        .cleanupDimmed(cleanupMark.isMarked, onAccent: onAccent)
     }
 
     private var containingFolder: String {

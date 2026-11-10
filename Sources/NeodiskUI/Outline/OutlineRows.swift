@@ -109,27 +109,23 @@ struct OutlineTrailingSection: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            HStack(spacing: 4) {
-                if model.coordinator.expandingNodeID == row.node.id {
-                    // A subtree rescan/expansion is scanning this folder.
-                    ProgressView()
-                        .neoControlSize(base: .mini)
-                }
-
-                if let baseline = model.diff.baseline {
-                    DeltaLabel(delta: baseline.sizeDelta(for: row.node))
-                }
-
-                FileSizeLabel(node: row.node, includeCloudOnly: model.showsCloudOnlyFiles)
-                    .foregroundStyle(state.showsAccentSelection
-                        ? AnyShapeStyle(.white.opacity(0.85))
-                        : AnyShapeStyle(.secondary))
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
+            if model.coordinator.expandingNodeID == row.node.id {
+                // A subtree rescan/expansion is scanning this folder.
+                ProgressView()
+                    .neoControlSize(base: .mini)
             }
-            // The action stays at full strength: on a collected row it's the way back.
-            .cleanupDimmed(model.cleanup.isInsideCollected(row.node.id), onAccent: state.showsAccentSelection)
+
+            if let baseline = model.diff.baseline {
+                DeltaLabel(delta: baseline.sizeDelta(for: row.node))
+            }
+
+            FileSizeLabel(node: row.node, includeCloudOnly: model.showsCloudOnlyFiles)
+                .foregroundStyle(state.showsAccentSelection
+                    ? AnyShapeStyle(.white.opacity(0.85))
+                    : AnyShapeStyle(.secondary))
+                .monospacedDigit()
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
 
             if showsCleanupButton {
                 CleanupRowButton(
@@ -139,6 +135,7 @@ struct OutlineTrailingSection: View {
             }
         }
         .font(.system(size: OutlineRowMetrics.fontSize))
+        .cleanupDimmed(model.cleanup.isInsideCollected(row.node.id), onAccent: state.showsAccentSelection)
         .padding(.trailing, trailingPadding)
         .frame(maxHeight: .infinity)
     }
@@ -146,8 +143,7 @@ struct OutlineTrailingSection: View {
 
 // MARK: - Cleanup marks
 
-/// A fixed trailing action column: adding to Cleanup never shifts the size or filename. A collected item's slot
-/// shows Cleanup's own remove button under the pointer, so a second click right where the first one landed undoes it.
+/// A fixed trailing action column: adding to Cleanup never shifts the size or filename.
 struct CleanupRowButton: View {
     let node: FileNodeRecord?
     let cleanup: CleanupModel
@@ -156,30 +152,13 @@ struct CleanupRowButton: View {
     var onAccent = false
 
     @Environment(\.neoTextScale) private var textScale
-    @State private var isHovered = false
 
     static func sideLength(pointSize: CGFloat) -> CGFloat { pointSize + 8 }
 
     var body: some View {
         let size = pointSize ?? 12 * textScale
         Group {
-            if let node, cleanup.isEnabled, cleanup.mark(for: node.id) == .collected {
-                Button {
-                    cleanup.remove([node.id])
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: size))
-                        .frame(width: Self.sideLength(pointSize: size), height: Self.sideLength(pointSize: size))
-                        .contentShape(Rectangle())
-                        .opacity(isHovered ? 1 : 0)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(onAccent ? AnyShapeStyle(.white) : AnyShapeStyle(.secondary))
-                .disabled(cleanup.isMoving)
-                .accessibilityLabel(Text("Remove from Cleanup"))
-                .accessibilityValue(Text(verbatim: node.name))
-                .neoHelp("Remove from Cleanup")
-            } else if let node, cleanup.isEnabled, !cleanup.mark(for: node.id).isItem {
+            if let node, cleanup.isEnabled, !cleanup.mark(for: node.id).isItem {
                 let mark = cleanup.mark(for: node.id)
                 let reason = mark.hoverText ?? (cleanup.isMoving
                     ? CleanupModel.Mark.moving.hoverText : cleanup.refusalReason(for: node))
@@ -203,7 +182,6 @@ struct CleanupRowButton: View {
         }
         .frame(width: Self.sideLength(pointSize: size), height: Self.sideLength(pointSize: size))
         .fixedSize()
-        .onHover { isHovered = $0 }
     }
 }
 

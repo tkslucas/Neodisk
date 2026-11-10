@@ -84,6 +84,21 @@ struct StatsListTableTests {
         #expect(menu.items.last?.title == "Reset Tabs")
     }
 
+    /// A text size change keeps the same rows: their heights must follow it, not stay at the old size.
+    @Test func rowsResizeWhenTheTextScaleChanges() {
+        let coordinator = StatsListCoordinator(model: NeodiskViewModel(snapshotCache: makeIsolatedCache()))
+        let table = makeTable(coordinator)
+        var large = update(["a", "b", "c"], click: .selectsNode { _ in })
+        large.textScale = 2
+        coordinator.apply(large)
+        #expect(table.rect(ofRow: 2).height == StatsListMetrics.rowHeight(scale: 2))
+
+        coordinator.apply(update(["a", "b", "c"], click: .selectsNode { _ in }))
+
+        #expect(table.rect(ofRow: 0).height == 37)
+        #expect(table.rect(ofRow: 2).height == 37)
+    }
+
     /// 37pt at 100% is what the SwiftUI List gave these two-line rows;
     /// larger text grows the row by its lines, not by a multiple.
     @Test func rowsKeepTheListHeightAndGrowWithTheText() {

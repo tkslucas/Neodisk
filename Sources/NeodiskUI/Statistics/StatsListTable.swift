@@ -183,7 +183,8 @@ final class StatsListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDe
             rowsVersion &+= 1
         }
         let rowHeight = StatsListMetrics.rowHeight(scale: update.textScale)
-        if tableView.rowHeight != rowHeight {
+        let rescaled = tableView.rowHeight != rowHeight
+        if rescaled {
             tableView.rowHeight = rowHeight
         }
         tableView.menu = rowsMenu()
@@ -191,6 +192,10 @@ final class StatsListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDe
         // Same rows: refresh the visible cells in place (sizes, palette,
         // the cloud-only toggle); new rows: reload.
         selectionSync.whileApplying { tableView.reloadRows(keepingRowViews: sameRows) }
+        // heightOfRow makes the table cache each row's height; a new text size must reach the rows it keeps.
+        if rescaled, sameRows {
+            tableView.noteHeightOfRows(withIndexesChanged: IndexSet(integersIn: 0..<tableView.numberOfRows))
+        }
         if update.keepsLeaderInView, newLeader, let scrollView {
             scrollView.contentView.scroll(to: NSPoint(x: 0, y: -OutlineRowMetrics.verticalContentInset))
             scrollView.reflectScrolledClipView(scrollView.contentView)

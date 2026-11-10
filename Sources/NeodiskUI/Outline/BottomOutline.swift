@@ -116,6 +116,8 @@ struct BottomOutlineTable: NSViewRepresentable {
         // An action belongs to the row, independent of the data columns' visibility and order.
         let cleanupColumn = NSTableColumn(identifier: .init(Self.cleanupColumnID))
         cleanupColumn.title = ""
+        cleanupColumn.headerCell.alignment = .center
+        cleanupColumn.headerToolTip = NSLocalizedString("Add to Cleanup", comment: "Inline file collection button")
         cleanupColumn.resizingMask = []
         cleanupColumn.minWidth = Self.cleanupColumnWidth
         cleanupColumn.maxWidth = Self.cleanupColumnWidth
@@ -333,10 +335,17 @@ struct BottomOutlineTable: NSViewRepresentable {
                 let paragraph = NSMutableParagraphStyle()
                 paragraph.alignment = column.headerCell.alignment
                 paragraph.lineBreakMode = .byTruncatingTail
-                column.headerCell.attributedStringValue = NSAttributedString(
-                    string: column.title,
-                    attributes: [.font: font, .foregroundColor: NSColor.headerTextColor, .paragraphStyle: paragraph]
-                )
+                let attributes: [NSAttributedString.Key: Any] = [
+                    .font: font, .foregroundColor: NSColor.headerTextColor, .paragraphStyle: paragraph,
+                ]
+                // The row buttons' column is named by Cleanup's trash rather than a word.
+                if column.identifier.rawValue == BottomOutlineTable.cleanupColumnID {
+                    let title = NSMutableAttributedString(attachment: Self.trashAttachment(font: font))
+                    title.addAttributes(attributes, range: NSRange(location: 0, length: title.length))
+                    column.headerCell.attributedStringValue = title
+                    continue
+                }
+                column.headerCell.attributedStringValue = NSAttributedString(string: column.title, attributes: attributes)
             }
             guard let header = tableView.headerView else { return }
             let height = max(28, (font.boundingRectForFont.height + 12).rounded())
@@ -344,6 +353,19 @@ struct BottomOutlineTable: NSViewRepresentable {
                 header.frame.size.height = height
                 tableView.enclosingScrollView?.tile()
             }
+        }
+
+        private static func trashAttachment(font: NSFont) -> NSTextAttachment {
+            let configuration = NSImage.SymbolConfiguration(pointSize: font.pointSize, weight: .medium)
+                .applying(NSImage.SymbolConfiguration(paletteColors: [.headerTextColor]))
+            let attachment = NSTextAttachment()
+            attachment.image = NSImage(systemSymbolName: "trash", accessibilityDescription: nil)?
+                .withSymbolConfiguration(configuration)
+            if let size = attachment.image?.size {
+                // Centered on the titles' x-height, as an SF symbol set in text is.
+                attachment.bounds = CGRect(x: 0, y: (font.capHeight - size.height) / 2, width: size.width, height: size.height)
+            }
+            return attachment
         }
 
         /// Scales current widths rather than the spec, so a column the user widened stays proportionally wide.

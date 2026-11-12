@@ -45,18 +45,20 @@ struct FirmlinkPathTranslator: Sendable {
         return Self.namespaced(mountPoint + "/" + relativePath, forTarget: targetPath)
     }
 
-    /// Self-gating: firmlink keys are absolute root paths that never prefix a plain volume's target.
-    /// A target at the volume root maps to "".
+    /// Firmlinks apply only on the Data volume, as in `absolutePath`: `/Volumes` is one, so an external
+    /// drive's targets would otherwise watch a path that doesn't exist on it. A target at the volume root maps to "".
     func relativePath(forTarget targetPath: String, mountPoint: String) -> String {
         // `/var/...` targets arrive `/private`-stripped (Foundation URL
         // standardization); re-qualify so they match the `/private` firmlink.
         let targetPath = Self.privateQualified(targetPath)
-        for entry in entries {
-            if targetPath == entry.firmlink {
-                return entry.dataRelative
-            }
-            if targetPath.hasPrefix(entry.firmlink + "/") {
-                return entry.dataRelative + targetPath.dropFirst(entry.firmlink.count)
+        if mountPoint == Self.dataVolumeMountPoint {
+            for entry in entries {
+                if targetPath == entry.firmlink {
+                    return entry.dataRelative
+                }
+                if targetPath.hasPrefix(entry.firmlink + "/") {
+                    return entry.dataRelative + targetPath.dropFirst(entry.firmlink.count)
+                }
             }
         }
         if targetPath == mountPoint {

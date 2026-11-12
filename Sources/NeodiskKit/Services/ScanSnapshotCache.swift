@@ -83,9 +83,9 @@ public final class PreparedScanComparison: Sendable {
 }
 
 public actor ScanSnapshotCache {
-    /// v3 adds cloud-only bits and sizes, v5 summarized directories' clone families; older builds reject
-    /// newer files as unsupportedVersion and rescan.
-    static let currentFormatVersion: UInt32 = 5
+    /// v3 adds cloud-only bits and sizes, v5 summarized directories' clone families, v6 trusted checkpoints
+    /// on other volumes; older builds reject newer files as unsupportedVersion and rescan.
+    static let currentFormatVersion: UInt32 = 6
     static let oldestReadableFormatVersion: UInt32 = 1
     private static let magic: UInt32 = 0x4E44_5343 // "NDSC"
     private static let fileExtension = "ndscan"

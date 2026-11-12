@@ -301,9 +301,15 @@ nonisolated enum ScanSnapshotCodec {
             aggregateStats: stats,
             isComplete: true,
             scanOptions: metadata.scanOptions,
-            // Before v5 packages counted inner clones at full size; dropping the checkpoint forces a full rescan.
-            incrementalCheckpoint: version >= 5 ? metadata.incrementalCheckpoint : nil
+            incrementalCheckpoint: trustsCheckpoint(version: version, targetPath: metadata.targetPath)
+                ? metadata.incrementalCheckpoint : nil
         )
+    }
+
+    /// A dropped checkpoint forces one full rescan. Before v5 packages counted inner clones at full size;
+    /// before v6 rescans of other volumes replayed no changes, so their trees can still hold deleted files.
+    private static func trustsCheckpoint(version: UInt32, targetPath: String) -> Bool {
+        version >= 6 || (version == 5 && !targetPath.hasPrefix("/Volumes/"))
     }
 
     private static func decodePayload<Reader: PayloadReading>(

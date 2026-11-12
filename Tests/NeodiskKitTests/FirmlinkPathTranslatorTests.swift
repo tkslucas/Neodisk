@@ -59,6 +59,15 @@ import Testing
         #expect(translator.relativePath(forTarget: "/Volumes/Ext/Movies/a.mov", mountPoint: "/Volumes/Ext") == "Movies/a.mov")
     }
 
+    @Test func externalVolumeTargetIgnoresTheVolumesFirmlink() {
+        // `/Volumes` is itself a Data-volume firmlink; applied to an external drive it watched
+        // `Volumes/Ext/...`, which doesn't exist there, so rescans saw no changes.
+        let translator = FirmlinkPathTranslator(table: ["/Volumes": "Volumes", "/Users": "Users"])
+        #expect(translator.relativePath(forTarget: "/Volumes/Ext", mountPoint: "/Volumes/Ext") == "")
+        #expect(translator.relativePath(forTarget: "/Volumes/Ext/Movies", mountPoint: "/Volumes/Ext") == "Movies")
+        #expect(translator.relativePath(forTarget: "/Users/lucas", mountPoint: dataMount) == "Users/lucas")
+    }
+
     @Test func targetAtVolumeRootMapsToEmpty() {
         let translator = makeTranslator()
         #expect(translator.relativePath(forTarget: "/Volumes/Ext", mountPoint: "/Volumes/Ext") == "")

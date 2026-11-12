@@ -30,13 +30,14 @@ import Testing
     private func makeSnapshot(
         checkpoint: FSEventsCheckpoint? = ScanSnapshotCodecCheckpointTests.checkpoint,
         options: ScanOptions? = ScanSnapshotCodecCheckpointTests.options,
-        source: ScanSnapshotSource = .live
+        source: ScanSnapshotSource = .live,
+        target: ScanTarget = makeTestTarget("/root")
     ) -> ScanSnapshot {
         let file = makeTestFileNode(id: "/root/a.txt", name: "a.txt", size: 100)
         let root = makeTestDirectoryNode(id: "/root", name: "root", children: [file])
         let store = FileTreeStore(root: root, childrenByID: [root.id: [file]])
         return ScanSnapshot(
-            target: makeTestTarget("/root"),
+            target: target,
             treeStore: store,
             startedAt: Date(timeIntervalSince1970: 1_705_000_100),
             finishedAt: Date(timeIntervalSince1970: 1_705_000_200),
@@ -109,6 +110,14 @@ import Testing
         #expect(try ScanSnapshotCodec.decode(blob).incrementalCheckpoint == nil)
         let current = try ScanSnapshotCodec.encode(makeSnapshot())
         #expect(try ScanSnapshotCodec.decode(current).incrementalCheckpoint == Self.checkpoint)
+    }
+
+    @Test func testPreV6SnapshotsOfOtherVolumesAreNoIncrementalBaseline() throws {
+        // v5 rescans of other volumes replayed nothing, so their trees can still hold deleted files.
+        let external = makeSnapshot(target: makeTestTarget("/Volumes/Ext"))
+        #expect(try ScanSnapshotCodec.decode(try ScanSnapshotCodec.encode(external, version: 5)).incrementalCheckpoint == nil)
+        #expect(try ScanSnapshotCodec.decode(try ScanSnapshotCodec.encode(external)).incrementalCheckpoint == Self.checkpoint)
+        #expect(try ScanSnapshotCodec.decode(try ScanSnapshotCodec.encode(makeSnapshot(), version: 5)).incrementalCheckpoint == Self.checkpoint)
     }
 
     @Test func testNonPersistableSourceNilsCheckpoint() throws {

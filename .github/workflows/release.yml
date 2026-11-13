@@ -1,39 +1,84 @@
 name: Release
 
-# Builds the stable Linux tarballs and AppImages when a release is published
-# and attaches them to it, with unversioned copies for the site's
-# latest-download links. The Mac app is packaged and released by hand.
-# Dispatched from a branch it only builds, as a dry run; from a tag it
-# attaches to that tag's release.
+# Builds a stable release from the dispatched commit: the memory gate, the
+# signed and notarized universal Mac app (launch-checked on Intel), and the
+# Linux tarballs and AppImages. With publish on (from main only), it attaches
+# them, with unversioned copies for the site's latest-download links, to the
+# draft release v<AppVersion> and publishes it as the latest. Without it, a
+# dry run: nothing leaves the run.
 
 on:
-  release:
-    types: [published]
   workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish the draft release v<AppVersion>"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
 
+concurrency: release
+
 jobs:
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: read
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLISH: ${{ inputs.publish }}
+        run: |
+          version=$(sed -n 's/.*static let string = "\(.*\)".*/\1/p' Sources/NeodiskAppModel/AppVersion.swift)
+          [[ -n "$version" ]] || { echo "::error::could not read AppVersion.string"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          [[ "$PUBLISH" == true ]] || exit 0
+          [[ "$GITHUB_REF" == refs/heads/main ]] || { echo "::error::publish only from main"; exit 1; }
+          if git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null; then
+            echo "::error::v$version is already tagged: bump AppVersion"; exit 1
+          fi
+          draft=$(gh release view "v$version" -R "$GITHUB_REPOSITORY" --json isDraft,name -q '"\(.isDraft) \(.name)"' 2>/dev/null) || {
+            echo "::error::no draft release v$version: gh release create v$version --draft --title \"Neodisk $version\" --notes-file <notes>"; exit 1; }
+          [[ "$draft" == "true Neodisk $version" ]] || { echo "::error::v$version must be a draft titled \"Neodisk $version\" (is: $draft)"; exit 1; }
+
+  memory:
+    needs: version
+    uses: ./.github/workflows/memory-gate.yml
+    secrets: inherit
+
+  mac:
+    needs: [version, memory]
+    uses: ./.github/workflows/mac-package.yml
+    with:
+      channel: stable
+    secrets: inherit
+
   linux:
-    if: ${{ !github.event.release.prerelease }}
+    needs: version
     uses: ./.github/workflows/linux-package.yml
     with:
       channel: stable
 
-  attach:
-    needs: linux
-    if: github.ref_type == 'tag'
+  publish:
+    needs: [version, mac, linux]
+    if: inputs.publish
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: linux-*
           merge-multiple: true
-      - name: Attach to the release
+      - name: Attach and publish
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
+          ls -l
+          test -f "Neodisk-$VERSION.dmg" && test -f "Neodisk-$VERSION.zip"
+          cp "Neodisk-$VERSION.dmg" Neodisk.dmg
           for f in neodisk-*-linux-*.tar.gz; do cp "$f" "neodisk-linux-${f##*-linux-}"; done
           for f in Neodisk-*-*.AppImage; do cp "$f" "Neodisk-${f##*-}"; done
-          gh release upload "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --clobber *.tar.gz *.AppImage
+          gh release upload "v$VERSION" -R "$GITHUB_REPOSITORY" --clobber *.dmg *.zip *.tar.gz *.AppImage
+          gh release edit "v$VERSION" -R "$GITHUB_REPOSITORY" --draft=false --latest --target "$GITHUB_SHA"

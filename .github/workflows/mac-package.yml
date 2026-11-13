@@ -1,0 +1,93 @@
+name: Mac package
+
+# Builds the universal Mac app for one channel, signed with the Developer ID
+# certificate and notarized with an App Store Connect API key, then
+# launch-checks it on Intel. Called by Nightly and Release; the .zip and .dmg
+# come out as the mac artifact.
+
+on:
+  workflow_call:
+    inputs:
+      channel:
+        description: "stable or nightly"
+        type: string
+        required: true
+
+jobs:
+  mac:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: Neodisk
+      - uses: actions/checkout@v4
+        with:
+          repository: tkslucas/neodisk-internal
+          ssh-key: ${{ secrets.NEODISK_INTERNAL_KEY }}
+          path: internal
+
+      - name: Signing keychain
+        env:
+          CERT_P12: ${{ secrets.DEVELOPER_ID_P12 }}
+          CERT_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+          NOTARY_KEY: ${{ secrets.NOTARY_KEY }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER: ${{ secrets.NOTARY_ISSUER }}
+        run: |
+          kc="$RUNNER_TEMP/signing.keychain-db"; pw=$(uuidgen)
+          security create-keychain -p "$pw" "$kc"
+          security set-keychain-settings -lut 21600 "$kc"
+          security unlock-keychain -p "$pw" "$kc"
+          echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$kc" -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/cert.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$pw" "$kc" >/dev/null
+          security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
+          # An App Store Connect API key: notarizes, can't reach the Apple ID's iCloud data.
+          printf '%s' "$NOTARY_KEY" > "$RUNNER_TEMP/notary.p8"
+          xcrun notarytool store-credentials neodisk-notary --keychain "$kc" \
+            --key "$RUNNER_TEMP/notary.p8" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER"
+          rm "$RUNNER_TEMP/notary.p8"
+
+      - name: Build, sign and notarize
+        env:
+          NEODISK_REPO: ${{ github.workspace }}/Neodisk
+          NEODISK_CHANNEL: ${{ inputs.channel }}
+          NEODISK_NOTARY_PROFILE: neodisk-notary
+          NEODISK_NIGHTLY_ED_PUBLIC_KEY: ${{ inputs.channel == 'nightly' && vars.NEODISK_NIGHTLY_ED_PUBLIC_KEY || '' }}
+        run: |
+          npm install --global create-dmg
+          internal/scripts/package-app.sh
+
+      - name: Gatekeeper accepts it
+        working-directory: Neodisk/dist
+        run: |
+          app=$(ls -d *.app)
+          spctl --assess --type execute -vv "$app" 2>&1 | tee /dev/stderr | grep -q "source=Notarized Developer ID"
+          xcrun stapler validate "$app"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac
+          if-no-files-found: error
+          path: |
+            Neodisk/dist/Neodisk-*.zip
+            Neodisk/dist/Neodisk-*.dmg
+
+  intel:
+    needs: mac
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: mac
+      - name: Launch on Intel
+        run: |
+          ditto -x -k Neodisk-*.zip .
+          app=$(ls -d *.app)
+          bin="$app/Contents/MacOS/Neodisk"
+          lipo "$bin" -verify_arch x86_64 arm64
+          "$bin" -hasSeenWelcome YES & pid=$!
+          sleep 20
+          kill -0 "$pid" || { echo "$app quit on Intel"; exit 1; }
+          kill "$pid"

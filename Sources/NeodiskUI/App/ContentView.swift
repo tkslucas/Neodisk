@@ -32,13 +32,17 @@ public struct ContentView: View {
                     ideal: PaneLayout.sidebarIdealWidth(scale: model.textScale),
                     max: PaneLayout.sidebarMaxWidth(scale: model.textScale)
                 )
+                .neoWorkspaceText(scale: textScale)
         } detail: {
             detailContent
                 .addLocationDropTarget(model: model)
+                .neoWorkspaceText(scale: textScale)
+                // On the detail column, not the split view: there, macOS 26 puts toolbar spacers in the sidebar's
+                // section, ahead of every item, so none separated anything. Outside the text scale, as chrome.
+                .toolbar { toolbarContent }
         }
-        // The workspace text scale enters here and in the welcome sheet; other scenes (Settings, About) and the
-        // window's chrome keep the system size.
-        .neoWorkspaceText(scale: textScale)
+        // The workspace text scale enters in each column and the welcome sheet; other scenes (Settings, About) and
+        // the window's chrome keep the system size.
         .frame(
             minWidth: minimumSize.width,
             minHeight: minimumSize.height
@@ -78,7 +82,6 @@ public struct ContentView: View {
         .onChange(of: model.warnings.fullDiskAccessStatus) { _, status in
             if status == .granted { model.passFullDiskAccessGate(remembering: false) }
         }
-        .toolbar { toolbarContent }
         .navigationTitle(windowTitle)
         .navigationSubtitle(windowSubtitle)
         .alert(

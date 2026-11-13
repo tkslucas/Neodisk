@@ -1,5 +1,4 @@
-/// Bumped on every user-visible change so a running build is identifiable
-/// (shown bottom-left in the status bar).
+/// Bumped once per release; shown in About Neodisk.
 package enum AppVersion {
     package static let string = "2.91.0"
 }

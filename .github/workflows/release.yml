@@ -2,10 +2,12 @@ name: Release
 
 # Builds a stable release from the dispatched commit: the memory gate, the
 # signed and notarized universal Mac app (launch-checked on Intel), and the
-# Linux tarballs and AppImages. With publish on (from main only), it attaches
-# them, with unversioned copies for the site's latest-download links, to the
-# draft release v<AppVersion> and publishes it as the latest. Without it, a
-# dry run: nothing leaves the run.
+# Linux tarballs and AppImages. From main it also signs the Sparkle feed with
+# the release key (the release environment, main only). With publish on (from
+# main only), it attaches them, with unversioned copies for the site's
+# latest-download links and the feed as stable-appcast.xml (where the site's
+# /appcast.xml redirects), to the draft release v<AppVersion> and publishes it
+# as the latest. Without it, a dry run: nothing leaves the run.
 
 on:
   workflow_dispatch:
@@ -62,8 +64,42 @@ jobs:
     with:
       channel: stable
 
+  feed:
+    needs: [version, mac]
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-26
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: Neodisk
+      - uses: actions/checkout@v4
+        with:
+          repository: tkslucas/neodisk-internal
+          ssh-key: ${{ secrets.NEODISK_INTERNAL_KEY }}
+          path: internal
+      - uses: actions/download-artifact@v4
+        with:
+          name: mac
+          path: mac
+      - name: Sign the feed
+        env:
+          NEODISK_REPO: ${{ github.workspace }}/Neodisk
+          ED_KEY: ${{ secrets.NEODISK_RELEASE_ED_KEY }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          key="$RUNNER_TEMP/release-ed-key"
+          printf '%s' "$ED_KEY" > "$key"
+          NEODISK_RELEASE_ED_KEY_FILE="$key" internal/scripts/release-feed.sh "mac/Neodisk-$VERSION.zip" stable-appcast.xml
+          rm "$key"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: feed
+          path: stable-appcast.xml
+          if-no-files-found: error
+
   publish:
-    needs: [version, mac, linux]
+    needs: [version, mac, linux, feed]
     if: inputs.publish
     runs-on: ubuntu-24.04
     steps:
@@ -76,9 +112,9 @@ jobs:
           VERSION: ${{ needs.version.outputs.version }}
         run: |
           ls -l
-          test -f "Neodisk-$VERSION.dmg" && test -f "Neodisk-$VERSION.zip"
+          test -f "Neodisk-$VERSION.dmg" && test -f "Neodisk-$VERSION.zip" && test -f stable-appcast.xml
           cp "Neodisk-$VERSION.dmg" Neodisk.dmg
           for f in neodisk-*-linux-*.tar.gz; do cp "$f" "neodisk-linux-${f##*-linux-}"; done
           for f in Neodisk-*-*.AppImage; do cp "$f" "Neodisk-${f##*-}"; done
-          gh release upload "v$VERSION" -R "$GITHUB_REPOSITORY" --clobber *.dmg *.zip *.tar.gz *.AppImage
+          gh release upload "v$VERSION" -R "$GITHUB_REPOSITORY" --clobber *.dmg *.zip *.tar.gz *.AppImage stable-appcast.xml
           gh release edit "v$VERSION" -R "$GITHUB_REPOSITORY" --draft=false --latest --target "$GITHUB_SHA"
